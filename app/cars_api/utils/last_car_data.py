@@ -74,7 +74,10 @@ def send_command_to_terminal(
     try:
         response = requests.post(url, json=payload, headers=headers)
         response.raise_for_status()  # Проверка на ошибки
-        return response.json()
+
+        # Удаляем лишние кавычки с помощью strip()
+        command_id = response.text.strip('"')
+        return {"command_id": command_id}
 
     except requests.exceptions.RequestException as e:
         print(f"Ошибка при выполнении запроса: {e}")

@@ -33,14 +33,21 @@ async def start_token_refresh():
                     AUTH_TOKEN = get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
                 except Exception as e:
                     print(f"Ошибка обновления токена: {e}")
-                await asyncio.sleep(10)  # Ждем 10 секунд перед следующим обновлением
+                await asyncio.sleep(70)
 
         asyncio.create_task(refresh_token())
 
 
-@Vehicle_Router.post("/get_info")
-def get_vehicle_info(request: VehicleIdsRequest) -> Dict[str, Any]:
-    result = get_last_vehicles_data(AUTH_TOKEN, request.ids)
+# @Vehicle_Router.post("/get_info")
+# def get_vehicle_info(request: VehicleIdsRequest) -> Dict[str, Any]:
+#     result = get_last_vehicles_data(AUTH_TOKEN, request.ids)
+#     if result is None:
+#         raise HTTPException(status_code=500, detail="Ошибка получения данных о машинах")
+#     return {"vehicles": result}
+
+@Vehicle_Router.post("/get_vehicles")
+def get_vehicle_info() -> Dict[str, Any]:
+    result = get_last_vehicles_data(AUTH_TOKEN, [800149805])
     if result is None:
         raise HTTPException(status_code=500, detail="Ошибка получения данных о машинах")
     return {"vehicles": result}
