@@ -16,7 +16,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(Auth_router)
+app.include_router(Auth_router) # регистрация (фото удоста и тд тоже тут)
 app.include_router(Vehicle_Router)
 
 

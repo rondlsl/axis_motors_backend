@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.models.user_model import UserRole
 
@@ -10,8 +10,9 @@ class SendSmsRequest(BaseModel):
 
 
 class VerifySmsRequest(BaseModel):
-    phone_number: str
-    sms_code: str
+    phone_number: str = Field(default="77472051507")
+
+    sms_code: str = Field(default="6666")
 
 
 class UserMeResponse(BaseModel):

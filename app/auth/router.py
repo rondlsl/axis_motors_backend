@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 import pyotp
 from datetime import datetime, timedelta
@@ -6,7 +6,8 @@ import httpx
 from pydantic import BaseModel
 from typing import Optional
 
-from app.auth.get_current_user import get_current_user
+from app.auth.dependencies.get_current_user import get_current_user
+from app.auth.dependencies.save_documents import save_file
 from app.auth.schemas import SendSmsRequest, VerifySmsRequest, UserMeResponse
 from app.auth.security.auth_bearer import JWTBearer
 from app.auth.security.tokens import create_refresh_token, create_access_token
@@ -131,3 +132,58 @@ async def refresh_token(db: Session = Depends(get_db), token: str = Depends(JWTB
         "refresh_token": new_refresh_token,
         "token_type": "bearer"
     }
+
+
+@Auth_router.post("/upload-documents/")
+async def upload_documents(
+        id_front: UploadFile = File(...),
+        id_back: UploadFile = File(...),
+        drivers_license: UploadFile = File(...),
+        selfie: UploadFile = File(...),
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """
+    Загрузка документов пользователя.
+    Принимает 4 фото:
+    - Фото лицевой стороны удостоверения
+    - Фото обратной стороны удостоверения
+    - Фото водительских прав
+    - Селфи с водительскими правами
+    """
+    # Проверяем MIME-type файлов
+    allowed_types = ["image/jpeg", "image/png"]
+    for doc in [id_front, id_back, drivers_license, selfie]:
+        if doc.content_type not in allowed_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File {doc.filename} is not an image. Only JPEG and PNG are allowed."
+            )
+
+    try:
+        # Сохраняем все файлы
+        id_front_path = await save_file(id_front, current_user.id)
+        id_back_path = await save_file(id_back, current_user.id)
+        license_path = await save_file(drivers_license, current_user.id)
+        selfie_path = await save_file(selfie, current_user.id)
+
+        # Обновляем пользователя
+        current_user.id_card_front_url = id_front_path
+        current_user.id_card_back_url = id_back_path
+        current_user.drivers_license_url = license_path
+        current_user.selfie_with_license_url = selfie_path
+        current_user.role = UserRole.PENDING
+
+        db.commit()
+
+        return {
+            "message": "Documents uploaded successfully",
+            "status": "pending review"
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="An error occurred while uploading documents"
+        )
