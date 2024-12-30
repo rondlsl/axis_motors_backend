@@ -21,3 +21,4 @@ def get_auth_token(base_url: str, login: str, password: str) -> str:
         return auth_data.get("AuthId")  # Извлекаем только AuthId
     else:
         raise Exception(f"Ошибка авторизации: {response.status_code}, {response.text}")
+

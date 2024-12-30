@@ -3,9 +3,9 @@ from typing import Dict, Any
 
 from fastapi import APIRouter, HTTPException
 
-from app.cars_api.utils.auth_api import get_auth_token
-from app.cars_api.utils.last_car_data import get_last_vehicles_data, send_command_to_terminal
-from app.cars_api.schemas import VehicleIdsRequest, CommandRequest
+from app.gps_api.utils.auth_api import get_auth_token
+from app.gps_api.utils.last_car_data import get_last_vehicles_data, send_command_to_terminal, get_vehicle_data
+from app.gps_api.schemas import VehicleIdsRequest, CommandRequest
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 
 Vehicle_Router = APIRouter(prefix="/vehicles", tags=["Vehicles"])
@@ -111,3 +111,17 @@ def take_vehicle_key(request: CommandRequest) -> Dict:
         command="OUTPUT0 0",
         token=AUTH_TOKEN
     )
+
+
+@Vehicle_Router.get("/{vehicle_id}")
+def get_vehicle_by_id(vehicle_id: int):
+    """
+    Эндпоинт для получения данных машины по ID.
+
+    :param vehicle_id: ID машины (передается в URL).
+    :return: Данные машины или ошибка.
+    """
+    result = get_vehicle_data(AUTH_TOKEN, vehicle_id)
+    if result is None:
+        raise HTTPException(status_code=500, detail="Ошибка получения данных о машине")
+    return {"vehicle": result}

@@ -29,6 +29,31 @@ def get_last_vehicles_data(token: str, ids: List[int]) -> Union[dict, None]:
         return None
 
 
+def get_vehicle_data(token: str, vehicle_id: int) -> Union[dict, None]:
+    """
+    Функция для получения данных объекта по ID.
+
+    :param token: Токен авторизации (строка).
+    :param vehicle_id: ID объекта (число) - ID машины.
+    :return: Ответ от сервера в виде словаря или None в случае ошибки.
+    """
+    url = f"https://regions.glonasssoft.ru/api/v2.0/monitoringVehicles/devicestatebyimei?imei={vehicle_id}&timezone=5"
+
+    headers = {
+        "X-Auth": token,
+        "Content-Type": "application/json",
+    }
+
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()  # Проверка на ошибки
+        return response.json()  # Парсинг ответа в JSON
+
+    except requests.exceptions.RequestException as e:
+        print(f"Ошибка при выполнении запроса: {e}")
+        return None
+
+
 #   Пример использования
 #   token = "ae9e1482-c739-49c0-8146-8cedc56548c8"  # Замените на ваш токен
 #   ids = [1]  # Замените на массив ваших ID
@@ -40,7 +65,7 @@ def send_command_to_terminal(
         vehicle_id: int,
         command: str,
         token: str,
-        retries: int = 1,
+        retries: int = 3,
         id_template: Union[int, None] = None
 ) -> Dict:
     """
