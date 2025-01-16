@@ -13,6 +13,12 @@ class RentalType(enum.Enum):
     DAYS = "days"
 
 
+class RentalStatus(enum.Enum):
+    RESERVED = "reserved"
+    IN_USE = "in_use"
+    COMPLETED = "completed"
+
+
 class RentalHistory(Base):
     __tablename__ = "rental_history"
 
@@ -26,16 +32,16 @@ class RentalHistory(Base):
 
     # Детали аренды
     rental_type = Column(Enum(RentalType), nullable=False)
-    duration = Column(Integer, nullable=False)  # количество минут/часов/дней
+    duration = Column(Integer, nullable=True)  # количество минут/часов/дней
 
     # Геолокация
     start_latitude = Column(Float, nullable=False)
     start_longitude = Column(Float, nullable=False)
-    end_latitude = Column(Float, nullable=False)
-    end_longitude = Column(Float, nullable=False)
+    end_latitude = Column(Float, nullable=True)
+    end_longitude = Column(Float, nullable=True)
 
     # Время
-    start_time = Column(DateTime, nullable=False, default=datetime.utcnow)
+    start_time = Column(DateTime, nullable=True)
     end_time = Column(DateTime)
 
     # Фотографии
@@ -43,4 +49,8 @@ class RentalHistory(Base):
     photos_after = Column(ARRAY(String))  # массив URL фотографий после завершения
 
     # Стоимость
-    total_price = Column(Integer, nullable=False)  # в тенге
+    already_payed = Column(Integer, nullable=True)  # в тенге
+    total_price = Column(Integer, nullable=True)  # в тенге
+
+    # Статус аренды
+    rental_status = Column(Enum(RentalStatus), nullable=False, default=RentalStatus.RESERVED)

@@ -1,0 +1,1 @@
+export { BannerHowItWork } from "./ui";

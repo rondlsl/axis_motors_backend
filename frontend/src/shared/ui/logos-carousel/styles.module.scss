@@ -1,0 +1,30 @@
+.content {
+  overflow: hidden;
+  width: 100%;
+  padding: 20px 0;
+  border: var(--border-secondary);
+  box-shadow: var(--shadow);
+}
+
+.slidTrack {
+  display: flex;
+  width: calc(273px + 215px + 144px + 225px + 80px + 225px + calc(80px * 6));
+  animation: scroll 20s linear infinite;
+  gap: 80px;
+}
+
+.logos {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+@keyframes scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}

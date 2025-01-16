@@ -1,0 +1,36 @@
+.content {
+  background-color: var(--clr-bg-secondary);
+  width: fit-content;
+  padding: 20px 0;
+  border-radius: var(--r-md);
+  text-align: center;
+  box-shadow: var(--shadow);
+
+  .info {
+
+    .fullName {
+      font-size: var(--fz-lg);
+      font-weight: var(--font-semibold);
+    }
+
+    .position {
+      color: var(--clr-type-gray);
+    }
+  }
+
+  .socials {
+    display: flex;
+    align-items: center;
+    justify-content: space-evenly;
+    font-size: var(--fz-lg);
+
+    svg {
+      fill: var(--clr-icon);
+      transition: var(--transition-default);
+
+      &:hover {
+        fill: var(--clr-type-primary);
+      }
+    }
+  }
+}

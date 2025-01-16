@@ -4,12 +4,11 @@ from uuid import uuid4
 from fastapi import UploadFile
 
 
-async def save_file(file: UploadFile, user_id: int) -> str:
+async def save_file(file: UploadFile, user_id: int, UPLOAD_DIR: str) -> str:
     """
     Сохраняет файл и возвращает путь к нему
     """
     # Создаем директорию для документов если её нет
-    UPLOAD_DIR = "uploads/documents"
     os.makedirs(UPLOAD_DIR, exist_ok=True)
 
     # Генерируем уникальное имя файла

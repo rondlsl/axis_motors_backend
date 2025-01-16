@@ -1,0 +1,10 @@
+.content {
+  width: 100%;
+  border: var(--border-secondary);
+  border-radius: var(--r-md);
+  padding: var(--p-md);
+
+  &:focus {
+    border-color: var(--clr-primary);
+  }
+}

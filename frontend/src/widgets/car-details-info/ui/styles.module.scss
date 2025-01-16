@@ -1,0 +1,107 @@
+.content {
+  background-color: var(--clr-bg-secondary);
+  padding: 20px;
+  border-radius: var(--r-lg);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 36px;
+  width: 100%;
+
+  .top {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+
+    .head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+
+
+      .name {
+        font-size: var(--fz-lg);
+        font-weight: var(--font-semibold);
+      }
+    }
+
+    .description {
+      color: var(--clr-type-gray);
+      font-size: var(--fz-md);
+      line-height: var(--lh-lg);
+    }
+  }
+
+  .mid {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+
+    @media (max-width: 387px) {
+      gap: 8px;
+    }
+
+    .info {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+
+      .infoItem {
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+        width: 100%;
+
+        @media (max-width: 387px) {
+          gap: 8px;
+          display: grid;
+        }
+
+        .infoTitle {
+          color: var(--clr-type-secondary);
+        }
+
+        .infoData {
+          color: var(--clr-icon);
+          font-weight: var(--font-medium);
+        }
+      }
+    }
+  }
+
+  .bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    button {
+      width: fit-content;
+    }
+
+    .price {
+      span {
+        color: var(--clr-type-secondary);
+        font-weight: var(--font-medium);
+        font-size: var(--fz-sm);
+      }
+
+      .discount {
+        font-size: var(--fz-lg);
+        font-weight: var(--font-semibold);
+      }
+
+      .actualSecond {
+        font-size: var(--fz-lg);
+        font-weight: var(--font-semibold);
+      }
+
+      .actual {
+        text-decoration: line-through;
+        color: var(--clr-type-secondary);
+        font-size: var(--fz-md);
+        font-weight: var(--font-medium);
+      }
+    }
+  }
+}

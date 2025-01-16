@@ -1,0 +1,38 @@
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+
+  .main {
+    overflow: hidden;
+    border-radius: var(--r-lg);
+
+    img {
+      width: 100%;
+      height: 100%;
+    }
+  }
+
+  .bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+
+    .secondary {
+      overflow: hidden;
+      border-radius: var(--r-lg);
+      transition: var(--transition-default);
+
+      img {
+        width: 100%;
+      }
+
+      &.active {
+        scale: 105%;
+        outline: 4px var(--clr-primary) solid;
+      }
+    }
+  }
+}

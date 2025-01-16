@@ -1,0 +1,14 @@
+.content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  .title {
+    font-size: var(--fz-xl);
+    font-weight: var(--font-bold);
+  }
+
+  .subTitle {
+    color: var(--clr-type-gray);
+  }
+}

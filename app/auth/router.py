@@ -162,10 +162,10 @@ async def upload_documents(
 
     try:
         # Сохраняем все файлы
-        id_front_path = await save_file(id_front, current_user.id)
-        id_back_path = await save_file(id_back, current_user.id)
-        license_path = await save_file(drivers_license, current_user.id)
-        selfie_path = await save_file(selfie, current_user.id)
+        id_front_path = await save_file(id_front, current_user.id, "uploads/documents")
+        id_back_path = await save_file(id_back, current_user.id, "uploads/documents")
+        license_path = await save_file(drivers_license, current_user.id, "uploads/documents")
+        selfie_path = await save_file(selfie, current_user.id, "uploads/documents")
 
         # Обновляем пользователя
         current_user.id_card_front_url = id_front_path

@@ -35,6 +35,8 @@ class User(Base):
     last_sms_code = Column(String)
     sms_code_valid_until = Column(DateTime)
 
+    rental_history = relationship("RentalHistory", back_populates="user")
+
     # Relationships остаются без изменений
 
     # Определяем relationship после импорта всех моделей

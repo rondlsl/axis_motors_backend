@@ -1,0 +1,85 @@
+.content {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 120px 60px;
+
+  @media (max-width: 1420px) {
+    padding: 120px 0;
+  }
+
+  @media (max-width: 768px) {
+    padding: var(--p-section);
+  }
+
+  .left {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+
+    @media (max-width: 1420px) {
+      width: 40%;
+    }
+
+    @media (max-width: 768px) {
+      width: 100%;
+      text-align: center;
+      align-items: center;
+    }
+
+    .title {
+      font-size: var(--fz-3xl);
+      line-height: var(--lh-3xl);
+      font-weight: var(--font-bold);
+
+      .span {
+        color: var(--clr-primary);
+      }
+    }
+
+    .subtitle {
+      font-size: var(--fz-md);
+      color: var(--clr-type-gray);
+    }
+
+    .links {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+
+      button {
+        width: 50%;
+
+        @media (max-width: 768px) {
+          width: auto;
+        }
+      }
+    }
+  }
+
+  .car {
+    @media (max-width: 1420px) {
+      width: 500px;
+    }
+
+    @media (max-width: 768px) {
+      display: none;
+    }
+  }
+
+  .bg {
+    position: absolute;
+    right: -5.5%;
+    top: -10%;
+    z-index: -1;
+
+    @media (max-width: 1420px) {
+      width: 400px;
+    }
+
+    @media (max-width: 768px) {
+      display: none;
+    }
+  }
+}

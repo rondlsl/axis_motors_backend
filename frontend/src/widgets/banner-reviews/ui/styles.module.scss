@@ -1,0 +1,44 @@
+.content {
+  position: relative;
+  padding: var(--p-section);
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+
+  .quoteIcon {
+    position: absolute;
+
+    &.top {
+      right: 0;
+      top: 5%;
+    }
+
+    &.bottom {
+      left: 0;
+      bottom: 5%;
+    }
+  }
+
+  .top {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+    text-align: center;
+    z-index: 1;
+  }
+
+  .reviews {
+    display: flex;
+    align-items: stretch;
+    gap: 36px;
+    flex-wrap: wrap;
+    z-index: 1;
+    width: 70%;
+    align-self: center;
+
+    @media (max-width: 768px) {
+      width: 100%;
+    }
+  }
+}
