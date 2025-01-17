@@ -19,11 +19,11 @@ export const Main = () => {
       <div className={classNames("wrapper")}>
         <BannerWhyUs />
       </div>
-      <div className={styles.reviews}>
-        <div className={"wrapper"}>
-          <BannerReviews />
-        </div>
-      </div>
+      {/*<div className={styles.reviews}>*/}
+      {/*  <div className={"wrapper"}>*/}
+      {/*    <BannerReviews />*/}
+      {/*  </div>*/}
+      {/*</div>*/}
       <div className={classNames("wrapper")}>
         <BannerDownload />
       </div>
