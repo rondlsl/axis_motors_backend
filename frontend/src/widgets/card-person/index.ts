@@ -1,1 +1,0 @@
-export { CardPerson } from "./ui";

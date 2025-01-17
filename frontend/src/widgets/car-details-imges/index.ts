@@ -1,1 +1,0 @@
-export { CarDetailsImges } from "./ui";

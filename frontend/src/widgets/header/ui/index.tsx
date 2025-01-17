@@ -32,7 +32,7 @@ export const Header = () => {
                     ))}
                 </ul>
                 <div className={styles.buttons}>
-                    <Button mode={"icon"} onClick={() => router.push("/profile")}>
+                    <Button mode={"icon"} onClick={() => router.push("/login")}>
                         <User
                             width={24}
                             height={24}

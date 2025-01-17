@@ -1,1 +1,0 @@
-export { BannerPopular } from "./ui";
