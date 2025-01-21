@@ -7,6 +7,7 @@ export const BannerAbout = () => {
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [successMessage, setSuccessMessage] = useState('')
     const [errorMessage, setErrorMessage] = useState('')
+    const [phone, setPhone] = useState('')
     const modalRef = useRef<HTMLDivElement>(null)
 
     useEffect(() => {
@@ -25,27 +26,40 @@ export const BannerAbout = () => {
         }
     }, [isModalOpen])
 
+    const formatPhoneNumber = (value: string) => {
+        // Убираем все не цифры
+        const number = value.replace(/[^\d]/g, '')
+
+        // Ограничиваем длину до 11 цифр (с учетом +7)
+        const truncated = number.slice(0, 11)
+
+        // Форматируем номер
+        if (truncated.length === 0) return ''
+        if (truncated.length <= 1) return `+7 ${truncated}`
+        if (truncated.length <= 4) return `+7 ${truncated.slice(1)}`
+        if (truncated.length <= 7) return `+7 ${truncated.slice(1, 4)} ${truncated.slice(4)}`
+        if (truncated.length <= 9) return `+7 ${truncated.slice(1, 4)} ${truncated.slice(4, 7)} ${truncated.slice(7)}`
+        return `+7 ${truncated.slice(1, 4)} ${truncated.slice(4, 7)} ${truncated.slice(7, 9)} ${truncated.slice(9)}`
+    }
+
+    const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const value = e.target.value
+        setPhone(formatPhoneNumber(value))
+    }
+
     const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault()
+
+        // Симулируем успешную отправку формы
+        setSuccessMessage('Спасибо! Ваша заявка успешно отправлена. Наши представители свяжутся с вами в ближайшее время.')
+        setErrorMessage('')
+        event.currentTarget.reset()
+        setPhone('')
+
+        // Опционально: можно добавить вывод данных формы в консоль для отладки
         const formData = new FormData(event.currentTarget)
-        try {
-            const response = await fetch(`http://localhost:8080/`, {
-                method: 'POST',
-                body: formData,
-            })
-            if (response.ok) {
-                setSuccessMessage('Спасибо! Ваша заявка успешно отправлена. Наши представители свяжутся с вами в ближайшее время.')
-                setErrorMessage('')
-                event.currentTarget.reset()
-            } else {
-                setErrorMessage('Ошибка при отправке формы. Пожалуйста, попробуйте снова.')
-                setSuccessMessage('')
-            }
-        } catch (error) {
-            console.error('Ошибка:', error)
-            setErrorMessage('Произошла ошибка. Пожалуйста, попробуйте снова.')
-            setSuccessMessage('')
-        }
+        formData.set('phone', phone) // Добавляем телефон к формдате
+        console.log('Отправленные данные:', Object.fromEntries(formData))
     }
 
     return (
@@ -91,6 +105,15 @@ export const BannerAbout = () => {
                                 placeholder="Ваше полное имя"
                                 name="fullName"
                                 required
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                            />
+
+                            <input
+                                placeholder="Номер телефона"
+                                name="phone"
+                                required
+                                value={phone}
+                                onChange={handlePhoneChange}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-md"
                             />
 
