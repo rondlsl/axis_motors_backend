@@ -1,12 +1,17 @@
 import asyncio
 from typing import Dict, Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy.orm import Session
 
+from app.auth.dependencies.get_current_user import get_current_user
+from app.dependencies.database.database import get_db
 from app.gps_api.utils.auth_api import get_auth_token
+from app.gps_api.utils.get_active_rental import get_active_rental_car
 from app.gps_api.utils.last_car_data import get_last_vehicles_data, send_command_to_terminal, get_vehicle_data
 from app.gps_api.schemas import VehicleIdsRequest, CommandRequest
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
+from app.models.user_model import User
 
 Vehicle_Router = APIRouter(prefix="/vehicles", tags=["Vehicles"])
 
@@ -54,63 +59,79 @@ def get_vehicle_info() -> Dict[str, Any]:
 
 
 @Vehicle_Router.post("/open")
-def open_vehicle(request: CommandRequest) -> Dict:
-    """Открыть транспортное средство"""
+def open_vehicle(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+) -> Dict:
+    """Open the vehicle from current active rental"""
+    car = get_active_rental_car(db, current_user)
     return send_command_to_terminal(
-        vehicle_id=request.vehicle_id,
+        vehicle_id=int(car.gps_id),
         command="chat OP",
         token=AUTH_TOKEN
     )
 
 
 @Vehicle_Router.post("/close")
-def close_vehicle(request: CommandRequest) -> Dict:
-    """Закрыть транспортное средство"""
+def close_vehicle(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+) -> Dict:
+    """Close the vehicle from current active rental"""
+    car = get_active_rental_car(db, current_user)
     return send_command_to_terminal(
-        vehicle_id=request.vehicle_id,
+        vehicle_id=int(car.gps_id),
         command="chat CL",
         token=AUTH_TOKEN
     )
 
 
-@Vehicle_Router.post("/block")
-def block_vehicle(request: CommandRequest) -> Dict:
-    """Заблокировать транспортное средство"""
-    return send_command_to_terminal(
-        vehicle_id=request.vehicle_id,
-        command="OUTPUT1 1",
-        token=AUTH_TOKEN
-    )
-
-
-@Vehicle_Router.post("/unblock")
-def unblock_vehicle(request: CommandRequest) -> Dict:
-    """Разблокировать транспортное средство"""
-    return send_command_to_terminal(
-        vehicle_id=request.vehicle_id,
-        command="OUTPUT1 0",
-        token=AUTH_TOKEN
-    )
-
-
 @Vehicle_Router.post("/give_key")
-def give_vehicle_key(request: CommandRequest) -> Dict:
-    """Выдать ключ от транспортного средства"""
+def give_vehicle_key(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+) -> Dict:
+    """Give key to the vehicle from current active rental"""
+    car = get_active_rental_car(db, current_user)
     return send_command_to_terminal(
-        vehicle_id=request.vehicle_id,
+        vehicle_id=int(car.gps_id),
         command="OUTPUT0 1",
         token=AUTH_TOKEN
     )
 
 
 @Vehicle_Router.post("/take_key")
-def take_vehicle_key(request: CommandRequest) -> Dict:
-    """Забрать ключ от транспортного средства"""
+def take_vehicle_key(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+) -> Dict:
+    """Take key from the vehicle from current active rental"""
+    car = get_active_rental_car(db, current_user)
     return send_command_to_terminal(
-        vehicle_id=request.vehicle_id,
+        vehicle_id=int(car.gps_id),
         command="OUTPUT0 0",
         token=AUTH_TOKEN
     )
+
+
+# @Vehicle_Router.post("/block")
+# def block_vehicle(request: CommandRequest) -> Dict:
+#     """Заблокировать транспортное средство"""
+#     return send_command_to_terminal(
+#         vehicle_id=request.vehicle_id,
+#         command="OUTPUT1 1",
+#         token=AUTH_TOKEN
+#     )
+
+
+# @Vehicle_Router.post("/unblock")
+# def unblock_vehicle(request: CommandRequest) -> Dict:
+#     """Разблокировать транспортное средство"""
+#     return send_command_to_terminal(
+#         vehicle_id=request.vehicle_id,
+#         command="OUTPUT1 0",
+#         token=AUTH_TOKEN
+#     )
 
 
 @Vehicle_Router.get("/{vehicle_id}")
