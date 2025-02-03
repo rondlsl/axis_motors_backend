@@ -7,7 +7,7 @@ from app.auth.dependencies.get_current_user import get_current_user
 from app.auth.dependencies.save_documents import save_file
 from app.dependencies.database.database import get_db
 from app.models.history_model import RentalType, RentalStatus, RentalHistory
-from app.models.user_model import User
+from app.models.user_model import User, UserRole
 from app.models.car_model import Car
 from app.rent.utils.calculate_price import calculate_total_price
 
@@ -343,4 +343,102 @@ async def complete_rental(
         raise HTTPException(
             status_code=500,
             detail="An error occurred while completing the rental"
+        )
+
+
+@RentRouter.get("/current")
+async def get_current_rental(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user),
+):
+    """
+    Get details of user's current rental including car info and rental status
+    """
+    # Get active rental (either RESERVED or IN_USE)
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.user_id == current_user.id,
+        RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
+    ).first()
+
+    if not rental:
+        raise HTTPException(status_code=404, detail="No active rental found")
+
+    # Get associated car
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Car not found")
+
+    return {
+        "rental_details": {
+            "start_time": rental.start_time,
+            "rental_type": rental.rental_type,
+            "duration": rental.duration,
+            "already_payed": float(rental.already_payed) if rental.already_payed else 0,
+            "status": rental.rental_status
+        },
+        "car_details": {
+            "name": car.name,
+            "plate_number": car.plate_number,
+            "fuel_level": car.fuel_level
+        }
+    }
+
+
+@RentRouter.post("/populate-mock-data")
+async def populate_mock_data(
+        db: Session = Depends(get_db)
+):
+    """
+    Populate database with mock data: 1 user and 1 car
+    """
+    try:
+        # Create mock user
+        mock_user = User(
+            full_name="Baha Gay",
+            phone_number="77472051507",
+            birth_date=datetime(1990, 2, 28),
+            iin="900228300581",
+            drivers_license_expiry=datetime(2025, 12, 31),
+            wallet_balance=0,
+            role=UserRole.USER
+        )
+        db.add(mock_user)
+        db.flush()  # Flush to get the user ID
+
+        # Create mock car
+        mock_car = Car(
+            name="MB CLA45s",
+            plate_number="666ABC02",
+            latitude=43.238949,
+            longitude=76.889709,
+            gps_id="123421",
+            gps_imei="421421142",
+            fuel_level=25,
+            price_per_minute=150,
+            price_per_hour=5000,
+            price_per_day=130000,
+            owner_id=mock_user.id
+        )
+        db.add(mock_car)
+
+        # Commit changes
+        db.commit()
+
+        return {
+            "message": "Mock data created successfully",
+            "user": {
+                "id": mock_user.id,
+                "phone": mock_user.phone_number
+            },
+            "car": {
+                "id": mock_car.id,
+                "plate": mock_car.plate_number
+            }
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error creating mock data: {str(e)}"
         )
