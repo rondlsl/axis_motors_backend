@@ -389,9 +389,16 @@ async def populate_mock_data(
         db: Session = Depends(get_db)
 ):
     """
-    Populate database with mock data: 1 user and 1 car
+    Populate database with mock data: 1 user and 1 car.
+    First clears all existing data from the tables.
     """
     try:
+        # Clear all tables in correct order (due to foreign key constraints)
+        db.query(RentalHistory).delete()
+        db.query(Car).delete()
+        db.query(User).delete()
+        db.flush()
+
         # Create mock user
         mock_user = User(
             full_name="Baha Gay",
