@@ -17,6 +17,7 @@ from app.models.user_model import User
 Vehicle_Router = APIRouter(prefix="/vehicles", tags=["Vehicles"])
 
 AUTH_TOKEN = ""
+print(AUTH_TOKEN)
 BASE_URL = "https://regions.glonasssoft.ru"
 
 started = False
@@ -150,7 +151,6 @@ def take_vehicle_key(
     #     token=AUTH_TOKEN
     # )
     return dict(command_id=4212414212)
-
 
 
 # @Vehicle_Router.post("/block")

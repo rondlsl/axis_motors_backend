@@ -18,6 +18,7 @@ def get_auth_token(base_url: str, login: str, password: str) -> str:
 
     if response.status_code == 200:
         auth_data = response.json()
+        print(auth_data.get("AuthId"))
         return auth_data.get("AuthId")  # Извлекаем только AuthId
     else:
         raise Exception(f"Ошибка авторизации: {response.status_code}, {response.text}")
