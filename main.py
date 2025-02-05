@@ -53,7 +53,7 @@ class VehicleMonitor:
 
         hood_sensor = next((s for s in data['vehicle'].get('RegistredSensors', [])
                             if 'капот' in s['name'].lower()), None)
-        hood_open = hood_sensor and 'открыт' in hood_sensor['value'].lower() \
+        hood_open = hood_sensor and 'закрыт' in hood_sensor['value'].lower() \
             if hood_sensor else False
 
         temp = self.extract_value(data, 'температура двигателя', 'RegistredSensors')
@@ -92,7 +92,7 @@ class VehicleMonitor:
             message = f"🚗 Внимание! {timestamp}\n\n" + "\n".join(alerts)
             try:
                 bot.send_message(TARGET_USER_ID, message)
-                bot.send_message(5941825713, message)
+                # bot.send_message(5941825713, message)
             except Exception as e:
                 print(f"Failed to send Telegram message: {e}")
 
