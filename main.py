@@ -20,14 +20,6 @@ TARGET_USER_ID = 965048905
 
 
 class VehicleMonitor:
-    def __init__(self):
-        self.last_alerts = {
-            'speed': False,
-            'rpm': False,
-            'hood': False,
-            'temperature': False
-        }
-
     def extract_value(self, data: Dict[str, Any], key: str, sensors_list: str) -> Optional[float]:
         """Extract numeric value from sensors, handling different formats."""
         try:
@@ -45,54 +37,36 @@ class VehicleMonitor:
 
     def check_conditions(self, data: Dict[str, Any]):
         """Check all monitored conditions and send alerts if needed."""
-        # Extract values using various possible sensor lists
+        alerts = []
+
+        # Проверяем скорость
         speed = self.extract_value(data, 'скорость', 'GeneralSensors') or \
                 self.extract_value(data, 'скорость', 'RegistredSensors')
+        if speed is not None and speed >= 100:
+            alerts.append(f"⚠️ Превышение скорости: {speed} км/ч")
 
+        # Проверяем обороты
         rpm = self.extract_value(data, 'обороты', 'RegistredSensors')
+        if rpm is not None and rpm >= 4000:
+            alerts.append(f"⚠️ Высокие обороты двигателя: {rpm} об/мин")
 
+        # Проверяем капот
         hood_sensor = next((s for s in data['vehicle'].get('RegistredSensors', [])
                             if 'капот' in s['name'].lower()), None)
-        hood_open = hood_sensor and 'закрыт' in hood_sensor['value'].lower() \
-            if hood_sensor else False
-
-        temp = self.extract_value(data, 'температура двигателя', 'RegistredSensors')
-
-        alerts = []
-        print(speed, "speed")
-        if speed is not None and speed >= 100 and not self.last_alerts['speed']:
-            alerts.append(f"⚠️ Превышение скорости: {speed} км/ч")
-            self.last_alerts['speed'] = True
-        elif speed is not None and speed < 100:
-            self.last_alerts['speed'] = False
-
-        print(rpm, "rpm")
-        if rpm is not None and rpm >= 4000 and not self.last_alerts['rpm']:
-            alerts.append(f"⚠️ Высокие обороты двигателя: {rpm} об/мин")
-            self.last_alerts['rpm'] = True
-        elif rpm is not None and rpm < 4000:
-            self.last_alerts['rpm'] = False
-
-        print(hood_open, "hood")
-        if hood_open and not self.last_alerts['hood']:
+        if hood_sensor and 'открыт' in hood_sensor['value'].lower():
             alerts.append("⚠️ Капот открыт!")
-            self.last_alerts['hood'] = True
-        elif not hood_open:
-            self.last_alerts['hood'] = False
 
-        print(temp, "temp")
-        if temp is not None and temp >= 100 and not self.last_alerts['temperature']:
+        # Проверяем температуру
+        temp = self.extract_value(data, 'температура двигателя', 'RegistredSensors')
+        if temp is not None and temp >= 100:
             alerts.append(f"⚠️ Высокая температура двигателя: {temp}°C")
-            self.last_alerts['temperature'] = True
-        elif temp is not None and temp < 100:
-            self.last_alerts['temperature'] = False
 
         if alerts:
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             message = f"🚗 Внимание! {timestamp}\n\n" + "\n".join(alerts)
             try:
                 bot.send_message(TARGET_USER_ID, message)
-                # bot.send_message(5941825713, message)
+                bot.send_message(5941825713, message)
             except Exception as e:
                 print(f"Failed to send Telegram message: {e}")
 
