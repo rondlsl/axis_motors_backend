@@ -2,47 +2,35 @@
 @tailwind components;
 @tailwind utilities;
 
-@import "styles/variables/globals";
-@import "styles/reset/globals";
-
-* {
-  color: var(--clr-type-primary);
-}
-
 html {
   scroll-behavior: smooth;
 }
 
 body {
-  background: var(--clr-bg-gradient);
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
+  font-family: "Manrope", sans-serif;
+  letter-spacing: 0.02em;
 }
 
+
+/* Плавные переходы при скролле */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Кастомный скроллбар */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-  transition: var(--transition-default);
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: var(--clr-scroll);
-  border-radius: 4px;
-  transition: var(--transition-default);
-
-  &:hover {
-    background-color: var(--clr-scroll-hover);
-    transition: var(--transition-default);
-  }
-
-  &:active {
-    background-color: var(--clr-scroll-active);
-    transition: var(--transition-default);
-  }
+  background: #888;
 }
 
-.wrapper {
-  width: 90%;
-  margin: 0 auto;
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
 }
+
