@@ -4,6 +4,8 @@ import {useState, useEffect, useRef} from "react"
 import Link from "next/link"
 import Image from "next/image"
 import {ArrowRight, Menu, X, ChevronDown} from "lucide-react"
+import Head from 'next/head'
+
 
 export default function Home() {
     const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -96,6 +98,37 @@ export default function Home() {
 
     return (
         <div className="min-h-screen bg-white text-black">
+            <Head>
+                <title>AZV Motors — Каршеринг премиальных авто в Алматы | Сдайте авто и зарабатывайте</title>
+                <meta name="description"
+                      content="P2P-каршеринг в Алматы для владельцев премиальных авто. Сдавайте машину в аренду и получайте доход с полной страховкой и безопасностью."/>
+                <meta name="keywords"
+                      content="каршеринг Алматы, аренда авто Алматы, azv motors, сдать авто в аренду, премиальные автомобили, пассивный доход от авто"/>
+                <meta property="og:title" content="AZV Motors — Каршеринг в Алматы"/>
+                <meta property="og:description"
+                      content="AZV Motors — сервис аренды авто премиум-класса. Сдавайте машину и зарабатывайте легко и безопасно."/>
+                <meta property="og:url" content="https://azvmotors.kz"/>
+                <meta name="robots" content="index, follow"/>
+                <meta name="twitter:card" content="summary_large_image"/>
+                <meta name="twitter:title" content="AZV Motors — Каршеринг в Алматы"/>
+                <meta name="twitter:description"
+                      content="Сдайте автомобиль в аренду и зарабатывайте. Каршеринг премиум-класса в Алматы."/>
+                <meta name="twitter:image" content="/og-image.jpg"/>
+                <script type="application/ld+json" dangerouslySetInnerHTML={{
+                    __html: JSON.stringify({
+                        "@context": "https://schema.org",
+                        "@type": "Organization",
+                        "name": "AZV Motors",
+                        "url": "https://azvmotors.kz",
+                        "address": {
+                            "@type": "PostalAddress",
+                            "addressLocality": "Алматы",
+                            "addressCountry": "Казахстан"
+                        },
+                        "description": "P2P-каршеринг премиальных авто в Алматы. Получайте пассивный доход от автомобиля с полной страховкой и безопасностью."
+                    })
+                }}/>
+            </Head>
             {/* Custom cursor */}
             <div
                 className={`fixed w-6 h-6 rounded-full border border-black mix-blend-difference pointer-events-none z-50 transition-opacity duration-300 ${cursorHidden ? "opacity-0" : "opacity-100"}`}
@@ -313,7 +346,7 @@ export default function Home() {
                                 <div className="relative overflow-hidden rounded-lg">
                                     <Image
                                         src="/fwafwa.jpeg"
-                                        alt="Премиальный автомобиль"
+                                        alt="Премиальный каршеринг в Алматы — AZV Motors"
                                         width={600}
                                         height={800}
                                         className="object-cover w-full h-[400px] md:h-[500px] lg:h-[600px] transform hover:scale-105 transition-transform duration-700"
@@ -404,7 +437,7 @@ export default function Home() {
                                 <div className="relative overflow-hidden rounded-lg">
                                     <Image
                                         src="/fwafwa.jpeg"
-                                        alt="Премиальный автомобиль"
+                                        alt="Премиальный каршеринг в Алматы — AZV Motors"
                                         width={600}
                                         height={800}
                                         className="object-cover w-full h-[300px] transform hover:scale-105 transition-transform duration-700"
@@ -715,72 +748,99 @@ export default function Home() {
                     </div>
                 </div>
             </section>
-
             {/* Футер */}
-            <footer className="py-16 border-t border-gray-100">
+            <footer className="py-12 md:py-16 border-t border-gray-100 bg-gray-50">
                 <div className="container mx-auto px-6 md:px-12 lg:px-16">
-                    <div className="flex flex-col md:flex-row justify-between items-start">
-                        <div className="mb-8 md:mb-0">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-10">
+                        {/* Logo and SEO text section */}
+                        <div className="md:col-span-5 lg:col-span-4">
                             <div className="flex items-center mb-6">
-                                <Image src="/Group.png" alt="AZV Motors" width={24} height={24} className="mr-3"/>
-                                <span className="text-sm font-light tracking-widest">AZV MOTORS</span>
+                                <Image src="/Group.png" alt="AZV Motors" width={28} height={28} className="mr-3"/>
+                                <span className="text-sm font-medium tracking-widest">AZV MOTORS</span>
                             </div>
-                            <p className="text-xs font-light text-gray-500 tracking-wide max-w-xs">
-                                Сервис P2P каршеринга для владельцев премиальных автомобилей
-                            </p>
+
+                            {/* SEO text with better width */}
+                            <div className="text-sm text-gray-600 leading-relaxed space-y-4 max-w-md">
+                                <p>
+                                    <strong className="font-medium">AZV Motors</strong> — это современный <strong
+                                    className="font-medium">каршеринг в Алматы</strong>,
+                                    ориентированный на премиум-сегмент.
+                                    Мы предоставляем владельцам автомобилей возможность получать <strong
+                                    className="font-medium">пассивный доход</strong> от
+                                    своего авто, сдавая его в аренду проверенным водителям.
+                                </p>
+                                <p>
+                                    Если вы ищете, где <strong className="font-medium">сдать авто в аренду в
+                                    Алматы</strong> — наш сервис
+                                    идеально подходит.
+                                    У нас полная страховка, проверка клиентов и круглосуточная поддержка.
+                                </p>
+                                <p>
+                                    Присоединяйтесь к AZV Motors и превратите свой автомобиль в актив — <strong
+                                    className="font-medium">аренда авто Алматы</strong> с гарантией безопасности.
+                                </p>
+                            </div>
                         </div>
 
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-x-16 gap-y-8">
-                            <div>
-                                <h3 className="text-xs font-light tracking-widest mb-4">НАВИГАЦИЯ</h3>
-                                <div className="space-y-3">
-                                    <Link
-                                        href="#benefits"
-                                        className="block text-xs font-light text-gray-500 tracking-wide hover:text-gray-800 transition-colors"
-                                    >
-                                        Преимущества
-                                    </Link>
-                                    <Link
-                                        href="#process"
-                                        className="block text-xs font-light text-gray-500 tracking-wide hover:text-gray-800 transition-colors"
-                                    >
-                                        Процесс
-                                    </Link>
-                                    <Link
-                                        href="#security"
-                                        className="block text-xs font-light text-gray-500 tracking-wide hover:text-gray-800 transition-colors"
-                                    >
-                                        Безопасность
-                                    </Link>
+                        {/* Navigation links section */}
+                        <div className="md:col-span-7 lg:col-span-8">
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-8 md:gap-12 md:pl-8">
+                                <div>
+                                    <h3 className="text-xs font-medium tracking-widest mb-5 text-gray-800 uppercase">Навигация</h3>
+                                    <div className="space-y-4">
+                                        <Link
+                                            href="#benefits"
+                                            className="block text-sm font-light text-gray-600 hover:text-black transition-colors"
+                                        >
+                                            Преимущества
+                                        </Link>
+                                        <Link
+                                            href="#process"
+                                            className="block text-sm font-light text-gray-600 hover:text-black transition-colors"
+                                        >
+                                            Процесс
+                                        </Link>
+                                        <Link
+                                            href="#security"
+                                            className="block text-sm font-light text-gray-600 hover:text-black transition-colors"
+                                        >
+                                            Безопасность
+                                        </Link>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div>
-                                <h3 className="text-xs font-light tracking-widest mb-4">КОНТАКТЫ</h3>
-                                <div className="space-y-3">
-                                    <Link
-                                        href={whatsappLink}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="block text-xs font-light text-gray-500 tracking-wide hover:text-gray-800 transition-colors"
-                                    >
-                                        Связаться в WhatsApp
-                                    </Link>
+                                <div>
+                                    <h3 className="text-xs font-medium tracking-widest mb-5 text-gray-800 uppercase">Контакты</h3>
+                                    <div className="space-y-4">
+                                        <Link
+                                            href={whatsappLink}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="block text-sm font-light text-gray-600 hover:text-black transition-colors"
+                                        >
+                                            Связаться в WhatsApp
+                                        </Link>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div>
-                                <h3 className="text-xs font-light tracking-widest mb-4">ПРИЛОЖЕНИЕ</h3>
-                                <div className="space-y-3">
-                                    <span className="block text-xs font-light text-gray-500 tracking-wide">Скоро в App Store</span>
-                                    <span className="block text-xs font-light text-gray-500 tracking-wide">Скоро в Google Play</span>
+                                <div>
+                                    <h3 className="text-xs font-medium tracking-widest mb-5 text-gray-800 uppercase">Приложение</h3>
+                                    <div className="space-y-4">
+                                        <div className="flex items-center text-sm font-light text-gray-600">
+                                            <span>Скоро в App Store</span>
+                                        </div>
+                                        <div className="flex items-center text-sm font-light text-gray-600">
+                                            <span>Скоро в Google Play</span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <div className="mt-16 pt-8 border-t border-gray-100">
-                        <p className="text-xs font-light text-gray-500 tracking-wide">
+                    {/* Copyright section */}
+                    <div className="mt-12 pt-6 border-t border-gray-200">
+                        <p className="text-sm font-light text-gray-500 tracking-wide text-center md:text-left">
                             © {new Date().getFullYear()} AZV Motors. Все права защищены.
                         </p>
                     </div>
