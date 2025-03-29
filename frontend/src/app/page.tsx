@@ -300,7 +300,7 @@ export default function Home() {
                 <div className="container mx-auto px-6 md:px-12 lg:px-16">
                     <div className="grid md:grid-cols-2 gap-16 md:gap-24">
                         <div>
-                            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extralight mb-8 sm:mb-12 tracking-tight">
+                            <h2 className="text-3xl sm:text-3xl md:text-4xl lg:text-5xl font-extralight mb-8 sm:mb-12 tracking-tight">
                                 Преимущества для владельцев авто премиум класса
                             </h2>
                             <p className="text-base sm:text-lg font-light text-gray-600 tracking-wide mb-8 sm:mb-12">
@@ -427,7 +427,7 @@ export default function Home() {
 
                 <div className="container mx-auto px-6 md:px-12 lg:px-16 relative">
                     <div className="max-w-3xl mb-16 sm:mb-24">
-                        <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extralight mb-8 sm:mb-12 tracking-tight">
+                        <h2 className="text-3xl sm:text-3xl md:text-4xl lg:text-5xl font-extralight mb-8 sm:mb-12 tracking-tight">
                             Процесс
                         </h2>
                         <p className="text-base sm:text-lg font-light text-gray-600 tracking-wide">
@@ -527,7 +527,7 @@ export default function Home() {
                 <div className="container mx-auto px-6 md:px-12 lg:px-16">
                     <div className="grid md:grid-cols-2 gap-12 md:gap-16 items-center">
                         <div className="order-2 md:order-1">
-                            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extralight mb-8 sm:mb-12 tracking-tight">
+                            <h2 className="text-3xl sm:text-3xl md:text-4xl lg:text-5xl font-extralight mb-8 sm:mb-12 tracking-tight">
                                 Безопасность
                             </h2>
                             <p className="text-base sm:text-lg font-light text-gray-600 tracking-wide mb-10 sm:mb-16">
@@ -609,7 +609,7 @@ export default function Home() {
                             </div>
                         </div>
 
-                        <div className="order-1 md:order-2 relative">
+                        <div className="hidden md:block lg:block order-1 md:order-2 relative">
                             <div
                                 className="absolute top-1/2 -right-6 sm:-right-12 transform -translate-y-1/2 w-16 h-16 sm:w-24 sm:h-24 bg-black rounded-full z-0"></div>
                             <div
@@ -624,7 +624,7 @@ export default function Home() {
                 <div className="container mx-auto px-6 md:px-12 lg:px-16">
                     <div className="grid md:grid-cols-2 gap-12 md:gap-16 items-center">
                         <div>
-                            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extralight mb-8 sm:mb-12 tracking-tight">
+                            <h2 className="text-3xl sm:text-3xl md:text-4xl lg:text-5xl font-extralight mb-8 sm:mb-12 tracking-tight">
                                 Мобильное приложение
                             </h2>
                             <p className="text-base sm:text-lg font-light text-gray-600 tracking-wide mb-10 sm:mb-16">
@@ -673,7 +673,7 @@ export default function Home() {
                             </div>
                         </div>
 
-                        <div className="relative mt-12 md:mt-0">
+                        <div className="hidden md:block relative mt-12 md:mt-0">
                             <div
                                 className="absolute top-1/3 -left-6 sm:-left-12 transform -translate-y-1/2 w-16 h-16 sm:w-24 sm:h-24 bg-black rounded-full z-0"></div>
                             <div
@@ -692,7 +692,7 @@ export default function Home() {
 
                 <div className="container mx-auto px-6 md:px-12 lg:px-16 relative z-10">
                     <div className="max-w-4xl mx-auto text-center">
-                        <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-extralight mb-8 sm:mb-12 tracking-tight">
+                        <h2 className="text-3xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-extralight mb-8 sm:mb-12 tracking-tight">
                             Ваш автомобиль может приносить вам доход ежемесячно
                         </h2>
                         <p className="text-base sm:text-lg md:text-xl font-light text-gray-600 mb-10 sm:mb-16 tracking-wide">
