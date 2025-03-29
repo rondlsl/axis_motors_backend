@@ -9,18 +9,26 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@googlemaps/js-api-loader": "^1.16.8",
+    "@react-google-maps/api": "^2.20.5",
+    "@types/google.maps": "^3.58.1",
+    "@types/googlemaps": "^3.43.3",
     "axios": "^1.7.2",
     "classnames": "^2.5.1",
+    "googlemaps": "^1.12.0",
     "lucide-react": "^0.454.0",
     "next": "14.2.3",
     "next-theme": "^0.1.5",
     "react": "^18",
     "react-dom": "^18",
+    "react-hot-toast": "^2.5.2",
     "react-icons": "^5.2.1",
     "react-loading-skeleton": "^3.4.0",
+    "react-webcam": "^7.2.0",
     "remove": "^0.1.5",
     "sass": "^1.77.4",
-    "scss": "^0.2.4"
+    "scss": "^0.2.4",
+    "websocket": "^1.0.35"
   },
   "devDependencies": {
     "@types/node": "^20",
