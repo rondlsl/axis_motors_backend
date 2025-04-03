@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, Enum
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Enum, JSON
 from sqlalchemy.orm import relationship
 from app.dependencies.database.database import Base
 
@@ -14,14 +14,20 @@ class Car(Base):
     gps_id = Column(String)
     gps_imei = Column(String)
     fuel_level = Column(Float)
+
     price_per_minute = Column(Integer, nullable=False)
     price_per_hour = Column(Integer, nullable=False)
     price_per_day = Column(Integer, nullable=False)
 
+    engine_volume = Column(Float, nullable=True)
+    year = Column(Integer, nullable=True)
+    drive_type = Column(Integer, nullable=True)
+
+    photos = Column(JSON, nullable=True)  # массив URL'ов к фотографиям
+
     owner_id = Column(Integer, ForeignKey("users.id"))
     current_renter_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
-    # В car_model.py добавляем:
     owner = relationship("User", foreign_keys=[owner_id], back_populates="owned_cars")
     current_renter = relationship("User", foreign_keys=[current_renter_id],
                                   back_populates="active_rental")

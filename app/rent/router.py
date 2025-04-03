@@ -14,15 +14,6 @@ from app.rent.utils.calculate_price import calculate_total_price
 RentRouter = APIRouter(tags=["Rent"], prefix="/rent")
 
 
-def calculate_total_price(rental_type: RentalType, duration: int, price_per_hour: float, price_per_day: float) -> float:
-    if rental_type == RentalType.MINUTES:
-        return None  # For minutes, total price is not calculated initially
-    elif rental_type == RentalType.HOURS:
-        return price_per_hour * duration
-    else:  # RentalType.DAYS
-        return price_per_day * duration
-
-
 @RentRouter.post("/add_money")
 def add_money(amount: int, db: Session = Depends(get_db),
               current_user: User = Depends(get_current_user), ):
@@ -40,33 +31,39 @@ async def reserve_car(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user),
 ):
-    # Получаем автомобиль
     car = db.query(Car).filter(Car.id == car_id).first()
     if not car:
         raise HTTPException(status_code=404, detail="Car not found")
 
-    # Проверяем баланс пользователя
-    if current_user.wallet_balance < car.price_per_hour * 2 and rental_type == RentalType.MINUTES:
-        raise HTTPException(status_code=400,
-                            detail=f"У вас на кошельке должно быть минимум {car.price_per_hour * 2} тенге для аренды данного авто.")
+    if rental_type == RentalType.MINUTES:
+        if current_user.wallet_balance < car.price_per_hour * 2:
+            raise HTTPException(
+                status_code=400,
+                detail=f"У вас на кошельке должно быть минимум {car.price_per_hour * 2} тенге для аренды данного авто."
+            )
 
-    if current_user.wallet_balance < car.price_per_day and rental_type != RentalType.MINUTES:
-        raise HTTPException(status_code=400,
-                            detail=f"У вас на кошельке должно быть минимум {car.price_per_day} тенге для аренды данного авто.")
+        total_price = 0
 
-    # Рассчитываем общую стоимость
-    total_price = calculate_total_price(rental_type, duration, car.price_per_hour, car.price_per_day)
+    else:
+        if duration is None:
+            raise HTTPException(status_code=400, detail="Duration обязателен для аренды по часам или дням.")
 
-    if current_user.wallet_balance < total_price:
-        raise HTTPException(status_code=400,
-                            detail=f"У вас недостаточно средств для аренды авто на такой период времени.")
+        if current_user.wallet_balance < car.price_per_day:
+            raise HTTPException(
+                status_code=400,
+                detail=f"У вас на кошельке должно быть минимум {car.price_per_day} тенге для аренды данного авто."
+            )
 
-    if rental_type in [RentalType.HOURS, RentalType.DAYS]:
-        if total_price > current_user.wallet_balance:
-            raise HTTPException(status_code=400,
-                                detail=f"Недостаточно средств. Необходимо: {total_price} тенге")
+        total_price = calculate_total_price(
+            rental_type, duration, car.price_per_hour, car.price_per_day
+        )
 
-    # Создаем запись аренды
+        if current_user.wallet_balance < total_price:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Недостаточно средств. Необходимо: {total_price} тенге"
+            )
+
     rental = RentalHistory(
         user_id=current_user.id,
         car_id=car.id,
@@ -75,14 +72,13 @@ async def reserve_car(
         rental_status=RentalStatus.RESERVED,
         start_latitude=car.latitude,
         start_longitude=car.longitude,
-        total_price=total_price,
+        total_price=total_price
     )
 
     db.add(rental)
     db.commit()
     db.refresh(rental)
 
-    # Обновляем текущего арендатора автомобиля
     car.current_renter_id = current_user.id
     db.commit()
 
