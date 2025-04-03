@@ -50,6 +50,7 @@ def get_vehicle_info(db: Session = Depends(get_db)) -> Dict[str, Any]:
             "plate_number": car.plate_number,
             "latitude": car.latitude,
             "longitude": car.longitude,
+            "course": car.course,
             "fuel_level": car.fuel_level,
             "price_per_minute": car.price_per_minute,
             "price_per_hour": car.price_per_hour,
