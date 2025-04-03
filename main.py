@@ -26,6 +26,95 @@ app = FastAPI()
 scheduler = AsyncIOScheduler()
 
 
+def create_premium_cars(db: Session):
+    cars = [
+        {
+            "id": 2, "name": "BMW X5", "plate": "001PMP02", "lat": 43.2551, "lon": 76.9126
+        },
+        {
+            "id": 3, "name": "Mercedes GLE", "plate": "002PMP02", "lat": 43.2380, "lon": 76.9200
+        },
+        {
+            "id": 4, "name": "Audi Q7", "plate": "003PMP02", "lat": 43.2223, "lon": 76.8888
+        },
+        {
+            "id": 5, "name": "Lexus RX", "plate": "004PMP02", "lat": 43.2300, "lon": 76.8500
+        },
+        {
+            "id": 6, "name": "Porsche Cayenne", "plate": "005PMP02", "lat": 43.2750, "lon": 76.8900
+        },
+        {
+            "id": 7, "name": "Tesla Model X", "plate": "006PMP02", "lat": 43.2400, "lon": 76.8700
+        },
+        {
+            "id": 8, "name": "Range Rover", "plate": "007PMP02", "lat": 43.2450, "lon": 76.8600
+        },
+        {
+            "id": 9, "name": "Toyota Land Cruiser", "plate": "008PMP02", "lat": 43.2500, "lon": 76.9050
+        },
+        {
+            "id": 10, "name": "BMW X7", "plate": "009PMP02", "lat": 43.2480, "lon": 76.8990
+        },
+        {
+            "id": 11, "name": "Mercedes S-Class", "plate": "010PMP02", "lat": 43.2600, "lon": 76.9150
+        },
+        {
+            "id": 12, "name": "Audi A8", "plate": "011PMP02", "lat": 43.2280, "lon": 76.9100
+        },
+        {
+            "id": 13, "name": "Lexus LX570", "plate": "012PMP02", "lat": 43.2390, "lon": 76.9010
+        },
+        {
+            "id": 14, "name": "Cadillac Escalade", "plate": "013PMP02", "lat": 43.2440, "lon": 76.8950
+        },
+        {
+            "id": 15, "name": "Genesis GV80", "plate": "014PMP02", "lat": 43.2410, "lon": 76.8800
+        },
+        {
+            "id": 16, "name": "Volvo XC90", "plate": "015PMP02", "lat": 43.2530, "lon": 76.8890
+        },
+        {
+            "id": 17, "name": "Infiniti QX80", "plate": "016PMP02", "lat": 43.2465, "lon": 76.8765
+        },
+        {
+            "id": 18, "name": "Toyota Sequoia", "plate": "017PMP02", "lat": 43.2266, "lon": 76.8688
+        },
+        {
+            "id": 19, "name": "Jeep Grand Cherokee", "plate": "018PMP02", "lat": 43.2511, "lon": 76.8888
+        },
+        {
+            "id": 20, "name": "Hyundai Palisade", "plate": "019PMP02", "lat": 43.2200, "lon": 76.8840
+        },
+        {
+            "id": 21, "name": "Kia Mohave", "plate": "020PMP02", "lat": 43.2360, "lon": 76.8990
+        },
+    ]
+
+    for car_data in cars:
+        if not db.query(Car).filter(Car.id == car_data["id"]).first():
+            car = Car(
+                id=car_data["id"],
+                name=car_data["name"],
+                gps_id=f"premium-{car_data['id']}",
+                gps_imei=f"000000000000{car_data['id']:03}",
+                engine_volume=3.5,
+                year=2022,
+                drive_type=1,
+                price_per_minute=120,
+                price_per_hour=5000,
+                price_per_day=75000,
+                plate_number=car_data["plate"],
+                latitude=car_data["lat"],
+                longitude=car_data["lon"],
+                fuel_level=100,
+                owner_id=None
+            )
+            db.add(car)
+
+    db.commit()
+    logger.info("19 премиум-авто без владельцев добавлены")
+
+
 async def get_last_vehicles_data():
     url = "http://195.49.210.50:8666/vehicles/?skip=0&limit=100"
     headers = {"accept": "application/json"}
@@ -77,61 +166,65 @@ async def update_vehicle_data():
 async def check_vehicle_conditions():
     await update_vehicle_data()
 
-#
-# def init_app(app: FastAPI):
-#     @app.on_event("startup")
-#     async def startup_event():
-#         logger.info("🚀 Приложение запущено")
-#         db_gen = get_db()
-#         db = next(db_gen)
-#         try:
-#             # 1. Создать юзера если не существует
-#             phone_number = "77000250400"
-#             owner = db.query(User).filter(User.phone_number == phone_number).first()
-#             if not owner:
-#                 owner = User(
-#                     phone_number=phone_number,
-#                     role=UserRole.FIRST,
-#                     wallet_balance=0
-#                 )
-#                 db.add(owner)
-#                 db.commit()
-#                 db.refresh(owner)
-#                 logger.info("Владелец HAVAL F7x создан")
-#
-#             # 2. Добавить HAVAL F7x если не существует
-#             existing_car = db.query(Car).filter(Car.id == 1).first()
-#             if not existing_car:
-#                 new_car = Car(
-#                     id=1,
-#                     name="HAVAL F7x",
-#                     gps_id="800153076",
-#                     gps_imei="866011056063951",
-#                     engine_volume=2.0,
-#                     year=2021,
-#                     drive_type=3,
-#                     price_per_minute=70,
-#                     price_per_hour=3125,
-#                     price_per_day=50000,
-#                     plate_number="422ABK02",
-#                     owner_id=owner.id  # назначаем владельца
-#                 )
-#                 db.add(new_car)
-#                 db.commit()
-#                 logger.info("Машина HAVAL F7x добавлена в базу данных и привязана к владельцу")
-#             else:
-#                 logger.info("HAVAL F7x уже существует в базе данных")
-#
-#         finally:
-#             db.close()
-#
-#         scheduler.add_job(check_vehicle_conditions, "interval", seconds=1)
-#         scheduler.start()
-#
-#     @app.on_event("shutdown")
-#     async def shutdown_event():
-#         logger.info("🛑 Приложение остановлено")
-#         scheduler.shutdown()
+
+def init_app(app: FastAPI):
+    @app.on_event("startup")
+    async def startup_event():
+        logger.info("🚀 Приложение запущено")
+        db_gen = get_db()
+        db = next(db_gen)
+        try:
+            # HAVAL F7x и владелец
+            phone_number = "77000250400"
+            owner = db.query(User).filter(User.phone_number == phone_number).first()
+            if not owner:
+                owner = User(
+                    phone_number=phone_number,
+                    role=UserRole.FIRST,
+                    wallet_balance=0
+                )
+                db.add(owner)
+                db.commit()
+                db.refresh(owner)
+                logger.info("Владелец HAVAL F7x создан")
+
+            if not db.query(Car).filter(Car.id == 1).first():
+                car = Car(
+                    id=1,
+                    name="HAVAL F7x",
+                    gps_id="800153076",
+                    gps_imei="866011056063951",
+                    engine_volume=2.0,
+                    year=2021,
+                    drive_type=3,
+                    price_per_minute=70,
+                    price_per_hour=3125,
+                    price_per_day=50000,
+                    plate_number="422ABK02",
+                    latitude=43.238949,
+                    longitude=76.889709,
+                    fuel_level=80,
+                    owner_id=owner.id
+                )
+                db.add(car)
+                db.commit()
+                logger.info("HAVAL F7x добавлена")
+            else:
+                logger.info("HAVAL F7x уже существует")
+
+            # Премиум авто
+            create_premium_cars(db)
+
+        finally:
+            db.close()
+
+        # scheduler.add_job(check_vehicle_conditions, "interval", seconds=1)
+        scheduler.start()
+
+    @app.on_event("shutdown")
+    async def shutdown_event():
+        logger.info("🛑 Приложение остановлено")
+        scheduler.shutdown()
 
 
 app.add_middleware(
@@ -142,7 +235,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# init_app(app)
+init_app(app)
 app.include_router(Auth_router)
 app.include_router(Vehicle_Router)
 app.include_router(RentRouter)
