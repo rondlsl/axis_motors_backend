@@ -1,14 +1,18 @@
 import asyncio
+import os
+
 import httpx
 import logging
 
+from alembic import command
+from alembic.config import Config
 from fastapi import FastAPI
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from starlette.middleware.cors import CORSMiddleware
 
 from sqlalchemy.orm import Session
 from app.auth.router import Auth_router
-from app.dependencies.database.database import get_db
+from app.dependencies.database.database import get_db, Base
 from app.gps_api.router import Vehicle_Router
 from app.models.car_model import Car
 from app.models.user_model import User, UserRole
@@ -24,6 +28,12 @@ logger = logging.getLogger(__name__)
 # === APP ===
 app = FastAPI()
 scheduler = AsyncIOScheduler()
+
+
+def run_migrations():
+    alembic_cfg = Config(os.path.join(os.path.dirname(__file__), "../../alembic.ini"))
+    command.upgrade(alembic_cfg, "head")
+
 
 import random
 
@@ -154,6 +164,8 @@ def init_app(app: FastAPI):
     @app.on_event("startup")
     async def startup_event():
         logger.info("🚀 Приложение запущено")
+        run_migrations()  # ✅ применит миграции
+
         db_gen = get_db()
         db = next(db_gen)
         try:
