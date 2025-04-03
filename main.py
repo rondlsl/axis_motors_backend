@@ -77,61 +77,61 @@ async def update_vehicle_data():
 async def check_vehicle_conditions():
     await update_vehicle_data()
 
-
-def init_app(app: FastAPI):
-    @app.on_event("startup")
-    async def startup_event():
-        logger.info("🚀 Приложение запущено")
-        db_gen = get_db()
-        db = next(db_gen)
-        try:
-            # 1. Создать юзера если не существует
-            phone_number = "77000250400"
-            owner = db.query(User).filter(User.phone_number == phone_number).first()
-            if not owner:
-                owner = User(
-                    phone_number=phone_number,
-                    role=UserRole.FIRST,
-                    wallet_balance=0
-                )
-                db.add(owner)
-                db.commit()
-                db.refresh(owner)
-                logger.info("Владелец HAVAL F7x создан")
-
-            # 2. Добавить HAVAL F7x если не существует
-            existing_car = db.query(Car).filter(Car.id == 1).first()
-            if not existing_car:
-                new_car = Car(
-                    id=1,
-                    name="HAVAL F7x",
-                    gps_id="800153076",
-                    gps_imei="866011056063951",
-                    engine_volume=2.0,
-                    year=2021,
-                    drive_type=3,
-                    price_per_minute=70,
-                    price_per_hour=3125,
-                    price_per_day=50000,
-                    plate_number="422ABK02",
-                    owner_id=owner.id  # назначаем владельца
-                )
-                db.add(new_car)
-                db.commit()
-                logger.info("Машина HAVAL F7x добавлена в базу данных и привязана к владельцу")
-            else:
-                logger.info("HAVAL F7x уже существует в базе данных")
-
-        finally:
-            db.close()
-
-        scheduler.add_job(check_vehicle_conditions, "interval", seconds=1)
-        scheduler.start()
-
-    @app.on_event("shutdown")
-    async def shutdown_event():
-        logger.info("🛑 Приложение остановлено")
-        scheduler.shutdown()
+#
+# def init_app(app: FastAPI):
+#     @app.on_event("startup")
+#     async def startup_event():
+#         logger.info("🚀 Приложение запущено")
+#         db_gen = get_db()
+#         db = next(db_gen)
+#         try:
+#             # 1. Создать юзера если не существует
+#             phone_number = "77000250400"
+#             owner = db.query(User).filter(User.phone_number == phone_number).first()
+#             if not owner:
+#                 owner = User(
+#                     phone_number=phone_number,
+#                     role=UserRole.FIRST,
+#                     wallet_balance=0
+#                 )
+#                 db.add(owner)
+#                 db.commit()
+#                 db.refresh(owner)
+#                 logger.info("Владелец HAVAL F7x создан")
+#
+#             # 2. Добавить HAVAL F7x если не существует
+#             existing_car = db.query(Car).filter(Car.id == 1).first()
+#             if not existing_car:
+#                 new_car = Car(
+#                     id=1,
+#                     name="HAVAL F7x",
+#                     gps_id="800153076",
+#                     gps_imei="866011056063951",
+#                     engine_volume=2.0,
+#                     year=2021,
+#                     drive_type=3,
+#                     price_per_minute=70,
+#                     price_per_hour=3125,
+#                     price_per_day=50000,
+#                     plate_number="422ABK02",
+#                     owner_id=owner.id  # назначаем владельца
+#                 )
+#                 db.add(new_car)
+#                 db.commit()
+#                 logger.info("Машина HAVAL F7x добавлена в базу данных и привязана к владельцу")
+#             else:
+#                 logger.info("HAVAL F7x уже существует в базе данных")
+#
+#         finally:
+#             db.close()
+#
+#         scheduler.add_job(check_vehicle_conditions, "interval", seconds=1)
+#         scheduler.start()
+#
+#     @app.on_event("shutdown")
+#     async def shutdown_event():
+#         logger.info("🛑 Приложение остановлено")
+#         scheduler.shutdown()
 
 
 app.add_middleware(
@@ -142,7 +142,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-init_app(app)
+# init_app(app)
 app.include_router(Auth_router)
 app.include_router(Vehicle_Router)
 app.include_router(RentRouter)

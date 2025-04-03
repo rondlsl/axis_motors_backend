@@ -13,6 +13,8 @@ from app.auth.security.auth_bearer import JWTBearer
 from app.auth.security.tokens import create_refresh_token, create_access_token
 from app.core.config import SMS_TOKEN
 from app.dependencies.database.database import get_db
+from app.models.car_model import Car
+from app.models.history_model import RentalHistory, RentalStatus
 from app.models.user_model import UserRole, User
 
 Auth_router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -104,13 +106,44 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
     }
 
 
-@Auth_router.get("/user/me", response_model=UserMeResponse)
-async def read_users_me(current_user: User = Depends(get_current_user)):
+@Auth_router.get("/user/me")
+async def read_users_me(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    # По умолчанию аренды нет
+    current_rental = None
+
+    # Пробуем найти активную аренду
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.user_id == current_user.id,
+        RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
+    ).first()
+
+    if rental:
+        car = db.query(Car).filter(Car.id == rental.car_id).first()
+        if car:
+            current_rental = {
+                "rental_details": {
+                    "start_time": rental.start_time,
+                    "rental_type": rental.rental_type,
+                    "duration": rental.duration,
+                    "already_payed": float(rental.already_payed) if rental.already_payed else 0,
+                    "status": rental.rental_status
+                },
+                "car_details": {
+                    "name": car.name,
+                    "plate_number": car.plate_number,
+                    "fuel_level": car.fuel_level
+                }
+            }
+
     return {
         "phone_number": current_user.phone_number,
         "full_name": current_user.full_name,
         "role": current_user.role,
-        "wallet_balance": float(current_user.wallet_balance) if current_user.wallet_balance else 0.0
+        "wallet_balance": float(current_user.wallet_balance) if current_user.wallet_balance else 0.0,
+        "current_rental": current_rental
     }
 
 
