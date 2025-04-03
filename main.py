@@ -25,69 +25,51 @@ logger = logging.getLogger(__name__)
 app = FastAPI()
 scheduler = AsyncIOScheduler()
 
+import random
+
 
 def create_premium_cars(db: Session):
     cars = [
-        {
-            "id": 2, "name": "BMW X5", "plate": "001PMP02", "lat": 43.2551, "lon": 76.9126
-        },
-        {
-            "id": 3, "name": "Mercedes GLE", "plate": "002PMP02", "lat": 43.2380, "lon": 76.9200
-        },
-        {
-            "id": 4, "name": "Audi Q7", "plate": "003PMP02", "lat": 43.2223, "lon": 76.8888
-        },
-        {
-            "id": 5, "name": "Lexus RX", "plate": "004PMP02", "lat": 43.2300, "lon": 76.8500
-        },
-        {
-            "id": 6, "name": "Porsche Cayenne", "plate": "005PMP02", "lat": 43.2750, "lon": 76.8900
-        },
-        {
-            "id": 7, "name": "Tesla Model X", "plate": "006PMP02", "lat": 43.2400, "lon": 76.8700
-        },
-        {
-            "id": 8, "name": "Range Rover", "plate": "007PMP02", "lat": 43.2450, "lon": 76.8600
-        },
-        {
-            "id": 9, "name": "Toyota Land Cruiser", "plate": "008PMP02", "lat": 43.2500, "lon": 76.9050
-        },
-        {
-            "id": 10, "name": "BMW X7", "plate": "009PMP02", "lat": 43.2480, "lon": 76.8990
-        },
-        {
-            "id": 11, "name": "Mercedes S-Class", "plate": "010PMP02", "lat": 43.2600, "lon": 76.9150
-        },
-        {
-            "id": 12, "name": "Audi A8", "plate": "011PMP02", "lat": 43.2280, "lon": 76.9100
-        },
-        {
-            "id": 13, "name": "Lexus LX570", "plate": "012PMP02", "lat": 43.2390, "lon": 76.9010
-        },
-        {
-            "id": 14, "name": "Cadillac Escalade", "plate": "013PMP02", "lat": 43.2440, "lon": 76.8950
-        },
-        {
-            "id": 15, "name": "Genesis GV80", "plate": "014PMP02", "lat": 43.2410, "lon": 76.8800
-        },
-        {
-            "id": 16, "name": "Volvo XC90", "plate": "015PMP02", "lat": 43.2530, "lon": 76.8890
-        },
-        {
-            "id": 17, "name": "Infiniti QX80", "plate": "016PMP02", "lat": 43.2465, "lon": 76.8765
-        },
-        {
-            "id": 18, "name": "Toyota Sequoia", "plate": "017PMP02", "lat": 43.2266, "lon": 76.8688
-        },
-        {
-            "id": 19, "name": "Jeep Grand Cherokee", "plate": "018PMP02", "lat": 43.2511, "lon": 76.8888
-        },
-        {
-            "id": 20, "name": "Hyundai Palisade", "plate": "019PMP02", "lat": 43.2200, "lon": 76.8840
-        },
-        {
-            "id": 21, "name": "Kia Mohave", "plate": "020PMP02", "lat": 43.2360, "lon": 76.8990
-        },
+        {"id": 2, "name": "BMW X5", "plate": "A001TTR02", "lat": 43.2551, "lon": 76.9126, "year": 2023, "engine": 3.0,
+         "drive": 3},
+        {"id": 3, "name": "Mercedes GLE", "plate": "B728NMK02", "lat": 43.2380, "lon": 76.9200, "year": 2022,
+         "engine": 3.0, "drive": 3},
+        {"id": 4, "name": "Audi Q7", "plate": "E543ASA02", "lat": 43.2223, "lon": 76.8888, "year": 2021, "engine": 3.0,
+         "drive": 3},
+        {"id": 5, "name": "Lexus RX", "plate": "M382KNT02", "lat": 43.2300, "lon": 76.8500, "year": 2022, "engine": 2.5,
+         "drive": 3},
+        {"id": 6, "name": "Porsche Cayenne", "plate": "X159CTB02", "lat": 43.2750, "lon": 76.8900, "year": 2023,
+         "engine": 3.0, "drive": 3},
+        {"id": 7, "name": "Tesla Model X", "plate": "R007HAA02", "lat": 43.2400, "lon": 76.8700, "year": 2022,
+         "engine": 0.0, "drive": 3},
+        {"id": 8, "name": "Range Rover", "plate": "Z999TOM02", "lat": 43.2450, "lon": 76.8600, "year": 2023,
+         "engine": 4.4, "drive": 3},
+        {"id": 9, "name": "Toyota Land Cruiser", "plate": "O405LIA02", "lat": 43.2500, "lon": 76.9050, "year": 2021,
+         "engine": 4.5, "drive": 3},
+        {"id": 10, "name": "BMW X7", "plate": "T753OOO02", "lat": 43.2480, "lon": 76.8990, "year": 2023, "engine": 4.4,
+         "drive": 3},
+        {"id": 11, "name": "Mercedes S-Class", "plate": "K111POP02", "lat": 43.2600, "lon": 76.9150, "year": 2022,
+         "engine": 3.0, "drive": 1},
+        {"id": 12, "name": "Audi A8", "plate": "Y888LOL02", "lat": 43.2280, "lon": 76.9100, "year": 2022, "engine": 3.0,
+         "drive": 1},
+        {"id": 13, "name": "Lexus LX570", "plate": "G456FMC02", "lat": 43.2390, "lon": 76.9010, "year": 2021,
+         "engine": 5.7, "drive": 3},
+        {"id": 14, "name": "Cadillac Escalade", "plate": "V202RAY02", "lat": 43.2440, "lon": 76.8950, "year": 2023,
+         "engine": 6.2, "drive": 3},
+        {"id": 15, "name": "Genesis GV80", "plate": "N373YUP02", "lat": 43.2410, "lon": 76.8800, "year": 2022,
+         "engine": 3.5, "drive": 3},
+        {"id": 16, "name": "Volvo XC90", "plate": "B001BAA02", "lat": 43.2530, "lon": 76.8890, "year": 2021,
+         "engine": 2.0, "drive": 3},
+        {"id": 17, "name": "Infiniti QX80", "plate": "H912PWR02", "lat": 43.2465, "lon": 76.8765, "year": 2020,
+         "engine": 5.6, "drive": 3},
+        {"id": 18, "name": "Toyota Sequoia", "plate": "C313WOW02", "lat": 43.2266, "lon": 76.8688, "year": 2021,
+         "engine": 5.7, "drive": 3},
+        {"id": 19, "name": "Jeep Grand Cherokee", "plate": "L454YES02", "lat": 43.2511, "lon": 76.8888, "year": 2022,
+         "engine": 3.6, "drive": 3},
+        {"id": 20, "name": "Hyundai Palisade", "plate": "S808QRT02", "lat": 43.2200, "lon": 76.8840, "year": 2021,
+         "engine": 3.8, "drive": 3},
+        {"id": 21, "name": "Kia Mohave", "plate": "U555NBK02", "lat": 43.2360, "lon": 76.8990, "year": 2021,
+         "engine": 3.0, "drive": 3},
     ]
 
     for car_data in cars:
@@ -97,9 +79,9 @@ def create_premium_cars(db: Session):
                 name=car_data["name"],
                 gps_id=f"premium-{car_data['id']}",
                 gps_imei=f"000000000000{car_data['id']:03}",
-                engine_volume=3.5,
-                year=2022,
-                drive_type=1,
+                engine_volume=car_data["engine"],
+                year=car_data["year"],
+                drive_type=car_data["drive"],
                 price_per_minute=120,
                 price_per_hour=5000,
                 price_per_day=75000,
@@ -107,12 +89,13 @@ def create_premium_cars(db: Session):
                 latitude=car_data["lat"],
                 longitude=car_data["lon"],
                 fuel_level=100,
+                course=random.randint(0, 359),
                 owner_id=None
             )
             db.add(car)
 
     db.commit()
-    logger.info("19 премиум-авто без владельцев добавлены")
+    logger.info("20 премиум-авто без владельцев добавлены")
 
 
 async def get_last_vehicles_data():
@@ -204,7 +187,8 @@ def init_app(app: FastAPI):
                     latitude=43.238949,
                     longitude=76.889709,
                     fuel_level=80,
-                    owner_id=owner.id
+                    owner_id=owner.id,
+                    course=90
                 )
                 db.add(car)
                 db.commit()
