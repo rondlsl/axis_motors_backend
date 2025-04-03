@@ -134,7 +134,10 @@ async def read_users_me(
                 "car_details": {
                     "name": car.name,
                     "plate_number": car.plate_number,
-                    "fuel_level": car.fuel_level
+                    "fuel_level": car.fuel_level,
+                    "latitude": car.latitude,
+                    "longitude": car.longitude,
+                    "course": car.course
                 }
             }
 
