@@ -114,7 +114,6 @@ async def read_users_me(
     # По умолчанию аренды нет
     current_rental = None
 
-    # Пробуем найти активную аренду
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,
         RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
@@ -144,12 +143,31 @@ async def read_users_me(
                 }
             }
 
+    owned_cars_raw = db.query(Car).filter(Car.owner_id == current_user.id).all()
+
+    owned_cars = [{
+        "id": car.id,
+        "name": car.name,
+        "plate_number": car.plate_number,
+        "fuel_level": car.fuel_level,
+        "latitude": car.latitude,
+        "longitude": car.longitude,
+        "course": car.course,
+        "engine_volume": car.engine_volume,
+        "drive_type": car.drive_type,
+        "year": car.year,
+        "photos": car.photos,
+        "current_renter_id": car.current_renter_id,
+        "status": "IN_USE" if car.current_renter_id else "FREE"
+    } for car in owned_cars_raw] if owned_cars_raw else None
+
     return {
         "phone_number": current_user.phone_number,
         "full_name": current_user.full_name,
         "role": current_user.role,
         "wallet_balance": float(current_user.wallet_balance) if current_user.wallet_balance else 0.0,
-        "current_rental": current_rental
+        "current_rental": current_rental,
+        "owned_cars": owned_cars
     }
 
 

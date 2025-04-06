@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
+from sqlalchemy import or_, func
 from sqlalchemy.orm import Session
 from typing import Dict, Any
 
@@ -8,6 +9,7 @@ from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.car_model import Car
+from app.models.history_model import RentalHistory
 from app.models.user_model import User
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.get_active_rental import get_active_rental_car
@@ -42,7 +44,8 @@ async def start_token_refresh():
 @Vehicle_Router.get("/get_vehicles")
 def get_vehicle_info(db: Session = Depends(get_db)) -> Dict[str, Any]:
     try:
-        cars = db.query(Car).all()
+        # Только свободные машины
+        cars = db.query(Car).filter(Car.current_renter_id.is_(None)).all()
 
         vehicles_data = [{
             "id": car.id,
@@ -67,6 +70,174 @@ def get_vehicle_info(db: Session = Depends(get_db)) -> Dict[str, Any]:
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching vehicles data: {str(e)}")
+
+
+@Vehicle_Router.get("/search")
+def search_vehicles(
+        query: str = Query(..., description="Поисковый запрос по названию авто или номеру"),
+        db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    try:
+        # Фильтрация по совпадению в названии или номере, и проверка что авто свободно
+        cars = db.query(Car).filter(
+            or_(
+                Car.name.ilike(f"%{query}%"),
+                Car.plate_number.ilike(f"%{query}%")
+            ),
+            Car.current_renter_id == None
+        ).all()
+
+        vehicles_data = [{
+            "id": car.id,
+            "name": car.name,
+            "plate_number": car.plate_number,
+            "latitude": car.latitude,
+            "longitude": car.longitude,
+            "course": car.course,
+            "fuel_level": car.fuel_level,
+            "price_per_minute": car.price_per_minute,
+            "price_per_hour": car.price_per_hour,
+            "price_per_day": car.price_per_day,
+            "engine_volume": car.engine_volume,
+            "year": car.year,
+            "drive_type": car.drive_type,
+            "photos": car.photos,
+            "owner_id": car.owner_id,
+            "current_renter_id": car.current_renter_id,
+            "status": "FREE"
+        } for car in cars]
+
+        return {"vehicles": vehicles_data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка поиска авто: {str(e)}")
+
+
+@Vehicle_Router.get("/frequently-used")
+def get_frequently_used_vehicles(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    try:
+        # Получаем ID машин и количество аренд по ним
+        rental_counts = (
+            db.query(RentalHistory.car_id, func.count(RentalHistory.id).label("rental_count"))
+            .filter(RentalHistory.user_id == current_user.id)
+            .group_by(RentalHistory.car_id)
+            .order_by(func.count(RentalHistory.id).desc())
+            .all()
+        )
+
+        car_ids = [r.car_id for r in rental_counts]
+        if not car_ids:
+            return {"vehicles": []}
+
+        cars = (
+            db.query(Car)
+            .filter(Car.id.in_(car_ids))
+            .all()
+        )
+
+        # Преобразуем в словарь для быстрого доступа
+        car_dict = {car.id: car for car in cars}
+
+        # Собираем результат в порядке популярности
+        vehicles_data = []
+        for r in rental_counts:
+            car = car_dict.get(r.car_id)
+            if car:
+                vehicles_data.append({
+                    "id": car.id,
+                    "name": car.name,
+                    "plate_number": car.plate_number,
+                    "latitude": car.latitude,
+                    "longitude": car.longitude,
+                    "course": car.course,
+                    "fuel_level": car.fuel_level,
+                    "price_per_minute": car.price_per_minute,
+                    "price_per_hour": car.price_per_hour,
+                    "price_per_day": car.price_per_day,
+                    "engine_volume": car.engine_volume,
+                    "year": car.year,
+                    "drive_type": car.drive_type,
+                    "photos": car.photos,
+                    "owner_id": car.owner_id,
+                    "rental_count": r.rental_count  # можно отдать и это — число аренд
+                })
+
+        return {"vehicles": vehicles_data}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка получения часто арендуемых авто: {str(e)}")
+
+
+@Vehicle_Router.get("/frequently-used")
+def get_frequently_used_vehicles(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    try:
+        # Получаем ID машин и количество аренд
+        rental_counts = (
+            db.query(RentalHistory.car_id, func.count(RentalHistory.id).label("rental_count"))
+            .filter(RentalHistory.user_id == current_user.id)
+            .group_by(RentalHistory.car_id)
+            .order_by(func.count(RentalHistory.id).desc())
+            .all()
+        )
+
+        if not rental_counts:
+            raise HTTPException(status_code=404, detail="Вы ещё не арендовали ни одной машины")
+
+        car_ids = [r.car_id for r in rental_counts]
+
+        # Загружаем только машины, которые сейчас свободны
+        cars = (
+            db.query(Car)
+            .filter(
+                Car.id.in_(car_ids),
+                Car.current_renter_id.is_(None)
+            )
+            .all()
+        )
+
+        if not cars:
+            raise HTTPException(status_code=404, detail="Все часто используемые вами машины сейчас в аренде")
+
+        car_dict = {car.id: car for car in cars}
+
+        # Оставляем только те машины, которые сейчас свободны
+        vehicles_data = []
+        for r in rental_counts:
+            car = car_dict.get(r.car_id)
+            if car:
+                vehicles_data.append({
+                    "id": car.id,
+                    "name": car.name,
+                    "plate_number": car.plate_number,
+                    "latitude": car.latitude,
+                    "longitude": car.longitude,
+                    "course": car.course,
+                    "fuel_level": car.fuel_level,
+                    "price_per_minute": car.price_per_minute,
+                    "price_per_hour": car.price_per_hour,
+                    "price_per_day": car.price_per_day,
+                    "engine_volume": car.engine_volume,
+                    "year": car.year,
+                    "drive_type": car.drive_type,
+                    "photos": car.photos,
+                    "owner_id": car.owner_id,
+                    "rental_count": r.rental_count
+                })
+
+        if not vehicles_data:
+            raise HTTPException(status_code=404, detail="Нет свободных машин из тех, что вы часто арендовали")
+
+        return {"vehicles": vehicles_data}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка: {str(e)}")
 
 
 # === КОМАНДЫ GlonassSoft ===
