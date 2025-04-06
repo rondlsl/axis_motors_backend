@@ -1,7 +1,10 @@
+from math import floor
+
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List
+from fastapi import status
 
 from app.auth.dependencies.get_current_user import get_current_user
 from app.auth.dependencies.save_documents import save_file
@@ -83,6 +86,75 @@ async def reserve_car(
     db.commit()
 
     return {"message": "Car reserved successfully", "rental_id": rental.id}
+
+
+@RentRouter.post("/cancel")
+async def cancel_reservation(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user),
+):
+    """
+    Cancel reservation if status is RESERVED.
+    If more than 15 minutes passed, apply cancellation fee.
+    """
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.user_id == current_user.id,
+        RentalHistory.rental_status == RentalStatus.RESERVED
+    ).first()
+
+    if not rental:
+        raise HTTPException(status_code=400, detail="Нет активной брони для отмены")
+
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Машина не найдена")
+
+    now = datetime.utcnow()
+    created_at = rental.start_time or rental.start_time or rental.end_time or rental.end_time or rental.end_time or rental.end_time or rental.end_time or rental.end_time or rental.end_time or rental.end_time or rental.end_time or datetime.utcnow()
+
+    # Устанавливаем время начала, если оно ещё не установлено
+    if not rental.start_time:
+        rental.start_time = created_at
+        db.commit()
+
+    time_passed = (now - rental.start_time).total_seconds() / 60
+
+    fee = 0
+    if time_passed > 15:
+        extra_minutes = floor(time_passed - 15)
+        fee = int(extra_minutes * car.price_per_minute * 0.5)
+
+        if current_user.wallet_balance < fee:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Недостаточно средств для отмены аренды с комиссией: {fee} тг"
+            )
+
+        current_user.wallet_balance -= fee
+
+    # Завершаем аренду
+    rental.rental_status = RentalStatus.COMPLETED
+    rental.end_time = now
+    rental.total_price = fee
+    rental.already_payed = fee
+
+    # Освобождаем машину
+    car.current_renter_id = None
+
+    try:
+        db.commit()
+        return {
+            "message": "Аренда отменена",
+            "minutes_used": int(time_passed),
+            "cancellation_fee": fee,
+            "current_wallet_balance": float(current_user.wallet_balance)
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка при отмене брони: {str(e)}"
+        )
 
 
 @RentRouter.post("/start")
@@ -339,109 +411,4 @@ async def complete_rental(
         raise HTTPException(
             status_code=500,
             detail="An error occurred while completing the rental"
-        )
-
-
-@RentRouter.get("/current")
-async def get_current_rental(
-        db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user),
-):
-    """
-    Get details of user's current rental including car info and rental status
-    """
-    # Get active rental (either RESERVED or IN_USE)
-    rental = db.query(RentalHistory).filter(
-        RentalHistory.user_id == current_user.id,
-        RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
-    ).first()
-
-    if not rental:
-        raise HTTPException(status_code=404, detail="No active rental found")
-
-    # Get associated car
-    car = db.query(Car).filter(Car.id == rental.car_id).first()
-    if not car:
-        raise HTTPException(status_code=404, detail="Car not found")
-
-    return {
-        "rental_details": {
-            "start_time": rental.start_time,
-            "rental_type": rental.rental_type,
-            "duration": rental.duration,
-            "already_payed": float(rental.already_payed) if rental.already_payed else 0,
-            "status": rental.rental_status
-        },
-        "car_details": {
-            "name": car.name,
-            "plate_number": car.plate_number,
-            "fuel_level": car.fuel_level
-        }
-    }
-
-
-@RentRouter.post("/populate-mock-data")
-async def populate_mock_data(
-        db: Session = Depends(get_db)
-):
-    """
-    Populate database with mock data: 1 user and 1 car.
-    First clears all existing data from the tables.
-    """
-    try:
-        # Clear all tables in correct order (due to foreign key constraints)
-        db.query(RentalHistory).delete()
-        db.query(Car).delete()
-        db.query(User).delete()
-        db.flush()
-
-        # Create mock user
-        mock_user = User(
-            full_name="Baha Gay",
-            phone_number="77472051507",
-            birth_date=datetime(1990, 2, 28),
-            iin="900228300581",
-            drivers_license_expiry=datetime(2025, 12, 31),
-            wallet_balance=0,
-            role=UserRole.USER
-        )
-        db.add(mock_user)
-        db.flush()  # Flush to get the user ID
-
-        # Create mock car
-        mock_car = Car(
-            name="MB CLA45s",
-            plate_number="666ABC02",
-            latitude=43.238949,
-            longitude=76.889709,
-            gps_id="123421",
-            gps_imei="421421142",
-            fuel_level=25,
-            price_per_minute=150,
-            price_per_hour=5000,
-            price_per_day=130000,
-            owner_id=mock_user.id
-        )
-        db.add(mock_car)
-
-        # Commit changes
-        db.commit()
-
-        return {
-            "message": "Mock data created successfully",
-            "user": {
-                "id": mock_user.id,
-                "phone": mock_user.phone_number
-            },
-            "car": {
-                "id": mock_car.id,
-                "plate": mock_car.plate_number
-            }
-        }
-
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error creating mock data: {str(e)}"
         )
