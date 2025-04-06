@@ -64,6 +64,7 @@ def get_vehicle_info(db: Session = Depends(get_db)) -> Dict[str, Any]:
             "photos": car.photos,
             "owner_id": car.owner_id,
             "current_renter_id": car.current_renter_id,
+            "status": "FREE"
         } for car in cars]
 
         return {"vehicles": vehicles_data}
