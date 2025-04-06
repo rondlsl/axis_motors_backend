@@ -44,9 +44,7 @@ async def reserve_car(
                 status_code=400,
                 detail=f"У вас на кошельке должно быть минимум {car.price_per_hour * 2} тенге для аренды данного авто."
             )
-
         total_price = 0
-
     else:
         if duration is None:
             raise HTTPException(status_code=400, detail="Duration обязателен для аренды по часам или дням.")
@@ -75,7 +73,8 @@ async def reserve_car(
         rental_status=RentalStatus.RESERVED,
         start_latitude=car.latitude,
         start_longitude=car.longitude,
-        total_price=total_price
+        total_price=total_price,
+        reservation_time=datetime.utcnow()
     )
 
     db.add(rental)
@@ -85,7 +84,11 @@ async def reserve_car(
     car.current_renter_id = current_user.id
     db.commit()
 
-    return {"message": "Car reserved successfully", "rental_id": rental.id}
+    return {
+        "message": "Car reserved successfully",
+        "rental_id": rental.id,
+        "reservation_time": rental.reservation_time.isoformat()
+    }
 
 
 @RentRouter.post("/cancel")

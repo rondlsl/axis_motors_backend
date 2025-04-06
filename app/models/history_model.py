@@ -30,27 +30,23 @@ class RentalHistory(Base):
     car_id = Column(Integer, ForeignKey("cars.id"), nullable=False)
     car = relationship("Car", back_populates="rental_history")
 
-    # Детали аренды
     rental_type = Column(Enum(RentalType), nullable=False)
-    duration = Column(Integer, nullable=True)  # количество минут/часов/дней
+    duration = Column(Integer, nullable=True)
 
-    # Геолокация
     start_latitude = Column(Float, nullable=False)
     start_longitude = Column(Float, nullable=False)
     end_latitude = Column(Float, nullable=True)
     end_longitude = Column(Float, nullable=True)
 
-    # Время
     start_time = Column(DateTime, nullable=True)
     end_time = Column(DateTime)
 
-    # Фотографии
-    photos_before = Column(ARRAY(String))  # массив URL фотографий до начала аренды
-    photos_after = Column(ARRAY(String))  # массив URL фотографий после завершения
+    reservation_time = Column(DateTime, default=datetime.utcnow, nullable=False)
 
-    # Стоимость
-    already_payed = Column(Integer, nullable=True)  # в тенге
-    total_price = Column(Integer, nullable=True)  # в тенге
+    photos_before = Column(ARRAY(String))
+    photos_after = Column(ARRAY(String))
 
-    # Статус аренды
+    already_payed = Column(Integer, nullable=True)
+    total_price = Column(Integer, nullable=True)
+
     rental_status = Column(Enum(RentalStatus), nullable=False, default=RentalStatus.RESERVED)

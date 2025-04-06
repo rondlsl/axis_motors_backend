@@ -111,7 +111,6 @@ async def read_users_me(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
-    # По умолчанию аренды нет
     current_rental = None
 
     rental = db.query(RentalHistory).filter(
@@ -124,6 +123,7 @@ async def read_users_me(
         if car:
             current_rental = {
                 "rental_details": {
+                    "reservation_time": rental.reservation_time.isoformat() if rental.reservation_time else None,
                     "start_time": rental.start_time,
                     "rental_type": rental.rental_type,
                     "duration": rental.duration,
