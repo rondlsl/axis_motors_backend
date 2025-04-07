@@ -15,6 +15,99 @@ from app.rent.utils.calculate_price import calculate_total_price
 RentRouter = APIRouter(tags=["Rent"], prefix="/rent")
 
 
+@RentRouter.get("/history")
+def get_trip_history(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+) -> dict:
+    """
+    Возвращает историю поездок (только завершённые) для текущего пользователя.
+    Для каждой поездки возвращаются:
+      - history_id: идентификатор истории
+      - date: дата завершения поездки (end_time)
+      - car_name: название машины
+      - final_total_price: итоговая стоимость поездки
+    """
+    histories = (
+        db.query(RentalHistory, Car)
+        .join(Car, Car.id == RentalHistory.car_id)
+        .filter(
+            RentalHistory.user_id == current_user.id,
+            RentalHistory.rental_status == RentalStatus.COMPLETED
+        )
+        .order_by(RentalHistory.end_time.desc())
+        .all()
+    )
+
+    result = []
+    for rental, car in histories:
+        result.append({
+            "history_id": rental.id,
+            "date": rental.end_time.isoformat() if rental.end_time else None,
+            "car_name": car.name,
+            "final_total_price": rental.total_price
+        })
+
+    return {"trip_history": result}
+
+
+@RentRouter.get("/history/{history_id}")
+def get_trip_history_detail(
+        history_id: int,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+) -> dict:
+    """
+    Возвращает подробности истории поездки по её идентификатору.
+    Выводятся все поля истории, а также данные машины.
+    """
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.id == history_id,
+        RentalHistory.user_id == current_user.id
+    ).first()
+
+    if not rental:
+        raise HTTPException(status_code=404, detail="Rental history not found")
+
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+
+    rental_detail = {
+        "history_id": rental.id,
+        "user_id": rental.user_id,
+        "car_id": rental.car_id,
+        "rental_type": rental.rental_type.value if hasattr(rental.rental_type, "value") else rental.rental_type,
+        "duration": rental.duration,
+        "start_latitude": rental.start_latitude,
+        "start_longitude": rental.start_longitude,
+        "end_latitude": rental.end_latitude,
+        "end_longitude": rental.end_longitude,
+        "start_time": rental.start_time.isoformat() if rental.start_time else None,
+        "end_time": rental.end_time.isoformat() if rental.end_time else None,
+        "reservation_time": rental.reservation_time.isoformat() if rental.reservation_time else None,
+        "photos_before": rental.photos_before,
+        "photos_after": rental.photos_after,
+        "already_payed": rental.already_payed,
+        "total_price": rental.total_price,
+        "rental_status": rental.rental_status.value if hasattr(rental.rental_status, "value") else rental.rental_status,
+    }
+
+    if car:
+        rental_detail["car_details"] = {
+            "name": car.name,
+            "plate_number": car.plate_number,
+            "fuel_level": car.fuel_level,
+            "latitude": car.latitude,
+            "longitude": car.longitude,
+            "course": car.course,
+            "engine_volume": car.engine_volume,
+            "drive_type": car.drive_type,
+            "year": car.year,
+            "status": car.status
+        }
+
+    return {"rental_history_detail": rental_detail}
+
+
 @RentRouter.post("/add_money")
 def add_money(amount: int, db: Session = Depends(get_db),
               current_user: User = Depends(get_current_user)):
@@ -333,11 +426,14 @@ async def upload_photos_after(
 
 @RentRouter.post("/complete")
 async def complete_rental(
+        end_latitude: float,
+        end_longitude: float,
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user),
 ):
     """
     Завершает аренду, рассчитывая итоговую стоимость на основе фактического времени использования.
+    Также сохраняет конечные координаты (end_latitude и end_longitude).
     Для разных типов аренды (MINUTES, HOURS, DAYS) рассчитываются перерасходы.
     """
     rental = db.query(RentalHistory).filter(
@@ -353,6 +449,10 @@ async def complete_rental(
         raise HTTPException(status_code=404, detail="Car not found")
 
     rental.end_time = datetime.utcnow()
+    # Записываем конечные координаты
+    rental.end_latitude = end_latitude
+    rental.end_longitude = end_longitude
+
     actual_duration = rental.end_time - rental.start_time
     actual_minutes = actual_duration.total_seconds() / 60
 
