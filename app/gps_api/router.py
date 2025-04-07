@@ -169,6 +169,7 @@ def get_frequently_used_vehicles(
                     "photos": car.photos,
                     "owner_id": car.owner_id,
                     "rental_count": r.rental_count,
+                    "status": car.status,
                     "open_price": get_open_price(car)
                 })
 
