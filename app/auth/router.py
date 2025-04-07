@@ -145,13 +145,15 @@ async def read_users_me(
                 "engine_volume": car.engine_volume,
                 "drive_type": car.drive_type,
                 "year": car.year,
-                "status": car.status  # Используем значение из БД
+                "status": car.status,  # Используем значение из БД
+                "price_per_minute": car.price_per_minute,
+                "price_per_hour": car.price_per_hour,
+                "price_per_day": car.price_per_day
             }
         }
 
     # Получаем машины пользователя, включая статус из БД
     owned_cars_raw = db.query(Car).filter(Car.owner_id == current_user.id).all()
-
     owned_cars = [{
         "id": car.id,
         "name": car.name,
@@ -165,7 +167,10 @@ async def read_users_me(
         "year": car.year,
         "photos": car.photos,
         "current_renter_id": car.current_renter_id,
-        "status": car.status  # Уже сохранённый статус
+        "status": car.status,  # Уже сохранённый статус
+        "price_per_minute": car.price_per_minute,
+        "price_per_hour": car.price_per_hour,
+        "price_per_day": car.price_per_day
     } for car in owned_cars_raw]
 
     return {
