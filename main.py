@@ -3,7 +3,6 @@ import os
 import random
 
 import httpx
-import logging
 
 from alembic import command
 from alembic.config import Config
@@ -18,13 +17,6 @@ from app.gps_api.router import Vehicle_Router
 from app.models.car_model import Car
 from app.models.user_model import User, UserRole
 from app.rent.router import RentRouter
-
-# === ЛОГИ ===
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s",
-)
-logger = logging.getLogger(__name__)
 
 # === APP ===
 app = FastAPI()
@@ -103,7 +95,7 @@ def create_premium_cars(db: Session):
             db.add(car)
 
     db.commit()
-    logger.info("20 премиум-авто без владельцев добавлены")
+    print("20 премиум-авто без владельцев добавлены")
 
 
 async def get_last_vehicles_data():
@@ -144,14 +136,14 @@ async def update_vehicle_data():
     try:
         vehicles_data = await get_last_vehicles_data()
     except Exception as e:
-        logger.error(f"Ошибка при получении данных с GPS-сервера: {e}")
+        print(f"Ошибка при получении данных с GPS-сервера: {e}")
         return
 
     try:
         loop = asyncio.get_event_loop()
         updated_count = await loop.run_in_executor(None, _update_in_thread, vehicles_data)
     except Exception as e:
-        logger.error(f"Ошибка при обновлении данных машин в БД: {e}")
+        print(f"Ошибка при обновлении данных машин в БД: {e}")
 
 
 async def check_vehicle_conditions():
@@ -161,7 +153,7 @@ async def check_vehicle_conditions():
 def init_app(app: FastAPI):
     @app.on_event("startup")
     async def startup_event():
-        logger.info("🚀 Приложение запущено")
+        print("🚀 Приложение запущено")
         run_migrations()  # ✅ применит миграции
 
         db_gen = get_db()
@@ -179,7 +171,7 @@ def init_app(app: FastAPI):
                 db.add(owner)
                 db.commit()
                 db.refresh(owner)
-                logger.info("Владелец HAVAL F7x создан")
+                print("Владелец HAVAL F7x создан")
 
             if not db.query(Car).filter(Car.id == 1).first():
                 car = Car(
@@ -202,9 +194,9 @@ def init_app(app: FastAPI):
                 )
                 db.add(car)
                 db.commit()
-                logger.info("HAVAL F7x добавлена")
+                print("HAVAL F7x добавлена")
             else:
-                logger.info("HAVAL F7x уже существует")
+                print("HAVAL F7x уже существует")
 
             # Премиум авто
             create_premium_cars(db)
@@ -217,7 +209,7 @@ def init_app(app: FastAPI):
 
     @app.on_event("shutdown")
     async def shutdown_event():
-        logger.info("🛑 Приложение остановлено")
+        print("🛑 Приложение остановлено")
         scheduler.shutdown()
 
 

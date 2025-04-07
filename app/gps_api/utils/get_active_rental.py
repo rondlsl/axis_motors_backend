@@ -7,6 +7,7 @@ from app.models.user_model import User
 
 
 def get_active_rental_car(db: Session, current_user: User) -> Car:
+    # Выполняем JOIN между Car и RentalHistory, чтобы за один запрос получить машину из активной аренды
     car = (
         db.query(Car)
         .join(RentalHistory, RentalHistory.car_id == Car.id)
