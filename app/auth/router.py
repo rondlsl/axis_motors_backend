@@ -111,38 +111,45 @@ async def read_users_me(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
+    # Получаем активную аренду и машину одним запросом
+    rental_with_car = (
+        db.query(RentalHistory, Car)
+        .join(Car, Car.id == RentalHistory.car_id)
+        .filter(
+            RentalHistory.user_id == current_user.id,
+            RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
+        )
+        .first()
+    )
+
     current_rental = None
-
-    rental = db.query(RentalHistory).filter(
-        RentalHistory.user_id == current_user.id,
-        RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
-    ).first()
-
-    if rental:
-        car = db.query(Car).filter(Car.id == rental.car_id).first()
-        if car:
-            current_rental = {
-                "rental_details": {
-                    "reservation_time": rental.reservation_time.isoformat() if rental.reservation_time else None,
-                    "start_time": rental.start_time,
-                    "rental_type": rental.rental_type,
-                    "duration": rental.duration,
-                    "already_payed": float(rental.already_payed) if rental.already_payed else 0,
-                    "status": rental.rental_status
-                },
-                "car_details": {
-                    "name": car.name,
-                    "plate_number": car.plate_number,
-                    "fuel_level": car.fuel_level,
-                    "latitude": car.latitude,
-                    "longitude": car.longitude,
-                    "course": car.course,
-                    "engine_volume": car.engine_volume,
-                    "drive_type": car.drive_type,
-                    "year": car.year
-                }
+    if rental_with_car:
+        rental, car = rental_with_car
+        current_rental = {
+            "rental_details": {
+                "reservation_time": rental.reservation_time.isoformat() if rental.reservation_time else None,
+                "start_time": rental.start_time.isoformat() if rental.start_time else None,
+                "rental_type": rental.rental_type.value,
+                "duration": rental.duration,
+                "already_payed": float(rental.already_payed or 0),
+                "status": rental.rental_status.value
+            },
+            "car_details": {
+                "id": car.id,
+                "name": car.name,
+                "plate_number": car.plate_number,
+                "fuel_level": car.fuel_level,
+                "latitude": car.latitude,
+                "longitude": car.longitude,
+                "course": car.course,
+                "engine_volume": car.engine_volume,
+                "drive_type": car.drive_type,
+                "year": car.year,
+                "status": car.status  # Используем значение из БД
             }
+        }
 
+    # Получаем машины пользователя, включая статус из БД
     owned_cars_raw = db.query(Car).filter(Car.owner_id == current_user.id).all()
 
     owned_cars = [{
@@ -158,14 +165,14 @@ async def read_users_me(
         "year": car.year,
         "photos": car.photos,
         "current_renter_id": car.current_renter_id,
-        "status": "IN_USE" if car.current_renter_id else "FREE"
-    } for car in owned_cars_raw] if owned_cars_raw else None
+        "status": car.status  # Уже сохранённый статус
+    } for car in owned_cars_raw]
 
     return {
         "phone_number": current_user.phone_number,
         "full_name": current_user.full_name,
-        "role": current_user.role,
-        "wallet_balance": float(current_user.wallet_balance) if current_user.wallet_balance else 0.0,
+        "role": current_user.role.value,
+        "wallet_balance": float(current_user.wallet_balance or 0.0),
         "current_rental": current_rental,
         "owned_cars": owned_cars
     }

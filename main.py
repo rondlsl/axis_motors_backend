@@ -1,5 +1,6 @@
 import asyncio
 import os
+import random
 
 import httpx
 import logging
@@ -33,9 +34,6 @@ scheduler = AsyncIOScheduler()
 def run_migrations():
     alembic_cfg = Config(os.path.join(os.path.dirname(__file__), "alembic.ini"))
     command.upgrade(alembic_cfg, "head")
-
-
-import random
 
 
 def create_premium_cars(db: Session):
