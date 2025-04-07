@@ -7,6 +7,7 @@ import httpx
 from alembic import command
 from alembic.config import Config
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from starlette.middleware.cors import CORSMiddleware
 
@@ -21,6 +22,8 @@ from app.rent.router import RentRouter
 # === APP ===
 app = FastAPI()
 scheduler = AsyncIOScheduler()
+
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 
 def run_migrations():
