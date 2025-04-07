@@ -13,6 +13,7 @@ from app.auth.security.auth_bearer import JWTBearer
 from app.auth.security.tokens import create_refresh_token, create_access_token
 from app.core.config import SMS_TOKEN
 from app.dependencies.database.database import get_db
+from app.gps_api.utils.get_active_rental import get_open_price
 from app.models.car_model import Car
 from app.models.history_model import RentalHistory, RentalStatus
 from app.models.user_model import UserRole, User
@@ -145,10 +146,12 @@ async def read_users_me(
                 "engine_volume": car.engine_volume,
                 "drive_type": car.drive_type,
                 "year": car.year,
-                "status": car.status,  # Используем значение из БД
+                "status": car.status,
                 "price_per_minute": car.price_per_minute,
                 "price_per_hour": car.price_per_hour,
-                "price_per_day": car.price_per_day
+                "price_per_day": car.price_per_day,
+                "open_price": get_open_price(car),
+                "owned_car": True if car.owner_id == current_user.id else False
             }
         }
 
@@ -167,10 +170,11 @@ async def read_users_me(
         "year": car.year,
         "photos": car.photos,
         "current_renter_id": car.current_renter_id,
-        "status": car.status,  # Уже сохранённый статус
+        "status": car.status,
         "price_per_minute": car.price_per_minute,
         "price_per_hour": car.price_per_hour,
-        "price_per_day": car.price_per_day
+        "price_per_day": car.price_per_day,
+        "open_price": get_open_price(car)
     } for car in owned_cars_raw]
 
     return {

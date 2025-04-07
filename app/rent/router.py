@@ -7,6 +7,7 @@ from typing import List
 from app.auth.dependencies.get_current_user import get_current_user
 from app.auth.dependencies.save_documents import save_file
 from app.dependencies.database.database import get_db
+from app.gps_api.utils.get_active_rental import get_open_price
 from app.models.history_model import RentalType, RentalStatus, RentalHistory
 from app.models.user_model import User, UserRole
 from app.models.car_model import Car
@@ -281,8 +282,15 @@ async def start_rental(
     if rental.rental_status != RentalStatus.RESERVED:
         raise HTTPException(status_code=400, detail="Rental is not in reserved status")
 
-    if rental.rental_type == RentalType.MINUTES:
-        current_user.wallet_balance -= 5000
+    # Получаем машину по аренде
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Car not found")
+
+    # Если аренда минутная или часовая, списываем с баланса open_price, вычисленный через get_open_price
+    if rental.rental_type in [RentalType.MINUTES, RentalType.HOURS]:
+        open_price = get_open_price(car)
+        current_user.wallet_balance -= open_price
 
     rental.rental_status = RentalStatus.IN_USE
     rental.start_time = datetime.utcnow()
@@ -296,9 +304,7 @@ async def start_rental(
         rental.already_payed = total_cost
 
     # Обновляем машину: меняем статус на IN_USE
-    car = db.query(Car).filter(Car.id == rental.car_id).first()
-    if car:
-        car.status = "IN_USE"
+    car.status = "IN_USE"
 
     db.commit()
 

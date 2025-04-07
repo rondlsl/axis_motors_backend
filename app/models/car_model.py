@@ -19,6 +19,7 @@ class Car(Base):
     price_per_minute = Column(Integer, nullable=False)
     price_per_hour = Column(Integer, nullable=False)
     price_per_day = Column(Integer, nullable=False)
+    car_class = Column(Integer, nullable=True, default=1)
 
     engine_volume = Column(Float, nullable=True)
     year = Column(Integer, nullable=True)
