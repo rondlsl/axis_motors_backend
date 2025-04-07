@@ -11,7 +11,7 @@ from app.models.car_model import Car
 from app.models.history_model import RentalHistory
 from app.models.user_model import User
 from app.gps_api.utils.auth_api import get_auth_token
-from app.gps_api.utils.get_active_rental import get_active_rental_car
+from app.gps_api.utils.get_active_rental import get_active_rental_car, get_open_price
 from app.gps_api.utils.car_data import send_command_to_terminal
 
 Vehicle_Router = APIRouter(prefix="/vehicles", tags=["Vehicles"])
@@ -62,7 +62,8 @@ def get_vehicle_info(db: Session = Depends(get_db)) -> Dict[str, Any]:
             "photos": car.photos,
             "owner_id": car.owner_id,
             "current_renter_id": car.current_renter_id,
-            "status": car.status
+            "status": car.status,
+            "open_price": get_open_price(car)
         } for car in cars]
 
         return {"vehicles": vehicles_data}
@@ -103,7 +104,8 @@ def search_vehicles(
             "photos": car.photos,
             "owner_id": car.owner_id,
             "current_renter_id": car.current_renter_id,
-            "status": car.status
+            "status": car.status,
+            "open_price": get_open_price(car)
         } for car in cars]
 
         return {"vehicles": vehicles_data}
@@ -166,7 +168,8 @@ def get_frequently_used_vehicles(
                     "drive_type": car.drive_type,
                     "photos": car.photos,
                     "owner_id": car.owner_id,
-                    "rental_count": r.rental_count
+                    "rental_count": r.rental_count,
+                    "open_price": get_open_price(car)
                 })
 
         if not vehicles_data:
