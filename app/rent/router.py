@@ -212,7 +212,7 @@ async def upload_photos_before(
     # Check if user has an active rental in RESERVED status
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,
-        RentalHistory.rental_status == RentalStatus.RESERVED
+        RentalHistory.rental_status == RentalStatus.IN_USE
     ).first()
 
     if not rental:
