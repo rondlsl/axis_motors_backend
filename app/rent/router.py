@@ -1,5 +1,5 @@
 from math import floor
-from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, status
+from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, status, Query
 from pydantic import BaseModel, constr, Field, conint
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -143,59 +143,88 @@ async def reserve_car(
     if not car:
         raise HTTPException(status_code=404, detail="Car not found or not available")
 
-    if rental_type == RentalType.MINUTES:
-        if current_user.wallet_balance < car.price_per_hour * 2:
-            raise HTTPException(
-                status_code=400,
-                detail=f"У вас на кошельке должно быть минимум {car.price_per_hour * 2} тенге для аренды данного авто."
-            )
+    if car.owner_id == current_user.id:
+        # Логика для аренды владельцем
         total_price = 0
-    else:
-        if duration is None:
-            raise HTTPException(status_code=400, detail="Duration обязателен для аренды по часам или дням.")
-
-        if current_user.wallet_balance < car.price_per_day:
-            raise HTTPException(
-                status_code=400,
-                detail=f"У вас на кошельке должно быть минимум {car.price_per_day} тенге для аренды данного авто."
-            )
-
-        total_price = calculate_total_price(
-            rental_type, duration, car.price_per_hour, car.price_per_day
+        rental = RentalHistory(
+            user_id=current_user.id,
+            car_id=car.id,
+            rental_type=rental_type,
+            duration=duration,
+            rental_status=RentalStatus.RESERVED,
+            start_latitude=car.latitude,
+            start_longitude=car.longitude,
+            total_price=total_price,
+            reservation_time=datetime.utcnow()
         )
+        db.add(rental)
+        db.commit()
+        db.refresh(rental)
 
-        if current_user.wallet_balance < total_price:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Недостаточно средств. Необходимо: {total_price} тенге"
+        # Обновляем машину: устанавливаем текущего арендатора и меняем статус на OWNER
+        car.current_renter_id = current_user.id
+        car.status = "OWNER"
+        db.commit()
+
+        return {
+            "message": "Car reserved successfully (owner rental)",
+            "rental_id": rental.id,
+            "reservation_time": rental.reservation_time.isoformat()
+        }
+    else:
+        # Логика для обычного пользователя
+        if rental_type == RentalType.MINUTES:
+            if current_user.wallet_balance < car.price_per_hour * 2:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"У вас на кошельке должно быть минимум {car.price_per_hour * 2} тенге для аренды данного авто."
+                )
+            total_price = 0
+        else:
+            if duration is None:
+                raise HTTPException(status_code=400, detail="Duration обязателен для аренды по часам или дням.")
+
+            if current_user.wallet_balance < car.price_per_day:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"У вас на кошельке должно быть минимум {car.price_per_day} тенге для аренды данного авто."
+                )
+
+            total_price = calculate_total_price(
+                rental_type, duration, car.price_per_hour, car.price_per_day
             )
 
-    rental = RentalHistory(
-        user_id=current_user.id,
-        car_id=car.id,
-        rental_type=rental_type,
-        duration=duration,
-        rental_status=RentalStatus.RESERVED,
-        start_latitude=car.latitude,
-        start_longitude=car.longitude,
-        total_price=total_price,
-        reservation_time=datetime.utcnow()
-    )
+            if current_user.wallet_balance < total_price:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Недостаточно средств. Необходимо: {total_price} тенге"
+                )
 
-    db.add(rental)
-    db.commit()
-    db.refresh(rental)
+        rental = RentalHistory(
+            user_id=current_user.id,
+            car_id=car.id,
+            rental_type=rental_type,
+            duration=duration,
+            rental_status=RentalStatus.RESERVED,
+            start_latitude=car.latitude,
+            start_longitude=car.longitude,
+            total_price=total_price,
+            reservation_time=datetime.utcnow()
+        )
+        db.add(rental)
+        db.commit()
+        db.refresh(rental)
 
-    # Обновляем машину: устанавливаем текущего арендатора и меняем статус на RESERVED
-    car.current_renter_id = current_user.id
-    car.status = "RESERVED"
-    db.commit()
+        # Обновляем машину: устанавливаем текущего арендатора и меняем статус на RESERVED
+        car.current_renter_id = current_user.id
+        car.status = "RESERVED"
+        db.commit()
 
-    return {
-        "message": "Car reserved successfully",
-        "rental_id": rental.id,
-        "reservation_time": rental.reservation_time.isoformat()
-    }
+        return {
+            "message": "Car reserved successfully",
+            "rental_id": rental.id,
+            "reservation_time": rental.reservation_time.isoformat()
+        }
 
 
 @RentRouter.post("/cancel")
@@ -225,45 +254,61 @@ async def cancel_reservation(
         rental.start_time = rental.reservation_time or datetime.utcnow()
         db.commit()
 
-    time_passed = (now - rental.start_time).total_seconds() / 60
-
-    fee = 0
-    if time_passed > 15:
-        extra_minutes = floor(time_passed - 15)
-        fee = int(extra_minutes * car.price_per_minute * 0.5)
-
-        if current_user.wallet_balance < fee:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Недостаточно средств для отмены аренды с комиссией: {fee} тг"
-            )
-
-        current_user.wallet_balance -= fee
-
-    # Завершаем аренду
-    rental.rental_status = RentalStatus.COMPLETED
-    rental.end_time = now
-    rental.total_price = fee
-    rental.already_payed = fee
-
-    # Освобождаем машину и возвращаем статус "FREE"
-    car.current_renter_id = None
-    car.status = "FREE"
-
-    try:
+    if car.owner_id == current_user.id:
+        # Логика для владельца: аренда бесплатная, пропускаем комиссии
+        rental.rental_status = RentalStatus.COMPLETED
+        rental.end_time = now
+        rental.total_price = 0
+        rental.already_payed = 0
+        car.current_renter_id = None
+        car.status = "OWNER"
         db.commit()
         return {
-            "message": "Аренда отменена",
-            "minutes_used": int(time_passed),
-            "cancellation_fee": fee,
+            "message": "Аренда отменена (owner rental)",
+            "minutes_used": int((now - rental.start_time).total_seconds() / 60),
+            "cancellation_fee": 0,
             "current_wallet_balance": float(current_user.wallet_balance)
         }
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Ошибка при отмене брони: {str(e)}"
-        )
+    else:
+        time_passed = (now - rental.start_time).total_seconds() / 60
+
+        fee = 0
+        if time_passed > 15:
+            extra_minutes = floor(time_passed - 15)
+            fee = int(extra_minutes * car.price_per_minute * 0.5)
+
+            if current_user.wallet_balance < fee:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Недостаточно средств для отмены аренды с комиссией: {fee} тг"
+                )
+
+            current_user.wallet_balance -= fee
+
+        # Завершаем аренду
+        rental.rental_status = RentalStatus.COMPLETED
+        rental.end_time = now
+        rental.total_price = fee
+        rental.already_payed = fee
+
+        # Освобождаем машину и возвращаем статус "FREE"
+        car.current_renter_id = None
+        car.status = "FREE"
+
+        try:
+            db.commit()
+            return {
+                "message": "Аренда отменена",
+                "minutes_used": int(time_passed),
+                "cancellation_fee": fee,
+                "current_wallet_balance": float(current_user.wallet_balance)
+            }
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Ошибка при отмене брони: {str(e)}"
+            )
 
 
 @RentRouter.post("/start")
@@ -288,28 +333,35 @@ async def start_rental(
     if not car:
         raise HTTPException(status_code=404, detail="Car not found")
 
-    # Если аренда минутная или часовая, списываем с баланса open_price, вычисленный через get_open_price
-    if rental.rental_type in [RentalType.MINUTES, RentalType.HOURS]:
-        open_price = get_open_price(car)
-        current_user.wallet_balance -= open_price
+    if car.owner_id == current_user.id:
+        # Логика для владельца: аренда бесплатная, пропускаем списание средств
+        rental.rental_status = RentalStatus.IN_USE
+        rental.start_time = datetime.utcnow()
+        db.commit()
+        return {"message": "Rental started successfully (owner rental)", "rental_id": rental.id}
+    else:
+        # Если аренда минутная или часовая, списываем с баланса open_price, вычисленный через get_open_price
+        if rental.rental_type in [RentalType.MINUTES, RentalType.HOURS]:
+            open_price = get_open_price(car)
+            current_user.wallet_balance -= open_price
 
-    rental.rental_status = RentalStatus.IN_USE
-    rental.start_time = datetime.utcnow()
+        rental.rental_status = RentalStatus.IN_USE
+        rental.start_time = datetime.utcnow()
 
-    total_cost = rental.total_price
+        total_cost = rental.total_price
 
-    if total_cost > 0:
-        if current_user.wallet_balance < total_cost:
-            raise HTTPException(status_code=400, detail="Insufficient wallet balance")
-        current_user.wallet_balance -= total_cost
-        rental.already_payed = total_cost
+        if total_cost > 0:
+            if current_user.wallet_balance < total_cost:
+                raise HTTPException(status_code=400, detail="Insufficient wallet balance")
+            current_user.wallet_balance -= total_cost
+            rental.already_payed = total_cost
 
-    # Обновляем машину: меняем статус на IN_USE
-    car.status = "IN_USE"
+        # Обновляем машину: меняем статус на IN_USE
+        car.status = "IN_USE"
 
-    db.commit()
+        db.commit()
 
-    return {"message": "Rental started successfully", "rental_id": rental.id}
+        return {"message": "Rental started successfully", "rental_id": rental.id}
 
 
 @RentRouter.post("/upload-photos-before")
@@ -330,7 +382,7 @@ async def upload_photos_before(
     ).first()
 
     if not rental:
-        raise HTTPException(status_code=404, detail="No active rental in RESERVED status found")
+        raise HTTPException(status_code=404, detail="No active rental in IN_USE status found")
 
     if len(car_photos) < 1 or len(car_photos) > 10:
         raise HTTPException(
@@ -431,6 +483,124 @@ async def upload_photos_after(
         )
 
 
+# Новые эндпоинты для загрузки фотографий без селфи (для владельца)
+
+@RentRouter.post("/upload-photos-before-owner")
+async def upload_photos_before_owner(
+        car_photos: List[UploadFile] = File(...),
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    """
+    Загружает фотографии до начала аренды для владельца машины (без селфи).
+    Принимает только car_photos (от 1 до 10 фотографий машины).
+    """
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.user_id == current_user.id,
+        RentalHistory.rental_status == RentalStatus.IN_USE
+    ).first()
+
+    if not rental:
+        raise HTTPException(status_code=404, detail="No active rental in IN_USE status found")
+
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car or car.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Это не ваша машина")
+
+    if len(car_photos) < 1 or len(car_photos) > 10:
+        raise HTTPException(
+            status_code=400,
+            detail="You must provide between 1 and 10 car photos"
+        )
+
+    allowed_types = ["image/jpeg", "image/png"]
+    for photo in car_photos:
+        if photo.content_type not in allowed_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File {photo.filename} is not an image. Only JPEG and PNG are allowed."
+            )
+
+    try:
+        photo_urls = []
+        for photo in car_photos:
+            photo_path = await save_file(photo, rental.id, f"uploads/rents/{rental.id}/before/car/")
+            photo_urls.append(photo_path)
+
+        rental.photos_before = photo_urls
+        db.commit()
+
+        return {
+            "message": "Photos before rental uploaded successfully (owner)",
+            "photo_count": len(photo_urls)
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="An error occurred while uploading photos"
+        )
+
+
+@RentRouter.post("/upload-photos-after-owner")
+async def upload_photos_after_owner(
+        car_photos: List[UploadFile] = File(...),
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    """
+    Загружает фотографии после завершения аренды для владельца машины (без селфи).
+    Принимает только car_photos (от 1 до 10 фотографий машины).
+    """
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.user_id == current_user.id,
+        RentalHistory.rental_status == RentalStatus.IN_USE
+    ).first()
+
+    if not rental:
+        raise HTTPException(status_code=404, detail="No active rental in IN_USE status found")
+
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car or car.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Это не ваша машина")
+
+    if len(car_photos) < 1 or len(car_photos) > 10:
+        raise HTTPException(
+            status_code=400,
+            detail="You must provide between 1 and 10 car photos"
+        )
+
+    allowed_types = ["image/jpeg", "image/png"]
+    for photo in car_photos:
+        if photo.content_type not in allowed_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File {photo.filename} is not an image. Only JPEG and PNG are allowed."
+            )
+
+    try:
+        photo_urls = []
+        for photo in car_photos:
+            photo_path = await save_file(photo, rental.id, f"uploads/rents/{rental.id}/after/car/")
+            photo_urls.append(photo_path)
+
+        rental.photos_after = photo_urls
+        db.commit()
+
+        return {
+            "message": "Photos after rental uploaded successfully (owner)",
+            "photo_count": len(photo_urls)
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="An error occurred while uploading photos"
+        )
+
+
 class RentalReviewInput(BaseModel):
     rating: conint(ge=1, le=5) = Field(..., description="Оценка от 1 до 5")
     comment: Optional[constr(max_length=255)] = Field(None, description="Комментарий к аренде (до 255 символов)")
@@ -438,7 +608,7 @@ class RentalReviewInput(BaseModel):
 
 @RentRouter.post("/complete")
 async def complete_rental(
-        review_input: RentalReviewInput,
+        review_input: RentalReviewInput,  # если отзыв не обязателен, можно оставить None
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user),
 ):
@@ -454,68 +624,111 @@ async def complete_rental(
     if not car:
         raise HTTPException(status_code=404, detail="Car not found")
 
-    rental.end_time = datetime.utcnow()
-    rental.end_latitude = car.latitude
-    rental.end_longitude = car.longitude
+    if car.owner_id == current_user.id:
+        # Логика для владельца: аренда бесплатная, пропускаем расчёты
+        rental.end_time = datetime.utcnow()
+        rental.end_latitude = car.latitude
+        rental.end_longitude = car.longitude
+        rental.total_price = 0
+        rental.already_payed = 0
+        rental.rental_status = RentalStatus.COMPLETED
+        car.current_renter_id = None
+        car.status = "FREE"
 
-    actual_duration = rental.end_time - rental.start_time
-    actual_minutes = actual_duration.total_seconds() / 60
-    additional_charge = 0
+        # Добавим отзыв, если он передан
+        if review_input:
+            review = RentalReview(
+                rental_id=rental.id,
+                rating=getattr(review_input, "rating", None),
+                comment=getattr(review_input, "comment", None)
+            )
+            db.add(review)
 
-    if rental.rental_type == RentalType.MINUTES:
-        rental.total_price = int(actual_minutes * car.price_per_minute)
-    else:
-        if rental.rental_type == RentalType.HOURS:
-            planned_duration = rental.duration * 60
-            overtime_price = car.price_per_minute
-        else:
-            planned_duration = rental.duration * 24 * 60
-            overtime_price = car.price_per_minute
-
-        overtime_minutes = max(0, actual_minutes - planned_duration)
-        if overtime_minutes > 0:
-            additional_charge = int(overtime_minutes * overtime_price)
-            rental.total_price = (rental.total_price or 0) + additional_charge
-
-    amount_to_charge = rental.total_price - (rental.already_payed or 0)
-    if amount_to_charge > 0:
-        if current_user.wallet_balance < amount_to_charge:
-            raise HTTPException(status_code=400, detail="Insufficient wallet balance for final charge")
-        current_user.wallet_balance -= amount_to_charge
-        rental.already_payed = (rental.already_payed or 0) + amount_to_charge
-
-    rental.rental_status = RentalStatus.COMPLETED
-    car.current_renter_id = None
-    car.status = "FREE"
-
-    # Добавим отзыв
-    review = RentalReview(
-        rental_id=rental.id,
-        rating=review_input.rating,
-        comment=review_input.comment
-    )
-    db.add(review)
-
-    try:
-        db.commit()
-        return {
-            "message": "Rental completed successfully",
-            "rental_details": {
-                "total_duration_minutes": int(actual_minutes),
-                "planned_price": rental.total_price - additional_charge if rental.rental_type != RentalType.MINUTES else None,
-                "overtime_charge": additional_charge if rental.rental_type != RentalType.MINUTES else None,
-                "final_total_price": rental.total_price,
-                "amount_charged_now": amount_to_charge,
-                "current_wallet_balance": float(current_user.wallet_balance)
-            },
-            "review": {
-                "rating": review.rating,
-                "comment": review.comment
+        try:
+            db.commit()
+            return {
+                "message": "Rental completed successfully (owner rental)",
+                "rental_details": {
+                    "total_duration_minutes": int((rental.end_time - rental.start_time).total_seconds() / 60),
+                    "final_total_price": rental.total_price,
+                    "amount_charged_now": 0,
+                    "current_wallet_balance": float(current_user.wallet_balance)
+                },
+                "review": {
+                    "rating": getattr(review_input, "rating", None),
+                    "comment": getattr(review_input, "comment", None)
+                } if review_input else None
             }
-        }
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail=f"An error occurred while completing the rental: {str(e)}"
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=f"An error occurred while completing the rental: {str(e)}"
+            )
+    else:
+        # Логика для обычного пользователя
+        rental.end_time = datetime.utcnow()
+        rental.end_latitude = car.latitude
+        rental.end_longitude = car.longitude
+
+        actual_duration = rental.end_time - rental.start_time
+        actual_minutes = actual_duration.total_seconds() / 60
+        additional_charge = 0
+
+        if rental.rental_type == RentalType.MINUTES:
+            rental.total_price = int(actual_minutes * car.price_per_minute)
+        else:
+            if rental.rental_type == RentalType.HOURS:
+                planned_duration = rental.duration * 60
+                overtime_price = car.price_per_minute
+            else:
+                planned_duration = rental.duration * 24 * 60
+                overtime_price = car.price_per_minute
+
+            overtime_minutes = max(0, actual_minutes - planned_duration)
+            if overtime_minutes > 0:
+                additional_charge = int(overtime_minutes * overtime_price)
+                rental.total_price = (rental.total_price or 0) + additional_charge
+
+        amount_to_charge = rental.total_price - (rental.already_payed or 0)
+        if amount_to_charge > 0:
+            if current_user.wallet_balance < amount_to_charge:
+                raise HTTPException(status_code=400, detail="Insufficient wallet balance for final charge")
+            current_user.wallet_balance -= amount_to_charge
+            rental.already_payed = (rental.already_payed or 0) + amount_to_charge
+
+        rental.rental_status = RentalStatus.COMPLETED
+        car.current_renter_id = None
+        car.status = "FREE"
+
+        # Добавим отзыв
+        review = RentalReview(
+            rental_id=rental.id,
+            rating=getattr(review_input, "rating", None),
+            comment=getattr(review_input, "comment", None)
         )
+        db.add(review)
+
+        try:
+            db.commit()
+            return {
+                "message": "Rental completed successfully",
+                "rental_details": {
+                    "total_duration_minutes": int(actual_minutes),
+                    "planned_price": rental.total_price - additional_charge if rental.rental_type != RentalType.MINUTES else None,
+                    "overtime_charge": additional_charge if rental.rental_type != RentalType.MINUTES else None,
+                    "final_total_price": rental.total_price,
+                    "amount_charged_now": amount_to_charge,
+                    "current_wallet_balance": float(current_user.wallet_balance)
+                },
+                "review": {
+                    "rating": review.rating,
+                    "comment": review.comment
+                }
+            }
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=f"An error occurred while completing the rental: {str(e)}"
+            )

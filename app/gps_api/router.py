@@ -40,7 +40,10 @@ async def start_token_refresh():
 
 
 @Vehicle_Router.get("/get_vehicles")
-def get_vehicle_info(db: Session = Depends(get_db)) -> Dict[str, Any]:
+def get_vehicle_info(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
     try:
         # Выбираем только машины со статусом "FREE"
         cars = db.query(Car).filter(Car.status == "FREE").all()
@@ -63,7 +66,8 @@ def get_vehicle_info(db: Session = Depends(get_db)) -> Dict[str, Any]:
             "owner_id": car.owner_id,
             "current_renter_id": car.current_renter_id,
             "status": car.status,
-            "open_price": get_open_price(car)
+            "open_price": get_open_price(car),
+            "owned_car": True if car.owner_id == current_user.id else False
         } for car in cars]
 
         return {"vehicles": vehicles_data}
@@ -75,7 +79,8 @@ def get_vehicle_info(db: Session = Depends(get_db)) -> Dict[str, Any]:
 @Vehicle_Router.get("/search")
 def search_vehicles(
         query: str = Query(..., description="Поисковый запрос по названию авто или номеру"),
-        db: Session = Depends(get_db)
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
 ) -> Dict[str, Any]:
     try:
         # Ищем по имени или номеру и проверяем, что машина свободна по статусу
@@ -105,7 +110,8 @@ def search_vehicles(
             "owner_id": car.owner_id,
             "current_renter_id": car.current_renter_id,
             "status": car.status,
-            "open_price": get_open_price(car)
+            "open_price": get_open_price(car),
+            "owned_car": True if car.owner_id == current_user.id else False
         } for car in cars]
 
         return {"vehicles": vehicles_data}
@@ -170,7 +176,8 @@ def get_frequently_used_vehicles(
                     "owner_id": car.owner_id,
                     "rental_count": r.rental_count,
                     "status": car.status,
-                    "open_price": get_open_price(car)
+                    "open_price": get_open_price(car),
+                    "owned_car": True if car.owner_id == current_user.id else False
                 })
 
         if not vehicles_data:
