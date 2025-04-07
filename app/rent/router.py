@@ -426,15 +426,13 @@ async def upload_photos_after(
 
 @RentRouter.post("/complete")
 async def complete_rental(
-        end_latitude: float,
-        end_longitude: float,
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user),
 ):
     """
     Завершает аренду, рассчитывая итоговую стоимость на основе фактического времени использования.
-    Также сохраняет конечные координаты (end_latitude и end_longitude).
-    Для разных типов аренды (MINUTES, HOURS, DAYS) рассчитываются перерасходы.
+    При завершении аренды конечные координаты берутся из текущего положения машины (Car.latitude и Car.longitude),
+    как это делается при бронировании (reservation).
     """
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,
@@ -448,10 +446,11 @@ async def complete_rental(
     if not car:
         raise HTTPException(status_code=404, detail="Car not found")
 
+    # Завершаем аренду: фиксируем время окончания
     rental.end_time = datetime.utcnow()
-    # Записываем конечные координаты
-    rental.end_latitude = end_latitude
-    rental.end_longitude = end_longitude
+    # Копируем конечные координаты из машины, как это делается при бронировании
+    rental.end_latitude = car.latitude
+    rental.end_longitude = car.longitude
 
     actual_duration = rental.end_time - rental.start_time
     actual_minutes = actual_duration.total_seconds() / 60
@@ -461,12 +460,11 @@ async def complete_rental(
     if rental.rental_type == RentalType.MINUTES:
         rental.total_price = int(actual_minutes * car.price_per_minute)
     else:
-        planned_duration = 0
         if rental.rental_type == RentalType.HOURS:
-            planned_duration = rental.duration * 60  # часы в минутах
+            planned_duration = rental.duration * 60  # перевод часов в минуты
             overtime_price = car.price_per_minute
         else:  # DAYS
-            planned_duration = rental.duration * 24 * 60  # дни в минутах
+            planned_duration = rental.duration * 24 * 60  # перевод дней в минуты
             overtime_price = car.price_per_minute
 
         overtime_minutes = max(0, actual_minutes - planned_duration)
