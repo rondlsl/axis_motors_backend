@@ -1,14 +1,15 @@
 from math import floor
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, status
+from pydantic import BaseModel, constr, Field, conint
 from sqlalchemy.orm import Session
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from app.auth.dependencies.get_current_user import get_current_user
 from app.auth.dependencies.save_documents import save_file
 from app.dependencies.database.database import get_db
 from app.gps_api.utils.get_active_rental import get_open_price
-from app.models.history_model import RentalType, RentalStatus, RentalHistory
+from app.models.history_model import RentalType, RentalStatus, RentalHistory, RentalReview
 from app.models.user_model import User, UserRole
 from app.models.car_model import Car
 from app.rent.utils.calculate_price import calculate_total_price
@@ -430,16 +431,17 @@ async def upload_photos_after(
         )
 
 
+class RentalReviewInput(BaseModel):
+    rating: conint(ge=1, le=5) = Field(..., description="Оценка от 1 до 5")
+    comment: Optional[constr(max_length=255)] = Field(None, description="Комментарий к аренде (до 255 символов)")
+
+
 @RentRouter.post("/complete")
 async def complete_rental(
+        review_input: RentalReviewInput,
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user),
 ):
-    """
-    Завершает аренду, рассчитывая итоговую стоимость на основе фактического времени использования.
-    При завершении аренды конечные координаты берутся из текущего положения машины (Car.latitude и Car.longitude),
-    как это делается при бронировании (reservation).
-    """
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,
         RentalHistory.rental_status == RentalStatus.IN_USE
@@ -452,25 +454,22 @@ async def complete_rental(
     if not car:
         raise HTTPException(status_code=404, detail="Car not found")
 
-    # Завершаем аренду: фиксируем время окончания
     rental.end_time = datetime.utcnow()
-    # Копируем конечные координаты из машины, как это делается при бронировании
     rental.end_latitude = car.latitude
     rental.end_longitude = car.longitude
 
     actual_duration = rental.end_time - rental.start_time
     actual_minutes = actual_duration.total_seconds() / 60
-
     additional_charge = 0
 
     if rental.rental_type == RentalType.MINUTES:
         rental.total_price = int(actual_minutes * car.price_per_minute)
     else:
         if rental.rental_type == RentalType.HOURS:
-            planned_duration = rental.duration * 60  # перевод часов в минуты
+            planned_duration = rental.duration * 60
             overtime_price = car.price_per_minute
-        else:  # DAYS
-            planned_duration = rental.duration * 24 * 60  # перевод дней в минуты
+        else:
+            planned_duration = rental.duration * 24 * 60
             overtime_price = car.price_per_minute
 
         overtime_minutes = max(0, actual_minutes - planned_duration)
@@ -489,6 +488,14 @@ async def complete_rental(
     car.current_renter_id = None
     car.status = "FREE"
 
+    # Добавим отзыв
+    review = RentalReview(
+        rental_id=rental.id,
+        rating=review_input.rating,
+        comment=review_input.comment
+    )
+    db.add(review)
+
     try:
         db.commit()
         return {
@@ -500,11 +507,15 @@ async def complete_rental(
                 "final_total_price": rental.total_price,
                 "amount_charged_now": amount_to_charge,
                 "current_wallet_balance": float(current_user.wallet_balance)
+            },
+            "review": {
+                "rating": review.rating,
+                "comment": review.comment
             }
         }
     except Exception as e:
         db.rollback()
         raise HTTPException(
             status_code=500,
-            detail="An error occurred while completing the rental"
+            detail=f"An error occurred while completing the rental: {str(e)}"
         )

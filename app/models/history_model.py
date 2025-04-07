@@ -50,3 +50,26 @@ class RentalHistory(Base):
     total_price = Column(Integer, nullable=True)
 
     rental_status = Column(Enum(RentalStatus), nullable=False, default=RentalStatus.RESERVED)
+
+    review = relationship("RentalReview", back_populates="rental", uselist=False)
+
+
+class RentalReview(Base):
+    __tablename__ = "rental_reviews"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    rental_id = Column(Integer, ForeignKey("rental_history.id"), nullable=False, unique=True)
+    rental = relationship("RentalHistory", back_populates="review")
+
+    rating = Column(Integer, nullable=False)  # от 1 до 5
+    comment = Column(String(255), nullable=True)
+
+    # Через rental -> user / car
+    @property
+    def user(self):
+        return self.rental.user if self.rental else None
+
+    @property
+    def car(self):
+        return self.rental.car if self.rental else None
