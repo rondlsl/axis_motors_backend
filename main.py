@@ -18,6 +18,7 @@ from app.gps_api.router import Vehicle_Router
 from app.models.car_model import Car
 from app.models.user_model import User, UserRole
 from app.rent.router import RentRouter
+from mechanic.router import MechanicRouter
 
 # === APP ===
 app = FastAPI()
@@ -228,7 +229,7 @@ init_app(app)
 app.include_router(Auth_router)
 app.include_router(Vehicle_Router)
 app.include_router(RentRouter)
-
+app.include_router(MechanicRouter)
 
 @app.get("/")
 def root():
