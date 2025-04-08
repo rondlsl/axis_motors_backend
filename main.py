@@ -177,30 +177,19 @@ def init_app(app: FastAPI):
                 db.refresh(owner)
                 print("Владелец HAVAL F7x создан")
 
-            if not db.query(Car).filter(Car.id == 1).first():
-                car = Car(
-                    id=1,
-                    name="HAVAL F7x",
-                    gps_id="800153076",
-                    gps_imei="866011056063951",
-                    engine_volume=2.0,
-                    year=2021,
-                    drive_type=3,
-                    price_per_minute=70,
-                    price_per_hour=3125,
-                    price_per_day=50000,
-                    plate_number="422ABK02",
-                    latitude=43.238949,
-                    longitude=76.889709,
-                    fuel_level=80,
-                    owner_id=owner.id,
-                    course=90
+            # Добавляем механика, если его нет в базе
+            mechanic_phone = "77007007070"
+            mechanic = db.query(User).filter(User.phone_number == mechanic_phone).first()
+            if not mechanic:
+                mechanic = User(
+                    phone_number=mechanic_phone,
+                    role=UserRole.PENDING,  # используем PENDING для механика, можно изменить на нужное значение
+                    wallet_balance=0
                 )
-                db.add(car)
+                db.add(mechanic)
                 db.commit()
-                print("HAVAL F7x добавлена")
-            else:
-                print("HAVAL F7x уже существует")
+                db.refresh(mechanic)
+                print("Механик успешно добавлен")
 
             # Премиум авто
             create_premium_cars(db)
@@ -230,6 +219,7 @@ app.include_router(Auth_router)
 app.include_router(Vehicle_Router)
 app.include_router(RentRouter)
 app.include_router(MechanicRouter)
+
 
 @app.get("/")
 def root():
