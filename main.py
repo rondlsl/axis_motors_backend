@@ -15,10 +15,10 @@ from sqlalchemy.orm import Session
 from app.auth.router import Auth_router
 from app.dependencies.database.database import get_db, Base
 from app.gps_api.router import Vehicle_Router
+from app.mechanic.router import MechanicRouter
 from app.models.car_model import Car
 from app.models.user_model import User, UserRole
 from app.rent.router import RentRouter
-from mechanic.router import MechanicRouter
 
 # === APP ===
 app = FastAPI()
@@ -76,8 +76,10 @@ def create_premium_cars(db: Session):
          "engine": 3.0, "drive": 3},
     ]
 
-    for car_data in cars:
+    # Перебираем автомобили с индексом, чтобы назначить нужный статус:
+    for idx, car_data in enumerate(cars):
         if not db.query(Car).filter(Car.id == car_data["id"]).first():
+            status = "PENDING" if idx < 2 else "FREE"
             car = Car(
                 id=car_data["id"],
                 name=car_data["name"],
@@ -94,12 +96,13 @@ def create_premium_cars(db: Session):
                 longitude=car_data["lon"],
                 fuel_level=100,
                 course=random.randint(0, 359),
-                owner_id=None
+                owner_id=None,
+                status=status
             )
             db.add(car)
 
     db.commit()
-    print("20 премиум-авто без владельцев добавлены")
+    print("20 премиум-авто добавлены: 18 со статусом FREE, 2 со статусом PENDING")
 
 
 async def get_last_vehicles_data():
