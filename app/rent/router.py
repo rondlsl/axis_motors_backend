@@ -261,7 +261,7 @@ async def cancel_reservation(
         rental.total_price = 0
         rental.already_payed = 0
         car.current_renter_id = None
-        car.status = "OWNER"
+        car.status = "FREE"
         db.commit()
         return {
             "message": "Аренда отменена (owner rental)",
