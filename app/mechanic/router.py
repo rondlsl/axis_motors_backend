@@ -111,7 +111,7 @@ def get_in_use_vehicles(
     Возвращает список машин со статусом IN USE
     """
     try:
-        cars = db.query(Car).filter(Car.status == "IN USE").all()
+        cars = db.query(Car).filter(Car.status == "IN_USE").all()
         vehicles_data = [{
             "id": car.id,
             "name": car.name,
@@ -257,7 +257,7 @@ async def start_rental(
     rental.start_time = datetime.utcnow()
     rental.rental_status = RentalStatus.IN_USE
     # Для механика переводим автомобиль в состояние IN USE (или оставляем SERVICE, если требуется)
-    car.status = "IN USE"
+    car.status = "IN_USE"
     db.commit()
     return {"message": "Проверка автомобиля запущена", "rental_id": rental.id}
 
