@@ -1,6 +1,7 @@
 from math import floor
-from fastapi import APIRouter, HTTPException, Depends, File, UploadFile
+from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, Query
 from pydantic import BaseModel, constr, Field, conint
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List, Dict, Any, Optional
@@ -135,6 +136,51 @@ def get_in_use_vehicles(
         return {"vehicles": vehicles_data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка при получении данных об автомобилях: {str(e)}")
+
+
+@MechanicRouter.get("/search")
+def search_vehicles(
+        query: str = Query(..., description="Поисковый запрос по названию авто или номеру"),
+        db: Session = Depends(get_db),
+        current_mechanic: Any = Depends(get_current_mechanic)
+) -> Dict[str, Any]:
+    """
+    Ищет автомобили по имени или номеру, но возвращает только машины со статусом IN USE или PENDING.
+    """
+    try:
+        cars = db.query(Car).filter(
+            or_(
+                Car.name.ilike(f"%{query}%"),
+                Car.plate_number.ilike(f"%{query}%")
+            ),
+            Car.status.in_(["IN USE", "PENDING"])
+        ).all()
+
+        vehicles_data = [{
+            "id": car.id,
+            "name": car.name,
+            "plate_number": car.plate_number,
+            "latitude": car.latitude,
+            "longitude": car.longitude,
+            "course": car.course,
+            "fuel_level": car.fuel_level,
+            "price_per_minute": car.price_per_minute,
+            "price_per_hour": car.price_per_hour,
+            "price_per_day": car.price_per_day,
+            "engine_volume": car.engine_volume,
+            "year": car.year,
+            "drive_type": car.drive_type,
+            "photos": car.photos,
+            "owner_id": car.owner_id,
+            "current_renter_id": car.current_renter_id,
+            "status": car.status,
+            "open_price": get_open_price(car),
+            "owned_car": False  # Для механика информация о владении не имеет значения
+        } for car in cars]
+
+        return {"vehicles": vehicles_data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка поиска авто: {str(e)}")
 
 
 # ----------------------- ENDPOINTS для аренды (проверки автомобиля механиком) -----------------------
