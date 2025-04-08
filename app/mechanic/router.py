@@ -153,7 +153,7 @@ def search_vehicles(
                 Car.name.ilike(f"%{query}%"),
                 Car.plate_number.ilike(f"%{query}%")
             ),
-            Car.status.in_(["IN USE", "PENDING"])
+            Car.status.in_(["IN_USE", "PENDING"])
         ).all()
 
         vehicles_data = [{
