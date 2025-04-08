@@ -10,6 +10,7 @@ class UserRole(enum.Enum):
     REJECTED = "rejected"
     FIRST = "first"
     PENDING = "pending"
+    MECHANIC = "mechanic"
 
 
 class User(Base):

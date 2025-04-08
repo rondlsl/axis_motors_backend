@@ -183,7 +183,7 @@ def init_app(app: FastAPI):
             if not mechanic:
                 mechanic = User(
                     phone_number=mechanic_phone,
-                    role=UserRole.PENDING,  # используем PENDING для механика, можно изменить на нужное значение
+                    role=UserRole.MECHANIC,  # используем PENDING для механика, можно изменить на нужное значение
                     wallet_balance=0
                 )
                 db.add(mechanic)
