@@ -6,7 +6,7 @@ import httpx
 from pydantic import BaseModel
 from typing import Optional
 
-from app.auth.dependencies.get_current_user import get_current_user
+from app.auth.dependencies.get_current_user import get_current_user  # обновлённая версия — см. ниже
 from app.auth.dependencies.save_documents import save_file
 from app.auth.schemas import SendSmsRequest, VerifySmsRequest
 from app.auth.security.auth_bearer import JWTBearer
@@ -19,7 +19,6 @@ from app.models.history_model import RentalHistory, RentalStatus
 from app.models.user_model import UserRole, User
 
 Auth_router = APIRouter(prefix="/auth", tags=["Auth"])
-
 
 async def send_sms_mobizon(recipient: str, sms_text: str, api_key: str):
     url = "https://api.mobizon.kz/service/message/sendsmsmessage"
@@ -35,12 +34,10 @@ async def send_sms_mobizon(recipient: str, sms_text: str, api_key: str):
 
 @Auth_router.post("/send_sms/")
 async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
-    """Отправка смс по номеру телефона. Создает в базе данных юзера с указанным номером, и отправляет ему смс код.
-    В случае если пользователь уже зарегистрирован - можно использовать код 6666.
-
-    Номер отправлять без "+", только 11 символов.
-    Например для номера +7 (747) 205-15-07 отправляйте 77472051507
-    ВАЖНО!! ЭНДПОИНТ ПРИНИМАЕТ ОДИН ЗАПРОС С ОДНОГО АЙПИ РАЗ В 1 МИНУТУ.
+    """
+    Отправка смс по номеру телефона:
+    - Если активного аккаунта по номеру не существует, создаётся новый.
+    - Если имеется активный аккаунт, для него обновляется sms-код.
     """
     totp = pyotp.TOTP(
         pyotp.random_base32(),
@@ -55,43 +52,53 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Phone number must contain only digits.")
 
     sms_code = totp.now()
-    user = db.query(User).filter(User.phone_number == phone_number).first()
+    # Ищем только активного пользователя с заданным номером
+    user = db.query(User).filter(User.phone_number == phone_number, User.is_active == True).first()
 
     if not user:
+        # Нет активного — создаём новый аккаунт
         user = User(
             phone_number=phone_number,
-            role=UserRole.FIRST,  # Новым пользователям даем роль FIRST
+            role=UserRole.FIRST,  # Новым пользователям даём роль FIRST
             last_sms_code=sms_code,
-            sms_code_valid_until=current_time + timedelta(hours=1)
+            sms_code_valid_until=current_time + timedelta(hours=1),
+            is_active=True  # Новый аккаунт активен
         )
         db.add(user)
     else:
+        # Обновляем смс-код активного аккаунта
         user.last_sms_code = sms_code
         user.sms_code_valid_until = current_time + timedelta(hours=1)
 
     db.commit()
     print(sms_code)
     sms_text = f"{sms_code} - Ваш код подтверждения AZV Motors"
-    # response = await send_sms_mobizon(phone_number, sms_text, f"{SMS_TOKEN}")
+    # можно раскомментировать, когда подключите SMS
+    # await send_sms_mobizon(phone_number, sms_text, f"{SMS_TOKEN}")
     return {"message": "SMS code sent successfully"}
 
 
 @Auth_router.post("/verify_sms/")
 async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
+    """
+    Верификация смс-кода. Учтите, что ищем активного пользователя.
+    Если sms_code == "6666", то тестовая проверка, иначе проверяем по коду и времени.
+    """
     phone_number = request.phone_number
     sms_code = request.sms_code
 
     if not phone_number.isdigit():
         raise HTTPException(status_code=400, detail="Phone number must contain only digits.")
 
-    # Проверка тестового кода
+    # При проверке пользуемся активными пользователями
     if sms_code == "6666":
-        user = db.query(User).filter(User.phone_number == phone_number).first()
+        user = db.query(User).filter(User.phone_number == phone_number, User.is_active == True).first()
     else:
         user = db.query(User).filter(
             User.phone_number == phone_number,
             User.last_sms_code == sms_code,
-            User.sms_code_valid_until > datetime.utcnow()
+            User.sms_code_valid_until > datetime.utcnow(),
+            User.is_active == True
         ).first()
 
     if not user:
@@ -110,9 +117,9 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
 @Auth_router.get("/user/me")
 async def read_users_me(
         db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user)
+        current_user: User = Depends(get_current_user)  # current_user гарантированно активен
 ):
-    # Получаем активную аренду и машину одним запросом
+    # Получаем активную аренду и автомобиль, если таковые имеются
     rental_with_car = (
         db.query(RentalHistory, Car)
         .join(Car, Car.id == RentalHistory.car_id)
@@ -155,7 +162,6 @@ async def read_users_me(
             }
         }
 
-    # Получаем машины пользователя, включая статус из БД
     owned_cars_raw = db.query(Car).filter(Car.owner_id == current_user.id).all()
     owned_cars = [{
         "id": car.id,
@@ -193,9 +199,10 @@ async def refresh_token(db: Session = Depends(get_db), token: str = Depends(JWTB
     phone_number: str = token.get("sub")
     if phone_number is None:
         raise credentials_exception
-    user = db.query(User).filter(User.phone_number == phone_number).first()
+    # Снова ищем только активного пользователя
+    user = db.query(User).filter(User.phone_number == phone_number, User.is_active == True).first()
     if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="User not found or inactive")
 
     new_access_token = create_access_token(data={"sub": user.phone_number})
     new_refresh_token = create_refresh_token(data={"sub": user.phone_number})
@@ -213,18 +220,10 @@ async def upload_documents(
         id_back: UploadFile = File(...),
         drivers_license: UploadFile = File(...),
         selfie: UploadFile = File(...),
-        current_user: User = Depends(get_current_user),
+        current_user: User = Depends(get_current_user),  # Гарантированно активный
         db: Session = Depends(get_db)
 ):
-    """
-    Загрузка документов пользователя.
-    Принимает 4 фото:
-    - Фото лицевой стороны удостоверения
-    - Фото обратной стороны удостоверения
-    - Фото водительских прав
-    - Селфи с водительскими правами
-    """
-    # Проверяем MIME-type файлов
+    # Проверка MIME-type файлов
     allowed_types = ["image/jpeg", "image/png"]
     for doc in [id_front, id_back, drivers_license, selfie]:
         if doc.content_type not in allowed_types:
@@ -234,13 +233,13 @@ async def upload_documents(
             )
 
     try:
-        # Сохраняем все файлы
+        # Сохраняем файлы
         id_front_path = await save_file(id_front, current_user.id, "uploads/documents")
         id_back_path = await save_file(id_back, current_user.id, "uploads/documents")
         license_path = await save_file(drivers_license, current_user.id, "uploads/documents")
         selfie_path = await save_file(selfie, current_user.id, "uploads/documents")
 
-        # Обновляем пользователя
+        # Обновляем данные пользователя
         current_user.id_card_front_url = id_front_path
         current_user.id_card_back_url = id_back_path
         current_user.drivers_license_url = license_path
@@ -260,3 +259,19 @@ async def upload_documents(
             status_code=500,
             detail="An error occurred while uploading documents"
         )
+
+
+@Auth_router.delete("/delete_account/")
+async def delete_account(
+        current_user: User = Depends(get_current_user),  # Гарантированно активный до удаления
+        db: Session = Depends(get_db)
+):
+    """
+    Мягкое удаление аккаунта:
+      - Устанавливаем current_user.is_active = False.
+      - Все связи сохраняются, история не удаляется.
+      - После этого все эндпоинты, зависящие от get_current_user, будут недоступны для данного аккаунта.
+    """
+    current_user.is_active = False
+    db.commit()
+    return {"message": "Аккаунт помечен как неактивный."}

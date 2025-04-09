@@ -4,6 +4,12 @@ from sqlalchemy.orm import Session
 from app.auth.security.auth_bearer import JWTBearer
 from app.models.user_model import User, UserRole  # обязательно импортируем UserRole
 from app.dependencies.database.database import get_db
+from fastapi import Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
+from app.auth.security.auth_bearer import JWTBearer
+from app.models.user_model import User, UserRole
+from app.dependencies.database.database import get_db
 
 
 async def get_current_user(
@@ -16,9 +22,10 @@ async def get_current_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Could not validate credentials"
         )
-    user = db.query(User).filter(User.phone_number == phone_number).first()
+    # Ищем только активного пользователя
+    user = db.query(User).filter(User.phone_number == phone_number, User.is_active == True).first()
     if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="User not found or inactive")
     return user
 
 
@@ -32,9 +39,10 @@ async def get_current_mechanic(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Could not validate credentials"
         )
-    user = db.query(User).filter(User.phone_number == phone_number).first()
+    # Ищем активного пользователя с заданным номером
+    user = db.query(User).filter(User.phone_number == phone_number, User.is_active == True).first()
     if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="User not found or inactive")
 
     if user.role != UserRole.MECHANIC:
         raise HTTPException(status_code=403, detail="Not enough permissions")
