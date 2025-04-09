@@ -272,31 +272,40 @@ async def cancel_reservation(
     Для механика всё бесплатно, и при отмене статус автомобиля сбрасывается в PENDING.
     Работает только для аренды в статусе RESERVED.
     """
-    rental = db.query(RentalHistory).filter(
-        RentalHistory.user_id == current_mechanic.id,
-        RentalHistory.rental_status == RentalStatus.RESERVED
-    ).first()
-    if not rental:
-        raise HTTPException(status_code=400, detail="Нет активной брони для отмены")
-    car = db.query(Car).filter(Car.id == rental.car_id).first()
-    if not car:
-        raise HTTPException(status_code=404, detail="Автомобиль не найден")
-    now = datetime.utcnow()
-    if not rental.start_time:
-        rental.start_time = rental.reservation_time or now
-        db.commit()
-    rental.rental_status = RentalStatus.COMPLETED
-    rental.end_time = now
-    rental.total_price = 0
-    rental.already_payed = 0
-    car.current_renter_id = None
-    # При отмене статус автомобиля возвращается в PENDING
-    car.status = "PENDING"
     try:
+        # Блокируем запись аренды для обновления, чтобы избежать гонок при конкурентных запросах.
+        rental = db.query(RentalHistory).filter(
+            RentalHistory.user_id == current_mechanic.id,
+            RentalHistory.rental_status == RentalStatus.RESERVED
+        ).with_for_update().first()
+        if not rental:
+            raise HTTPException(status_code=400, detail="Нет активной брони для отмены")
+
+        # Получаем автомобиль и блокируем его запись
+        car = db.query(Car).filter(Car.id == rental.car_id).with_for_update().first()
+        if not car:
+            raise HTTPException(status_code=404, detail="Автомобиль не найден")
+
+        now = datetime.utcnow()
+        # Если время старта ещё не установлено, устанавливаем его, но не коммитим отдельно
+        if not rental.start_time:
+            rental.start_time = rental.reservation_time or now
+
+        # Обновляем статус аренды и автомобиля, а также вычисляем итоговую стоимость
+        rental.rental_status = RentalStatus.COMPLETED
+        rental.end_time = now
+        rental.total_price = 0
+        rental.already_payed = 0
+        car.current_renter_id = None
+        car.status = "PENDING"  # Возвращаем статус автомобиля в PENDING
+
+        # Пытаемся зафиксировать все изменения одним commit
         db.commit()
+
+        minutes_used = int((now - rental.start_time).total_seconds() / 60)
         return {
             "message": "Проверка автомобиля отменена",
-            "minutes_used": int((now - rental.start_time).total_seconds() / 60)
+            "minutes_used": minutes_used
         }
     except Exception as e:
         db.rollback()
