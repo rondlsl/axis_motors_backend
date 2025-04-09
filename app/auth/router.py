@@ -22,6 +22,9 @@ Auth_router = APIRouter(prefix="/auth", tags=["Auth"])
 
 ALLOWED_TYPES = ["image/jpeg", "image/png"]
 
+# Определяем константу срока действия документов по умолчанию: 15 июля 2025
+DEFAULT_DOC_EXPIRY = datetime(2025, 7, 15)
+
 
 async def send_sms_mobizon(recipient: str, sms_text: str, api_key: str):
     url = "https://api.mobizon.kz/service/message/sendsmsmessage"
@@ -238,7 +241,6 @@ async def upload_documents(
         current_user: User = Depends(get_current_user),  # Гарантированно активный
         db: Session = Depends(get_db)
 ):
-    # Проверка MIME-type файлов
     for doc in [id_front, id_back, drivers_license, selfie]:
         if doc.content_type not in ALLOWED_TYPES:
             raise HTTPException(
@@ -247,16 +249,20 @@ async def upload_documents(
             )
 
     try:
-        # Сохраняем файлы
         id_front_path = await save_file(id_front, current_user.id, "uploads/documents")
         id_back_path = await save_file(id_back, current_user.id, "uploads/documents")
         license_path = await save_file(drivers_license, current_user.id, "uploads/documents")
         selfie_path = await save_file(selfie, current_user.id, "uploads/documents")
 
-        # Обновляем данные пользователя
         current_user.id_card_front_url = id_front_path
         current_user.id_card_back_url = id_back_path
+        # Устанавливаем срок действия ID-карты по умолчанию
+        current_user.id_card_expiry = DEFAULT_DOC_EXPIRY
+
         current_user.drivers_license_url = license_path
+        # Устанавливаем срок действия водительского удостоверения по умолчанию
+        current_user.drivers_license_expiry = DEFAULT_DOC_EXPIRY
+
         current_user.selfie_with_license_url = selfie_path
         current_user.role = UserRole.PENDING
 
@@ -282,7 +288,6 @@ async def upload_id_card(
         current_user: User = Depends(get_current_user),  # Гарантированно активный пользователь
         db: Session = Depends(get_db)
 ):
-    # Проверка MIME-типа для обоих файлов
     for file in [id_front, id_back]:
         if file.content_type not in ALLOWED_TYPES:
             raise HTTPException(
@@ -290,13 +295,13 @@ async def upload_id_card(
                 detail=f"File {file.filename} is not an image. Only JPEG and PNG are allowed."
             )
     try:
-        # Сохраняем оба файла
         id_front_path = await save_file(id_front, current_user.id, "uploads/documents")
         id_back_path = await save_file(id_back, current_user.id, "uploads/documents")
 
-        # Обновляем данные пользователя
         current_user.id_card_front_url = id_front_path
         current_user.id_card_back_url = id_back_path
+        # Устанавливаем срок действия ID-карты по умолчанию
+        current_user.id_card_expiry = DEFAULT_DOC_EXPIRY
         current_user.role = UserRole.PENDING
 
         db.commit()
@@ -325,11 +330,11 @@ async def upload_drivers_license(
             detail=f"File {drivers_license.filename} is not an image. Only JPEG and PNG are allowed."
         )
     try:
-        # Сохраняем файл водительского удостоверения
         license_path = await save_file(drivers_license, current_user.id, "uploads/documents")
 
-        # Обновляем данные пользователя
         current_user.drivers_license_url = license_path
+        # Устанавливаем срок действия водительского удостоверения по умолчанию
+        current_user.drivers_license_expiry = DEFAULT_DOC_EXPIRY
         current_user.role = UserRole.PENDING
 
         db.commit()
@@ -358,10 +363,8 @@ async def upload_selfie(
             detail=f"File {selfie.filename} is not an image. Only JPEG and PNG are allowed."
         )
     try:
-        # Сохраняем файл селфи
         selfie_path = await save_file(selfie, current_user.id, "uploads/documents")
 
-        # Обновляем данные пользователя
         current_user.selfie_with_license_url = selfie_path
         current_user.role = UserRole.PENDING
 
