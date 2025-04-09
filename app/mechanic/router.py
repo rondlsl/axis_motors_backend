@@ -11,6 +11,7 @@ from app.dependencies.database.database import get_db
 from app.gps_api.utils.get_active_rental import get_open_price
 from app.models.history_model import RentalType, RentalStatus, RentalHistory, RentalReview
 from app.models.car_model import Car
+from app.models.user_model import User
 
 MechanicRouter = APIRouter(tags=["Mechanic"], prefix="/mechanic")
 
@@ -72,7 +73,7 @@ def get_pending_vehicles(
         current_mechanic: Any = Depends(get_current_mechanic)
 ) -> Dict[str, Any]:
     """
-    Возвращает список машин, у которых статус PENDING
+    Возвращает список машин со статусом PENDING.
     """
     try:
         cars = db.query(Car).filter(Car.status == "PENDING").all()
@@ -108,31 +109,52 @@ def get_in_use_vehicles(
         current_mechanic: Any = Depends(get_current_mechanic)
 ) -> Dict[str, Any]:
     """
-    Возвращает список машин со статусом IN USE
+    Возвращает список машин со статусом IN_USE.
+    Если автомобиль в использовании, дополнительно возвращаются данные текущего арендатора:
+      - full_name
+      - phone_number
+      - URL селфи
     """
     try:
         cars = db.query(Car).filter(Car.status == "IN_USE").all()
-        vehicles_data = [{
-            "id": car.id,
-            "name": car.name,
-            "plate_number": car.plate_number,
-            "latitude": car.latitude,
-            "longitude": car.longitude,
-            "course": car.course,
-            "fuel_level": car.fuel_level,
-            "price_per_minute": car.price_per_minute,
-            "price_per_hour": car.price_per_hour,
-            "price_per_day": car.price_per_day,
-            "engine_volume": car.engine_volume,
-            "year": car.year,
-            "drive_type": car.drive_type,
-            "photos": car.photos,
-            "owner_id": car.owner_id,
-            "current_renter_id": car.current_renter_id,
-            "status": car.status,
-            "open_price": get_open_price(car),
-            "owned_car": False
-        } for car in cars]
+        vehicles_data = []
+        for car in cars:
+            car_data = {
+                "id": car.id,
+                "name": car.name,
+                "plate_number": car.plate_number,
+                "latitude": car.latitude,
+                "longitude": car.longitude,
+                "course": car.course,
+                "fuel_level": car.fuel_level,
+                "price_per_minute": car.price_per_minute,
+                "price_per_hour": car.price_per_hour,
+                "price_per_day": car.price_per_day,
+                "engine_volume": car.engine_volume,
+                "year": car.year,
+                "drive_type": car.drive_type,
+                "photos": car.photos,
+                "owner_id": car.owner_id,
+                "current_renter_id": car.current_renter_id,
+                "status": car.status,
+                "open_price": get_open_price(car),
+                "owned_car": False
+            }
+            # Добавляем данные текущего арендатора, если car.current_renter_id указан
+            if car.current_renter_id:
+                current_renter = db.query(User).filter(User.id == car.current_renter_id).first()
+                if current_renter:
+                    car_data["current_renter_details"] = {
+                        "full_name": current_renter.full_name,
+                        "phone_number": current_renter.phone_number,
+                        "selfie_url": current_renter.selfie_with_license_url
+                    }
+                else:
+                    car_data["current_renter_details"] = None
+            else:
+                car_data["current_renter_details"] = None
+
+            vehicles_data.append(car_data)
         return {"vehicles": vehicles_data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка при получении данных об автомобилях: {str(e)}")
@@ -145,7 +167,8 @@ def search_vehicles(
         current_mechanic: Any = Depends(get_current_mechanic)
 ) -> Dict[str, Any]:
     """
-    Ищет автомобили по имени или номеру, но возвращает только машины со статусом IN USE или PENDING.
+    Ищет автомобили по имени или номеру, но возвращает только машины со статусом IN_USE или PENDING.
+    Для автомобилей со статусом IN_USE дополнительно возвращаются данные текущего арендатора (full_name, phone_number, URL селфи).
     """
     try:
         cars = db.query(Car).filter(
@@ -156,27 +179,43 @@ def search_vehicles(
             Car.status.in_(["IN_USE", "PENDING"])
         ).all()
 
-        vehicles_data = [{
-            "id": car.id,
-            "name": car.name,
-            "plate_number": car.plate_number,
-            "latitude": car.latitude,
-            "longitude": car.longitude,
-            "course": car.course,
-            "fuel_level": car.fuel_level,
-            "price_per_minute": car.price_per_minute,
-            "price_per_hour": car.price_per_hour,
-            "price_per_day": car.price_per_day,
-            "engine_volume": car.engine_volume,
-            "year": car.year,
-            "drive_type": car.drive_type,
-            "photos": car.photos,
-            "owner_id": car.owner_id,
-            "current_renter_id": car.current_renter_id,
-            "status": car.status,
-            "open_price": get_open_price(car),
-            "owned_car": False  # Для механика информация о владении не имеет значения
-        } for car in cars]
+        vehicles_data = []
+        for car in cars:
+            car_data = {
+                "id": car.id,
+                "name": car.name,
+                "plate_number": car.plate_number,
+                "latitude": car.latitude,
+                "longitude": car.longitude,
+                "course": car.course,
+                "fuel_level": car.fuel_level,
+                "price_per_minute": car.price_per_minute,
+                "price_per_hour": car.price_per_hour,
+                "price_per_day": car.price_per_day,
+                "engine_volume": car.engine_volume,
+                "year": car.year,
+                "drive_type": car.drive_type,
+                "photos": car.photos,
+                "owner_id": car.owner_id,
+                "current_renter_id": car.current_renter_id,
+                "status": car.status,
+                "open_price": get_open_price(car),
+                "owned_car": False
+            }
+            if car.status == "IN_USE" and car.current_renter_id:
+                current_renter = db.query(User).filter(User.id == car.current_renter_id).first()
+                if current_renter:
+                    car_data["current_renter_details"] = {
+                        "full_name": current_renter.full_name,
+                        "phone_number": current_renter.phone_number,
+                        "selfie_url": current_renter.selfie_with_license_url
+                    }
+                else:
+                    car_data["current_renter_details"] = None
+            else:
+                car_data["current_renter_details"] = None
+
+            vehicles_data.append(car_data)
 
         return {"vehicles": vehicles_data}
     except Exception as e:

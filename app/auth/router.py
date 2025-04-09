@@ -20,6 +20,9 @@ from app.models.user_model import UserRole, User
 
 Auth_router = APIRouter(prefix="/auth", tags=["Auth"])
 
+ALLOWED_TYPES = ["image/jpeg", "image/png"]
+
+
 async def send_sms_mobizon(recipient: str, sms_text: str, api_key: str):
     url = "https://api.mobizon.kz/service/message/sendsmsmessage"
     params = {
@@ -189,7 +192,19 @@ async def read_users_me(
         "role": current_user.role.value,
         "wallet_balance": float(current_user.wallet_balance or 0.0),
         "current_rental": current_rental,
-        "owned_cars": owned_cars
+        "owned_cars": owned_cars,
+        "documents": {
+            "selfie_with_license_url": current_user.selfie_with_license_url,
+            "drivers_license": {
+                "url": current_user.drivers_license_url,
+                "expiry": current_user.drivers_license_expiry.isoformat() if current_user.drivers_license_expiry else None,
+            },
+            "id_card": {
+                "front_url": current_user.id_card_front_url,
+                "back_url": current_user.id_card_back_url,
+                "expiry": current_user.id_card_expiry.isoformat() if current_user.id_card_expiry else None,
+            }
+        }
     }
 
 
@@ -224,9 +239,8 @@ async def upload_documents(
         db: Session = Depends(get_db)
 ):
     # Проверка MIME-type файлов
-    allowed_types = ["image/jpeg", "image/png"]
     for doc in [id_front, id_back, drivers_license, selfie]:
-        if doc.content_type not in allowed_types:
+        if doc.content_type not in ALLOWED_TYPES:
             raise HTTPException(
                 status_code=400,
                 detail=f"File {doc.filename} is not an image. Only JPEG and PNG are allowed."
@@ -258,6 +272,110 @@ async def upload_documents(
         raise HTTPException(
             status_code=500,
             detail="An error occurred while uploading documents"
+        )
+
+
+@Auth_router.post("/upload-id-card/")
+async def upload_id_card(
+        id_front: UploadFile = File(...),
+        id_back: UploadFile = File(...),
+        current_user: User = Depends(get_current_user),  # Гарантированно активный пользователь
+        db: Session = Depends(get_db)
+):
+    # Проверка MIME-типа для обоих файлов
+    for file in [id_front, id_back]:
+        if file.content_type not in ALLOWED_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File {file.filename} is not an image. Only JPEG and PNG are allowed."
+            )
+    try:
+        # Сохраняем оба файла
+        id_front_path = await save_file(id_front, current_user.id, "uploads/documents")
+        id_back_path = await save_file(id_back, current_user.id, "uploads/documents")
+
+        # Обновляем данные пользователя
+        current_user.id_card_front_url = id_front_path
+        current_user.id_card_back_url = id_back_path
+        current_user.role = UserRole.PENDING
+
+        db.commit()
+
+        return {
+            "message": "ID card (front and back) uploaded successfully",
+            "status": "pending review"
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="An error occurred while uploading the ID card documents"
+        )
+
+
+@Auth_router.post("/upload-drivers-license/")
+async def upload_drivers_license(
+        drivers_license: UploadFile = File(...),
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    if drivers_license.content_type not in ALLOWED_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File {drivers_license.filename} is not an image. Only JPEG and PNG are allowed."
+        )
+    try:
+        # Сохраняем файл водительского удостоверения
+        license_path = await save_file(drivers_license, current_user.id, "uploads/documents")
+
+        # Обновляем данные пользователя
+        current_user.drivers_license_url = license_path
+        current_user.role = UserRole.PENDING
+
+        db.commit()
+
+        return {
+            "message": "Driver's license uploaded successfully",
+            "status": "pending review"
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="An error occurred while uploading the driver's license document"
+        )
+
+
+@Auth_router.post("/upload-selfie/")
+async def upload_selfie(
+        selfie: UploadFile = File(...),
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    if selfie.content_type not in ALLOWED_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File {selfie.filename} is not an image. Only JPEG and PNG are allowed."
+        )
+    try:
+        # Сохраняем файл селфи
+        selfie_path = await save_file(selfie, current_user.id, "uploads/documents")
+
+        # Обновляем данные пользователя
+        current_user.selfie_with_license_url = selfie_path
+        current_user.role = UserRole.PENDING
+
+        db.commit()
+
+        return {
+            "message": "Selfie uploaded successfully",
+            "status": "pending review"
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="An error occurred while uploading the selfie"
         )
 
 

@@ -12,7 +12,6 @@ class UserRole(enum.Enum):
     FIRST = "first"
     PENDING = "pending"
     MECHANIC = "mechanic"
-    # Можно даже добавить, например, INACTIVE = "inactive", если захотите использовать роль для soft delete
 
 
 class User(Base):
@@ -23,12 +22,13 @@ class User(Base):
     phone_number = Column(String, nullable=False, unique=False)
     birth_date = Column(DateTime, nullable=True)
     iin = Column(String(12), nullable=True, unique=False)
-    drivers_license_expiry = Column(DateTime, nullable=True)
+    drivers_license_expiry = Column(DateTime, nullable=True)  # Срок действия водительского удостоверения
     wallet_balance = Column(Numeric(10, 2), nullable=False, default=0)
     selfie_with_license_url = Column(String, nullable=True)
     drivers_license_url = Column(String, nullable=True)
     id_card_front_url = Column(String, nullable=True)
     id_card_back_url = Column(String, nullable=True)
+    id_card_expiry = Column(DateTime, nullable=True)  # Новый: срок действия ID-карты
     role = Column(Enum(UserRole), default=UserRole.FIRST)
     last_sms_code = Column(String)
     sms_code_valid_until = Column(DateTime)
