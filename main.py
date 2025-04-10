@@ -166,33 +166,61 @@ def init_app(app: FastAPI):
         db_gen = get_db()
         db = next(db_gen)
         try:
-            # HAVAL F7x и владелец
-            phone_number = "77000250400"
-            owner = db.query(User).filter(User.phone_number == phone_number).first()
+            # Создание владельца HAVAL F7x
+            owner_phone = "77000250400"
+            owner = db.query(User).filter(User.phone_number == owner_phone).first()
             if not owner:
                 owner = User(
-                    phone_number=phone_number,
+                    phone_number=owner_phone,
                     role=UserRole.FIRST,
                     wallet_balance=0
                 )
                 db.add(owner)
                 db.commit()
                 db.refresh(owner)
-                print("Владелец HAVAL F7x создан")
+                print("✅ Владелец HAVAL F7x создан")
 
-            # Добавляем механика, если его нет в базе
+            # Создание HAVAL F7x
+            if not db.query(Car).filter(Car.id == 1).first():
+                car = Car(
+                    id=1,
+                    name="HAVAL F7x",
+                    gps_id="800153076",
+                    gps_imei="866011056063951",
+                    engine_volume=2.0,
+                    year=2021,
+                    drive_type=3,
+                    price_per_minute=70,
+                    price_per_hour=3125,
+                    price_per_day=50000,
+                    plate_number="422ABK02",
+                    latitude=43.238949,
+                    longitude=76.889709,
+                    fuel_level=80,
+                    owner_id=owner.id,
+                    course=90
+                )
+                db.add(car)
+                db.commit()
+                print("✅ HAVAL F7x добавлена")
+            else:
+                print("ℹ️ HAVAL F7x уже существует")
+
+            # Создание механика
             mechanic_phone = "77007007070"
             mechanic = db.query(User).filter(User.phone_number == mechanic_phone).first()
             if not mechanic:
                 mechanic = User(
                     phone_number=mechanic_phone,
-                    role=UserRole.MECHANIC,  # используем PENDING для механика, можно изменить на нужное значение
+                    role=UserRole.MECHANIC,
                     wallet_balance=0
                 )
                 db.add(mechanic)
                 db.commit()
                 db.refresh(mechanic)
-                print("Механик успешно добавлен")
+                print("✅ Механик успешно добавлен")
+            else:
+                print("ℹ️ Механик уже существует")
 
             # Премиум авто
             create_premium_cars(db)
