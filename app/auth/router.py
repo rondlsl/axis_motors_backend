@@ -155,9 +155,15 @@ async def read_users_me(
         }
         # Если это заказ с доставкой, включаем дополнительные поля
         if rental.rental_status == RentalStatus.DELIVERING:
+            is_delivery_in_progress = True if rental.delivery_mechanic_id is not None else False
             rental_details.update({
                 "delivery_latitude": rental.delivery_latitude,
-                "delivery_longitude": rental.delivery_longitude
+                "delivery_longitude": rental.delivery_longitude,
+                "delivery_in_progress": is_delivery_in_progress
+            })
+        else:
+            rental_details.update({
+                "delivery_in_progress": False
             })
 
         current_rental = {
