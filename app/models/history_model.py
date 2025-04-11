@@ -17,15 +17,15 @@ class RentalStatus(enum.Enum):
     RESERVED = "reserved"
     IN_USE = "in_use"
     COMPLETED = "completed"
+    DELIVERING = "delivering"
 
 
 class RentalHistory(Base):
     __tablename__ = "rental_history"
 
     id = Column(Integer, primary_key=True, index=True)
-
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    user = relationship("User", back_populates="rental_history")
+    user = relationship("User", back_populates="rental_history", foreign_keys=[user_id])
 
     car_id = Column(Integer, ForeignKey("cars.id"), nullable=False)
     car = relationship("Car", back_populates="rental_history")
@@ -40,7 +40,6 @@ class RentalHistory(Base):
 
     start_time = Column(DateTime, nullable=True)
     end_time = Column(DateTime)
-
     reservation_time = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     photos_before = Column(ARRAY(String))
@@ -50,6 +49,14 @@ class RentalHistory(Base):
     total_price = Column(Integer, nullable=True)
 
     rental_status = Column(Enum(RentalStatus), nullable=False, default=RentalStatus.RESERVED)
+
+    # Новые поля для доставки
+    delivery_latitude = Column(Float, nullable=True)
+    delivery_longitude = Column(Float, nullable=True)
+    delivery_mechanic_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    # Явно задаём связь для механика доставки:
+    delivery_mechanic = relationship("User", foreign_keys=[delivery_mechanic_id])
 
     review = relationship("RentalReview", back_populates="rental", uselist=False)
 

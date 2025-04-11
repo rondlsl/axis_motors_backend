@@ -22,21 +22,25 @@ class User(Base):
     phone_number = Column(String, nullable=False, unique=False)
     birth_date = Column(DateTime, nullable=True)
     iin = Column(String(12), nullable=True, unique=False)
-    drivers_license_expiry = Column(DateTime, nullable=True)  # Срок действия водительского удостоверения
+    drivers_license_expiry = Column(DateTime, nullable=True)
     wallet_balance = Column(Numeric(10, 2), nullable=False, default=0)
     selfie_with_license_url = Column(String, nullable=True)
     drivers_license_url = Column(String, nullable=True)
     id_card_front_url = Column(String, nullable=True)
     id_card_back_url = Column(String, nullable=True)
-    id_card_expiry = Column(DateTime, nullable=True)  # Новый: срок действия ID-карты
+    id_card_expiry = Column(DateTime, nullable=True)
     role = Column(Enum(UserRole), default=UserRole.FIRST)
     last_sms_code = Column(String)
     sms_code_valid_until = Column(DateTime)
-
-    # Новый флаг активности
     is_active = Column(Boolean, default=True, nullable=False)
 
-    rental_history = relationship("RentalHistory", back_populates="user")
+    rental_history = relationship("RentalHistory", back_populates="user",
+                                  foreign_keys="[RentalHistory.user_id]")
+
+    # Если нужно, добавляем связь для аренды, где пользователь выступает как механик доставки:
+    delivery_rentals = relationship("RentalHistory",
+                                    foreign_keys="[RentalHistory.delivery_mechanic_id]",
+                                    back_populates="delivery_mechanic")
     from app.models.car_model import Car
     owned_cars = relationship("Car", foreign_keys=[Car.owner_id], back_populates="owner")
     active_rental = relationship("Car", foreign_keys=[Car.current_renter_id],

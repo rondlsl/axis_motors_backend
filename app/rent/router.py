@@ -227,6 +227,104 @@ async def reserve_car(
         }
 
 
+# Эндпоинт для резервирования доставки
+@RentRouter.post("/reserve-delivery/{car_id}")
+async def reserve_delivery(
+        car_id: int,
+        rental_type: RentalType,
+        delivery_latitude: float = Query(..., description="Координата широты доставки"),
+        delivery_longitude: float = Query(..., description="Координата долготы доставки"),
+        duration: Optional[int] = None,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+) -> dict:
+    """
+    Резервирование машины с доставкой.
+    Принимает car_id, rental_type, координаты доставки и опционально duration.
+    Дополнительно списывает 10000 за услугу доставки, если арендатор не является владельцем автомобиля.
+    """
+    # Проверяем, нет ли у пользователя активной аренды (RESERVED, IN_USE или DELIVERING)
+    active_rental = db.query(RentalHistory).filter(
+        RentalHistory.user_id == current_user.id,
+        RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE, RentalStatus.DELIVERING])
+    ).first()
+    if active_rental:
+        raise HTTPException(
+            status_code=400,
+            detail="У вас уже есть активная аренда или заказ доставки."
+        )
+
+    # Выбираем машину только если она доступна (status == "FREE")
+    car = db.query(Car).filter(Car.id == car_id, Car.status == "FREE").first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Машина не найдена или не доступна")
+
+    extra_fee = 10000
+    total_price = 0
+
+    if car.owner_id == current_user.id:
+        # Для владельца доставка бесплатная
+        total_price = 0
+    else:
+        if rental_type == RentalType.MINUTES:
+            # Здесь можно установить минимальную проверку баланса (примерно, как в reserve_car)
+            if current_user.wallet_balance < car.price_per_hour * 2 + extra_fee:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"На кошельке должно быть минимум {car.price_per_hour * 2 + extra_fee} тенге для аренды с доставкой."
+                )
+            total_price = extra_fee  # При минутной аренде только доплата за доставку
+        else:
+            if duration is None:
+                raise HTTPException(status_code=400, detail="Duration обязателен для аренды по часам или дням.")
+            base_price = calculate_total_price(rental_type, duration, car.price_per_hour, car.price_per_day)
+            total_price = base_price + extra_fee
+
+            if current_user.wallet_balance < total_price:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Недостаточно средств. Необходимо: {total_price} тенге"
+                )
+
+    # Если пользователь не владелец, списываем доплату за доставку сразу
+    if car.owner_id != current_user.id:
+        if current_user.wallet_balance < extra_fee:
+            raise HTTPException(
+                status_code=400,
+                detail="Недостаточно средств для доплаты за доставку"
+            )
+        current_user.wallet_balance -= extra_fee
+
+    rental = RentalHistory(
+        user_id=current_user.id,
+        car_id=car.id,
+        rental_type=rental_type,
+        duration=duration,
+        rental_status=RentalStatus.DELIVERING,
+        start_latitude=car.latitude,
+        start_longitude=car.longitude,
+        total_price=total_price,
+        reservation_time=datetime.utcnow(),
+        delivery_latitude=delivery_latitude,
+        delivery_longitude=delivery_longitude
+    )
+    db.add(rental)
+    db.commit()
+    db.refresh(rental)
+
+    # Обновляем машину: устанавливаем текущего арендатора и меняем статус на "DELIVERING"
+    car.current_renter_id = current_user.id
+    car.status = "DELIVERING"
+    db.commit()
+
+    return {
+        "message": "Заказ доставки оформлен успешно",
+        "rental_id": rental.id,
+        "reservation_time": rental.reservation_time.isoformat(),
+        "total_price": rental.total_price
+    }
+
+
 @RentRouter.post("/cancel")
 async def cancel_reservation(
         db: Session = Depends(get_db),

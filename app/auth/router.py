@@ -131,7 +131,11 @@ async def read_users_me(
         .join(Car, Car.id == RentalHistory.car_id)
         .filter(
             RentalHistory.user_id == current_user.id,
-            RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
+            RentalHistory.rental_status.in_([
+                RentalStatus.RESERVED,
+                RentalStatus.IN_USE,
+                RentalStatus.DELIVERING  # Добавляем статус доставки
+            ])
         )
         .first()
     )
@@ -139,15 +143,25 @@ async def read_users_me(
     current_rental = None
     if rental_with_car:
         rental, car = rental_with_car
+
+        # Формирование базовой информации по аренде
+        rental_details = {
+            "reservation_time": rental.reservation_time.isoformat() if rental.reservation_time else None,
+            "start_time": rental.start_time.isoformat() if rental.start_time else None,
+            "rental_type": rental.rental_type.value,
+            "duration": rental.duration,
+            "already_payed": float(rental.already_payed or 0),
+            "status": rental.rental_status.value
+        }
+        # Если это заказ с доставкой, включаем дополнительные поля
+        if rental.rental_status == RentalStatus.DELIVERING:
+            rental_details.update({
+                "delivery_latitude": rental.delivery_latitude,
+                "delivery_longitude": rental.delivery_longitude
+            })
+
         current_rental = {
-            "rental_details": {
-                "reservation_time": rental.reservation_time.isoformat() if rental.reservation_time else None,
-                "start_time": rental.start_time.isoformat() if rental.start_time else None,
-                "rental_type": rental.rental_type.value,
-                "duration": rental.duration,
-                "already_payed": float(rental.already_payed or 0),
-                "status": rental.rental_status.value
-            },
+            "rental_details": rental_details,
             "car_details": {
                 "id": car.id,
                 "name": car.name,

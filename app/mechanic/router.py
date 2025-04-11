@@ -477,3 +477,243 @@ async def complete_rental(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Ошибка при завершении проверки: {str(e)}")
+
+
+# 1. Получение всех заказов доставки
+@MechanicRouter.get("/get-delivery-vehicles")
+def get_delivery_vehicles(
+        db: Session = Depends(get_db),
+        current_mechanic: User = Depends(get_current_mechanic)
+) -> Dict[str, Any]:
+    """
+    Возвращает список автомобилей, находящихся в аренде с доставкой (статус DELIVERING).
+    В список попадают заказы, где доставка ещё не принята (delivery_mechanic_id == None)
+    или уже принята текущим механиком.
+    """
+    deliveries = db.query(RentalHistory).filter(
+        RentalHistory.rental_status == RentalStatus.DELIVERING,
+        (RentalHistory.delivery_mechanic_id.is_(None)) | (RentalHistory.delivery_mechanic_id == current_mechanic.id)
+    ).all()
+
+    vehicles_data: List[Dict[str, Any]] = []
+    for rental in deliveries:
+        car = db.query(Car).filter(Car.id == rental.car_id).first()
+        if not car:
+            continue
+        vehicles_data.append({
+            "rental_id": rental.id,
+            "car_id": car.id,
+            "car_name": car.name,
+            "plate_number": car.plate_number,
+            "delivery_coordinates": {
+                "latitude": rental.delivery_latitude,
+                "longitude": rental.delivery_longitude,
+            },
+            "reservation_time": rental.reservation_time.isoformat(),
+            "delivery_assigned": rental.delivery_mechanic_id is not None
+        })
+
+    return {"delivery_vehicles": vehicles_data}
+
+
+# 2. Принятие заказа доставки механиком
+@MechanicRouter.post("/accept-delivery/{rental_id}")
+def accept_delivery(
+        rental_id: int,
+        db: Session = Depends(get_db),
+        current_mechanic: User = Depends(get_current_mechanic)
+) -> Dict[str, Any]:
+    """
+    Позволяет механику взять заказ доставки.
+    Проверяется, что заказ находится в статусе DELIVERING и что другой механик ещё не принял этот заказ.
+    Также у механика не может быть более одного активного заказа доставки.
+    """
+    # Проверяем, что у механика нет другого активного заказа доставки
+    existing_delivery = db.query(RentalHistory).filter(
+        RentalHistory.delivery_mechanic_id == current_mechanic.id,
+        RentalHistory.rental_status == RentalStatus.DELIVERING
+    ).first()
+    if existing_delivery:
+        raise HTTPException(
+            status_code=400,
+            detail="У вас уже есть активный заказ доставки."
+        )
+
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.id == rental_id,
+        RentalHistory.rental_status == RentalStatus.DELIVERING
+    ).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Заказ доставки не найден")
+
+    if rental.delivery_mechanic_id is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="Заказ уже принят другим механиком."
+        )
+
+    rental.delivery_mechanic_id = current_mechanic.id
+    db.commit()
+
+    return {"message": "Заказ доставки успешно принят", "rental_id": rental.id}
+
+
+# 3. Завершение доставки механиком
+@MechanicRouter.post("/complete-delivery")
+def complete_delivery(
+        db: Session = Depends(get_db),
+        current_mechanic: User = Depends(get_current_mechanic)
+) -> Dict[str, Any]:
+    """
+    Механик завершает заказ доставки.
+    Находит заказ доставки, принятый текущим механиком, и переводит его в статус RESERVED.
+    Это означает, что автомобиль после доставки переходит в состояние ожидания дальнейших операций.
+    """
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.delivery_mechanic_id == current_mechanic.id,
+        RentalHistory.rental_status == RentalStatus.DELIVERING
+    ).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Активный заказ доставки не найден")
+
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+
+    now = datetime.utcnow()
+    rental.end_time = now
+    # После доставки для пользователя автомобиль переходит в состояние RESERVED
+    rental.rental_status = RentalStatus.RESERVED
+
+    # Обновляем статус автомобиля (например, пользователь продолжает аренду)
+    car.status = "RESERVED"
+    # Сбрасываем назначение механика для доставки
+    rental.delivery_mechanic_id = None
+
+    db.commit()
+
+    return {
+        "message": "Доставка успешно завершена. Автомобиль передан пользователю (статус RESERVED).",
+        "rental_id": rental.id
+    }
+
+
+def get_current_delivery(db: Session, current_mechanic: User) -> RentalHistory:
+    """
+    Возвращает активную доставку для механика (status=DELIVERING и delivery_mechanic_id == current_mechanic.id).
+    Если доставки нет – выбрасывает исключение.
+    """
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.delivery_mechanic_id == current_mechanic.id,
+        RentalHistory.rental_status == RentalStatus.DELIVERING
+    ).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Активная доставка не найдена")
+    return rental
+
+
+@MechanicRouter.get("/current-delivery", summary="Получить текущую доставку")
+def current_delivery(
+        db: Session = Depends(get_db),
+        current_mechanic: User = Depends(get_current_mechanic)
+) -> Dict[str, Any]:
+    """
+    Эндпоинт возвращает текущую доставку, назначенную механику,
+    включая информацию об автомобиле и координаты доставки.
+    """
+    rental = get_current_delivery(db, current_mechanic)
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+
+    return {
+        "rental_id": rental.id,
+        "car_id": car.id,
+        "car_name": car.name,
+        "plate_number": car.plate_number,
+        "delivery_coordinates": {
+            "latitude": rental.delivery_latitude,
+            "longitude": rental.delivery_longitude,
+        },
+        "reservation_time": rental.reservation_time.isoformat(),
+        "status": rental.rental_status.value
+    }
+
+
+@MechanicRouter.post("/open", summary="Открыть автомобиль (доставка)")
+async def open_vehicle_delivery(
+        db: Session = Depends(get_db),
+        current_mechanic: User = Depends(get_current_mechanic)
+) -> Dict[str, Any]:
+    """
+    Отправляет команду для открытия автомобиля, связанного с активной доставкой.
+    Проверяет, что у текущего механика есть активная доставка и у автомобиля присутствует gps_id.
+    """
+    rental = get_current_delivery(db, current_mechanic)
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car or not car.gps_id:
+        raise HTTPException(status_code=404, detail="Автомобиль или GPS ID не найдены")
+
+    # Пример вызова команды, здесь можно интегрировать реальную логику отправки команды
+    # result = await send_command_to_terminal(car.gps_id, "*!CEVT 1", AUTH_TOKEN)
+    result = {"status": "command sent"}  # заглушка для примера
+
+    return {"message": "Команда для открытия автомобиля отправлена", "result": result}
+
+
+@MechanicRouter.post("/close", summary="Закрыть автомобиль (доставка)")
+async def close_vehicle_delivery(
+        db: Session = Depends(get_db),
+        current_mechanic: User = Depends(get_current_mechanic)
+) -> Dict[str, Any]:
+    """
+    Отправляет команду для закрытия автомобиля в режиме доставки.
+    Проверяет наличие активной доставки и корректность GPS ID.
+    """
+    rental = get_current_delivery(db, current_mechanic)
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car or not car.gps_id:
+        raise HTTPException(status_code=404, detail="Автомобиль или GPS ID не найдены")
+
+    # Пример отправки команды
+    # result = await send_command_to_terminal(car.gps_id, "*!CEVT 2", AUTH_TOKEN)
+    result = {"status": "command sent"}  # заглушка
+    return {"message": "Команда для закрытия автомобиля отправлена", "result": result}
+
+
+@MechanicRouter.post("/give-key", summary="Передать ключ (доставка)")
+async def give_key_delivery(
+        db: Session = Depends(get_db),
+        current_mechanic: User = Depends(get_current_mechanic)
+) -> Dict[str, Any]:
+    """
+    Отправляет команду на передачу ключа автомобиля в режиме доставки.
+    """
+    rental = get_current_delivery(db, current_mechanic)
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car or not car.gps_id:
+        raise HTTPException(status_code=404, detail="Автомобиль или GPS ID не найдены")
+
+    # Пример отправки команды
+    # result = await send_command_to_terminal(car.gps_id, "*!2Y", AUTH_TOKEN)
+    result = {"status": "command sent"}  # заглушка
+    return {"message": "Команда передачи ключа отправлена", "result": result}
+
+
+@MechanicRouter.post("/take-key", summary="Получить ключ (доставка)")
+async def take_key_delivery(
+        db: Session = Depends(get_db),
+        current_mechanic: User = Depends(get_current_mechanic)
+) -> Dict[str, Any]:
+    """
+    Отправляет команду на получение ключа автомобиля для доставки.
+    """
+    rental = get_current_delivery(db, current_mechanic)
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car or not car.gps_id:
+        raise HTTPException(status_code=404, detail="Автомобиль или GPS ID не найдены")
+
+    # Пример отправки команды
+    # result = await send_command_to_terminal(car.gps_id, "*!2N", AUTH_TOKEN)
+    result = {"status": "command sent"}  # заглушка
+    return {"message": "Команда получения ключа отправлена", "result": result}

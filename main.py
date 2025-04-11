@@ -13,7 +13,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from sqlalchemy.orm import Session
 from app.auth.router import Auth_router
-from app.dependencies.database.database import get_db, Base
+from app.dependencies.database.database import get_db
 from app.gps_api.router import Vehicle_Router
 from app.mechanic.router import MechanicRouter
 from app.models.car_model import Car
@@ -254,4 +254,4 @@ app.include_router(MechanicRouter)
 
 @app.get("/")
 def root():
-    return {"message": "че надо тут?"}
+    return {"message": "salam?"}
