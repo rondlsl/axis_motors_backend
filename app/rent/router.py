@@ -358,6 +358,8 @@ async def cancel_reservation(
         rental.end_time = now
         rental.total_price = 0
         rental.already_payed = 0
+        rental.end_latitude = car.latitude
+        rental.end_longitude = car.longitude
         car.current_renter_id = None
         car.status = "FREE"
         db.commit()
