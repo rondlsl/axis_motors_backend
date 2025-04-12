@@ -640,6 +640,13 @@ def current_delivery(
         "car_id": car.id,
         "car_name": car.name,
         "plate_number": car.plate_number,
+        "fuel_level": car.fuel_level,
+        "latitude": car.latitude,
+        "longitude": car.longitude,
+        "course": car.course,
+        "engine_volume": car.engine_volume,
+        "drive_type": car.drive_type,
+        "year": car.year,
         "delivery_coordinates": {
             "latitude": rental.delivery_latitude,
             "longitude": rental.delivery_longitude,
