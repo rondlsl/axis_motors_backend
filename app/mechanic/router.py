@@ -505,6 +505,14 @@ def get_delivery_vehicles(
             "car_id": car.id,
             "car_name": car.name,
             "plate_number": car.plate_number,
+            "fuel_level": car.fuel_level,
+            "latitude": car.latitude,
+            "longitude": car.longitude,
+            "course": car.course,
+            "engine_volume": car.engine_volume,
+            "drive_type": car.drive_type,
+            "year": car.year,
+            "status": car.status,
             "delivery_coordinates": {
                 "latitude": rental.delivery_latitude,
                 "longitude": rental.delivery_longitude,
@@ -528,6 +536,7 @@ def accept_delivery(
     Проверяется, что заказ находится в статусе DELIVERING и что другой механик ещё не принял этот заказ.
     Также у механика не может быть более одного активного заказа доставки.
     """
+
     # Проверяем, что у механика нет другого активного заказа доставки
     existing_delivery = db.query(RentalHistory).filter(
         RentalHistory.delivery_mechanic_id == current_mechanic.id,
