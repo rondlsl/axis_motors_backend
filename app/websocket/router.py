@@ -1,30 +1,41 @@
-from fastapi import APIRouter, WebSocket, Query, Depends, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, Query, WebSocketDisconnect, HTTPException, Depends
 from sqlalchemy.orm import Session
+
+from app.auth.security.tokens import verify_token
 from app.websocket.connection_manager import manager
-from app.auth.dependencies.get_current_user import get_current_user
 from app.dependencies.database.database import get_db
+from app.models.user_model import User
 
 WebSocketRouter = APIRouter()
 
-
 @WebSocketRouter.websocket("/ws/notifications")
 async def websocket_notifications(
-        websocket: WebSocket,
-        token: str = Query(...),
-        db: Session = Depends(get_db)
+    websocket: WebSocket,
+    token: str = Query(...),  # JWT в ?token=
+    db: Session = Depends(get_db),
 ):
-    """
-    Единственный WebSocket‑канал для уведомлений.
-    Клиент передаёт ?token=<JWT>.
-    """
-    # Аутентифицируем по JWT; вернёт объект User (любую роль)
-    user = await get_current_user(db=db, token=token)
-    user_id = user.id
+    # 1) Аутентификация
+    try:
+        payload = verify_token(token, "access")
+    except HTTPException:
+        # сразу закрываем, не делаем accept() здесь
+        await websocket.close(code=1008, reason="Invalid token")
+        return
 
-    await manager.connect(websocket, user_id)
+    user = db.query(User).filter(
+        User.phone_number == payload.get("sub"),
+        User.is_active == True
+    ).first()
+    if not user:
+        await websocket.close(code=1008, reason="User not found")
+        return
+
+    # 2) Регистрируемся (connect сам делает accept)
+    await manager.connect(user.id, websocket)
+
+    # 3) Держим соединение живым
     try:
         while True:
-            # Держим соединение открытым; игнорируем входящие
             await websocket.receive_text()
     except WebSocketDisconnect:
-        manager.disconnect(user_id)
+        manager.disconnect(user.id)
