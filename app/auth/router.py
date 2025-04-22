@@ -123,7 +123,7 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
 @Auth_router.get("/user/me")
 async def read_users_me(
         db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user)  # current_user гарантированно активен
+        current_user: User = Depends(get_current_user)
 ):
     # Получаем активную аренду и автомобиль, если таковые имеются
     rental_with_car = (
@@ -134,7 +134,7 @@ async def read_users_me(
             RentalHistory.rental_status.in_([
                 RentalStatus.RESERVED,
                 RentalStatus.IN_USE,
-                RentalStatus.DELIVERING  # Добавляем статус доставки
+                RentalStatus.DELIVERING
             ])
         )
         .first()
@@ -144,7 +144,7 @@ async def read_users_me(
     if rental_with_car:
         rental, car = rental_with_car
 
-        # Формирование базовой информации по аренде
+        # Базовые детали аренды
         rental_details = {
             "reservation_time": rental.reservation_time.isoformat() if rental.reservation_time else None,
             "start_time": rental.start_time.isoformat() if rental.start_time else None,
@@ -153,18 +153,27 @@ async def read_users_me(
             "already_payed": float(rental.already_payed or 0),
             "status": rental.rental_status.value
         }
-        # Если это заказ с доставкой, включаем дополнительные поля
+
+        # Поля доставки
         if rental.rental_status == RentalStatus.DELIVERING:
-            is_delivery_in_progress = True if rental.delivery_mechanic_id is not None else False
             rental_details.update({
                 "delivery_latitude": rental.delivery_latitude,
                 "delivery_longitude": rental.delivery_longitude,
-                "delivery_in_progress": is_delivery_in_progress
+                "delivery_in_progress": rental.delivery_mechanic_id is not None
             })
         else:
-            rental_details.update({
-                "delivery_in_progress": False
-            })
+            rental_details["delivery_in_progress"] = False
+
+        # Получаем данные механика (если назначен), иначе None
+        if rental.delivery_mechanic_id:
+            mech = db.query(User).filter(User.id == rental.delivery_mechanic_id).first()
+            current_mechanic = {
+                "id": mech.id,
+                "full_name": mech.full_name,
+                "phone_number": mech.phone_number
+            } if mech else None
+        else:
+            current_mechanic = None
 
         current_rental = {
             "rental_details": rental_details,
@@ -184,10 +193,12 @@ async def read_users_me(
                 "price_per_hour": car.price_per_hour,
                 "price_per_day": car.price_per_day,
                 "open_price": get_open_price(car),
-                "owned_car": True if car.owner_id == current_user.id else False
-            }
+                "owned_car": car.owner_id == current_user.id
+            },
+            "current_mechanic": current_mechanic
         }
 
+    # Список машин пользователя
     owned_cars_raw = db.query(Car).filter(Car.owner_id == current_user.id).all()
     owned_cars = [{
         "id": car.id,

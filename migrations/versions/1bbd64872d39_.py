@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: 2f193f4cee71
+Revision ID: 1bbd64872d39
 Revises: 
-Create Date: 2025-04-11 16:33:08.501050
+Create Date: 2025-04-15 16:03:46.374629
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '2f193f4cee71'
+revision: str = '1bbd64872d39'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -84,7 +84,7 @@ def upgrade() -> None:
     sa.Column('photos_after', sa.ARRAY(sa.String()), nullable=True),
     sa.Column('already_payed', sa.Integer(), nullable=True),
     sa.Column('total_price', sa.Integer(), nullable=True),
-    sa.Column('rental_status', sa.Enum('RESERVED', 'IN_USE', 'COMPLETED', 'DELIVERING', name='rentalstatus'), nullable=False),
+    sa.Column('rental_status', sa.Enum('RESERVED', 'IN_USE', 'COMPLETED', 'DELIVERING', 'CANCELLED', name='rentalstatus'), nullable=False),
     sa.Column('delivery_latitude', sa.Float(), nullable=True),
     sa.Column('delivery_longitude', sa.Float(), nullable=True),
     sa.Column('delivery_mechanic_id', sa.Integer(), nullable=True),

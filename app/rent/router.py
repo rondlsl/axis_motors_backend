@@ -13,6 +13,7 @@ from app.models.history_model import RentalType, RentalStatus, RentalHistory, Re
 from app.models.user_model import User, UserRole
 from app.models.car_model import Car
 from app.rent.utils.calculate_price import calculate_total_price
+from app.websocket.connection_manager import manager
 
 RentRouter = APIRouter(tags=["Rent"], prefix="/rent")
 
@@ -409,6 +410,45 @@ async def cancel_reservation(
                 status_code=500,
                 detail=f"Ошибка при отмене брони: {str(e)}"
             )
+
+
+@RentRouter.post("/cancel-delivery")
+async def cancel_delivery(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    """
+    Отмена доставки (только если аренда в статусе DELIVERING).
+    Деньги за доставку не возвращаем.
+    Уведомляем назначенного механика, если он есть.
+    """
+    # Находим единственную активную доставку пользователя
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.user_id == current_user.id,
+        RentalHistory.rental_status == RentalStatus.DELIVERING
+    ).first()
+
+    if not rental:
+        raise HTTPException(status_code=400, detail="Нет активного заказа доставки для отмены")
+
+    # Меняем статус на CANCELLED
+    rental.rental_status = RentalStatus.CANCELLED
+    # фиксируем время отмены
+    rental.end_time = datetime.utcnow()
+    db.commit()
+
+    # Уведомляем механика (если он уже был назначен)
+    if rental.delivery_mechanic_id:
+        await manager.send_personal_message(
+            rental.delivery_mechanic_id,
+            {
+                "event": "delivery_cancelled",
+                "rental_id": rental.id,
+                "by_user": current_user.id
+            }
+        )
+
+    return {"message": "Доставка отменена успешно"}
 
 
 @RentRouter.post("/start")
