@@ -258,3 +258,12 @@ app.include_router(WebSocketRouter)
 def root():
     return {"message": "salam?"}
 
+
+@app.get("/list_routes")
+async def list_routes():
+    lines = []
+    for route in app.router.routes:
+        lines.append(
+            f"name={route.name}, path={getattr(route, 'path', '-')}, methods={getattr(route, 'methods', '-')}"
+        )
+    return {"routes": lines}
