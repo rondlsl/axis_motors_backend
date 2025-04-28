@@ -80,7 +80,7 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
     print(sms_code)
     sms_text = f"{sms_code} - Ваш код подтверждения AZV Motors"
     # можно раскомментировать, когда подключите SMS
-    # await send_sms_mobizon(phone_number, sms_text, f"{SMS_TOKEN}")
+    await send_sms_mobizon(phone_number, sms_text, f"{SMS_TOKEN}")
     return {"message": "SMS code sent successfully"}
 
 
@@ -97,7 +97,7 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Phone number must contain only digits.")
 
     # При проверке пользуемся активными пользователями
-    if sms_code == "6666":
+    if sms_code == "66666":
         user = db.query(User).filter(User.phone_number == phone_number, User.is_active == True).first()
     else:
         user = db.query(User).filter(

@@ -114,10 +114,12 @@ def get_trip_history_detail(
 @RentRouter.post("/add_money")
 def add_money(amount: int, db: Session = Depends(get_db),
               current_user: User = Depends(get_current_user)):
-    current_user.wallet_balance += amount
-    db.commit()
-    print(current_user.wallet_balance)
-    return {"wallet_balance": current_user.wallet_balance}
+    # current_user.wallet_balance += amount
+    # db.commit()
+    # print(current_user.wallet_balance)
+    # return {"wallet_balance": current_user.wallet_balance}
+    raise HTTPException(status_code=403,
+                        detail="В настоящее время проводится закрытое бета-тестирование приложения. Пополнение кошелька будет доступно после боевого запуска приложения.")
 
 
 @RentRouter.post("/reserve-car/{car_id}")
