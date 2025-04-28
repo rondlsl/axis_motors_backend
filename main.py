@@ -34,9 +34,8 @@ def run_migrations():
 
 
 def create_premium_cars(db: Session):
+    # список премиум-авто, без id=2
     cars = [
-        {"id": 2, "name": "BMW X5", "plate": "A001TTR02", "lat": 43.2551, "lon": 76.9126, "year": 2023, "engine": 3.0,
-         "drive": 3},
         {"id": 3, "name": "Mercedes GLE", "plate": "B728NMK02", "lat": 43.2380, "lon": 76.9200, "year": 2022,
          "engine": 3.0, "drive": 3},
         {"id": 4, "name": "Audi Q7", "plate": "E543ASA02", "lat": 43.2223, "lon": 76.8888, "year": 2021, "engine": 3.0,
@@ -77,7 +76,6 @@ def create_premium_cars(db: Session):
          "engine": 3.0, "drive": 3},
     ]
 
-    # Перебираем автомобили с индексом, чтобы назначить нужный статус:
     for idx, car_data in enumerate(cars):
         if not db.query(Car).filter(Car.id == car_data["id"]).first():
             status = "PENDING" if idx < 2 else "FREE"
@@ -98,12 +96,12 @@ def create_premium_cars(db: Session):
                 fuel_level=100,
                 course=random.randint(0, 359),
                 owner_id=None,
-                status=status
+                status=status,
+                description=None  # по умолчанию без описания
             )
             db.add(car)
-
     db.commit()
-    print("20 премиум-авто добавлены: 18 со статусом FREE, 2 со статусом PENDING")
+    print("Премиум-авто (id=3–21) созданы: 2 в PENDING, остальные в FREE")
 
 
 async def get_last_vehicles_data():
@@ -162,12 +160,12 @@ def init_app(app: FastAPI):
     @app.on_event("startup")
     async def startup_event():
         print("🚀 Приложение запущено")
-        run_migrations()  # ✅ применит миграции
+        run_migrations()
 
         db_gen = get_db()
         db = next(db_gen)
         try:
-            # Создание владельца HAVAL F7x
+            # 1) Владелец HAVAL F7x
             owner_phone = "77000250400"
             owner = db.query(User).filter(User.phone_number == owner_phone).first()
             if not owner:
@@ -179,11 +177,10 @@ def init_app(app: FastAPI):
                 db.add(owner)
                 db.commit()
                 db.refresh(owner)
-                print("✅ Владелец HAVAL F7x создан")
 
-            # Создание HAVAL F7x
+            # 2) HAVAL F7x (id=1) с описанием
             if not db.query(Car).filter(Car.id == 1).first():
-                car = Car(
+                car1 = Car(
                     id=1,
                     name="HAVAL F7x",
                     gps_id="800153076",
@@ -199,13 +196,41 @@ def init_app(app: FastAPI):
                     longitude=76.889709,
                     fuel_level=80,
                     owner_id=owner.id,
-                    course=90
+                    course=90,
+                    description="Машина в идеальном состоянии."
                 )
-                db.add(car)
+                db.add(car1)
                 db.commit()
-                print("✅ HAVAL F7x добавлена")
+                print("✅ HAVAL F7x (id=1) добавлена")
             else:
-                print("ℹ️ HAVAL F7x уже существует")
+                print("ℹ️ HAVAL F7x (id=1) уже существует")
+
+            # 3) MB CLA45s (id=2) вручную
+            if not db.query(Car).filter(Car.id == 2).first():
+                car2 = Car(
+                    id=2,
+                    name="MB CLA45s",
+                    gps_id="800212421",
+                    gps_imei="866011056074131",
+                    engine_volume=2.0,
+                    year=2019,
+                    drive_type=3,
+                    price_per_minute=140,
+                    price_per_hour=5600,
+                    price_per_day=100000,
+                    plate_number="666AZV02",
+                    latitude=43.224048333333336,
+                    longitude=76.96187166666667,
+                    fuel_level=40,
+                    course=23,
+                    owner_id=owner.id,
+                    description="Разбита левая передняя фара. Разбит задний правый фонарь. Вмятина и царапина на правой задней двери."
+                )
+                db.add(car2)
+                db.commit()
+                print("✅ MB CLA45s (id=2) добавлена")
+            else:
+                print("ℹ️ MB CLA45s (id=2) уже существует")
 
             # Создание механика
             mechanic_phone = "77007007070"

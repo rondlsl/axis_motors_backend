@@ -125,7 +125,7 @@ async def read_users_me(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
-    # Получаем активную аренду и автомобиль, если таковые имеются
+    # Получаем активную аренду и автомобиль
     rental_with_car = (
         db.query(RentalHistory, Car)
         .join(Car, Car.id == RentalHistory.car_id)
@@ -144,7 +144,6 @@ async def read_users_me(
     if rental_with_car:
         rental, car = rental_with_car
 
-        # Базовые детали аренды
         rental_details = {
             "reservation_time": rental.reservation_time.isoformat() if rental.reservation_time else None,
             "start_time": rental.start_time.isoformat() if rental.start_time else None,
@@ -154,7 +153,6 @@ async def read_users_me(
             "status": rental.rental_status.value
         }
 
-        # Поля доставки
         if rental.rental_status == RentalStatus.DELIVERING:
             rental_details.update({
                 "delivery_latitude": rental.delivery_latitude,
@@ -164,9 +162,8 @@ async def read_users_me(
         else:
             rental_details["delivery_in_progress"] = False
 
-        # Получаем данные механика (если назначен), иначе None
         if rental.delivery_mechanic_id:
-            mech = db.query(User).filter(User.id == rental.delivery_mechanic_id).first()
+            mech = db.query(User).get(rental.delivery_mechanic_id)
             current_mechanic = {
                 "id": mech.id,
                 "full_name": mech.full_name,
@@ -193,32 +190,36 @@ async def read_users_me(
                 "price_per_hour": car.price_per_hour,
                 "price_per_day": car.price_per_day,
                 "open_price": get_open_price(car),
-                "owned_car": car.owner_id == current_user.id
+                "owned_car": car.owner_id == current_user.id,
+                "description": car.description,
             },
             "current_mechanic": current_mechanic
         }
 
-    # Список машин пользователя
+    # Список машин, принадлежащих пользователю
     owned_cars_raw = db.query(Car).filter(Car.owner_id == current_user.id).all()
-    owned_cars = [{
-        "id": car.id,
-        "name": car.name,
-        "plate_number": car.plate_number,
-        "fuel_level": car.fuel_level,
-        "latitude": car.latitude,
-        "longitude": car.longitude,
-        "course": car.course,
-        "engine_volume": car.engine_volume,
-        "drive_type": car.drive_type,
-        "year": car.year,
-        "photos": car.photos,
-        "current_renter_id": car.current_renter_id,
-        "status": car.status,
-        "price_per_minute": car.price_per_minute,
-        "price_per_hour": car.price_per_hour,
-        "price_per_day": car.price_per_day,
-        "open_price": get_open_price(car)
-    } for car in owned_cars_raw]
+    owned_cars = []
+    for car in owned_cars_raw:
+        owned_cars.append({
+            "id": car.id,
+            "name": car.name,
+            "plate_number": car.plate_number,
+            "fuel_level": car.fuel_level,
+            "latitude": car.latitude,
+            "longitude": car.longitude,
+            "course": car.course,
+            "engine_volume": car.engine_volume,
+            "drive_type": car.drive_type,
+            "year": car.year,
+            "photos": car.photos,
+            "description": car.description,
+            "current_renter_id": car.current_renter_id,
+            "status": car.status,
+            "price_per_minute": car.price_per_minute,
+            "price_per_hour": car.price_per_hour,
+            "price_per_day": car.price_per_day,
+            "open_price": get_open_price(car)
+        })
 
     return {
         "phone_number": current_user.phone_number,
@@ -231,12 +232,14 @@ async def read_users_me(
             "selfie_with_license_url": current_user.selfie_with_license_url,
             "drivers_license": {
                 "url": current_user.drivers_license_url,
-                "expiry": current_user.drivers_license_expiry.isoformat() if current_user.drivers_license_expiry else None,
+                "expiry": current_user.drivers_license_expiry.isoformat()
+                if current_user.drivers_license_expiry else None,
             },
             "id_card": {
                 "front_url": current_user.id_card_front_url,
                 "back_url": current_user.id_card_back_url,
-                "expiry": current_user.id_card_expiry.isoformat() if current_user.id_card_expiry else None,
+                "expiry": current_user.id_card_expiry.isoformat()
+                if current_user.id_card_expiry else None,
             }
         }
     }

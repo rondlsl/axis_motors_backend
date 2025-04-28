@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, JSON, Text
 from sqlalchemy.orm import relationship
 from app.dependencies.database.database import Base
 
@@ -25,16 +25,15 @@ class Car(Base):
     year = Column(Integer, nullable=True)
     drive_type = Column(Integer, nullable=True)
 
-    photos = Column(JSON, nullable=True)  # массив URL'ов к фотографиям
+    photos = Column(JSON, nullable=True)
+
+    description = Column(Text, nullable=True)
 
     owner_id = Column(Integer, ForeignKey("users.id"))
     current_renter_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
-    # Новый статус — просто строка (например: 'FREE', 'IN_USE', 'MAINTENANCE', и т.д.)
     status = Column(String, default="FREE", nullable=True)
 
     owner = relationship("User", foreign_keys=[owner_id], back_populates="owned_cars")
-    current_renter = relationship("User", foreign_keys=[current_renter_id],
-                                  back_populates="active_rental")
-
+    current_renter = relationship("User", foreign_keys=[current_renter_id], back_populates="active_rental")
     rental_history = relationship("RentalHistory", back_populates="car")
