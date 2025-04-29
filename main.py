@@ -20,7 +20,6 @@ from app.mechanic.router import MechanicRouter
 from app.models.car_model import Car
 from app.models.user_model import User, UserRole
 from app.rent.router import RentRouter
-from app.websocket.router import WebSocketRouter
 
 # === LOGGING ===
 logging.basicConfig(level=logging.ERROR, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -213,7 +212,6 @@ app.include_router(Auth_router)
 app.include_router(Vehicle_Router)
 app.include_router(RentRouter)
 app.include_router(MechanicRouter)
-app.include_router(WebSocketRouter)
 
 
 @app.get("/")
