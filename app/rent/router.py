@@ -13,7 +13,6 @@ from app.models.history_model import RentalType, RentalStatus, RentalHistory, Re
 from app.models.user_model import User, UserRole
 from app.models.car_model import Car
 from app.rent.utils.calculate_price import calculate_total_price
-from app.websocket.connection_manager import manager
 
 RentRouter = APIRouter(tags=["Rent"], prefix="/rent")
 
@@ -438,17 +437,6 @@ async def cancel_delivery(
     # фиксируем время отмены
     rental.end_time = datetime.utcnow()
     db.commit()
-
-    # Уведомляем механика (если он уже был назначен)
-    if rental.delivery_mechanic_id:
-        await manager.send_personal_message(
-            rental.delivery_mechanic_id,
-            {
-                "event": "delivery_cancelled",
-                "rental_id": rental.id,
-                "by_user": current_user.id
-            }
-        )
 
     return {"message": "Доставка отменена успешно"}
 

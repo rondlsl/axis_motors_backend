@@ -12,7 +12,6 @@ from app.gps_api.utils.get_active_rental import get_open_price
 from app.models.history_model import RentalType, RentalStatus, RentalHistory, RentalReview
 from app.models.car_model import Car
 from app.models.user_model import User
-from app.websocket.connection_manager import manager
 
 MechanicRouter = APIRouter(tags=["Mechanic"], prefix="/mechanic")
 
@@ -564,10 +563,6 @@ async def accept_delivery(
 
     rental.delivery_mechanic_id = current_mechanic.id
     db.commit()
-    await manager.send_personal_message(
-        rental.user_id,
-        {"event": "delivery_accepted", "rental_id": rental.id}
-    )
 
     return {"message": "Заказ доставки успешно принят", "rental_id": rental.id}
 
@@ -605,10 +600,6 @@ async def complete_delivery(
     rental.delivery_mechanic_id = None
 
     db.commit()
-    await manager.send_personal_message(
-        rental.user_id,
-        {"event": "delivery_completed", "rental_id": rental.id}
-    )
 
     return {
         "message": "Доставка успешно завершена. Автомобиль передан пользователю (статус RESERVED).",
