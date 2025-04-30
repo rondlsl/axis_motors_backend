@@ -1,7 +1,5 @@
 import asyncio
 import os
-import random
-import logging
 
 import httpx
 
@@ -14,16 +12,13 @@ from starlette.middleware.cors import CORSMiddleware
 
 from sqlalchemy.orm import Session
 from app.auth.router import Auth_router
+from app.core.config import logger
 from app.dependencies.database.database import get_db
 from app.gps_api.router import Vehicle_Router
 from app.mechanic.router import MechanicRouter
 from app.models.car_model import Car
 from app.models.user_model import User, UserRole
 from app.rent.router import RentRouter
-
-# === LOGGING ===
-logging.basicConfig(level=logging.ERROR, format="%(asctime)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
 
 # === APP ===
 app = FastAPI()

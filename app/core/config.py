@@ -1,3 +1,4 @@
+import logging
 from os import getenv
 
 from dotenv import load_dotenv
@@ -37,3 +38,7 @@ POLYGON_COORDS = [
     (76.9228834, 43.1671916), (76.9311868, 43.175944), (76.9719009, 43.1625382),
     (76.9877794, 43.1767467), (77.1207331, 43.0829995)
 ]
+
+# === LOGGING ===
+logging.basicConfig(level=logging.ERROR, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)

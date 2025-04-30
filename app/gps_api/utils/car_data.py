@@ -5,6 +5,7 @@ from fastapi import HTTPException
 from httpx import Response
 
 from app.RateLimitedHTTPClient import RateLimitedHTTPClient
+from app.core.config import logger
 
 
 async def get_last_vehicles_data():
@@ -52,13 +53,13 @@ async def send_command_to_terminal(
     try:
         response: Response = await client.send_request("POST", url, headers=headers, json=payload)
         response.raise_for_status()
-        print(response.json())
         command_id = response.text.strip('"')
         return {"command_id": command_id}
 
     except Exception as e:
-        print(f"Ошибка при выполнении запроса: {e}")
+        logger.error(f"Ошибка отправки команды для {vehicle_id}, {command}, {e}")
         raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {command}, {e}")
+
     # return {"command_id": "fa214mk"}
 
 
