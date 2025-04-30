@@ -34,32 +34,32 @@ async def send_command_to_terminal(
     :param id_template: ID шаблона команды (если есть).
     :return: Словарь с command_id.
     """
-    # url = "https://regions.glonasssoft.ru/api/v3/Vehicles/cmd/create"
-    # headers = {
-    #     "X-Auth": token,
-    #     "Content-Type": "application/json"
-    # }
-    #
-    # payload = {
-    #     "id": vehicle_id,
-    #     "command": command,
-    #     "retries": retries,
-    #     "idTemplate": id_template
-    # }
-    #
-    # client = RateLimitedHTTPClient.get_instance()
-    #
-    # try:
-    #     response: Response = await client.send_request("POST", url, headers=headers, json=payload)
-    #     response.raise_for_status()
-    #     print(response.json())
-    #     command_id = response.text.strip('"')
-    #     return {"command_id": command_id}
-    #
-    # except Exception as e:
-    #     print(f"Ошибка при выполнении запроса: {e}")
-    #     raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {command}")
-    return {"command_id": "fa214mk"}
+    url = "https://regions.glonasssoft.ru/api/v3/Vehicles/cmd/create"
+    headers = {
+        "X-Auth": token,
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "id": vehicle_id,
+        "command": command,
+        "retries": retries,
+        "idTemplate": id_template
+    }
+
+    client = RateLimitedHTTPClient.get_instance()
+
+    try:
+        response: Response = await client.send_request("POST", url, headers=headers, json=payload)
+        response.raise_for_status()
+        print(response.json())
+        command_id = response.text.strip('"')
+        return {"command_id": command_id}
+
+    except Exception as e:
+        print(f"Ошибка при выполнении запроса: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {command}")
+    # return {"command_id": "fa214mk"}
 
 
 async def send_open(vehicle_id: int, token: str, retries: int = 1) -> dict:
