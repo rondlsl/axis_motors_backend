@@ -58,7 +58,7 @@ async def send_command_to_terminal(
 
     except Exception as e:
         print(f"Ошибка при выполнении запроса: {e}")
-        raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {command}")
+        raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {command}, {e}")
     # return {"command_id": "fa214mk"}
 
 
