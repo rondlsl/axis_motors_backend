@@ -763,7 +763,7 @@ async def complete_rental(
         rental.already_payed = 0
         rental.rental_status = RentalStatus.COMPLETED
         car.current_renter_id = None
-        car.status = "FREE"
+        car.status = "PENDING"
 
         # Добавим отзыв, если он передан
         if review_input:
