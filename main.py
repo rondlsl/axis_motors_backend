@@ -19,6 +19,7 @@ from app.mechanic.router import MechanicRouter
 from app.models.car_model import Car
 from app.models.user_model import User, UserRole
 from app.rent.router import RentRouter
+from app.push.router import router as PushRouter
 
 # === APP ===
 app = FastAPI()
@@ -207,6 +208,7 @@ app.include_router(Auth_router)
 app.include_router(Vehicle_Router)
 app.include_router(RentRouter)
 app.include_router(MechanicRouter)
+app.include_router(PushRouter)
 
 
 @app.get("/")
