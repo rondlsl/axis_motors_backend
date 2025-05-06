@@ -754,25 +754,27 @@ async def complete_rental(
     if not car:
         raise HTTPException(status_code=404, detail="Car not found")
 
+    # общая часть: устанавливаем время, координаты, сбрасываем статус машины
+    rental.end_time = datetime.utcnow()
+    rental.end_latitude = car.latitude
+    rental.end_longitude = car.longitude
+    car.current_renter_id = None
+    car.status = "PENDING"
+    rental.rental_status = RentalStatus.COMPLETED
+
+    # добавляем отзыв, если есть
+    if review_input:
+        review = RentalReview(
+            rental_id=rental.id,
+            rating=getattr(review_input, "rating", None),
+            comment=getattr(review_input, "comment", None)
+        )
+        db.add(review)
+
     if car.owner_id == current_user.id:
-        # Логика для владельца: аренда бесплатная, пропускаем расчёты
-        rental.end_time = datetime.utcnow()
-        rental.end_latitude = car.latitude
-        rental.end_longitude = car.longitude
+        # для владельца аренда бесплатна
         rental.total_price = 0
         rental.already_payed = 0
-        rental.rental_status = RentalStatus.COMPLETED
-        car.current_renter_id = None
-        car.status = "PENDING"
-
-        # Добавим отзыв, если он передан
-        if review_input:
-            review = RentalReview(
-                rental_id=rental.id,
-                rating=getattr(review_input, "rating", None),
-                comment=getattr(review_input, "comment", None)
-            )
-            db.add(review)
 
         try:
             db.commit()
@@ -780,7 +782,7 @@ async def complete_rental(
                 "message": "Rental completed successfully (owner rental)",
                 "rental_details": {
                     "total_duration_minutes": int((rental.end_time - rental.start_time).total_seconds() / 60),
-                    "final_total_price": rental.total_price,
+                    "final_total_price": 0,
                     "amount_charged_now": 0,
                     "current_wallet_balance": float(current_user.wallet_balance)
                 },
@@ -793,72 +795,60 @@ async def complete_rental(
             db.rollback()
             raise HTTPException(
                 status_code=500,
-                detail=f"An error occurred while completing the rental: {str(e)}"
+                detail=f"An error occurred while completing the rental: {e}"
             )
+
+    # для обычного пользователя
+    actual_duration = rental.end_time - rental.start_time
+    actual_minutes = actual_duration.total_seconds() / 60
+    additional_charge = 0
+
+    if rental.rental_type == RentalType.MINUTES:
+        rental.total_price = int(actual_minutes * car.price_per_minute)
     else:
-        # Логика для обычного пользователя
-        rental.end_time = datetime.utcnow()
-        rental.end_latitude = car.latitude
-        rental.end_longitude = car.longitude
-
-        actual_duration = rental.end_time - rental.start_time
-        actual_minutes = actual_duration.total_seconds() / 60
-        additional_charge = 0
-
-        if rental.rental_type == RentalType.MINUTES:
-            rental.total_price = int(actual_minutes * car.price_per_minute)
+        if rental.rental_type == RentalType.HOURS:
+            planned_duration = rental.duration * 60
+            overtime_price = car.price_per_minute
         else:
-            if rental.rental_type == RentalType.HOURS:
-                planned_duration = rental.duration * 60
-                overtime_price = car.price_per_minute
-            else:
-                planned_duration = rental.duration * 24 * 60
-                overtime_price = car.price_per_minute
+            planned_duration = rental.duration * 24 * 60
+            overtime_price = car.price_per_minute
 
-            overtime_minutes = max(0, actual_minutes - planned_duration)
-            if overtime_minutes > 0:
-                additional_charge = int(overtime_minutes * overtime_price)
-                rental.total_price = (rental.total_price or 0) + additional_charge
+        overtime_minutes = max(0, actual_minutes - planned_duration)
+        if overtime_minutes > 0:
+            additional_charge = int(overtime_minutes * overtime_price)
+            rental.total_price = (rental.total_price or 0) + additional_charge
 
-        amount_to_charge = rental.total_price - (rental.already_payed or 0)
-        if amount_to_charge > 0:
-            if current_user.wallet_balance < amount_to_charge:
-                raise HTTPException(status_code=400, detail="Insufficient wallet balance for final charge")
-            current_user.wallet_balance -= amount_to_charge
-            rental.already_payed = (rental.already_payed or 0) + amount_to_charge
+    # Считаем сумму, которую нужно списать сейчас
+    amount_to_charge = rental.total_price - (rental.already_payed or 0)
 
-        rental.rental_status = RentalStatus.COMPLETED
-        car.current_renter_id = None
-        car.status = "PENDING"
+    if amount_to_charge > 0:
+        # списываем, даже если баланса не хватает — уйдёт в минус
+        current_user.wallet_balance -= amount_to_charge
+        rental.already_payed = (rental.already_payed or 0) + amount_to_charge
 
-        # Добавим отзыв
-        review = RentalReview(
-            rental_id=rental.id,
-            rating=getattr(review_input, "rating", None),
-            comment=getattr(review_input, "comment", None)
+    try:
+        db.commit()
+        response = {
+            "message": "Rental completed successfully",
+            "rental_details": {
+                "total_duration_minutes": int(actual_minutes),
+                "planned_price": (rental.total_price - additional_charge)
+                if rental.rental_type != RentalType.MINUTES else None,
+                "overtime_charge": additional_charge
+                if rental.rental_type != RentalType.MINUTES else None,
+                "final_total_price": rental.total_price,
+                "amount_charged_now": amount_to_charge,
+                "current_wallet_balance": float(current_user.wallet_balance)
+            },
+            "review": {
+                "rating": review.rating,
+                "comment": review.comment
+            } if review_input else None
+        }
+        return response
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"An error occurred while completing the rental: {e}"
         )
-        db.add(review)
-
-        try:
-            db.commit()
-            return {
-                "message": "Rental completed successfully",
-                "rental_details": {
-                    "total_duration_minutes": int(actual_minutes),
-                    "planned_price": rental.total_price - additional_charge if rental.rental_type != RentalType.MINUTES else None,
-                    "overtime_charge": additional_charge if rental.rental_type != RentalType.MINUTES else None,
-                    "final_total_price": rental.total_price,
-                    "amount_charged_now": amount_to_charge,
-                    "current_wallet_balance": float(current_user.wallet_balance)
-                },
-                "review": {
-                    "rating": review.rating,
-                    "comment": review.comment
-                }
-            }
-        except Exception as e:
-            db.rollback()
-            raise HTTPException(
-                status_code=500,
-                detail=f"An error occurred while completing the rental: {str(e)}"
-            )
