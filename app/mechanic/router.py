@@ -16,7 +16,6 @@ from app.models.user_model import User
 MechanicRouter = APIRouter(tags=["Mechanic"], prefix="/mechanic")
 
 
-# Вспомогательные функции
 def isoformat_or_none(dt: Optional[datetime]) -> Optional[str]:
     return dt.isoformat() if dt else None
 
@@ -62,7 +61,7 @@ def add_review_if_exists(db: Session, rental_id: int, review_input: Optional["Re
 
 
 # Импортируем функцию для сохранения файлов (аналогичная логике из RentRouter)
-from app.auth.dependencies.save_documents import save_file
+from app.auth.dependencies.save_documents import save_file, validate_photos
 
 
 # ----------------------- GET эндпоинты -----------------------
@@ -353,74 +352,100 @@ async def cancel_reservation(
 
 # ----------------------- Эндпоинты для загрузки фотографий -----------------------
 
+
+async def _handle_photos(
+        selfie: UploadFile,
+        car_photos: List[UploadFile],
+        interior_photos: List[UploadFile],
+        rental_id: int,
+        when: str
+) -> List[str]:
+    # валидация
+    validate_photos([selfie], "selfie")
+    validate_photos(car_photos, "car_photos")
+    validate_photos(interior_photos, "interior_photos")
+
+    base_dir = f"uploads/rents/{rental_id}/{when}"
+    urls: List[str] = []
+
+    # сохраняем селфи
+    urls.append(await save_file(selfie, rental_id, f"{base_dir}/selfie/"))
+
+    # сохраняем внешние фото
+    for p in car_photos:
+        urls.append(await save_file(p, rental_id, f"{base_dir}/car/"))
+
+    # сохраняем фото салона
+    for p in interior_photos:
+        urls.append(await save_file(p, rental_id, f"{base_dir}/interior/"))
+
+    return urls
+
+
 @MechanicRouter.post("/upload-photos-before")
 async def upload_photos_before(
         selfie: UploadFile = File(...),
         car_photos: List[UploadFile] = File(...),
+        interior_photos: List[UploadFile] = File(...),
         db: Session = Depends(get_db),
         current_mechanic: Any = Depends(get_current_mechanic)
 ) -> Dict[str, Any]:
     """
-    Загрузка фотографий до начала проверки автомобиля.
-    Принимает selfie и от 1 до 10 фотографий машины.
+    Загрузка фотографий до начала проверки автомобиля:
+    - selfie: фото механика с машиной;
+    - car_photos: 1–10 внешних фото;
+    - interior_photos: 1–10 фото салона.
     """
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_mechanic.id,
         RentalHistory.rental_status == RentalStatus.IN_USE
     ).first()
     if not rental:
-        raise HTTPException(status_code=404, detail="Нет активной проверки (IN USE)")
-    validate_photo_count(car_photos)
-    all_photos = [selfie] + car_photos
-    validate_photo_types(all_photos)
+        raise HTTPException(status_code=404, detail="Нет активной проверки (IN_USE)")
+
     try:
-        selfie_path = await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/before/selfie/")
-        car_paths = await process_upload_photos(car_photos, rental.id, "before/car")
-        photo_urls = [selfie_path] + car_paths
-        rental.photos_before = photo_urls
+        urls = await _handle_photos(selfie, car_photos, interior_photos, rental.id, "before")
+        rental.photos_before = urls
         db.commit()
-        return {
-            "message": "Фотографии до проверки загружены успешно",
-            "photo_count": len(photo_urls)
-        }
-    except Exception as e:
+        return {"message": "Фотографии до проверки загружены", "photo_count": len(urls)}
+    except HTTPException:
+        raise
+    except Exception:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Ошибка при загрузке фотографий")
+        raise HTTPException(status_code=500, detail="Ошибка при загрузке фотографий до проверки")
 
 
 @MechanicRouter.post("/upload-photos-after")
 async def upload_photos_after(
         selfie: UploadFile = File(...),
         car_photos: List[UploadFile] = File(...),
+        interior_photos: List[UploadFile] = File(...),
         db: Session = Depends(get_db),
         current_mechanic: Any = Depends(get_current_mechanic)
 ) -> Dict[str, Any]:
     """
-    Загрузка фотографий после завершения проверки автомобиля.
-    Принимает selfie и от 1 до 10 фотографий машины.
+    Загрузка фотографий после завершения проверки автомобиля:
+    - selfie: фото механика с машиной;
+    - car_photos: 1–10 внешних фото;
+    - interior_photos: 1–10 фото салона.
     """
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_mechanic.id,
         RentalHistory.rental_status == RentalStatus.IN_USE
     ).first()
     if not rental:
-        raise HTTPException(status_code=404, detail="Нет активной проверки (IN USE)")
-    validate_photo_count(car_photos)
-    all_photos = [selfie] + car_photos
-    validate_photo_types(all_photos)
+        raise HTTPException(status_code=404, detail="Нет активной проверки (IN_USE)")
+
     try:
-        selfie_path = await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/after/selfie/")
-        car_paths = await process_upload_photos(car_photos, rental.id, "after/car")
-        photo_urls = [selfie_path] + car_paths
-        rental.photos_after = photo_urls
+        urls = await _handle_photos(selfie, car_photos, interior_photos, rental.id, "after")
+        rental.photos_after = urls
         db.commit()
-        return {
-            "message": "Фотографии после проверки загружены успешно",
-            "photo_count": len(photo_urls)
-        }
-    except Exception as e:
+        return {"message": "Фотографии после проверки загружены", "photo_count": len(urls)}
+    except HTTPException:
+        raise
+    except Exception:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Ошибка при загрузке фотографий")
+        raise HTTPException(status_code=500, detail="Ошибка при загрузке фотографий после проверки")
 
 
 # ----------------------- Завершение проверки (complete) -----------------------

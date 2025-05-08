@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from app.auth.dependencies.get_current_user import get_current_user
-from app.auth.dependencies.save_documents import save_file
+from app.auth.dependencies.save_documents import save_file, validate_photos
 from app.dependencies.database.database import get_db
 from app.gps_api.utils.get_active_rental import get_open_price
 from app.models.history_model import RentalType, RentalStatus, RentalHistory, RentalReview
@@ -497,238 +497,157 @@ async def start_rental(
 @RentRouter.post("/upload-photos-before")
 async def upload_photos_before(
         selfie: UploadFile = File(...),
-        car_photos: List[UploadFile] = File(...),
+        car_photos: list[UploadFile] = File(...),
+        interior_photos: list[UploadFile] = File(...),
         db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user)
+        current_user=Depends(get_current_user)
 ):
     """
     Загружает фотографии до начала аренды:
-    - selfie: фотография пользователя с машиной;
-    - car_photos: от 1 до 10 фотографий машины.
+    - selfie: фото пользователя с машиной;
+    - car_photos: внешние фото машины (1-10);
+    - interior_photos: фото салона машины (1-10).
     """
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,
         RentalHistory.rental_status == RentalStatus.IN_USE
     ).first()
-
     if not rental:
         raise HTTPException(status_code=404, detail="No active rental in IN_USE status found")
 
-    if len(car_photos) < 1 or len(car_photos) > 10:
-        raise HTTPException(
-            status_code=400,
-            detail="You must provide between 1 and 10 car photos"
-        )
-
-    allowed_types = ["image/jpeg", "image/png"]
-    all_photos = [selfie] + car_photos
-    for photo in all_photos:
-        if photo.content_type not in allowed_types:
-            raise HTTPException(
-                status_code=400,
-                detail=f"File {photo.filename} is not an image. Only JPEG and PNG are allowed."
-            )
+    validate_photos([selfie], 'selfie')
+    validate_photos(car_photos, 'car_photos')
+    validate_photos(interior_photos, 'interior_photos')
 
     try:
-        photo_urls = []
-        selfie_path = await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/before/selfie/")
-        photo_urls.append(selfie_path)
-        for photo in car_photos:
-            photo_path = await save_file(photo, rental.id, f"uploads/rents/{rental.id}/before/car/")
-            photo_urls.append(photo_path)
+        urls = []
+        # save selfie
+        urls.append(await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/before/selfie/"))
+        # save exterior
+        for p in car_photos:
+            urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/car/"))
+        # save interior
+        for p in interior_photos:
+            urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/interior/"))
 
-        rental.photos_before = photo_urls
+        rental.photos_before = urls
         db.commit()
-
-        return {
-            "message": "Photos before rental uploaded successfully",
-            "photo_count": len(photo_urls)
-        }
-
-    except Exception as e:
+        return {"message": "Photos before rental uploaded", "photo_count": len(urls)}
+    except Exception:
         db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail="An error occurred while uploading photos"
-        )
+        raise HTTPException(status_code=500, detail="Error uploading photos before")
 
 
 @RentRouter.post("/upload-photos-after")
 async def upload_photos_after(
         selfie: UploadFile = File(...),
-        car_photos: List[UploadFile] = File(...),
+        car_photos: list[UploadFile] = File(...),
+        interior_photos: list[UploadFile] = File(...),
         db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user)
+        current_user=Depends(get_current_user)
 ):
     """
-    Загружает фотографии после завершения аренды:
-    - selfie: фотография пользователя с машиной;
-    - car_photos: от 1 до 10 фотографий машины.
+    Фотографии после завершения аренды:
+    - selfie: фото пользователя;
+    - car_photos: внешние фото (1-10);
+    - interior_photos: фото салона (1-10).
     """
-    # Проверяем наличие активной аренды в статусе IN_USE
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,
         RentalHistory.rental_status == RentalStatus.IN_USE
     ).first()
-
     if not rental:
         raise HTTPException(status_code=404, detail="No active rental in IN_USE status found")
 
-    if len(car_photos) < 1 or len(car_photos) > 10:
-        raise HTTPException(
-            status_code=400,
-            detail="You must provide between 1 and 10 car photos"
-        )
-
-    allowed_types = ["image/jpeg", "image/png"]
-    all_photos = [selfie] + car_photos
-    for photo in all_photos:
-        if photo.content_type not in allowed_types:
-            raise HTTPException(
-                status_code=400,
-                detail=f"File {photo.filename} is not an image. Only JPEG and PNG are allowed."
-            )
+    validate_photos([selfie], 'selfie')
+    validate_photos(car_photos, 'car_photos')
+    validate_photos(interior_photos, 'interior_photos')
 
     try:
-        photo_urls = []
-        selfie_path = await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/after/selfie/")
-        photo_urls.append(selfie_path)
-        for photo in car_photos:
-            photo_path = await save_file(photo, rental.id, f"uploads/rents/{rental.id}/after/car/")
-            photo_urls.append(photo_path)
+        urls = []
+        urls.append(await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/after/selfie/"))
+        for p in car_photos:
+            urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/car/"))
+        for p in interior_photos:
+            urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/interior/"))
 
-        rental.photos_after = photo_urls
+        rental.photos_after = urls
         db.commit()
-
-        return {
-            "message": "Photos after rental uploaded successfully",
-            "photo_count": len(photo_urls)
-        }
-
-    except Exception as e:
+        return {"message": "Photos after rental uploaded", "photo_count": len(urls)}
+    except Exception:
         db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail="An error occurred while uploading photos"
-        )
+        raise HTTPException(status_code=500, detail="Error uploading photos after")
 
 
-# Новые эндпоинты для загрузки фотографий без селфи (для владельца)
-
+# Owner endpoints (без селфи)
 @RentRouter.post("/upload-photos-before-owner")
 async def upload_photos_before_owner(
-        car_photos: List[UploadFile] = File(...),
+        car_photos: list[UploadFile] = File(...),
+        interior_photos: list[UploadFile] = File(...),
         db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user)
+        current_user=Depends(get_current_user)
 ):
-    """
-    Загружает фотографии до начала аренды для владельца машины (без селфи).
-    Принимает только car_photos (от 1 до 10 фотографий машины).
-    """
+    """Фотографии до аренды для владельца (1-10 внешних, 1-10 салона)."""
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,
         RentalHistory.rental_status == RentalStatus.IN_USE
     ).first()
-
     if not rental:
         raise HTTPException(status_code=404, detail="No active rental in IN_USE status found")
-
-    car = db.query(Car).filter(Car.id == rental.car_id).first()
-    if not car or car.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Это не ваша машина")
-
-    if len(car_photos) < 1 or len(car_photos) > 10:
-        raise HTTPException(
-            status_code=400,
-            detail="You must provide between 1 and 10 car photos"
-        )
-
-    allowed_types = ["image/jpeg", "image/png"]
-    for photo in car_photos:
-        if photo.content_type not in allowed_types:
-            raise HTTPException(
-                status_code=400,
-                detail=f"File {photo.filename} is not an image. Only JPEG and PNG are allowed."
-            )
+    car = db.query(Car).get(rental.car_id)
+    if car.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your car")
+    validate_photos(car_photos, 'car_photos')
+    validate_photos(interior_photos, 'interior_photos')
 
     try:
-        photo_urls = []
-        for photo in car_photos:
-            photo_path = await save_file(photo, rental.id, f"uploads/rents/{rental.id}/before/car/")
-            photo_urls.append(photo_path)
+        urls = []
+        for p in car_photos:
+            urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/car/"))
+        for p in interior_photos:
+            urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/interior/"))
 
-        rental.photos_before = photo_urls
+        rental.photos_before = urls
         db.commit()
-
-        return {
-            "message": "Photos before rental uploaded successfully (owner)",
-            "photo_count": len(photo_urls)
-        }
-
-    except Exception as e:
+        return {"message": "Owner photos before uploaded", "photo_count": len(urls)}
+    except Exception:
         db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail="An error occurred while uploading photos"
-        )
+        raise HTTPException(status_code=500, detail="Error uploading owner photos before")
 
 
 @RentRouter.post("/upload-photos-after-owner")
 async def upload_photos_after_owner(
-        car_photos: List[UploadFile] = File(...),
+        car_photos: list[UploadFile] = File(...),
+        interior_photos: list[UploadFile] = File(...),
         db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user)
+        current_user=Depends(get_current_user)
 ):
-    """
-    Загружает фотографии после завершения аренды для владельца машины (без селфи).
-    Принимает только car_photos (от 1 до 10 фотографий машины).
-    """
+    """Фотографии после аренды для владельца (1-10 внешних, 1-10 салона)."""
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,
         RentalHistory.rental_status == RentalStatus.IN_USE
     ).first()
-
     if not rental:
         raise HTTPException(status_code=404, detail="No active rental in IN_USE status found")
-
-    car = db.query(Car).filter(Car.id == rental.car_id).first()
-    if not car or car.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Это не ваша машина")
-
-    if len(car_photos) < 1 or len(car_photos) > 10:
-        raise HTTPException(
-            status_code=400,
-            detail="You must provide between 1 and 10 car photos"
-        )
-
-    allowed_types = ["image/jpeg", "image/png"]
-    for photo in car_photos:
-        if photo.content_type not in allowed_types:
-            raise HTTPException(
-                status_code=400,
-                detail=f"File {photo.filename} is not an image. Only JPEG and PNG are allowed."
-            )
+    car = db.query(Car).get(rental.car_id)
+    if car.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your car")
+    validate_photos(car_photos, 'car_photos')
+    validate_photos(interior_photos, 'interior_photos')
 
     try:
-        photo_urls = []
-        for photo in car_photos:
-            photo_path = await save_file(photo, rental.id, f"uploads/rents/{rental.id}/after/car/")
-            photo_urls.append(photo_path)
+        urls = []
+        for p in car_photos:
+            urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/car/"))
+        for p in interior_photos:
+            urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/interior/"))
 
-        rental.photos_after = photo_urls
+        rental.photos_after = urls
         db.commit()
-
-        return {
-            "message": "Photos after rental uploaded successfully (owner)",
-            "photo_count": len(photo_urls)
-        }
-
-    except Exception as e:
+        return {"message": "Owner photos after uploaded", "photo_count": len(urls)}
+    except Exception:
         db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail="An error occurred while uploading photos"
-        )
+        raise HTTPException(status_code=500, detail="Error uploading owner photos after")
 
 
 class RentalReviewInput(BaseModel):
