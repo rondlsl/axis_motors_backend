@@ -29,11 +29,31 @@ def save_fcm_token(payload: TokenRequest,
 
 def send_push_notification(token: str, title: str, body: str):
     try:
-        message = messaging.Message(
-            notification=messaging.Notification(
+        # Android: sound and vibration (via channel)
+        android_config = messaging.AndroidConfig(
+            priority="high",
+            notification=messaging.AndroidNotification(
                 title=title,
-                body=body
-            ),
+                body=body,
+                sound="default",           # Воспроизведение звука
+                channel_id="high_importance_channel",  # Канал должен быть настроен на вибрацию
+            )
+        )
+        # iOS: sound
+        apns_config = messaging.APNSConfig(
+            payload=messaging.APNSPayload(
+                aps=messaging.Aps(
+                    alert=messaging.ApsAlert(
+                        title=title,
+                        body=body
+                    ),
+                    sound="default"           # Воспроизведение звука на iOS
+                )
+            )
+        )
+        message = messaging.Message(
+            android=android_config,
+            apns=apns_config,
             token=token
         )
         response = messaging.send(message)
