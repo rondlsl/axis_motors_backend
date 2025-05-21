@@ -12,6 +12,7 @@ from app.gps_api.utils.get_active_rental import get_open_price
 from app.models.history_model import RentalType, RentalStatus, RentalHistory, RentalReview
 from app.models.car_model import Car
 from app.models.user_model import User
+from app.push.utils import send_push_notification_async
 
 MechanicRouter = APIRouter(tags=["Mechanic"], prefix="/mechanic")
 
@@ -549,7 +550,6 @@ def get_delivery_vehicles(
     return {"delivery_vehicles": vehicles_data}
 
 
-# 2. Принятие заказа доставки механиком
 @MechanicRouter.post("/accept-delivery/{rental_id}")
 async def accept_delivery(
         rental_id: int,
@@ -560,6 +560,7 @@ async def accept_delivery(
     Позволяет механику взять заказ доставки.
     Проверяется, что заказ находится в статусе DELIVERING и что другой механик ещё не принял этот заказ.
     Также у механика не может быть более одного активного заказа доставки.
+    После успешного приёма отправляет пуш пользователю, что механик в пути.
     """
 
     # Проверяем, что у механика нет другого активного заказа доставки
@@ -586,13 +587,27 @@ async def accept_delivery(
             detail="Заказ уже принят другим механиком."
         )
 
+    # Назначаем механика и сохраняем
     rental.delivery_mechanic_id = current_mechanic.id
     db.commit()
+    db.refresh(rental)
 
-    return {"message": "Заказ доставки успешно принят", "rental_id": rental.id}
+    # Отправляем пуш пользователю, который арендовал машину
+    user = db.query(User).filter(User.id == rental.user_id).first()
+    if user and user.fcm_token:
+        title = "Механик в пути"
+        body = (
+            f"Механик принял заказ доставки и уже едет к вам."
+        )
+        # асинхронно шлём пуш (не блокируем основной поток)
+        await send_push_notification_async(user.fcm_token, title, body)
+
+    return {
+        "message": "Заказ доставки успешно принят",
+        "rental_id": rental.id
+    }
 
 
-# 3. Завершение доставки механиком
 @MechanicRouter.post("/complete-delivery")
 async def complete_delivery(
         db: Session = Depends(get_db),
@@ -601,7 +616,7 @@ async def complete_delivery(
     """
     Механик завершает заказ доставки.
     Находит заказ доставки, принятый текущим механиком, и переводит его в статус RESERVED.
-    Это означает, что автомобиль после доставки переходит в состояние ожидания дальнейших операций.
+    Отправляет пуш пользователю, что автомобиль приехал и ждёт его.
     """
     rental = db.query(RentalHistory).filter(
         RentalHistory.delivery_mechanic_id == current_mechanic.id,
@@ -616,15 +631,22 @@ async def complete_delivery(
 
     now = datetime.utcnow()
     rental.end_time = now
-    # После доставки для пользователя автомобиль переходит в состояние RESERVED
     rental.rental_status = RentalStatus.RESERVED
-
-    # Обновляем статус автомобиля (например, пользователь продолжает аренду)
     car.status = "RESERVED"
-    # Сбрасываем назначение механика для доставки
     rental.delivery_mechanic_id = None
 
     db.commit()
+    db.refresh(rental)
+
+    # Отправляем пуш пользователю, которому доставили машину
+    user = db.query(User).filter(User.id == rental.user_id).first()
+    if user and user.fcm_token:
+        title = "Машина доставлена"
+        body = (
+            f"Ваш автомобиль «{car.name}» ({car.plate_number}) "
+            "приехал и уже ждёт вас."
+        )
+        await send_push_notification_async(user.fcm_token, title, body)
 
     return {
         "message": "Доставка успешно завершена. Автомобиль передан пользователю (статус RESERVED).",

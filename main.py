@@ -1,11 +1,12 @@
 import asyncio
 import os
 
+import anyio
 import httpx
 
 from alembic import command
 from alembic.config import Config
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from starlette.middleware.cors import CORSMiddleware
@@ -19,6 +20,7 @@ from app.mechanic.router import MechanicRouter
 from app.models.car_model import Car
 from app.models.user_model import User, UserRole
 from app.rent.router import RentRouter
+from app.rent.utils.billing import rental_billing_loop
 from app.push.router import router as PushRouter
 
 # === APP ===
@@ -103,6 +105,7 @@ def init_app(app: FastAPI):
 
         db_gen = get_db()
         db = next(db_gen)
+        asyncio.create_task(rental_billing_loop())
         try:
             owner_phone = "77000250400"
             owner = db.query(User).filter(User.phone_number == owner_phone).first()
@@ -212,7 +215,7 @@ app.include_router(PushRouter)
 
 
 @app.get("/")
-def root():
+async def root(db: Session = Depends(get_db)):
     return {"message": "salam?"}
 
 

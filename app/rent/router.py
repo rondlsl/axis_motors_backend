@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, status,
 from pydantic import BaseModel, constr, Field, conint
 from sqlalchemy.orm import Session
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from app.auth.dependencies.get_current_user import get_current_user
 from app.auth.dependencies.save_documents import save_file, validate_photos
@@ -12,6 +12,7 @@ from app.gps_api.utils.get_active_rental import get_open_price
 from app.models.history_model import RentalType, RentalStatus, RentalHistory, RentalReview
 from app.models.user_model import User, UserRole
 from app.models.car_model import Car
+from app.push.utils import send_notification_to_all_mechanics_async, send_push_notification_async
 from app.rent.utils.calculate_price import calculate_total_price
 
 RentRouter = APIRouter(tags=["Rent"], prefix="/rent")
@@ -319,6 +320,12 @@ async def reserve_delivery(
     car.status = "DELIVERING"
     db.commit()
 
+    # Формируем текст уведомления
+    notification_title = "Доставка: новый заказ"
+    notification_body = f"Нужно доставить клиенту {car.name} ({car.plate_number})."
+
+    await send_notification_to_all_mechanics_async(db, notification_title, notification_body)
+
     return {
         "message": "Заказ доставки оформлен успешно",
         "rental_id": rental.id,
@@ -417,26 +424,50 @@ async def cancel_reservation(
 async def cancel_delivery(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
-):
+) -> Dict[str, Any]:
     """
     Отмена доставки (только если аренда в статусе DELIVERING).
     Деньги за доставку не возвращаем.
-    Уведомляем назначенного механика, если он есть.
+    Уведомляем назначенного механика, если он есть, и освобождаем автомобиль.
     """
-    # Находим единственную активную доставку пользователя
+    # Находим активный заказ доставки пользователя
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,
         RentalHistory.rental_status == RentalStatus.DELIVERING
     ).first()
-
     if not rental:
         raise HTTPException(status_code=400, detail="Нет активного заказа доставки для отмены")
 
-    # Меняем статус на CANCELLED
+    # Получаем машину
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+
+    # Сохраняем ID механика до его обнуления
+    mech_id = rental.delivery_mechanic_id
+
+    # Отменяем доставку
     rental.rental_status = RentalStatus.CANCELLED
-    # фиксируем время отмены
     rental.end_time = datetime.utcnow()
+    rental.delivery_mechanic_id = None
+
+    # Освобождаем машину
+    car.current_renter_id = None
+    car.status = "FREE"
+
     db.commit()
+    db.refresh(rental)
+
+    # Уведомляем механика, если был назначен
+    if mech_id:
+        mech = db.query(User).get(mech_id)
+        if mech and mech.fcm_token:
+            title = "Доставка отменена"
+            body = (
+                f"Доставка автомобиля {car.name} ({car.plate_number}) по заказу #{rental.id} "
+                "была отменена."
+            )
+            await send_push_notification_async(mech.fcm_token, title, body)
 
     return {"message": "Доставка отменена успешно"}
 
@@ -690,6 +721,10 @@ async def complete_rental(
         )
         db.add(review)
 
+    # Формируем текст уведомления
+    notification_title = "Новая машина для осмотра"
+    notification_body = f"Аренда автомобиля {car.name} ({car.plate_number}) завершена. Требуется осмотр и обслуживание."
+
     if car.owner_id == current_user.id:
         # для владельца аренда бесплатна
         rental.total_price = 0
@@ -697,6 +732,7 @@ async def complete_rental(
 
         try:
             db.commit()
+            await send_notification_to_all_mechanics_async(db, notification_title, notification_body)
             return {
                 "message": "Rental completed successfully (owner rental)",
                 "rental_details": {
@@ -747,6 +783,7 @@ async def complete_rental(
 
     try:
         db.commit()
+        await send_notification_to_all_mechanics_async(db, notification_title, notification_body)
         response = {
             "message": "Rental completed successfully",
             "rental_details": {
