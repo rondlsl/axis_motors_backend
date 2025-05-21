@@ -62,8 +62,8 @@ def process_rentals_sync() -> list[tuple[str, str, str]]:
             # ===== 1) RESERVED → платное ожидание =====
             if rental.rental_status == RentalStatus.RESERVED:
                 waited = (now - (rental.reservation_time or rental.start_time)).total_seconds() / 60
-                if waited > 1:
-                    extra = math.ceil(waited - 1)
+                if waited > 15:
+                    extra = math.ceil(waited - 15)
                     fee_total = int(extra * car.price_per_minute * 0.5)
                     already = rental.already_payed or 0
                     if fee_total > already:
