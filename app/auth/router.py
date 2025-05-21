@@ -80,7 +80,7 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
     print(sms_code)
     sms_text = f"{sms_code} - Ваш код подтверждения AZV Motors"
     # можно раскомментировать, когда подключите SMS
-    # await send_sms_mobizon(phone_number, sms_text, f"{SMS_TOKEN}")
+    await send_sms_mobizon(phone_number, sms_text, f"{SMS_TOKEN}")
     return {"message": "SMS code sent successfully"}
 
 
