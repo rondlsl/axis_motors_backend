@@ -177,30 +177,24 @@ async def reserve_car(
     else:
         # Логика для обычного пользователя
         if rental_type == RentalType.MINUTES:
-            if current_user.wallet_balance < car.price_per_hour * 2:
+            if current_user.wallet_balance < car.price_per_hour * 1:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"У вас на кошельке должно быть минимум {car.price_per_hour * 2} тенге для аренды данного авто."
+                    detail=f"У вас на кошельке должно быть минимум {car.price_per_hour * 1} тенге для аренды данного авто."
                 )
             total_price = 0
         else:
             if duration is None:
                 raise HTTPException(status_code=400, detail="Duration обязателен для аренды по часам или дням.")
 
-            if current_user.wallet_balance < car.price_per_day:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"У вас на кошельке должно быть минимум {car.price_per_day} тенге для аренды данного авто."
-                )
-
             total_price = calculate_total_price(
                 rental_type, duration, car.price_per_hour, car.price_per_day
             )
-
-            if current_user.wallet_balance < total_price:
+            required_balance = total_price + car.price_per_hour
+            if current_user.wallet_balance < required_balance:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Недостаточно средств. Необходимо: {total_price} тенге"
+                    detail=f"Недостаточно средств. Необходимо: {required_balance} тенге"
                 )
 
         rental = RentalHistory(
@@ -271,10 +265,10 @@ async def reserve_delivery(
     else:
         if rental_type == RentalType.MINUTES:
             # Здесь можно установить минимальную проверку баланса (примерно, как в reserve_car)
-            if current_user.wallet_balance < car.price_per_hour * 2 + extra_fee:
+            if current_user.wallet_balance < car.price_per_hour * 1 + extra_fee:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"На кошельке должно быть минимум {car.price_per_hour * 2 + extra_fee} тенге для аренды с доставкой."
+                    detail=f"На кошельке должно быть минимум {car.price_per_hour * 1 + extra_fee} тенге для аренды с доставкой."
                 )
             total_price = extra_fee  # При минутной аренде только доплата за доставку
         else:
@@ -282,11 +276,11 @@ async def reserve_delivery(
                 raise HTTPException(status_code=400, detail="Duration обязателен для аренды по часам или дням.")
             base_price = calculate_total_price(rental_type, duration, car.price_per_hour, car.price_per_day)
             total_price = base_price + extra_fee
-
-            if current_user.wallet_balance < total_price:
+            required_balance = total_price + car.price_per_hour
+            if current_user.wallet_balance < required_balance:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Недостаточно средств. Необходимо: {total_price} тенге"
+                    detail=f"Недостаточно средств. Необходимо: {required_balance} тенге"
                 )
 
     # Если пользователь не владелец, списываем доплату за доставку сразу
@@ -296,6 +290,7 @@ async def reserve_delivery(
                 status_code=400,
                 detail="Недостаточно средств для доплаты за доставку"
             )
+
         current_user.wallet_balance -= extra_fee
 
     rental = RentalHistory(
