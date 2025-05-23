@@ -116,6 +116,15 @@ def init_app(app: FastAPI):
                 db.refresh(owner)
 
             if not db.query(Car).filter(Car.id == 1).first():
+                photos_dir = os.path.join(os.path.dirname(__file__), "uploads", "cars", "1")
+                # Собираем список URL для доступа через StaticFiles (/uploads/…)
+                photos = []
+                if os.path.isdir(photos_dir):
+                    for fname in sorted(os.listdir(photos_dir)):
+                        # Фильтруем только файлы (JPG, PNG и т.п.)
+                        if os.path.isfile(os.path.join(photos_dir, fname)):
+                            photos.append(f"/uploads/cars/1/{fname}")
+
                 car1 = Car(
                     id=1,
                     name="HAVAL F7x",
@@ -133,10 +142,12 @@ def init_app(app: FastAPI):
                     fuel_level=80,
                     owner_id=owner.id,
                     course=90,
-                    description="Машина в идеальном состоянии."
+                    description="Машина в идеальном состоянии.",
+                    photos=photos  # <- вот тут передаём массив путей к фотографиям
                 )
                 db.add(car1)
                 db.commit()
+
                 print("✅ HAVAL F7x (id=1) добавлена")
             else:
                 print("ℹ️ HAVAL F7x (id=1) уже существует")

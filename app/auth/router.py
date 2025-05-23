@@ -185,6 +185,7 @@ async def read_users_me(
                 "engine_volume": car.engine_volume,
                 "drive_type": car.drive_type,
                 "year": car.year,
+                "photos": car.photos,
                 "status": car.status,
                 "price_per_minute": car.price_per_minute,
                 "price_per_hour": car.price_per_hour,
