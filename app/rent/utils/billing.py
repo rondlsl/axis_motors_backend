@@ -135,8 +135,15 @@ def process_rentals_sync() -> list[tuple[str, str, str]]:
                 elapsed = (now - rental.start_time).total_seconds() / 60
 
                 if rental.rental_type == RentalType.MINUTES:
-                    # поминутный тариф без базового периода — списание в момент старта не нужно
-                    continue
+                    # сколько уже прошло минут
+                    elapsed_minutes = math.ceil(elapsed)
+                    total_due = int(elapsed_minutes * car.price_per_minute)
+                    already = rental.already_payed or 0
+                    if total_due > already:
+                        charge = total_due - already
+                        rental.already_payed = total_due
+                        user.wallet_balance -= charge
+                        db.commit()
 
                 # вычисляем минуты базового периода
                 factor = 60 if rental.rental_type == RentalType.HOURS else 1440
