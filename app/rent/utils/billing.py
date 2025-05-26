@@ -36,12 +36,14 @@ def process_rentals_sync() -> list[tuple[str, str, str]]:
     Синхронно обрабатываем аренды:
       1) RESERVED → за 1 мин до платного ожидания и при первом платном шаге
       2) IN_USE → за 10 мин до конца базового тарифа и при первом шаге сверх тарифа
+      3) Low-balance → когда на балансе ≤ 1000 ₸ и когда баланс исчерпан
     Списания и commit выполняются сразу, пуши собираются и отдаются в loop.
     """
     db = SessionLocal()
     now = datetime.utcnow()
     notifications: list[tuple[str, str, str]] = []
 
+    # получаем все активные аренды (кроме механиков)
     rentals = (
         db.query(RentalHistory)
         .join(User, RentalHistory.user_id == User.id)
@@ -66,6 +68,8 @@ def process_rentals_sync() -> list[tuple[str, str, str]]:
                     "waiting": False,
                     "pre_overtime": False,
                     "overtime": False,
+                    "low_balance_1000": False,
+                    "low_balance_zero": False,
                 }
             flags = _notification_flags[rid]
 
@@ -76,12 +80,11 @@ def process_rentals_sync() -> list[tuple[str, str, str]]:
                 # за 1 минуту до конца бесплатного ожидания
                 if waited >= 14 and waited < 15 and not flags["pre_waiting"] and user.fcm_token:
                     mins_left = math.ceil(15 - waited)
-                    title = "Скоро начнётся платное ожидание"
-                    body = (
-                        f"Через {mins_left} мин бесплатного ожидания "
-                        f"начнётся списание {int(car.price_per_minute * 0.5)} ₸/мин."
-                    )
-                    notifications.append((user.fcm_token, title, body))
+                    notifications.append((
+                        user.fcm_token,
+                        "Скоро начнётся платное ожидание",
+                        f"Через {mins_left} мин бесплатного ожидания начнётся списание {int(car.price_per_minute * 0.5)} ₸/мин."
+                    ))
                     flags["pre_waiting"] = True
 
                 # после 15 мин: списание
@@ -94,17 +97,38 @@ def process_rentals_sync() -> list[tuple[str, str, str]]:
                         rental.already_payed = fee_total
                         user.wallet_balance -= charge
                         db.commit()
-                        # пуш только при первом списании
-                        if not flags["waiting"] and user.fcm_token:
-                            title = "Началось платное ожидание"
-                            body = (
-                                f"Первые {extra} мин платного ожидания — "
-                                f"списано {charge} ₸."
-                            )
-                            notifications.append((user.fcm_token, title, body))
-                            flags["waiting"] = True
 
-                        print(f"[Billing][WAIT] rental={rid} charged={charge} new_balance={user.wallet_balance}")
+                        # ── уведомление при низком балансе ≤ 1000 ₸ ────────────────
+                        if (
+                                user.wallet_balance <= 1000
+                                and user.wallet_balance > 0
+                                and not flags["low_balance_1000"]
+                                and user.fcm_token
+                        ):
+                            notifications.append((
+                                user.fcm_token,
+                                "Низкий баланс",
+                                f"На вашем балансе {int(user.wallet_balance)} ₸ — осталось менее 1000 ₸. Пополните баланс."
+                            ))
+                            flags["low_balance_1000"] = True
+
+                        # ── уведомление при исчерпании баланса ─────────────────────
+                        if user.wallet_balance <= 0 and not flags["low_balance_zero"] and user.fcm_token:
+                            notifications.append((
+                                user.fcm_token,
+                                "Баланс исчерпан",
+                                "Ваш баланс 0 ₸ – завершите аренду, чтобы избежать штрафов."
+                            ))
+                            flags["low_balance_zero"] = True
+
+                        # пуш только при первом платном списании
+                        if not flags["waiting"] and user.fcm_token:
+                            notifications.append((
+                                user.fcm_token,
+                                "Началось платное ожидание",
+                                f"Первые {extra} мин платного ожидания — списано {charge} ₸."
+                            ))
+                            flags["waiting"] = True
 
             # 2) IN_USE: сверх тарифа
             elif rental.rental_status == RentalStatus.IN_USE:
@@ -121,16 +145,14 @@ def process_rentals_sync() -> list[tuple[str, str, str]]:
 
                 # за 10 мин до конца базового тарифа
                 if remaining <= 10 and remaining > 0 and not flags["pre_overtime"] and user.fcm_token:
-                    mins_left = math.ceil(remaining)
-                    title = "Скоро закончится базовый тариф"
-                    body = (
-                        f"Через {mins_left} мин закончится базовый тариф. "
-                        f"Далее плата {car.price_per_minute} ₸/мин."
-                    )
-                    notifications.append((user.fcm_token, title, body))
+                    notifications.append((
+                        user.fcm_token,
+                        "Скоро закончится базовый тариф",
+                        f"Через {math.ceil(remaining)} мин закончится базовый тариф. Далее плата {car.price_per_minute} ₸/мин."
+                    ))
                     flags["pre_overtime"] = True
 
-                # если уже сверх лаймита — списываем
+                # списываем сверх лимита
                 overtime = max(0, elapsed - planned)
                 if overtime > 0:
                     extra = math.ceil(overtime)
@@ -138,25 +160,47 @@ def process_rentals_sync() -> list[tuple[str, str, str]]:
                     already = rental.already_payed or 0
                     if due_total > already:
                         charge = due_total - already
-                        rental.already_payed = already + charge
+                        rental.already_payed = due_total
                         user.wallet_balance -= charge
                         db.commit()
+
+                        # ── уведомление при низком балансе ≤ 1000 ₸ ────────────────
+                        if (
+                                user.wallet_balance <= 1000
+                                and user.wallet_balance > 0
+                                and not flags["low_balance_1000"]
+                                and user.fcm_token
+                        ):
+                            notifications.append((
+                                user.fcm_token,
+                                "Низкий баланс",
+                                f"На вашем балансе {int(user.wallet_balance)} ₸ — осталось менее 1000 ₸. Пополните баланс."
+                            ))
+                            flags["low_balance_1000"] = True
+
+                        # ── уведомление при исчерпании баланса ─────────────────────
+                        if user.wallet_balance <= 0 and not flags["low_balance_zero"] and user.fcm_token:
+                            notifications.append((
+                                user.fcm_token,
+                                "Баланс исчерпан",
+                                "Ваш баланс 0 ₸ – завершите аренду, чтобы избежать штрафов."
+                            ))
+                            flags["low_balance_zero"] = True
+
                         # пуш только при первом шаге сверх тарифа
                         if not flags["overtime"] and user.fcm_token:
-                            title = "Списания вне тарифа"
-                            body = (
+                            notifications.append((
+                                user.fcm_token,
+                                "Списания вне тарифа",
                                 f"Списываем сверх тарифа: {extra} мин — {charge} ₸."
-                            )
-                            notifications.append((user.fcm_token, title, body))
+                            ))
                             flags["overtime"] = True
-
-                        print(f"[Billing][OVERTIME] rental={rid} charged={charge} new_balance={user.wallet_balance}")
 
         except Exception as e:
             db.rollback()
             print(f"[Billing error] rental={rental.id}: {e}")
 
-    # очистка флагов для завершённых/отменённых
+    # очищаем флаги для завершённых/отменённых аренд
     for rid in list(_notification_flags):
         if rid not in active_ids:
             _notification_flags.pop(rid, None)
