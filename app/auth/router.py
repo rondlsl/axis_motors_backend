@@ -230,6 +230,7 @@ async def read_users_me(
         "current_rental": current_rental,
         "owned_cars": owned_cars,
         "documents": {
+            "documents_verified": current_user.documents_verified,
             "selfie_with_license_url": current_user.selfie_with_license_url,
             "drivers_license": {
                 "url": current_user.drivers_license_url,

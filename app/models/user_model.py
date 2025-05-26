@@ -29,6 +29,7 @@ class User(Base):
     id_card_front_url = Column(String, nullable=True)
     id_card_back_url = Column(String, nullable=True)
     id_card_expiry = Column(DateTime, nullable=True)
+    documents_verified = Column(Boolean, default=False, server_default="false")
     role = Column(Enum(UserRole), default=UserRole.FIRST)
     last_sms_code = Column(String)
     sms_code_valid_until = Column(DateTime)
