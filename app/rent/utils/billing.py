@@ -145,6 +145,28 @@ def process_rentals_sync() -> list[tuple[str, str, str]]:
                         user.wallet_balance -= charge
                         db.commit()
 
+                        if (
+                                user.wallet_balance <= 1000
+                                and user.wallet_balance > 0
+                                and not flags["low_balance_1000"]
+                                and user.fcm_token
+                        ):
+                            notifications.append((
+                                user.fcm_token,
+                                "Низкий баланс",
+                                f"На вашем балансе {int(user.wallet_balance)} ₸ — осталось менее 1000 ₸. Пополните баланс."
+                            ))
+                            flags["low_balance_1000"] = True
+
+                        # ── уведомление при исчерпании баланса ─────────────────────
+                        if user.wallet_balance <= 0 and not flags["low_balance_zero"] and user.fcm_token:
+                            notifications.append((
+                                user.fcm_token,
+                                "Баланс исчерпан",
+                                "Ваш баланс 0 ₸ – завершите аренду, чтобы избежать штрафов."
+                            ))
+                            flags["low_balance_zero"] = True
+
                 # вычисляем минуты базового периода
                 factor = 60 if rental.rental_type == RentalType.HOURS else 1440
                 planned = rental.duration * factor
