@@ -538,6 +538,7 @@ def get_delivery_vehicles(
             "engine_volume": car.engine_volume,
             "drive_type": car.drive_type,
             "year": car.year,
+            "photos": car.photos,
             "status": car.status,
             "delivery_coordinates": {
                 "latitude": rental.delivery_latitude,
@@ -693,6 +694,7 @@ def current_delivery(
         "course": car.course,
         "engine_volume": car.engine_volume,
         "drive_type": car.drive_type,
+        "photos": car.photos,
         "year": car.year,
         "delivery_coordinates": {
             "latitude": rental.delivery_latitude,
