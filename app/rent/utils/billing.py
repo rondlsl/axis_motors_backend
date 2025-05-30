@@ -15,7 +15,9 @@ from app.push.utils import send_push_notification_async
 #   'pre_waiting': bool,
 #   'waiting': bool,
 #   'pre_overtime': bool,
-#   'overtime': bool
+#   'overtime': bool,
+#   'low_balance_1000': bool,
+#   'low_balance_zero': bool
 # }
 _notification_flags: dict[int, dict[str, bool]] = {}
 
@@ -47,12 +49,15 @@ def process_rentals_sync() -> list[tuple[str, str, str]]:
     rentals = (
         db.query(RentalHistory)
         .join(User, RentalHistory.user_id == User.id)
+        .join(Car, RentalHistory.car_id == Car.id)
         .filter(
             RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE]),
-            User.role != UserRole.MECHANIC
+            User.role != UserRole.MECHANIC,
+            RentalHistory.user_id != Car.owner_id
         )
         .all()
     )
+
     active_ids = {r.id for r in rentals}
 
     for rental in rentals:
@@ -95,6 +100,17 @@ def process_rentals_sync() -> list[tuple[str, str, str]]:
                     if fee_total > already:
                         charge = fee_total - already
                         rental.already_payed = fee_total
+                        # записываем fee в новое поле waiting_fee
+                        rental.waiting_fee = fee_total
+                        # пересчитываем итоговую стоимость с учётом всех фий
+                        rental.total_price = (
+                                (rental.base_price or 0)
+                                + (rental.open_fee or 0)
+                                + (rental.delivery_fee or 0)
+                                + (rental.waiting_fee or 0)
+                                + (rental.overtime_fee or 0)
+                                + (rental.distance_fee or 0)
+                        )
                         user.wallet_balance -= charge
                         db.commit()
 
@@ -137,11 +153,22 @@ def process_rentals_sync() -> list[tuple[str, str, str]]:
                 if rental.rental_type == RentalType.MINUTES:
                     # сколько уже прошло минут
                     elapsed_minutes = math.ceil(elapsed)
-                    total_due = int(elapsed_minutes * car.price_per_minute)
+                    due_total = int(elapsed_minutes * car.price_per_minute)
                     already = rental.already_payed or 0
-                    if total_due > already:
-                        charge = total_due - already
-                        rental.already_payed = total_due
+                    if due_total > already:
+                        charge = due_total - already
+                        rental.already_payed = due_total
+                        # записываем всю сумму в overtime_fee
+                        rental.overtime_fee = due_total
+                        # пересчитываем итоговую стоимость
+                        rental.total_price = (
+                                (rental.base_price or 0)
+                                + (rental.open_fee or 0)
+                                + (rental.delivery_fee or 0)
+                                + (rental.waiting_fee or 0)
+                                + (rental.overtime_fee or 0)
+                                + (rental.distance_fee or 0)
+                        )
                         user.wallet_balance -= charge
                         db.commit()
 
@@ -158,7 +185,6 @@ def process_rentals_sync() -> list[tuple[str, str, str]]:
                             ))
                             flags["low_balance_1000"] = True
 
-                        # ── уведомление при исчерпании баланса ─────────────────────
                         if user.wallet_balance <= 0 and not flags["low_balance_zero"] and user.fcm_token:
                             notifications.append((
                                 user.fcm_token,
@@ -190,10 +216,20 @@ def process_rentals_sync() -> list[tuple[str, str, str]]:
                     if due_total > already:
                         charge = due_total - already
                         rental.already_payed = due_total
+                        # записываем переработку
+                        rental.overtime_fee = due_total
+                        # пересчитываем итоговую стоимость
+                        rental.total_price = (
+                                (rental.base_price or 0)
+                                + (rental.open_fee or 0)
+                                + (rental.delivery_fee or 0)
+                                + (rental.waiting_fee or 0)
+                                + (rental.overtime_fee or 0)
+                                + (rental.distance_fee or 0)
+                        )
                         user.wallet_balance -= charge
                         db.commit()
 
-                        # ── уведомление при низком балансе ≤ 1000 ₸ ────────────────
                         if (
                                 user.wallet_balance <= 1000
                                 and user.wallet_balance > 0
@@ -207,7 +243,6 @@ def process_rentals_sync() -> list[tuple[str, str, str]]:
                             ))
                             flags["low_balance_1000"] = True
 
-                        # ── уведомление при исчерпании баланса ─────────────────────
                         if user.wallet_balance <= 0 and not flags["low_balance_zero"] and user.fcm_token:
                             notifications.append((
                                 user.fcm_token,

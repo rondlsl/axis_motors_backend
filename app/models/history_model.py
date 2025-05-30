@@ -43,6 +43,13 @@ class RentalHistory(Base):
     end_time = Column(DateTime)
     reservation_time = Column(DateTime, default=datetime.utcnow, nullable=False)
 
+    base_price = Column(Integer, nullable=True)
+    open_fee = Column(Integer, nullable=True)
+    delivery_fee = Column(Integer, nullable=True)
+    waiting_fee = Column(Integer, nullable=True, default=0)
+    overtime_fee = Column(Integer, nullable=True, default=0)
+    distance_fee = Column(Integer, nullable=True, default=0)
+
     photos_before = Column(ARRAY(String))
     photos_after = Column(ARRAY(String))
 
