@@ -8,11 +8,11 @@ from typing import List, Dict, Any, Optional
 
 from app.auth.dependencies.get_current_user import get_current_mechanic
 from app.dependencies.database.database import get_db
-from app.gps_api.utils.get_active_rental import get_open_price
 from app.models.history_model import RentalType, RentalStatus, RentalHistory, RentalReview
 from app.models.car_model import Car
 from app.models.user_model import User
 from app.push.utils import send_push_notification_async
+from app.rent.utils.calculate_price import get_open_price
 
 MechanicRouter = APIRouter(tags=["Mechanic"], prefix="/mechanic")
 

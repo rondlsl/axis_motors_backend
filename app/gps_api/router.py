@@ -11,8 +11,9 @@ from app.models.car_model import Car
 from app.models.history_model import RentalHistory
 from app.models.user_model import User
 from app.gps_api.utils.auth_api import get_auth_token
-from app.gps_api.utils.get_active_rental import get_active_rental_car, get_open_price
+from app.gps_api.utils.get_active_rental import get_active_rental_car
 from app.gps_api.utils.car_data import send_command_to_terminal
+from app.rent.utils.calculate_price import get_open_price
 
 Vehicle_Router = APIRouter(prefix="/vehicles", tags=["Vehicles"])
 
