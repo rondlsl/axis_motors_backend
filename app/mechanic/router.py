@@ -107,17 +107,20 @@ def get_pending_vehicles(
 def get_in_use_vehicles(
         db: Session = Depends(get_db),
         current_mechanic: Any = Depends(get_current_mechanic)
-) -> Dict[str, Any]:
+) -> Dict[str, List[Dict[str, Any]]]:
     """
-    Возвращает список машин со статусом IN_USE.
-    Если автомобиль в использовании, дополнительно возвращаются данные текущего арендатора:
-      - full_name
-      - phone_number
-      - URL селфи
+    Список машин со статусом IN_USE.
+    Дополнительно:
+      • current_renter_details:
+          - full_name
+          - phone_number
+          - selfie_url              (профильное селфи пользователя)
+          - rent_selfie_url         (селфи, снятое перед арендой - из photos_before)
     """
     try:
         cars = db.query(Car).filter(Car.status == "IN_USE").all()
-        vehicles_data = []
+        vehicles_data: list[dict[str, Any]] = []
+
         for car in cars:
             car_data = {
                 "id": car.id,
@@ -140,24 +143,55 @@ def get_in_use_vehicles(
                 "open_price": get_open_price(car),
                 "owned_car": False
             }
-            # Добавляем данные текущего арендатора, если car.current_renter_id указан
+
+            # --- данные арендатора + селфи перед арендой -------------------
+            renter_info = None
             if car.current_renter_id:
-                current_renter = db.query(User).filter(User.id == car.current_renter_id).first()
+                current_renter: User | None = (
+                    db.query(User).filter(User.id == car.current_renter_id).first()
+                )
+
                 if current_renter:
-                    car_data["current_renter_details"] = {
+                    # ищем последнюю активную аренду этого авто
+                    last_rental = (
+                        db.query(RentalHistory)
+                        .filter(
+                            RentalHistory.car_id == car.id,
+                            RentalHistory.user_id == current_renter.id,
+                            RentalHistory.rental_status == RentalStatus.IN_USE,
+                        )
+                        .order_by(RentalHistory.start_time.desc())  # на случай нескольких аренд подряд
+                        .first()
+                    )
+
+                    rent_selfie_url: str | None = None
+                    if last_rental and last_rental.photos_before:
+                        rent_selfie_url = next(
+                            (
+                                p
+                                for p in last_rental.photos_before
+                                if "/selfie/" in p or "\\selfie\\" in p
+                            ),
+                            last_rental.photos_before[0],
+                        )
+
+                    renter_info = {
                         "full_name": current_renter.full_name,
                         "phone_number": current_renter.phone_number,
-                        "selfie_url": current_renter.selfie_with_license_url
+                        "selfie_url": current_renter.selfie_with_license_url,
+                        "rent_selfie_url": rent_selfie_url,
                     }
-                else:
-                    car_data["current_renter_details"] = None
-            else:
-                car_data["current_renter_details"] = None
 
+            car_data["current_renter_details"] = renter_info
             vehicles_data.append(car_data)
+
         return {"vehicles": vehicles_data}
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка при получении данных об автомобилях: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка при получении данных об автомобилях: {e}",
+        )
 
 
 @MechanicRouter.get("/search")
@@ -782,3 +816,125 @@ async def take_key_delivery(
     # result = await send_command_to_terminal(car.gps_id, "*!2N", AUTH_TOKEN)
     result = {"status": "command sent"}  # заглушка
     return {"message": "Команда получения ключа отправлена", "result": result}
+
+
+async def _handle_delivery_photos(
+        photos: List[UploadFile],
+        rental_id: int,
+        subfolder: str
+) -> List[str]:
+    """
+    Вспомогательная функция: сохраняет список фотографий в указанную подпапку и возвращает URL каждого файла.
+    """
+    urls: List[str] = []
+    for p in photos:
+        # Сохраняем по пути uploads/delivery/{rental_id}/{subfolder}/
+        url = await save_file(p, rental_id, f"uploads/delivery/{rental_id}/{subfolder}/")
+        urls.append(url)
+    return urls
+
+
+@MechanicRouter.post("/upload-delivery-photos-before")
+async def upload_delivery_photos_before(
+        selfie: UploadFile = File(...),
+        car_photos: List[UploadFile] = File(...),
+        interior_photos: List[UploadFile] = File(...),
+        db: Session = Depends(get_db),
+        current_mechanic: Any = Depends(get_current_mechanic)
+) -> Dict[str, Any]:
+    """
+    Загрузка фотографий перед началом доставки (статус DELIVERING):
+    - selfie: фото механика с машиной;
+    - car_photos: 1–10 внешних фото;
+    - interior_photos: 1–10 фото салона.
+    """
+    # Проверяем, что у механика есть активная доставка
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.delivery_mechanic_id == current_mechanic.id,
+        RentalHistory.rental_status == RentalStatus.DELIVERING
+    ).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Нет активного заказа доставки для загрузки фотографий")
+
+    # Валидация типов и количества файлов
+    validate_photos([selfie], "selfie")
+    validate_photos(car_photos, "car_photos")
+    validate_photos(interior_photos, "interior_photos")
+
+    try:
+        urls: List[str] = []
+
+        # сохраняем селфи
+        urls.append(await save_file(selfie, rental.id, f"uploads/delivery/{rental.id}/before/selfie/"))
+
+        # сохраняем внешние фото
+        for p in car_photos:
+            urls.append(await save_file(p, rental.id, f"uploads/delivery/{rental.id}/before/car/"))
+
+        # сохраняем фото салона
+        for p in interior_photos:
+            urls.append(await save_file(p, rental.id, f"uploads/delivery/{rental.id}/before/interior/"))
+
+        # Сохраняем в модель
+        rental.delivery_photos_before = urls
+        db.commit()
+
+        return {"message": "Фотографии перед доставкой загружены", "photo_count": len(urls)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Ошибка при загрузке фотографий перед доставкой: {str(e)}")
+
+
+@MechanicRouter.post("/upload-delivery-photos-after")
+async def upload_delivery_photos_after(
+        selfie: UploadFile = File(...),
+        car_photos: List[UploadFile] = File(...),
+        interior_photos: List[UploadFile] = File(...),
+        db: Session = Depends(get_db),
+        current_mechanic: Any = Depends(get_current_mechanic)
+) -> Dict[str, Any]:
+    """
+    Загрузка фотографий после завершения доставки (статус DELIVERING → RESERVED):
+    - selfie: фото механика с машиной;
+    - car_photos: 1–10 внешних фото;
+    - interior_photos: 1–10 фото салона.
+    """
+    # Проверяем, что у механика есть активная доставка
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.delivery_mechanic_id == current_mechanic.id,
+        RentalHistory.rental_status == RentalStatus.DELIVERING
+    ).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Нет активного заказа доставки для загрузки фотографий")
+
+    # Валидация типов и количества файлов
+    validate_photos([selfie], "selfie")
+    validate_photos(car_photos, "car_photos")
+    validate_photos(interior_photos, "interior_photos")
+
+    try:
+        urls: List[str] = []
+
+        # сохраняем селфи
+        urls.append(await save_file(selfie, rental.id, f"uploads/delivery/{rental.id}/after/selfie/"))
+
+        # сохраняем внешние фото
+        for p in car_photos:
+            urls.append(await save_file(p, rental.id, f"uploads/delivery/{rental.id}/after/car/"))
+
+        # сохраняем фото салона
+        for p in interior_photos:
+            urls.append(await save_file(p, rental.id, f"uploads/delivery/{rental.id}/after/interior/"))
+
+        # Сохраняем в модель
+        rental.delivery_photos_after = urls
+        db.commit()
+
+        return {"message": "Фотографии после доставки загружены", "photo_count": len(urls)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Ошибка при загрузке фотографий после доставки: {str(e)}")

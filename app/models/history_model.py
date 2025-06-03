@@ -63,6 +63,10 @@ class RentalHistory(Base):
     delivery_longitude = Column(Float, nullable=True)
     delivery_mechanic_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
+    # Поля для хранения фотографий перед и после доставки
+    delivery_photos_before = Column(ARRAY(String), nullable=True)
+    delivery_photos_after = Column(ARRAY(String), nullable=True)
+
     # Явно задаём связь для механика доставки:
     delivery_mechanic = relationship("User", foreign_keys=[delivery_mechanic_id])
 
