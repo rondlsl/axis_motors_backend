@@ -14,6 +14,7 @@ class Car(Base):
     gps_id = Column(String)
     gps_imei = Column(String)
     fuel_level = Column(Float)
+    mileage = Column(Integer)
     course = Column(Integer, nullable=True)
 
     price_per_minute = Column(Integer, nullable=False)

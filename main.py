@@ -62,6 +62,7 @@ def _update_vehicle_data_sync(vehicles_data: list, db: Session) -> int:
                 car.latitude = vehicle["latitude"]
                 car.longitude = vehicle["longitude"]
                 car.fuel_level = vehicle["fuel_level"]
+                car.mileage = vehicle["mileage"]
                 updated += 1
         db.commit()
     except Exception as e:
