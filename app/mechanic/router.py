@@ -1,4 +1,3 @@
-from math import floor
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, Query
 from pydantic import BaseModel, constr, Field, conint
 from sqlalchemy import or_
@@ -66,6 +65,87 @@ from app.auth.dependencies.save_documents import save_file, validate_photos
 
 
 # ----------------------- GET эндпоинты -----------------------
+@MechanicRouter.get(
+    "/all_vehicles",
+    summary="Список всех автомобилей со всеми статусами (без схем)"
+)
+def get_all_vehicles_plain(
+        db: Session = Depends(get_db),
+        current_mechanic: Any = Depends(get_current_mechanic),
+) -> Dict[str, Any]:
+    """
+    Возвращает список всех автомобилей в системе (независимо от статуса).
+    Для каждого авто возвращаются:
+      - все поля модели Car,
+      - вычисленное поле open_price,
+      - owned_car = False (для механика),
+      - если status == IN_USE и есть current_renter_id, добавляются данные current_renter_details.
+    """
+    try:
+        cars = db.query(Car).all()
+        vehicles_data: List[Dict[str, Any]] = []
+
+        for car in cars:
+            car_dict: Dict[str, Any] = {
+                "id": car.id,
+                "name": car.name,
+                "plate_number": car.plate_number,
+                "latitude": car.latitude,
+                "longitude": car.longitude,
+                "course": car.course,
+                "fuel_level": car.fuel_level,
+                "price_per_minute": car.price_per_minute,
+                "price_per_hour": car.price_per_hour,
+                "price_per_day": car.price_per_day,
+                "engine_volume": car.engine_volume,
+                "year": car.year,
+                "drive_type": car.drive_type,
+                "photos": car.photos,
+                "description": car.description,
+                "owner_id": car.owner_id,
+                "current_renter_id": car.current_renter_id,
+                "status": car.status,
+                "open_price": get_open_price(car),
+                "owned_car": False,
+            }
+
+            # Если автомобиль в аренде, добавляем данные арендатора
+            if car.status == "IN_USE" and car.current_renter_id:
+                renter = db.query(User).filter(User.id == car.current_renter_id).first()
+                if renter:
+                    last_rental = (
+                        db.query(RentalHistory)
+                        .filter(
+                            RentalHistory.car_id == car.id,
+                            RentalHistory.user_id == renter.id,
+                            RentalHistory.rental_status == RentalStatus.IN_USE,
+                        )
+                        .order_by(RentalHistory.start_time.desc())
+                        .first()
+                    )
+                    rent_selfie_url: Optional[str] = None
+                    if last_rental and last_rental.photos_before:
+                        rent_selfie_url = next(
+                            (p for p in last_rental.photos_before if "/selfie/" in p or "\\selfie\\" in p),
+                            last_rental.photos_before[0],
+                        )
+                    car_dict["current_renter_details"] = {
+                        "full_name": renter.full_name,
+                        "phone_number": renter.phone_number,
+                        "selfie_url": renter.selfie_with_license_url,
+                        "rent_selfie_url": rent_selfie_url,
+                    }
+                else:
+                    car_dict["current_renter_details"] = None
+            else:
+                car_dict["current_renter_details"] = None
+
+            vehicles_data.append(car_dict)
+
+        return {"vehicles": vehicles_data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка при получении всех автомобилей: {str(e)}")
+
 
 @MechanicRouter.get("/get_pending_vehicles")
 def get_pending_vehicles(
