@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 import pyotp
 from datetime import datetime, timedelta
@@ -8,7 +8,7 @@ from typing import Optional
 
 from app.auth.dependencies.get_current_user import get_current_user  # обновлённая версия — см. ниже
 from app.auth.dependencies.save_documents import save_file
-from app.auth.schemas import SendSmsRequest, VerifySmsRequest
+from app.auth.schemas import SendSmsRequest, VerifySmsRequest, DocumentUploadRequest
 from app.auth.security.auth_bearer import JWTBearer
 from app.auth.security.tokens import create_refresh_token, create_access_token
 from app.core.config import SMS_TOKEN
@@ -268,15 +268,44 @@ async def refresh_token(db: Session = Depends(get_db), token: str = Depends(JWTB
     }
 
 
-@Auth_router.post("/upload-documents/")
+@Auth_router.post("/upload-documents/",
+                  summary="Загрузка документов и личных данных",
+                  description="""
+Загрузка документов пользователя и заполнение личных данных.
+
+**Требуемые файлы:**
+- id_front: Фото лицевой стороны ID карты (JPEG/PNG)
+- id_back: Фото обратной стороны ID карты (JPEG/PNG)  
+- drivers_license: Фото водительских прав (JPEG/PNG)
+- selfie: Селфи с водительскими правами (JPEG/PNG)
+
+**Требуемые данные:**
+- full_name: Полное ФИО (2-100 символов). Пример: "Иванов Иван Иванович"
+- birth_date: Дата рождения в формате YYYY-MM-DD. Пример: "1990-05-15"
+- iin: ИИН из 12 цифр без пробелов. Пример: "900515123456"
+- id_card_expiry: Дата истечения ID карты в формате YYYY-MM-DD (будущая дата). Пример: "2030-12-31"
+- drivers_license_expiry: Дата истечения прав в формате YYYY-MM-DD (будущая дата). Пример: "2029-08-20"
+
+После успешной загрузки статус пользователя изменится на PENDING (ожидает проверки).
+                 """)
 async def upload_documents(
+        # Файлы
         id_front: UploadFile = File(...),
         id_back: UploadFile = File(...),
         drivers_license: UploadFile = File(...),
         selfie: UploadFile = File(...),
-        current_user: User = Depends(get_current_user),  # Гарантированно активный
+
+        # Данные формы
+        full_name: str = Form(..., min_length=2, max_length=100),
+        birth_date: str = Form(...),
+        iin: str = Form(..., min_length=12, max_length=12),
+        id_card_expiry: str = Form(...),
+        drivers_license_expiry: str = Form(...),
+
+        current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db)
 ):
+    # Валидация типов файлов
     for doc in [id_front, id_back, drivers_license, selfie]:
         if doc.content_type not in ALLOWED_TYPES:
             raise HTTPException(
@@ -284,20 +313,40 @@ async def upload_documents(
                 detail=f"File {doc.filename} is not an image. Only JPEG and PNG are allowed."
             )
 
+    # Валидация данных через Pydantic схему
     try:
+        document_data = DocumentUploadRequest(
+            full_name=full_name,
+            birth_date=birth_date,
+            iin=iin,
+            id_card_expiry=id_card_expiry,
+            drivers_license_expiry=drivers_license_expiry
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Validation error: {str(e)}"
+        )
+
+    try:
+        # Сохранение файлов
         id_front_path = await save_file(id_front, current_user.id, "uploads/documents")
         id_back_path = await save_file(id_back, current_user.id, "uploads/documents")
         license_path = await save_file(drivers_license, current_user.id, "uploads/documents")
         selfie_path = await save_file(selfie, current_user.id, "uploads/documents")
 
+        # Обновление данных пользователя
+        current_user.full_name = document_data.full_name
+        current_user.birth_date = datetime.strptime(document_data.birth_date, '%Y-%m-%d')
+        current_user.iin = document_data.iin
+
+        # Обновление путей к файлам
         current_user.id_card_front_url = id_front_path
         current_user.id_card_back_url = id_back_path
-        # Устанавливаем срок действия ID-карты по умолчанию
-        current_user.id_card_expiry = DEFAULT_DOC_EXPIRY
+        current_user.id_card_expiry = datetime.strptime(document_data.id_card_expiry, '%Y-%m-%d')
 
         current_user.drivers_license_url = license_path
-        # Устанавливаем срок действия водительского удостоверения по умолчанию
-        current_user.drivers_license_expiry = DEFAULT_DOC_EXPIRY
+        current_user.drivers_license_expiry = datetime.strptime(document_data.drivers_license_expiry, '%Y-%m-%d')
 
         current_user.selfie_with_license_url = selfie_path
         current_user.role = UserRole.PENDING
@@ -305,116 +354,22 @@ async def upload_documents(
         db.commit()
 
         return {
-            "message": "Documents uploaded successfully",
-            "status": "pending review"
+            "message": "Documents and data uploaded successfully",
+            "status": "pending review",
+            "data": {
+                "full_name": current_user.full_name,
+                "birth_date": current_user.birth_date.strftime('%Y-%m-%d'),
+                "iin": current_user.iin,
+                "id_card_expiry": current_user.id_card_expiry.strftime('%Y-%m-%d'),
+                "drivers_license_expiry": current_user.drivers_license_expiry.strftime('%Y-%m-%d')
+            }
         }
 
     except Exception as e:
         db.rollback()
         raise HTTPException(
             status_code=500,
-            detail="An error occurred while uploading documents"
-        )
-
-
-@Auth_router.post("/upload-id-card/")
-async def upload_id_card(
-        id_front: UploadFile = File(...),
-        id_back: UploadFile = File(...),
-        current_user: User = Depends(get_current_user),  # Гарантированно активный пользователь
-        db: Session = Depends(get_db)
-):
-    for file in [id_front, id_back]:
-        if file.content_type not in ALLOWED_TYPES:
-            raise HTTPException(
-                status_code=400,
-                detail=f"File {file.filename} is not an image. Only JPEG and PNG are allowed."
-            )
-    try:
-        id_front_path = await save_file(id_front, current_user.id, "uploads/documents")
-        id_back_path = await save_file(id_back, current_user.id, "uploads/documents")
-
-        current_user.id_card_front_url = id_front_path
-        current_user.id_card_back_url = id_back_path
-        # Устанавливаем срок действия ID-карты по умолчанию
-        current_user.id_card_expiry = DEFAULT_DOC_EXPIRY
-        current_user.role = UserRole.PENDING
-
-        db.commit()
-
-        return {
-            "message": "ID card (front and back) uploaded successfully",
-            "status": "pending review"
-        }
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail="An error occurred while uploading the ID card documents"
-        )
-
-
-@Auth_router.post("/upload-drivers-license/")
-async def upload_drivers_license(
-        drivers_license: UploadFile = File(...),
-        current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
-):
-    if drivers_license.content_type not in ALLOWED_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"File {drivers_license.filename} is not an image. Only JPEG and PNG are allowed."
-        )
-    try:
-        license_path = await save_file(drivers_license, current_user.id, "uploads/documents")
-
-        current_user.drivers_license_url = license_path
-        # Устанавливаем срок действия водительского удостоверения по умолчанию
-        current_user.drivers_license_expiry = DEFAULT_DOC_EXPIRY
-        current_user.role = UserRole.PENDING
-
-        db.commit()
-
-        return {
-            "message": "Driver's license uploaded successfully",
-            "status": "pending review"
-        }
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail="An error occurred while uploading the driver's license document"
-        )
-
-
-@Auth_router.post("/upload-selfie/")
-async def upload_selfie(
-        selfie: UploadFile = File(...),
-        current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
-):
-    if selfie.content_type not in ALLOWED_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"File {selfie.filename} is not an image. Only JPEG and PNG are allowed."
-        )
-    try:
-        selfie_path = await save_file(selfie, current_user.id, "uploads/documents")
-
-        current_user.selfie_with_license_url = selfie_path
-        current_user.role = UserRole.PENDING
-
-        db.commit()
-
-        return {
-            "message": "Selfie uploaded successfully",
-            "status": "pending review"
-        }
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail="An error occurred while uploading the selfie"
+            detail="An error occurred while uploading documents and data"
         )
 
 
