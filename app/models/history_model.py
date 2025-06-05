@@ -53,6 +53,11 @@ class RentalHistory(Base):
     photos_before = Column(ARRAY(String))
     photos_after = Column(ARRAY(String))
 
+    fuel_before = Column(Float, nullable=True)
+    fuel_after = Column(Float, nullable=True)
+    mileage_before = Column(Integer, nullable=True)
+    mileage_after = Column(Integer, nullable=True)
+
     already_payed = Column(Integer, nullable=True)
     total_price = Column(Integer, nullable=True)
 

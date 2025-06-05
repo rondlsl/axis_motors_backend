@@ -583,6 +583,9 @@ async def start_rental(
     if not car:
         raise HTTPException(status_code=404, detail="Car not found")
 
+    rental.fuel_before = car.fuel_level
+    rental.mileage_before = car.mileage
+
     if car.owner_id == current_user.id:
         # Логика для владельца: аренда бесплатная, пропускаем списание средств
         rental.rental_status = RentalStatus.IN_USE
@@ -799,6 +802,9 @@ async def complete_rental(
     car = db.query(Car).filter(Car.id == rental.car_id).first()
     if not car:
         raise HTTPException(status_code=404, detail="Car not found")
+
+    rental.fuel_after = car.fuel_level
+    rental.mileage_after = car.mileage
 
     # общая часть: время и координаты окончания
     rental.end_time = datetime.utcnow()

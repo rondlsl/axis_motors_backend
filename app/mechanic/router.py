@@ -407,6 +407,10 @@ async def start_rental(
     car = db.query(Car).filter(Car.id == rental.car_id).first()
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
+
+    rental.fuel_before = car.fuel_level
+    rental.mileage_before = car.mileage
+
     rental.start_time = datetime.utcnow()
     rental.rental_status = RentalStatus.IN_USE
     # Для механика переводим автомобиль в состояние IN USE (или оставляем SERVICE, если требуется)
@@ -589,6 +593,10 @@ async def complete_rental(
     car = db.query(Car).filter(Car.id == rental.car_id).first()
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
+
+    rental.fuel_after = car.fuel_level
+    rental.mileage_after = car.mileage
+
     now = datetime.utcnow()
     rental.end_time = now
     rental.end_latitude = car.latitude
@@ -675,7 +683,8 @@ async def accept_delivery(
     Позволяет механику взять заказ доставки.
     Проверяется, что заказ находится в статусе DELIVERING и что другой механик ещё не принял этот заказ.
     Также у механика не может быть более одного активного заказа доставки.
-    После успешного приёма отправляет пуш пользователю, что механик в пути.
+    После успешного приёма отправляет пуш пользователю, что механик в пути,
+    и сохраняет уровень топлива и пробег на момент начала доставки.
     """
 
     # Проверяем, что у механика нет другого активного заказа доставки
@@ -702,19 +711,26 @@ async def accept_delivery(
             detail="Заказ уже принят другим механиком."
         )
 
-    # Назначаем механика и сохраняем
+    # Получаем машину, чтобы сохранить её текущее состояние
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Car not found")
+
+    # Назначаем механика
     rental.delivery_mechanic_id = current_mechanic.id
+
+    # Сохраняем уровень топлива и пробег на момент начала доставки
+    rental.fuel_before = car.fuel_level
+    rental.mileage_before = car.mileage
+
     db.commit()
     db.refresh(rental)
 
-    # Отправляем пуш пользователю, который арендовал машину
+    # Отправляем пуш пользователю, который арендует машину
     user = db.query(User).filter(User.id == rental.user_id).first()
     if user and user.fcm_token:
         title = "Механик в пути"
-        body = (
-            f"Механик принял заказ доставки и уже едет к вам."
-        )
-        # асинхронно шлём пуш (не блокируем основной поток)
+        body = "Механик принял заказ доставки и уже едет к вам."
         await send_push_notification_async(user.fcm_token, title, body)
 
     return {
@@ -743,6 +759,9 @@ async def complete_delivery(
     car = db.query(Car).filter(Car.id == rental.car_id).first()
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
+
+    rental.fuel_after = car.fuel_level
+    rental.mileage_after = car.mileage
 
     now = datetime.utcnow()
     rental.end_time = now
