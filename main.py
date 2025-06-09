@@ -98,6 +98,54 @@ async def check_vehicle_conditions():
     await update_vehicle_data()
 
 
+import random
+import string
+
+
+def create_mock_cars_for_almaty(db: Session):
+    def random_plate():
+        return f"{random.randint(100, 999)}{random.choice('ABCEHKMOPTXY')}{random.randint(10, 999)}"
+
+    def random_string(length=10):
+        return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
+
+    car_names = [
+        "Mercedes-Benz E200", "BMW 530i", "Audi A6", "Lexus RX350",
+        "Genesis G80", "Toyota Camry 3.5", "Kia K900", "Cadillac XT5"
+    ]
+
+    lat_range = (43.200, 43.300)
+    lon_range = (76.800, 77.000)
+
+    for _ in range(20):
+        car = Car(
+            name=random.choice(car_names),
+            plate_number=random_plate(),
+            latitude=round(random.uniform(*lat_range), 6),
+            longitude=round(random.uniform(*lon_range), 6),
+            gps_id=random_string(8),
+            gps_imei=random_string(15),
+            fuel_level=round(random.uniform(0.3, 1.0), 2),
+            mileage=random.randint(10000, 50000),
+            course=random.randint(0, 360),
+            price_per_minute=80,
+            price_per_hour=4000,
+            price_per_day=30000,
+            car_class=random.choice([1, 2, 3]),
+            engine_volume=round(random.uniform(2.0, 4.5), 1),
+            year=random.randint(2018, 2023),
+            drive_type=random.choice([1, 2]),  # 1 — передний, 2 — полный
+            photos=[],
+            description="Тестовая премиум-машина",
+            owner_id=None,
+            current_renter_id=None,
+            status="FREE"
+        )
+        db.add(car)
+
+    db.commit()
+
+
 def init_app(app: FastAPI):
     @app.on_event("startup")
     async def startup_event():
@@ -107,6 +155,7 @@ def init_app(app: FastAPI):
         db_gen = get_db()
         db = next(db_gen)
         asyncio.create_task(rental_billing_loop())
+
         try:
             owner_phone = "77000250400"
             owner = db.query(User).filter(User.phone_number == owner_phone).first()
@@ -118,11 +167,9 @@ def init_app(app: FastAPI):
 
             if not db.query(Car).filter(Car.id == 1).first():
                 photos_dir = os.path.join(os.path.dirname(__file__), "uploads", "cars", "1")
-                # Собираем список URL для доступа через StaticFiles (/uploads/…)
                 photos = []
                 if os.path.isdir(photos_dir):
                     for fname in sorted(os.listdir(photos_dir)):
-                        # Фильтруем только файлы (JPG, PNG и т.п.)
                         if os.path.isfile(os.path.join(photos_dir, fname)):
                             photos.append(f"/uploads/cars/1/{fname}")
 
@@ -144,22 +191,19 @@ def init_app(app: FastAPI):
                     owner_id=owner.id,
                     course=90,
                     description="Машина в идеальном состоянии.",
-                    photos=photos  # <- вот тут передаём массив путей к фотографиям
+                    photos=photos
                 )
                 db.add(car1)
                 db.commit()
-
                 print("✅ HAVAL F7x (id=1) добавлена")
             else:
                 print("ℹ️ HAVAL F7x (id=1) уже существует")
 
             if not db.query(Car).filter(Car.id == 2).first():
                 photos_dir = os.path.join(os.path.dirname(__file__), "uploads", "cars", "2")
-                # Собираем список URL для доступа через StaticFiles (/uploads/…)
                 photos = []
                 if os.path.isdir(photos_dir):
                     for fname in sorted(os.listdir(photos_dir)):
-                        # Фильтруем только файлы (JPG, PNG и т.п.)
                         if os.path.isfile(os.path.join(photos_dir, fname)):
                             photos.append(f"/uploads/cars/2/{fname}")
 
@@ -175,19 +219,22 @@ def init_app(app: FastAPI):
                     price_per_hour=5600,
                     price_per_day=100000,
                     plate_number="666AZV02",
-                    latitude=43.224048333333336,
-                    longitude=76.96187166666667,
+                    latitude=43.224048,
+                    longitude=76.961871,
                     fuel_level=40,
                     course=23,
                     owner_id=owner.id,
                     description="Разбита левая передняя фара. Разбит задний правый фонарь. Вмятина и царапина на правой задней двери.",
-                    photos=photos  # <- вот тут передаём массив путей к фотографиям
+                    photos=photos
                 )
                 db.add(car2)
                 db.commit()
                 print("✅ MB CLA45s (id=2) добавлена")
             else:
                 print("ℹ️ MB CLA45s (id=2) уже существует")
+
+            # Теперь добавляем моковые машины
+            create_mock_cars_for_almaty(db)
 
             mechanic_phone = "77007007070"
             mechanic = db.query(User).filter(User.phone_number == mechanic_phone).first()
@@ -201,12 +248,13 @@ def init_app(app: FastAPI):
                 print("ℹ️ Механик уже существует")
 
         except Exception as e:
+            print(e)
             logger.error(f"Ошибка в стартап-инициализации: {e}")
         finally:
             db.close()
 
         try:
-            scheduler.add_job(check_vehicle_conditions, "interval", seconds=1)
+            # scheduler.add_job(check_vehicle_conditions, "interval", seconds=1)
             scheduler.start()
         except Exception as e:
             logger.error(f"Ошибка запуска планировщика задач: {e}")

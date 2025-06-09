@@ -193,29 +193,33 @@ def get_frequently_used_vehicles(
 
 
 # === КОМАНДЫ GlonassSoft ===
-
 @Vehicle_Router.post("/open")
 async def open_vehicle(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Dict:
     car = get_active_rental_car(db, current_user)
-    return await send_command_to_terminal(car.gps_id, "*!CEVT 1", AUTH_TOKEN)
+    # return await send_command_to_terminal(car.gps_id, "*!CEVT 1", AUTH_TOKEN)
+    return {"command_id": "fawffwawf"}
 
 
 @Vehicle_Router.post("/close")
 async def close_vehicle(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Dict:
     car = get_active_rental_car(db, current_user)
-    return await send_command_to_terminal(car.gps_id, "*!CEVT 2", AUTH_TOKEN)
+    # return await send_command_to_terminal(car.gps_id, "*!CEVT 2", AUTH_TOKEN)
+    return {"command_id": "fawffwawf"}
 
 
 @Vehicle_Router.post("/give_key")
 async def give_key(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Dict:
     car = get_active_rental_car(db, current_user)
-    return await send_command_to_terminal(car.gps_id, "*!2Y", AUTH_TOKEN)
+    # return await send_command_to_terminal(car.gps_id, "*!2Y", AUTH_TOKEN)
+    return {"command_id": "fawffwawf"}
 
 
 @Vehicle_Router.post("/take_key")
 async def take_key(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Dict:
     car = get_active_rental_car(db, current_user)
-    return await send_command_to_terminal(car.gps_id, "*!2N", AUTH_TOKEN)
+    # return await send_command_to_terminal(car.gps_id, "*!2N", AUTH_TOKEN)
+    return {"command_id": "fawffwawf"}
+
 # @Vehicle_Router.post("/block")
 # async def block_engine(request: CommandRequest) -> Dict:
 #     return await send_command_to_terminal(request.vehicle_id, "*!1Y", AUTH_TOKEN)
