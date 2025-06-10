@@ -8,13 +8,8 @@ class SendSmsRequest(BaseModel):
 
 
 class VerifySmsRequest(BaseModel):
-    phone_number: str = Field(default="77472051507")
-
-    sms_code: str = Field(default="6666")
-
-from pydantic import BaseModel, Field, validator
-from datetime import datetime
-from typing import Optional
+    phone_number: str = Field()
+    sms_code: str = Field()
 
 
 class DocumentUploadRequest(BaseModel):
