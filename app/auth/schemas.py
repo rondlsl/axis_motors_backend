@@ -1,15 +1,15 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, constr
 
 
 class SendSmsRequest(BaseModel):
-    phone_number: str
+    phone_number: constr(min_length=11, max_length=11)
 
 
 class VerifySmsRequest(BaseModel):
-    phone_number: str = Field()
-    sms_code: str = Field()
+    phone_number: constr(min_length=11, max_length=11)
+    sms_code: constr(min_length=4, max_length=4)
 
 
 class DocumentUploadRequest(BaseModel):
