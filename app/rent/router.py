@@ -158,7 +158,10 @@ async def reserve_car(
     if not car:
         raise HTTPException(status_code=404, detail="Car not found or not available")
 
-    open_fee = get_open_price(car)  # стоимость открытия
+    orig_open_fee = get_open_price(car)
+    open_fee = orig_open_fee if rental_type in (RentalType.MINUTES, RentalType.HOURS) else 0
+
+    # стоимость открытия
     price_per_hour = car.price_per_hour
     price_per_day = car.price_per_day
 
