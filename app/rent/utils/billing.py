@@ -4,6 +4,8 @@ from datetime import datetime
 
 import anyio
 import httpx
+from sqlalchemy import or_
+
 from app.dependencies.database.database import SessionLocal
 from app.models.car_model import Car
 from app.models.history_model import RentalHistory, RentalStatus, RentalType
@@ -78,19 +80,19 @@ def process_rentals_sync() -> tuple[
         .filter(
             RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE]),
             User.role != UserRole.MECHANIC,
-            RentalHistory.user_id != Car.owner_id
+            or_(
+                Car.owner_id.is_(None),
+                RentalHistory.user_id != Car.owner_id
+            ),
         )
         .all()
     )
-
     active_ids = {r.id for r in rentals}
-
     for rental in rentals:
         try:
             user = rental.user
             car = rental.car
             rid = rental.id
-
             # инициализация флагов
             if rid not in _notification_flags:
                 _notification_flags[rid] = {
@@ -102,7 +104,6 @@ def process_rentals_sync() -> tuple[
                     "low_balance_zero": False,
                 }
             flags = _notification_flags[rid]
-
             # 1) RESERVED: ожидание
             if rental.rental_status == RentalStatus.RESERVED:
                 waited = (now - (rental.reservation_time or rental.start_time)).total_seconds() / 60
