@@ -317,7 +317,9 @@ async def reserve_delivery(
     if not car:
         raise HTTPException(status_code=404, detail="Машина не найдена или не доступна")
 
-    open_fee = get_open_price(car)
+    orig_open_fee = get_open_price(car)
+    open_fee = orig_open_fee if rental_type in (RentalType.MINUTES, RentalType.HOURS) else 0
+
     price_per_hour = car.price_per_hour
     price_per_day = car.price_per_day
     extra_fee = 10_000  # стоимость доставки
