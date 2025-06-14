@@ -605,13 +605,9 @@ async def start_rental(
         if rental.rental_type in [RentalType.MINUTES, RentalType.HOURS]:
             open_price = get_open_price(car)
             rental.open_fee = open_price
-            current_user.wallet_balance -= open_price
 
         rental.rental_status = RentalStatus.IN_USE
         rental.start_time = datetime.utcnow()
-
-        # обновляем total_price с учётом open_fee
-        rental.total_price = (rental.total_price or 0) + (rental.open_fee or 0)
 
         total_cost = rental.total_price
 
