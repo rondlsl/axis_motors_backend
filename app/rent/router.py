@@ -1,4 +1,4 @@
-from math import floor
+from math import floor, ceil
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, status, Query
 from pydantic import BaseModel, constr, Field, conint
 from sqlalchemy.orm import Session
@@ -788,138 +788,124 @@ class RentalReviewInput(BaseModel):
 
 @RentRouter.post("/complete")
 async def complete_rental(
-        review_input: RentalReviewInput,  # если отзыв не обязателен, можно оставить None
+        review_input: Optional[RentalReviewInput] = None,
         db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user),
+        current_user=Depends(get_current_user)
 ):
-    rental = db.query(RentalHistory).filter(
-        RentalHistory.user_id == current_user.id,
-        RentalHistory.rental_status == RentalStatus.IN_USE
-    ).first()
+    # 1) Найти активную аренду
+    rental = (
+        db.query(RentalHistory)
+        .with_for_update()
+        .filter(
+            RentalHistory.user_id == current_user.id,
+            RentalHistory.rental_status == RentalStatus.IN_USE
+        )
+        .first()
+    )
 
     if not rental:
         raise HTTPException(status_code=404, detail="No active rental found")
 
-    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    # 2) Загрузить машину
+    car = db.query(Car).get(rental.car_id)
     if not car:
         raise HTTPException(status_code=404, detail="Car not found")
 
-    rental.fuel_after = car.fuel_level
-    rental.mileage_after = car.mileage
-
-    # общая часть: время и координаты окончания
-    rental.end_time = datetime.utcnow()
+    # 3) Завершить аренду: время, координаты, состояние
+    now = datetime.utcnow()
+    rental.end_time = now
     rental.end_latitude = car.latitude
     rental.end_longitude = car.longitude
-    car.current_renter_id = None
-    car.status = "PENDING"
+    rental.fuel_after = car.fuel_level
+    rental.mileage_after = car.mileage
     rental.rental_status = RentalStatus.COMPLETED
 
-    # отзыв
+    # Освободить машину
+    car.current_renter_id = None
+    car.status = "PENDING"
+
+    # 4) Сохранить отзыв (если есть)
     if review_input:
         review = RentalReview(
             rental_id=rental.id,
-            rating=getattr(review_input, "rating", None),
-            comment=getattr(review_input, "comment", None)
+            rating=review_input.rating,
+            comment=review_input.comment
         )
         db.add(review)
 
-    # уведомление для механиков
-    notification_title = "Новая машина для осмотра"
-    notification_body = f"Аренда автомобиля {car.name} ({car.plate_number}) завершена. Требуется осмотр и обслуживание."
+    # 5) Рассчитать фактическую длительность в минутах
+    total_seconds = (now - rental.start_time).total_seconds()
+    actual_minutes = total_seconds / 60
+    rounded_minutes = ceil(actual_minutes)
 
-    # для владельца — всё бесплатно
+    # 6) Базовая плата по типу аренды
+    if rental.rental_type == RentalType.MINUTES:
+        rental.base_price = rounded_minutes * car.price_per_minute
+    elif rental.rental_type == RentalType.HOURS:
+        rental.base_price = rental.duration * car.price_per_hour
+    else:  # DAYS
+        rental.base_price = rental.duration * car.price_per_day
+
+    # 7) Переработка для часов/дней
+    if rental.rental_type in (RentalType.HOURS, RentalType.DAYS):
+        planned_minutes = (
+            rental.duration * 60
+            if rental.rental_type == RentalType.HOURS
+            else rental.duration * 24 * 60
+        )
+        overtime_mins = max(0, rounded_minutes - planned_minutes)
+        rental.overtime_fee = overtime_mins * car.price_per_minute
+    else:
+        rental.overtime_fee = 0
+
+    # 8) Убедиться, что все сборы не None
+    rental.open_fee = rental.open_fee or 0
+    rental.delivery_fee = rental.delivery_fee or 0
+    rental.waiting_fee = rental.waiting_fee or 0
+    rental.distance_fee = rental.distance_fee or 0
+
+    # 9) Если арендатор — владелец, обнуляем все сборы
     if car.owner_id == current_user.id:
-        rental.base_price = rental.base_price or 0
-        rental.open_fee = rental.open_fee or 0
-        rental.delivery_fee = rental.delivery_fee or 0
+        rental.base_price = 0
+        rental.open_fee = 0
+        rental.delivery_fee = 0
         rental.waiting_fee = 0
         rental.overtime_fee = 0
         rental.distance_fee = 0
-        rental.total_price = 0
-        rental.already_payed = 0
 
-        try:
-            db.commit()
-            await send_notification_to_all_mechanics_async(db, notification_title, notification_body)
-            return {
-                "message": "Rental completed successfully (owner rental)",
-                "rental_details": {
-                    "total_duration_minutes": int((rental.end_time - rental.start_time).total_seconds() / 60),
-                    "final_total_price": 0,
-                    "amount_charged_now": 0,
-                    "current_wallet_balance": float(current_user.wallet_balance)
-                },
-                "review": {
-                    "rating": getattr(review_input, "rating", None),
-                    "comment": getattr(review_input, "comment", None)
-                } if review_input else None
-            }
-        except Exception as e:
-            db.rollback()
-            raise HTTPException(
-                status_code=500,
-                detail=f"An error occurred while completing the rental: {e}"
-            )
+    # 10) Итоговая сумма и списание
+    rental.total_price = (
+            rental.base_price + rental.open_fee + rental.delivery_fee +
+            rental.waiting_fee + rental.overtime_fee + rental.distance_fee
+    )
+    previous_paid = rental.already_payed or 0
+    amount_to_charge = rental.total_price - previous_paid
 
-    # для обычного пользователя
-    actual_duration = rental.end_time - rental.start_time
-    actual_minutes = actual_duration.total_seconds() / 60
+    # Баланс может уходить в минус — это допустимо
+    current_user.wallet_balance -= amount_to_charge
+    rental.already_payed = rental.total_price
 
-    additional_charge = 0
-    if rental.rental_type == RentalType.MINUTES:
-        # минуты: считаем по текущему тарифу
-        rental.overtime_fee = 0
-        rental.total_price = int(actual_minutes * car.price_per_minute)
-    else:
-        # часы или дни: считаем переработку
-        if rental.rental_type == RentalType.HOURS:
-            planned_duration = rental.duration * 60
-        else:
-            planned_duration = rental.duration * 24 * 60
-
-        overtime_minutes = max(0, actual_minutes - planned_duration)
-        if overtime_minutes > 0:
-            additional_charge = int(overtime_minutes * car.price_per_minute)
-            rental.overtime_fee = additional_charge
-            rental.total_price = (rental.total_price or 0) + additional_charge
-        else:
-            rental.overtime_fee = 0
-
-    # waiting_fee и distance_fee оставляем из scheduler (nullable или 0)
-    # остальные поля base_price, open_fee, delivery_fee не меняем
-
-    # сколько списать сейчас
-    amount_to_charge = rental.total_price - (rental.already_payed or 0)
-    if amount_to_charge > 0:
-        current_user.wallet_balance -= amount_to_charge
-        rental.already_payed = (rental.already_payed or 0) + amount_to_charge
-
+    # 11) Коммит и уведомление механиков
+    db.commit()
     try:
-        db.commit()
-        await send_notification_to_all_mechanics_async(db, notification_title, notification_body)
-        return {
-            "message": "Rental completed successfully",
-            "rental_details": {
-                "total_duration_minutes": int(actual_minutes),
-                "planned_price": (
-                    rental.base_price if rental.rental_type != RentalType.MINUTES else None
-                ),
-                "overtime_charge": (
-                    rental.overtime_fee if rental.rental_type != RentalType.MINUTES else None
-                ),
-                "final_total_price": rental.total_price,
-                "amount_charged_now": amount_to_charge,
-                "current_wallet_balance": float(current_user.wallet_balance)
-            },
-            "review": {
-                "rating": review.rating,
-                "comment": review.comment
-            } if review_input else None
-        }
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail=f"An error occurred while completing the rental: {e}"
+        await send_notification_to_all_mechanics_async(
+            db,
+            "Новая машина для осмотра",
+            f"Аренда автомобиля {car.name} ({car.plate_number}) завершена. Требуется осмотр."
         )
+    except Exception as e:
+        print(e)
+
+    return {
+        "message": "Rental completed successfully",
+        "rental_details": {
+            "total_duration_minutes": rounded_minutes,
+            "total_price": rental.total_price,
+            "amount_charged_now": amount_to_charge,
+            "current_wallet_balance": float(current_user.wallet_balance)
+        },
+        "review": {
+            "rating": review.rating,
+            "comment": review.comment
+        } if review_input else None
+    }
