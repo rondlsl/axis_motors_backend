@@ -12,6 +12,7 @@ from app.models.history_model import RentalType, RentalStatus, RentalHistory, Re
 from app.models.user_model import User, UserRole
 from app.models.car_model import Car
 from app.push.utils import send_notification_to_all_mechanics_async, send_push_notification_async
+from app.rent.exceptions import InsufficientBalanceException
 from app.rent.utils.calculate_price import calculate_total_price, get_open_price
 
 RentRouter = APIRouter(tags=["Rent"], prefix="/rent")
@@ -205,13 +206,7 @@ async def reserve_car(
         # требуемая сумма: открытие + 2 часа
         required_balance = open_fee + price_per_hour * 2
         if current_user.wallet_balance < required_balance:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Для поминутной аренды нужно минимум {required_balance} ₸ "
-                    f"(открытие {open_fee}₸ + 2×{price_per_hour}₸)."
-                )
-            )
+            raise InsufficientBalanceException(required_amount=required_balance)
         base = 0
 
     elif rental_type == RentalType.HOURS:
@@ -220,13 +215,8 @@ async def reserve_car(
         # требуемая сумма: (duration + 2) * price_per_hour + открытие
         required_balance = (duration + 2) * price_per_hour + open_fee
         if current_user.wallet_balance < required_balance:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Для почасовой аренды на {duration} ч нужно минимум {required_balance} ₸ "
-                    f"(({duration} + 2)×{price_per_hour}₸ + открытие {open_fee}₸)."
-                )
-            )
+            raise InsufficientBalanceException(required_amount=required_balance)
+
         base = calculate_total_price(rental_type, duration, price_per_hour, price_per_day)
 
     else:  # RentalType.DAYS
@@ -236,13 +226,8 @@ async def reserve_car(
         two_hours_fee = price_per_hour * 2
         required_balance = duration * price_per_day + two_hours_fee
         if current_user.wallet_balance < required_balance:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Для посуточной аренды на {duration} дн нужно минимум {required_balance} ₸ "
-                    f"({duration}×{price_per_day}₸ + 2×{price_per_hour}₸)."
-                )
-            )
+            raise InsufficientBalanceException(required_amount=required_balance)
+
         base = calculate_total_price(rental_type, duration, price_per_hour, price_per_day)
 
     # Если всё ок, создаём бронь
@@ -339,13 +324,8 @@ async def reserve_delivery(
             # требуемая сумма: открытие + 2 часа + доставка
             required_balance = open_fee + price_per_hour * 2 + delivery_fee
             if current_user.wallet_balance < required_balance:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        f"Для поминутной аренды с доставкой нужно минимум {required_balance} ₸ "
-                        f"(открытие {open_fee}₸ + 2×{price_per_hour}₸ + доставка {delivery_fee}₸)."
-                    )
-                )
+                raise InsufficientBalanceException(required_amount=required_balance)
+
             base_price = 0
             total_price = delivery_fee  # пока в total_price только плата за доставку
 
@@ -355,13 +335,8 @@ async def reserve_delivery(
             # требуемая сумма: (duration + 2)×price_per_hour + открытие + доставка
             required_balance = (duration + 2) * price_per_hour + open_fee + delivery_fee
             if current_user.wallet_balance < required_balance:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        f"Для почасовой аренды на {duration} ч с доставкой нужно минимум {required_balance} ₸ "
-                        f"(({duration} + 2)×{price_per_hour}₸ + открытие {open_fee}₸ + доставка {delivery_fee}₸)."
-                    )
-                )
+                raise InsufficientBalanceException(required_amount=required_balance)
+
             base_price = calculate_total_price(rental_type, duration, price_per_hour, price_per_day)
             total_price = base_price + open_fee + delivery_fee
 
@@ -372,13 +347,7 @@ async def reserve_delivery(
             two_hours_fee = price_per_hour * 2
             required_balance = duration * price_per_day + two_hours_fee + delivery_fee
             if current_user.wallet_balance < required_balance:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        f"Для посуточной аренды на {duration} дн с доставкой нужно минимум {required_balance} ₸ "
-                        f"({duration}×{price_per_day}₸ + 2×{price_per_hour}₸ + доставка {delivery_fee}₸)."
-                    )
-                )
+                raise InsufficientBalanceException(required_amount=required_balance)
             base_price = calculate_total_price(rental_type, duration, price_per_hour, price_per_day)
             total_price = base_price + two_hours_fee + delivery_fee
 
@@ -613,7 +582,10 @@ async def start_rental(
 
         if total_cost > 0:
             if current_user.wallet_balance < total_cost:
-                raise HTTPException(status_code=400, detail="Insufficient wallet balance")
+                raise HTTPException(
+                    status_code=402,
+                    detail=f"Нужно минимум {total_cost} ₸ для старта. Пополните кошелёк!"
+                )
             current_user.wallet_balance -= total_cost
             rental.already_payed = total_cost
 
