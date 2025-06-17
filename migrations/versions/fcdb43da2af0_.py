@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: 1bbd64872d39
+Revision ID: fcdb43da2af0
 Revises: 
-Create Date: 2025-04-15 16:03:46.374629
+Create Date: 2025-06-17 17:08:20.224458
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '1bbd64872d39'
+revision: str = 'fcdb43da2af0'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -33,10 +33,12 @@ def upgrade() -> None:
     sa.Column('id_card_front_url', sa.String(), nullable=True),
     sa.Column('id_card_back_url', sa.String(), nullable=True),
     sa.Column('id_card_expiry', sa.DateTime(), nullable=True),
+    sa.Column('documents_verified', sa.Boolean(), server_default='false', nullable=True),
     sa.Column('role', sa.Enum('ADMIN', 'USER', 'REJECTED', 'FIRST', 'PENDING', 'MECHANIC', name='userrole'), nullable=True),
     sa.Column('last_sms_code', sa.String(), nullable=True),
     sa.Column('sms_code_valid_until', sa.DateTime(), nullable=True),
     sa.Column('is_active', sa.Boolean(), nullable=False),
+    sa.Column('fcm_token', sa.String(), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_users_id'), 'users', ['id'], unique=False)
@@ -49,6 +51,7 @@ def upgrade() -> None:
     sa.Column('gps_id', sa.String(), nullable=True),
     sa.Column('gps_imei', sa.String(), nullable=True),
     sa.Column('fuel_level', sa.Float(), nullable=True),
+    sa.Column('mileage', sa.Integer(), nullable=True),
     sa.Column('course', sa.Integer(), nullable=True),
     sa.Column('price_per_minute', sa.Integer(), nullable=False),
     sa.Column('price_per_hour', sa.Integer(), nullable=False),
@@ -58,6 +61,7 @@ def upgrade() -> None:
     sa.Column('year', sa.Integer(), nullable=True),
     sa.Column('drive_type', sa.Integer(), nullable=True),
     sa.Column('photos', sa.JSON(), nullable=True),
+    sa.Column('description', sa.Text(), nullable=True),
     sa.Column('owner_id', sa.Integer(), nullable=True),
     sa.Column('current_renter_id', sa.Integer(), nullable=True),
     sa.Column('status', sa.String(), nullable=True),
@@ -80,14 +84,26 @@ def upgrade() -> None:
     sa.Column('start_time', sa.DateTime(), nullable=True),
     sa.Column('end_time', sa.DateTime(), nullable=True),
     sa.Column('reservation_time', sa.DateTime(), nullable=False),
+    sa.Column('base_price', sa.Integer(), nullable=True),
+    sa.Column('open_fee', sa.Integer(), nullable=True),
+    sa.Column('delivery_fee', sa.Integer(), nullable=True),
+    sa.Column('waiting_fee', sa.Integer(), nullable=True),
+    sa.Column('overtime_fee', sa.Integer(), nullable=True),
+    sa.Column('distance_fee', sa.Integer(), nullable=True),
     sa.Column('photos_before', sa.ARRAY(sa.String()), nullable=True),
     sa.Column('photos_after', sa.ARRAY(sa.String()), nullable=True),
+    sa.Column('fuel_before', sa.Float(), nullable=True),
+    sa.Column('fuel_after', sa.Float(), nullable=True),
+    sa.Column('mileage_before', sa.Integer(), nullable=True),
+    sa.Column('mileage_after', sa.Integer(), nullable=True),
     sa.Column('already_payed', sa.Integer(), nullable=True),
     sa.Column('total_price', sa.Integer(), nullable=True),
-    sa.Column('rental_status', sa.Enum('RESERVED', 'IN_USE', 'COMPLETED', 'DELIVERING', 'CANCELLED', name='rentalstatus'), nullable=False),
+    sa.Column('rental_status', sa.Enum('RESERVED', 'IN_USE', 'COMPLETED', 'DELIVERING', 'DELIVERING_IN_PROGRESS', 'DELIVERY_RESERVED', 'CANCELLED', name='rentalstatus'), nullable=False),
     sa.Column('delivery_latitude', sa.Float(), nullable=True),
     sa.Column('delivery_longitude', sa.Float(), nullable=True),
     sa.Column('delivery_mechanic_id', sa.Integer(), nullable=True),
+    sa.Column('delivery_photos_before', sa.ARRAY(sa.String()), nullable=True),
+    sa.Column('delivery_photos_after', sa.ARRAY(sa.String()), nullable=True),
     sa.ForeignKeyConstraint(['car_id'], ['cars.id'], ),
     sa.ForeignKeyConstraint(['delivery_mechanic_id'], ['users.id'], ),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),

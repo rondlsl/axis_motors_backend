@@ -18,7 +18,9 @@ class RentalStatus(enum.Enum):
     IN_USE = "in_use"
     COMPLETED = "completed"
     DELIVERING = "delivering"
-    CANCELLED = "CANCELLED"
+    DELIVERING_IN_PROGRESS = "delivering_in_progress"
+    DELIVERY_RESERVED = "delivery_reserved"
+    CANCELLED = "cancelled"
 
 
 class RentalHistory(Base):

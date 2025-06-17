@@ -1,0 +1,383 @@
+from fastapi import APIRouter, HTTPException, Depends, File, UploadFile
+from sqlalchemy.orm import Session
+from datetime import datetime
+from typing import List, Dict, Any
+
+from app.auth.dependencies.get_current_user import get_current_mechanic
+from app.auth.dependencies.save_documents import validate_photos, save_file
+from app.dependencies.database.database import get_db
+from app.models.history_model import RentalStatus, RentalHistory
+from app.models.car_model import Car
+from app.models.user_model import User
+from app.push.utils import send_push_notification_async
+
+MechanicDeliveryRouter = APIRouter(
+    tags=["Mechanic Delivery"],
+    prefix="/mechanic"
+)
+
+
+@MechanicDeliveryRouter.get("/get-delivery-vehicles")
+def get_delivery_vehicles(
+        db: Session = Depends(get_db),
+        current_mechanic: User = Depends(get_current_mechanic)
+) -> Dict[str, Any]:
+    """
+    Возвращает список автомобилей, находящихся в стадии DELIVERY_RESERVED или DELIVERING_IN_PROGRESS,
+    где доставка ещё не принята другим механиком или уже принята текущим.
+    """
+    deliveries = db.query(RentalHistory).filter(
+        (RentalHistory.rental_status == RentalStatus.DELIVERY_RESERVED) |
+        (RentalHistory.rental_status == RentalStatus.DELIVERING_IN_PROGRESS),
+        (RentalHistory.delivery_mechanic_id.is_(None)) |
+        (RentalHistory.delivery_mechanic_id == current_mechanic.id)
+    ).all()
+
+    vehicles_data: List[Dict[str, Any]] = []
+    for rental in deliveries:
+        car = db.query(Car).filter(Car.id == rental.car_id).first()
+        if not car:
+            continue
+        vehicles_data.append({
+            "rental_id": rental.id,
+            "car_id": car.id,
+            "car_name": car.name,
+            "plate_number": car.plate_number,
+            "fuel_level": car.fuel_level,
+            "latitude": car.latitude,
+            "longitude": car.longitude,
+            "course": car.course,
+            "engine_volume": car.engine_volume,
+            "drive_type": car.drive_type,
+            "year": car.year,
+            "photos": car.photos,
+            "status": car.status,
+            "delivery_coordinates": {
+                "latitude": rental.delivery_latitude,
+                "longitude": rental.delivery_longitude,
+            },
+            "reservation_time": rental.reservation_time.isoformat(),
+            "delivery_assigned": rental.delivery_mechanic_id is not None
+        })
+
+    return {"delivery_vehicles": vehicles_data}
+
+
+@MechanicDeliveryRouter.post("/accept-delivery/{rental_id}")
+async def accept_delivery(
+        rental_id: int,
+        db: Session = Depends(get_db),
+        current_mechanic: User = Depends(get_current_mechanic)
+) -> Dict[str, Any]:
+    """
+    Механик принимает заказ доставки: назначаем себя и переводим в DELIVERY_RESERVED,
+    сохраняем текущее состояние машины и пушим пользователю.
+    """
+    # 1) Проверяем, что механик не занят другой доставкой
+    existing = db.query(RentalHistory).filter(
+        RentalHistory.delivery_mechanic_id == current_mechanic.id,
+        RentalHistory.rental_status.in_([
+            RentalStatus.DELIVERY_RESERVED,
+            RentalStatus.DELIVERING_IN_PROGRESS
+        ])
+    ).first()
+    if existing:
+        raise HTTPException(400, "У вас уже есть активный заказ доставки.")
+
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.id == rental_id,
+        RentalHistory.rental_status == RentalStatus.DELIVERING
+    ).first()
+    if not rental:
+        raise HTTPException(404, "Заказ доставки не найден")
+    if rental.delivery_mechanic_id is not None:
+        raise HTTPException(400, "Заказ уже принят другим механиком.")
+
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(404, "Автомобиль не найден")
+
+    # Назначаем механика и переводим в DELIVERY_RESERVED
+    rental.delivery_mechanic_id = current_mechanic.id
+    rental.rental_status = RentalStatus.DELIVERY_RESERVED
+    rental.fuel_before = car.fuel_level
+    rental.mileage_before = car.mileage
+
+    db.commit()
+    db.refresh(rental)
+
+    # Уведомляем пользователя
+    user = db.query(User).filter(User.id == rental.user_id).first()
+    if user and user.fcm_token:
+        await send_push_notification_async(
+            user.fcm_token,
+            "Механик назначен",
+            "Механик принял ваш заказ доставки и готов начать."
+        )
+
+    return {
+        "message": "Заказ доставки успешно принят",
+        "rental_id": rental.id
+    }
+
+
+@MechanicDeliveryRouter.post("/start-delivery", summary="Начать доставку")
+async def start_delivery(
+        db: Session = Depends(get_db),
+        current_mechanic: User = Depends(get_current_mechanic)
+) -> Dict[str, Any]:
+    """
+    Механик начинает фактическую доставку: переводим в DELIVERING_IN_PROGRESS и пушим пользователю.
+    """
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.delivery_mechanic_id == current_mechanic.id,
+        RentalHistory.rental_status == RentalStatus.DELIVERY_RESERVED
+    ).first()
+    if not rental:
+        raise HTTPException(404, "Нет назначенной доставки для старта")
+
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(404, "Автомобиль не найден")
+
+    rental.rental_status = RentalStatus.DELIVERING_IN_PROGRESS
+    db.commit()
+    db.refresh(rental)
+
+    user = db.query(User).filter(User.id == rental.user_id).first()
+    if user and user.fcm_token:
+        await send_push_notification_async(
+            user.fcm_token,
+            "Доставка начата",
+            "Механик приступил к доставке вашего автомобиля."
+        )
+
+    return {"message": "Доставка запущена", "rental_id": rental.id}
+
+
+@MechanicDeliveryRouter.post("/complete-delivery")
+async def complete_delivery(
+        db: Session = Depends(get_db),
+        current_mechanic: User = Depends(get_current_mechanic)
+) -> Dict[str, Any]:
+    """
+    Завершение доставки: сохраняем после-показатели, переводим в обычный RESERVED
+    и пушим пользователю, что машина готова к использованию.
+    """
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.delivery_mechanic_id == current_mechanic.id,
+        RentalHistory.rental_status == RentalStatus.DELIVERING_IN_PROGRESS
+    ).first()
+    if not rental:
+        raise HTTPException(404, "Активная доставка не найдена")
+
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(404, "Автомобиль не найден")
+
+    rental.fuel_after = car.fuel_level
+    rental.mileage_after = car.mileage
+
+    rental.end_time = datetime.utcnow()
+    rental.rental_status = RentalStatus.RESERVED
+    car.status = "RESERVED"
+    rental.delivery_mechanic_id = None
+
+    db.commit()
+    db.refresh(rental)
+
+    user = db.query(User).filter(User.id == rental.user_id).first()
+    if user and user.fcm_token:
+        await send_push_notification_async(
+            user.fcm_token,
+            "Машина доставлена",
+            f"Ваш автомобиль «{car.name}» ({car.plate_number}) готов к использованию."
+        )
+
+    return {
+        "message": "Доставка успешно завершена, статус автомобиля — RESERVED.",
+        "rental_id": rental.id
+    }
+
+
+def get_current_delivery(db: Session, current_mechanic: User) -> RentalHistory:
+    """
+    Возвращает доставку, назначенную механику,
+    в статусах DELIVERY_RESERVED или DELIVERING_IN_PROGRESS.
+    """
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.delivery_mechanic_id == current_mechanic.id,
+        RentalHistory.rental_status.in_([
+            RentalStatus.DELIVERY_RESERVED,
+            RentalStatus.DELIVERING_IN_PROGRESS
+        ])
+    ).first()
+    if not rental:
+        raise HTTPException(404, "Активная доставка не найдена")
+    return rental
+
+
+@MechanicDeliveryRouter.get("/current-delivery", summary="Получить текущую доставку")
+def current_delivery(
+        db: Session = Depends(get_db),
+        current_mechanic: User = Depends(get_current_mechanic)
+) -> Dict[str, Any]:
+    rental = get_current_delivery(db, current_mechanic)
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(404, "Автомобиль не найден")
+
+    return {
+        "rental_id": rental.id,
+        "car_id": car.id,
+        "car_name": car.name,
+        "plate_number": car.plate_number,
+        "fuel_level": car.fuel_level,
+        "latitude": car.latitude,
+        "longitude": car.longitude,
+        "course": car.course,
+        "engine_volume": car.engine_volume,
+        "drive_type": car.drive_type,
+        "photos": car.photos,
+        "year": car.year,
+        "delivery_coordinates": {
+            "latitude": rental.delivery_latitude,
+            "longitude": rental.delivery_longitude,
+        },
+        "reservation_time": rental.reservation_time.isoformat(),
+        "status": rental.rental_status.value
+    }
+
+
+@MechanicDeliveryRouter.post("/open", summary="Открыть автомобиль (доставка)")
+async def open_vehicle_delivery(
+        db: Session = Depends(get_db),
+        current_mechanic: User = Depends(get_current_mechanic)
+) -> Dict[str, Any]:
+    rental = get_current_delivery(db, current_mechanic)
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car or not car.gps_id:
+        raise HTTPException(404, "Автомобиль или GPS ID не найдены")
+
+    result = {"status": "command sent"}  # заглушка
+    return {"message": "Команда для открытия автомобиля отправлена", "result": result}
+
+
+@MechanicDeliveryRouter.post("/close", summary="Закрыть автомобиль (доставка)")
+async def close_vehicle_delivery(
+        db: Session = Depends(get_db),
+        current_mechanic: User = Depends(get_current_mechanic)
+) -> Dict[str, Any]:
+    rental = get_current_delivery(db, current_mechanic)
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car or not car.gps_id:
+        raise HTTPException(404, "Автомобиль или GPS ID не найдены")
+
+    result = {"status": "command sent"}
+    return {"message": "Команда для закрытия автомобиля отправлена", "result": result}
+
+
+@MechanicDeliveryRouter.post("/give-key", summary="Передать ключ (доставка)")
+async def give_key_delivery(
+        db: Session = Depends(get_db),
+        current_mechanic: User = Depends(get_current_mechanic)
+) -> Dict[str, Any]:
+    rental = get_current_delivery(db, current_mechanic)
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car or not car.gps_id:
+        raise HTTPException(404, "Автомобиль или GPS ID не найдены")
+
+    result = {"status": "command sent"}
+    return {"message": "Команда передачи ключа отправлена", "result": result}
+
+
+@MechanicDeliveryRouter.post("/take-key", summary="Получить ключ (доставка)")
+async def take_key_delivery(
+        db: Session = Depends(get_db),
+        current_mechanic: User = Depends(get_current_mechanic)
+) -> Dict[str, Any]:
+    rental = get_current_delivery(db, current_mechanic)
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car or not car.gps_id:
+        raise HTTPException(404, "Автомобиль или GPS ID не найдены")
+
+    result = {"status": "command sent"}
+    return {"message": "Команда получения ключа отправлена", "result": result}
+
+
+@MechanicDeliveryRouter.post("/upload-delivery-photos-before")
+async def upload_delivery_photos_before(
+        selfie: UploadFile = File(...),
+        car_photos: List[UploadFile] = File(...),
+        interior_photos: List[UploadFile] = File(...),
+        db: Session = Depends(get_db),
+        current_mechanic: User = Depends(get_current_mechanic)
+) -> Dict[str, Any]:
+    """
+    Загрузка фото перед доставкой — доступно только в статусе DELIVERING_IN_PROGRESS.
+    """
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.delivery_mechanic_id == current_mechanic.id,
+        RentalHistory.rental_status == RentalStatus.DELIVERING_IN_PROGRESS
+    ).first()
+    if not rental:
+        raise HTTPException(404, "Нет активной доставки для загрузки фотографий")
+
+    validate_photos([selfie], "selfie")
+    validate_photos(car_photos, "car_photos")
+    validate_photos(interior_photos, "interior_photos")
+
+    try:
+        urls: List[str] = []
+        urls.append(await save_file(selfie, rental.id, f"uploads/delivery/{rental.id}/before/selfie/"))
+        for p in car_photos:
+            urls.append(await save_file(p, rental.id, f"uploads/delivery/{rental.id}/before/car/"))
+        for p in interior_photos:
+            urls.append(await save_file(p, rental.id, f"uploads/delivery/{rental.id}/before/interior/"))
+        rental.delivery_photos_before = urls
+        db.commit()
+        return {"message": "Фотографии перед доставкой загружены", "photo_count": len(urls)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(500, f"Ошибка при загрузке фото перед доставкой: {e}")
+
+
+@MechanicDeliveryRouter.post("/upload-delivery-photos-after")
+async def upload_delivery_photos_after(
+        selfie: UploadFile = File(...),
+        car_photos: List[UploadFile] = File(...),
+        interior_photos: List[UploadFile] = File(...),
+        db: Session = Depends(get_db),
+        current_mechanic: User = Depends(get_current_mechanic)
+) -> Dict[str, Any]:
+    """
+    Загрузка фото после доставки — доступно только в статусе DELIVERING_IN_PROGRESS.
+    """
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.delivery_mechanic_id == current_mechanic.id,
+        RentalHistory.rental_status == RentalStatus.DELIVERING_IN_PROGRESS
+    ).first()
+    if not rental:
+        raise HTTPException(404, "Нет активной доставки для загрузки фотографий")
+
+    validate_photos([selfie], "selfie")
+    validate_photos(car_photos, "car_photos")
+    validate_photos(interior_photos, "interior_photos")
+
+    try:
+        urls: List[str] = []
+        urls.append(await save_file(selfie, rental.id, f"uploads/delivery/{rental.id}/after/selfie/"))
+        for p in car_photos:
+            urls.append(await save_file(p, rental.id, f"uploads/delivery/{rental.id}/after/car/"))
+        for p in interior_photos:
+            urls.append(await save_file(p, rental.id, f"uploads/delivery/{rental.id}/after/interior/"))
+        rental.delivery_photos_after = urls
+        db.commit()
+        return {"message": "Фотографии после доставки загружены", "photo_count": len(urls)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(500, f"Ошибка при загрузке фото после доставки: {e}")

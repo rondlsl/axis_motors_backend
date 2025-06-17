@@ -1,12 +1,14 @@
 import asyncio
+import base64
 import os
+from typing import Dict, Any
 
 import anyio
 import httpx
 
 from alembic import command
 from alembic.config import Config
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Form
 from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from starlette.middleware.cors import CORSMiddleware
@@ -22,6 +24,7 @@ from app.models.user_model import User, UserRole
 from app.rent.router import RentRouter
 from app.rent.utils.billing import rental_billing_loop
 from app.push.router import router as PushRouter
+from app.mechanic_delivery.router import MechanicDeliveryRouter
 
 # === APP ===
 app = FastAPI()
@@ -281,6 +284,7 @@ app.include_router(Auth_router)
 app.include_router(Vehicle_Router)
 app.include_router(RentRouter)
 app.include_router(MechanicRouter)
+app.include_router(MechanicDeliveryRouter)
 app.include_router(PushRouter)
 
 
@@ -297,3 +301,41 @@ async def list_routes():
             f"name={route.name}, path={getattr(route, 'path', '-')}, methods={getattr(route, 'methods', '-')}"
         )
     return {"routes": lines}
+
+
+# Ваш SubscriptionKey (можно передать через переменную окружения)
+SUBSCRIPTION_KEY = os.getenv("MXFACE_SUBSCRIPTION_KEY", "HI1vTRQH4NXCfOXevz-6eOxARymKc4200")
+CHECK_URL = "https://faceapi.mxface.ai/api/v3/face/checkliveness"
+VERIFY_URL = "https://faceapi.mxface.ai/api/v3/face/verify"
+HEADERS = {
+    "Content-Type": "application/json",
+    "subscriptionkey": SUBSCRIPTION_KEY
+}
+
+
+async def _call_mxface(url: str, payload: dict) -> dict:
+    async with httpx.AsyncClient(timeout=20) as client:
+        resp = await client.post(url, json=payload, headers=HEADERS)
+        resp.raise_for_status()
+        return resp.json()
+
+
+@app.post("/face/liveness-passive/")
+async def liveness_passive(photo: UploadFile = File(..., description="Фото для проверки liveness")):
+    data = await photo.read()
+    encoded = base64.b64encode(data).decode("utf-8")
+    return await _call_mxface(CHECK_URL, {"encoded_image": encoded})
+
+
+@app.post("/face/compare-faces/")
+async def compare_faces(
+        file1: UploadFile = File(..., description="Первое фото"),
+        file2: UploadFile = File(..., description="Второе фото")
+):
+    b1, b2 = await file1.read(), await file2.read()
+    payload = {
+        "encoded_image1": base64.b64encode(b1).decode("utf-8"),
+        "encoded_image2": base64.b64encode(b2).decode("utf-8"),
+        "compareAllFaces": False
+    }
+    return await _call_mxface(VERIFY_URL, payload)
