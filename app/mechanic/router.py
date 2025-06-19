@@ -61,17 +61,14 @@ def get_all_vehicles_plain(
 
             # Если машина в доставке — подхватываем rental_id
             if car.status in (
-                    RentalStatus.DELIVERING,
-                    RentalStatus.DELIVERY_RESERVED.value,
-                    RentalStatus.DELIVERING_IN_PROGRESS.value,
+                    RentalStatus.DELIVERING.value
             ):
                 delivery = (
                     db.query(RentalHistory)
                     .filter(
                         RentalHistory.car_id == car.id,
                         RentalHistory.rental_status.in_([
-                            RentalStatus.DELIVERY_RESERVED,
-                            RentalStatus.DELIVERING_IN_PROGRESS,
+                            RentalStatus.DELIVERING
                         ])
                     )
                     .order_by(RentalHistory.start_time.desc())
