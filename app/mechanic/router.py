@@ -25,54 +25,94 @@ def get_all_vehicles_plain(
         db: Session = Depends(get_db),
         current_mechanic: Any = Depends(get_current_mechanic),
 ) -> Dict[str, Any]:
-    cars = db.query(Car).all()
-    vehicles_data: List[Dict[str, Any]] = []
+    try:
+        cars: List[Car] = db.query(Car).all()
+        vehicles_data: List[Dict[str, Any]] = []
 
-    for car in cars:
-        car_dict = {
-            "id": car.id,
-            "name": car.name,
-            "plate_number": car.plate_number,
-            "latitude": car.latitude,
-            "longitude": car.longitude,
-            "course": car.course,
-            "fuel_level": car.fuel_level,
-            "price_per_minute": car.price_per_minute,
-            "price_per_hour": car.price_per_hour,
-            "price_per_day": car.price_per_day,
-            "engine_volume": car.engine_volume,
-            "year": car.year,
-            "drive_type": car.drive_type,
-            "photos": car.photos,
-            "description": car.description,
-            "owner_id": car.owner_id,
-            "current_renter_id": car.current_renter_id,
-            # car.status is already an enum
-            "status": car.status.value,
-            "open_price": get_open_price(car),
-            "owned_car": False,
-            "current_renter_details": None,
-        }
+        for car in cars:
+            # по умолчанию нет активной аренды
+            car_dict: Dict[str, Any] = {
+                "id": car.id,
+                "name": car.name,
+                "plate_number": car.plate_number,
+                "latitude": car.latitude,
+                "longitude": car.longitude,
+                "course": car.course,
+                "fuel_level": car.fuel_level,
+                "price_per_minute": car.price_per_minute,
+                "price_per_hour": car.price_per_hour,
+                "price_per_day": car.price_per_day,
+                "engine_volume": car.engine_volume,
+                "year": car.year,
+                "drive_type": car.drive_type,
+                "photos": car.photos,
+                "description": car.description,
+                "owner_id": car.owner_id,
+                "current_renter_id": car.current_renter_id,
+                "status": car.status,
+                "open_price": get_open_price(car),
+                "owned_car": False,
+                "current_renter_details": None,
+                "rental_id": None,  # поле всегда есть
+            }
 
-        # >>> only for truly DELIVERING cars <<<
-        if car.status == RentalStatus.DELIVERING:
-            delivery = (
-                db.query(RentalHistory)
-                .filter(
-                    RentalHistory.car_id == car.id,
-                    RentalHistory.rental_status == RentalStatus.DELIVERING
+            # ищем последнюю активную аренду (IN_USE или DELIVERING)
+            if car.status in (
+                    RentalStatus.IN_USE.value,
+                    RentalStatus.DELIVERING.value
+            ):
+                active = (
+                    db.query(RentalHistory)
+                    .filter(
+                        RentalHistory.car_id == car.id,
+                        RentalHistory.rental_status.in_([
+                            RentalStatus.IN_USE,
+                            RentalStatus.DELIVERING
+                        ])
+                    )
+                    .order_by(RentalHistory.start_time.desc())
+                    .first()
                 )
-                .order_by(RentalHistory.start_time.desc())
-                .first()
-            )
-            if delivery:
-                car_dict["rental_id"] = delivery.id
+                if active:
+                    car_dict["rental_id"] = active.id
 
-        # … the rest of your IN_USE logic here …
+            # если машина в использовании — добавляем детали арендатора
+            if car.status == RentalStatus.IN_USE.value and car.current_renter_id:
+                renter: Optional[User] = db.query(User).get(car.current_renter_id)
+                if renter:
+                    last_rent = (
+                        db.query(RentalHistory)
+                        .filter(
+                            RentalHistory.car_id == car.id,
+                            RentalHistory.user_id == renter.id,
+                            RentalHistory.rental_status == RentalStatus.IN_USE,
+                        )
+                        .order_by(RentalHistory.start_time.desc())
+                        .first()
+                    )
+                    rent_selfie_url: Optional[str] = None
+                    if last_rent and last_rent.photos_before:
+                        rent_selfie_url = next(
+                            (p for p in last_rent.photos_before if "/selfie/" in p or "\\selfie\\" in p),
+                            last_rent.photos_before[0],
+                        )
 
-        vehicles_data.append(car_dict)
+                    car_dict["current_renter_details"] = {
+                        "full_name": renter.full_name,
+                        "phone_number": renter.phone_number,
+                        "selfie_url": renter.selfie_with_license_url,
+                        "rent_selfie_url": rent_selfie_url,
+                    }
 
-    return {"vehicles": vehicles_data}
+            vehicles_data.append(car_dict)
+
+        return {"vehicles": vehicles_data}
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка при получении всех автомобилей: {e}"
+        )
 
 
 @MechanicRouter.get("/get_pending_vehicles")
