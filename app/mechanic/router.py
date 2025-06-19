@@ -57,9 +57,9 @@ def get_all_vehicles_plain(
             }
 
             # ищем последнюю активную аренду (IN_USE или DELIVERING)
-            if car.status in (
-                    RentalStatus.IN_USE.value,
-                    RentalStatus.DELIVERING.value
+            if car.status.lower() in (
+                    "in_use",
+                    "delivering"
             ):
                 active = (
                     db.query(RentalHistory)
@@ -77,7 +77,7 @@ def get_all_vehicles_plain(
                     car_dict["rental_id"] = active.id
 
             # если машина в использовании — добавляем детали арендатора
-            if car.status == RentalStatus.IN_USE.value and car.current_renter_id:
+            if car.status.lower() == "in_use" and car.current_renter_id:
                 renter: Optional[User] = db.query(User).get(car.current_renter_id)
                 if renter:
                     last_rent = (
