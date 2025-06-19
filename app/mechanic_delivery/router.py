@@ -27,8 +27,7 @@ def get_delivery_vehicles(
     где доставка ещё не принята другим механиком или уже принята текущим.
     """
     deliveries = db.query(RentalHistory).filter(
-        (RentalHistory.rental_status == RentalStatus.DELIVERY_RESERVED) |
-        (RentalHistory.rental_status == RentalStatus.DELIVERING_IN_PROGRESS),
+        (RentalHistory.rental_status == RentalStatus.DELIVERING) |
         (RentalHistory.delivery_mechanic_id.is_(None)) |
         (RentalHistory.delivery_mechanic_id == current_mechanic.id)
     ).all()

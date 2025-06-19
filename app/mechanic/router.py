@@ -17,7 +17,6 @@ from app.rent.utils.calculate_price import get_open_price
 MechanicRouter = APIRouter(tags=["Mechanic"], prefix="/mechanic")
 
 
-# ----------------------- GET эндпоинты -----------------------
 @MechanicRouter.get(
     "/all_vehicles",
     summary="Список всех автомобилей со всеми статусами (без схем)"
@@ -28,11 +27,8 @@ def get_all_vehicles_plain(
 ) -> Dict[str, Any]:
     """
     Возвращает список всех автомобилей в системе (независимо от статуса).
-    Для каждого авто возвращаются:
-      - все поля модели Car,
-      - вычисленное поле open_price,
-      - owned_car = False (для механика),
-      - если status == IN_USE и есть current_renter_id, добавляются данные current_renter_details.
+    Для машин в статусе DELIVERY_RESERVED или DELIVERING_IN_PROGRESS
+    добавляется поле rental_id.
     """
     try:
         cars = db.query(Car).all()
@@ -60,10 +56,32 @@ def get_all_vehicles_plain(
                 "status": car.status,
                 "open_price": get_open_price(car),
                 "owned_car": False,
+                "current_renter_details": None,  # заполним ниже, если нужно
             }
 
-            # Если автомобиль в аренде, добавляем данные арендатора
-            if car.status == "IN_USE" and car.current_renter_id:
+            # Если машина в доставке — подхватываем rental_id
+            if car.status in (
+                    RentalStatus.DELIVERING,
+                    RentalStatus.DELIVERY_RESERVED.value,
+                    RentalStatus.DELIVERING_IN_PROGRESS.value,
+            ):
+                delivery = (
+                    db.query(RentalHistory)
+                    .filter(
+                        RentalHistory.car_id == car.id,
+                        RentalHistory.rental_status.in_([
+                            RentalStatus.DELIVERY_RESERVED,
+                            RentalStatus.DELIVERING_IN_PROGRESS,
+                        ])
+                    )
+                    .order_by(RentalHistory.start_time.desc())
+                    .first()
+                )
+                if delivery:
+                    car_dict["rental_id"] = delivery.id
+
+            # Если автомобиль занят пользователем
+            if car.status == RentalStatus.IN_USE.value and car.current_renter_id:
                 renter = db.query(User).filter(User.id == car.current_renter_id).first()
                 if renter:
                     last_rental = (
@@ -88,14 +106,11 @@ def get_all_vehicles_plain(
                         "selfie_url": renter.selfie_with_license_url,
                         "rent_selfie_url": rent_selfie_url,
                     }
-                else:
-                    car_dict["current_renter_details"] = None
-            else:
-                car_dict["current_renter_details"] = None
 
             vehicles_data.append(car_dict)
 
         return {"vehicles": vehicles_data}
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка при получении всех автомобилей: {str(e)}")
 

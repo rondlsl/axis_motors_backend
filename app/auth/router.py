@@ -6,6 +6,8 @@ import httpx
 from pydantic import BaseModel
 from typing import Optional
 
+from starlette import status
+
 from app.auth.dependencies.get_current_user import get_current_user  # обновлённая версия — см. ниже
 from app.auth.dependencies.save_documents import save_file
 from app.auth.schemas import SendSmsRequest, VerifySmsRequest, DocumentUploadRequest
@@ -134,7 +136,9 @@ async def read_users_me(
             RentalHistory.rental_status.in_([
                 RentalStatus.RESERVED,
                 RentalStatus.IN_USE,
-                RentalStatus.DELIVERING
+                RentalStatus.DELIVERING,
+                RentalStatus.DELIVERY_RESERVED,
+                RentalStatus.DELIVERING_IN_PROGRESS
             ])
         )
         .first()
@@ -153,7 +157,7 @@ async def read_users_me(
             "status": rental.rental_status.value
         }
 
-        if rental.rental_status == RentalStatus.DELIVERING:
+        if rental.rental_status == RentalStatus.DELIVERING or rental.rental_status == RentalStatus.DELIVERING_IN_PROGRESS or rental.rental_status == RentalStatus.DELIVERY_RESERVED:
             rental_details.update({
                 "delivery_latitude": rental.delivery_latitude,
                 "delivery_longitude": rental.delivery_longitude,
@@ -384,6 +388,13 @@ async def delete_account(
       - Все связи сохраняются, история не удаляется.
       - После этого все эндпоинты, зависящие от get_current_user, будут недоступны для данного аккаунта.
     """
+    # Проверяем отрицательный баланс
+    if getattr(current_user, "wallet_balance", 0) < 0:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="Нельзя удалить аккаунт: на кошельке отрицательный баланс."
+        )
+
     current_user.is_active = False
     db.commit()
     return {"message": "Аккаунт помечен как неактивный."}
