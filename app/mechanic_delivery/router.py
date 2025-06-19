@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile
+from sqlalchemy import and_
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List, Dict, Any
@@ -26,11 +27,12 @@ def get_delivery_vehicles(
     Возвращает список автомобилей, находящихся в стадии DELIVERY_RESERVED или DELIVERING_IN_PROGRESS,
     где доставка ещё не принята другим механиком или уже принята текущим.
     """
-    deliveries = db.query(RentalHistory).filter(
-        (RentalHistory.rental_status == RentalStatus.DELIVERING) |
-        (RentalHistory.delivery_mechanic_id.is_(None)) |
-        (RentalHistory.delivery_mechanic_id == current_mechanic.id)
-    ).all()
+
+    deliveries = (
+        db.query(RentalHistory)
+        .filter(RentalHistory.rental_status == RentalStatus.DELIVERING)
+        .all()
+    )
 
     vehicles_data: List[Dict[str, Any]] = []
     for rental in deliveries:
