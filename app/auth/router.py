@@ -236,6 +236,7 @@ async def read_users_me(
         "documents": {
             "documents_verified": current_user.documents_verified,
             "selfie_with_license_url": current_user.selfie_with_license_url,
+            "selfie_url": current_user.selfie_url,
             "drivers_license": {
                 "url": current_user.drivers_license_url,
                 "expiry": current_user.drivers_license_expiry.isoformat()
