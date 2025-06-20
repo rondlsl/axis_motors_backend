@@ -25,6 +25,7 @@ class User(Base):
     drivers_license_expiry = Column(DateTime, nullable=True)
     wallet_balance = Column(Numeric(10, 2), nullable=False, default=0)
     selfie_with_license_url = Column(String, nullable=True)
+    selfie_url = Column(String, nullable=True)
     drivers_license_url = Column(String, nullable=True)
     id_card_front_url = Column(String, nullable=True)
     id_card_back_url = Column(String, nullable=True)

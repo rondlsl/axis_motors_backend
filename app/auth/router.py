@@ -281,7 +281,8 @@ async def refresh_token(db: Session = Depends(get_db), token: str = Depends(JWTB
 - id_front: Фото лицевой стороны ID карты (JPEG/PNG)
 - id_back: Фото обратной стороны ID карты (JPEG/PNG)  
 - drivers_license: Фото водительских прав (JPEG/PNG)
-- selfie: Селфи с водительскими правами (JPEG/PNG)
+- selfie_with_license: Селфи с водительскими правами (JPEG/PNG)
+- selfie: Обычное селфи (JPEG/PNG)
 
 **Требуемые данные:**
 - full_name: Полное ФИО (2-100 символов). Пример: "Иванов Иван Иванович"
@@ -291,12 +292,13 @@ async def refresh_token(db: Session = Depends(get_db), token: str = Depends(JWTB
 - drivers_license_expiry: Дата истечения прав в формате YYYY-MM-DD (будущая дата). Пример: "2029-08-20"
 
 После успешной загрузки статус пользователя изменится на PENDING (ожидает проверки).
-                 """)
+                  """)
 async def upload_documents(
         # Файлы
         id_front: UploadFile = File(...),
         id_back: UploadFile = File(...),
         drivers_license: UploadFile = File(...),
+        selfie_with_license: UploadFile = File(...),
         selfie: UploadFile = File(...),
 
         # Данные формы
@@ -307,17 +309,17 @@ async def upload_documents(
         drivers_license_expiry: str = Form(...),
 
         current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
+        db: Session = Depends(get_db),
 ):
     # Валидация типов файлов
-    for doc in [id_front, id_back, drivers_license, selfie]:
+    for doc in [id_front, id_back, drivers_license, selfie_with_license, selfie]:
         if doc.content_type not in ALLOWED_TYPES:
             raise HTTPException(
-                status_code=400,
+                status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"File {doc.filename} is not an image. Only JPEG and PNG are allowed."
             )
 
-    # Валидация данных через Pydantic схему
+    # Валидация данных через Pydantic-схему
     try:
         document_data = DocumentUploadRequest(
             full_name=full_name,
@@ -328,8 +330,8 @@ async def upload_documents(
         )
     except ValueError as e:
         raise HTTPException(
-            status_code=422,
-            detail=f"Validation error: {str(e)}"
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Validation error: {e}"
         )
 
     try:
@@ -337,6 +339,7 @@ async def upload_documents(
         id_front_path = await save_file(id_front, current_user.id, "uploads/documents")
         id_back_path = await save_file(id_back, current_user.id, "uploads/documents")
         license_path = await save_file(drivers_license, current_user.id, "uploads/documents")
+        selfie_with_license_path = await save_file(selfie_with_license, current_user.id, "uploads/documents")
         selfie_path = await save_file(selfie, current_user.id, "uploads/documents")
 
         # Обновление данных пользователя
@@ -344,7 +347,6 @@ async def upload_documents(
         current_user.birth_date = datetime.strptime(document_data.birth_date, '%Y-%m-%d')
         current_user.iin = document_data.iin
 
-        # Обновление путей к файлам
         current_user.id_card_front_url = id_front_path
         current_user.id_card_back_url = id_back_path
         current_user.id_card_expiry = datetime.strptime(document_data.id_card_expiry, '%Y-%m-%d')
@@ -352,7 +354,9 @@ async def upload_documents(
         current_user.drivers_license_url = license_path
         current_user.drivers_license_expiry = datetime.strptime(document_data.drivers_license_expiry, '%Y-%m-%d')
 
-        current_user.selfie_with_license_url = selfie_path
+        current_user.selfie_with_license_url = selfie_with_license_path
+        current_user.selfie_url = selfie_path
+
         current_user.role = UserRole.PENDING
 
         db.commit()
@@ -365,14 +369,16 @@ async def upload_documents(
                 "birth_date": current_user.birth_date.strftime('%Y-%m-%d'),
                 "iin": current_user.iin,
                 "id_card_expiry": current_user.id_card_expiry.strftime('%Y-%m-%d'),
-                "drivers_license_expiry": current_user.drivers_license_expiry.strftime('%Y-%m-%d')
+                "drivers_license_expiry": current_user.drivers_license_expiry.strftime('%Y-%m-%d'),
+                "selfie_with_license_url": current_user.selfie_with_license_url,
+                "selfie_url": current_user.selfie_url
             }
         }
 
-    except Exception as e:
+    except Exception:
         db.rollback()
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while uploading documents and data"
         )
 
