@@ -1,9 +1,35 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
+from starlette import status
 
 from app.models.car_model import Car
 from app.models.history_model import RentalHistory, RentalStatus
 from app.models.user_model import User
+
+
+def get_active_rental(db: Session, user_id: int) -> RentalHistory:
+    """
+    Находит текущую аренду (IN_USE или DELIVERING_IN_PROGRESS) для пользователя.
+    """
+    rental = (
+        db.query(RentalHistory)
+        .filter(
+            RentalHistory.user_id == user_id,
+            RentalHistory.rental_status.in_([
+                RentalStatus.IN_USE,
+                RentalStatus.DELIVERING_IN_PROGRESS,
+                RentalStatus.DELIVERING
+            ])
+        )
+        .order_by(RentalHistory.start_time.desc())
+        .first()
+    )
+    if not rental:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Активная аренда не найдена"
+        )
+    return rental
 
 
 def get_active_rental_car(db: Session, current_user: User) -> Car:

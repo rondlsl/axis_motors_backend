@@ -302,40 +302,40 @@ async def list_routes():
         )
     return {"routes": lines}
 
-
-# Ваш SubscriptionKey (можно передать через переменную окружения)
-SUBSCRIPTION_KEY = os.getenv("MXFACE_SUBSCRIPTION_KEY", "HI1vTRQH4NXCfOXevz-6eOxARymKc4200")
-CHECK_URL = "https://faceapi.mxface.ai/api/v3/face/checkliveness"
-VERIFY_URL = "https://faceapi.mxface.ai/api/v3/face/verify"
-HEADERS = {
-    "Content-Type": "application/json",
-    "subscriptionkey": SUBSCRIPTION_KEY
-}
-
-
-async def _call_mxface(url: str, payload: dict) -> dict:
-    async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.post(url, json=payload, headers=HEADERS)
-        resp.raise_for_status()
-        return resp.json()
-
-
-@app.post("/face/liveness-passive/")
-async def liveness_passive(photo: UploadFile = File(..., description="Фото для проверки liveness")):
-    data = await photo.read()
-    encoded = base64.b64encode(data).decode("utf-8")
-    return await _call_mxface(CHECK_URL, {"encoded_image": encoded})
-
-
-@app.post("/face/compare-faces/")
-async def compare_faces(
-        file1: UploadFile = File(..., description="Первое фото"),
-        file2: UploadFile = File(..., description="Второе фото")
-):
-    b1, b2 = await file1.read(), await file2.read()
-    payload = {
-        "encoded_image1": base64.b64encode(b1).decode("utf-8"),
-        "encoded_image2": base64.b64encode(b2).decode("utf-8"),
-        "compareAllFaces": False
-    }
-    return await _call_mxface(VERIFY_URL, payload)
+#
+# # Ваш SubscriptionKey (можно передать через переменную окружения)
+# SUBSCRIPTION_KEY = os.getenv("MXFACE_SUBSCRIPTION_KEY", "HI1vTRQH4NXCfOXevz-6eOxARymKc4200")
+# CHECK_URL = "https://faceapi.mxface.ai/api/v3/face/liveness"
+# VERIFY_URL = "https://faceapi.mxface.ai/api/v3/face/verify"
+# HEADERS = {
+#     "Content-Type": "application/json",
+#     "subscriptionkey": SUBSCRIPTION_KEY
+# }
+#
+#
+# async def _call_mxface(url: str, payload: dict) -> dict:
+#     async with httpx.AsyncClient(timeout=20) as client:
+#         resp = await client.post(url, json=payload, headers=HEADERS)
+#         resp.raise_for_status()
+#         return resp.json()
+#
+#
+# @app.post("/face/liveness-passive/")
+# async def liveness_passive(photo: UploadFile = File(..., description="Фото для проверки liveness")):
+#     data = await photo.read()
+#     encoded = base64.b64encode(data).decode("utf-8")
+#     return await _call_mxface(CHECK_URL, {"encoded_image": encoded})
+#
+#
+# @app.post("/face/compare-faces/")
+# async def compare_faces(
+#         file1: UploadFile = File(..., description="Первое фото"),
+#         file2: UploadFile = File(..., description="Второе фото")
+# ):
+#     b1, b2 = await file1.read(), await file2.read()
+#     payload = {
+#         "encoded_image1": base64.b64encode(b1).decode("utf-8"),
+#         "encoded_image2": base64.b64encode(b2).decode("utf-8"),
+#         "compareAllFaces": False
+#     }
+#     return await _call_mxface(VERIFY_URL, payload)

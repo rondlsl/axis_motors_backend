@@ -79,6 +79,12 @@ class RentalHistory(Base):
 
     review = relationship("RentalReview", back_populates="rental", uselist=False)
 
+    actions = relationship(
+        "RentalAction",
+        back_populates="rental",
+        cascade="all, delete-orphan"
+    )
+
 
 class RentalReview(Base):
     __tablename__ = "rental_reviews"

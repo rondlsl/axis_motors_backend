@@ -9,9 +9,10 @@ from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.car_model import Car
 from app.models.history_model import RentalHistory
+from app.models.rental_actions_model import ActionType, RentalAction
 from app.models.user_model import User
 from app.gps_api.utils.auth_api import get_auth_token
-from app.gps_api.utils.get_active_rental import get_active_rental_car
+from app.gps_api.utils.get_active_rental import get_active_rental_car, get_active_rental
 from app.gps_api.utils.car_data import send_command_to_terminal
 from app.rent.utils.calculate_price import get_open_price
 
@@ -193,32 +194,81 @@ def get_frequently_used_vehicles(
 
 
 # === КОМАНДЫ GlonassSoft ===
+
 @Vehicle_Router.post("/open")
-async def open_vehicle(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Dict:
-    car = get_active_rental_car(db, current_user)
-    # return await send_command_to_terminal(car.gps_id, "*!CEVT 1", AUTH_TOKEN)
-    return {"command_id": "fawffwawf"}
+async def open_vehicle(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    rental = get_active_rental(db, current_user.id)
+    car = db.query(Car).get(rental.car_id)
+    # логируем действие
+    action = RentalAction(
+        rental_id=rental.id,
+        user_id=current_user.id,
+        action_type=ActionType.OPEN_VEHICLE
+    )
+    db.add(action)
+    # отправляем команду
+    cmd = await send_command_to_terminal(car.gps_id, "*!CEVT 1", AUTH_TOKEN)
+    db.commit()
+
+    return cmd
 
 
 @Vehicle_Router.post("/close")
-async def close_vehicle(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Dict:
-    car = get_active_rental_car(db, current_user)
-    # return await send_command_to_terminal(car.gps_id, "*!CEVT 2", AUTH_TOKEN)
-    return {"command_id": "fawffwawf"}
+async def close_vehicle(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    rental = get_active_rental(db, current_user.id)
+    car = db.query(Car).get(rental.car_id)
+    action = RentalAction(
+        rental_id=rental.id,
+        user_id=current_user.id,
+        action_type=ActionType.CLOSE_VEHICLE
+    )
+    db.add(action)
+    cmd = await send_command_to_terminal(car.gps_id, "*!CEVT 2", AUTH_TOKEN)
+    db.commit()
+
+    return cmd
 
 
 @Vehicle_Router.post("/give_key")
-async def give_key(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Dict:
-    car = get_active_rental_car(db, current_user)
-    # return await send_command_to_terminal(car.gps_id, "*!2Y", AUTH_TOKEN)
-    return {"command_id": "fawffwawf"}
+async def give_key(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    rental = get_active_rental(db, current_user.id)
+    car = db.query(Car).get(rental.car_id)
+    action = RentalAction(
+        rental_id=rental.id,
+        user_id=current_user.id,
+        action_type=ActionType.GIVE_KEY
+    )
+    db.add(action)
+    cmd = await send_command_to_terminal(car.gps_id, "*!2Y", AUTH_TOKEN)
+    db.commit()
+    return cmd
 
 
 @Vehicle_Router.post("/take_key")
-async def take_key(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Dict:
-    car = get_active_rental_car(db, current_user)
-    # return await send_command_to_terminal(car.gps_id, "*!2N", AUTH_TOKEN)
-    return {"command_id": "fawffwawf"}
+async def take_key(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    rental = get_active_rental(db, current_user.id)
+    car = db.query(Car).get(rental.car_id)
+    action = RentalAction(
+        rental_id=rental.id,
+        user_id=current_user.id,
+        action_type=ActionType.TAKE_KEY
+    )
+    db.add(action)
+    cmd = await send_command_to_terminal(car.gps_id, "*!2N", AUTH_TOKEN)
+    db.commit()
+    return cmd
 
 # @Vehicle_Router.post("/block")
 # async def block_engine(request: CommandRequest) -> Dict:

@@ -2,7 +2,7 @@ from math import floor, ceil
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, status, Query
 from pydantic import BaseModel, constr, Field, conint
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 
 from app.auth.dependencies.get_current_user import get_current_user
@@ -17,20 +17,18 @@ from app.rent.utils.calculate_price import calculate_total_price, get_open_price
 
 RentRouter = APIRouter(tags=["Rent"], prefix="/rent")
 
+OFFSET_HOURS = 5
+
+
+def apply_offset(dt: datetime) -> str | None:
+    return (dt + timedelta(hours=OFFSET_HOURS)).isoformat() if dt else None
+
 
 @RentRouter.get("/history")
 def get_trip_history(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ) -> dict:
-    """
-    Возвращает историю поездок (только завершённые) для текущего пользователя.
-    Для каждой поездки возвращаются:
-      - history_id: идентификатор истории
-      - date: дата завершения поездки (end_time)
-      - car_name: название машины
-      - final_total_price: итоговая стоимость поездки
-    """
     histories = (
         db.query(RentalHistory, Car)
         .join(Car, Car.id == RentalHistory.car_id)
@@ -46,7 +44,8 @@ def get_trip_history(
     for rental, car in histories:
         result.append({
             "history_id": rental.id,
-            "date": rental.end_time.isoformat() if rental.end_time else None,
+            # Сдвиг +5 ч
+            "date": apply_offset(rental.end_time),
             "car_name": car.name,
             "final_total_price": rental.total_price
         })
@@ -60,39 +59,34 @@ def get_trip_history_detail(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ) -> dict:
-    """
-    Возвращает подробности истории поездки по её идентификатору.
-    Выводятся все поля истории, а также данные машины.
-    """
-    rental = db.query(RentalHistory).filter(
-        RentalHistory.id == history_id,
-        RentalHistory.user_id == current_user.id
-    ).first()
-
+    rental = (
+        db.query(RentalHistory)
+        .filter(
+            RentalHistory.id == history_id,
+            RentalHistory.user_id == current_user.id
+        )
+        .first()
+    )
     if not rental:
         raise HTTPException(status_code=404, detail="Rental history not found")
 
-    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    car = db.query(Car).get(rental.car_id)
 
     rental_detail = {
         "history_id": rental.id,
         "user_id": rental.user_id,
         "car_id": rental.car_id,
-        "rental_type": rental.rental_type.value if hasattr(rental.rental_type, "value") else rental.rental_type,
+        "rental_type": rental.rental_type.value,
         "duration": rental.duration,
-        "start_latitude": rental.start_latitude,
-        "start_longitude": rental.start_longitude,
-        "end_latitude": rental.end_latitude,
-        "end_longitude": rental.end_longitude,
-        "start_time": rental.start_time.isoformat() if rental.start_time else None,
-        "end_time": rental.end_time.isoformat() if rental.end_time else None,
-        "reservation_time": rental.reservation_time.isoformat() if rental.reservation_time else None,
+        # Применяем смещение к каждому временному полю
+        "start_time": apply_offset(rental.start_time),
+        "end_time": apply_offset(rental.end_time),
+        "reservation_time": apply_offset(rental.reservation_time),
         "photos_before": rental.photos_before,
         "photos_after": rental.photos_after,
         "already_payed": rental.already_payed,
         "total_price": rental.total_price,
-        "rental_status": rental.rental_status.value if hasattr(rental.rental_status, "value") else rental.rental_status,
-        # новые поля расчётов
+        "rental_status": rental.rental_status.value,
         "base_price": rental.base_price,
         "open_fee": rental.open_fee,
         "delivery_fee": rental.delivery_fee,
@@ -112,8 +106,17 @@ def get_trip_history_detail(
             "engine_volume": car.engine_volume,
             "drive_type": car.drive_type,
             "year": car.year,
-            "status": car.status
+            "status": car.status,
         }
+
+    rental_detail["action_history"] = [
+        {
+            "action_type": action.action_type.value,
+            "timestamp": apply_offset(action.timestamp)
+        }
+        for action in rental.actions
+        if action.user_id == current_user.id
+    ]
 
     return {"rental_history_detail": rental_detail}
 
