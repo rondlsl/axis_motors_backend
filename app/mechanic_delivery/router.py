@@ -7,6 +7,7 @@ from typing import List, Dict, Any
 from app.auth.dependencies.get_current_user import get_current_mechanic
 from app.auth.dependencies.save_documents import validate_photos, save_file
 from app.dependencies.database.database import get_db
+from app.gps_api.router import AUTH_TOKEN
 from app.gps_api.utils.car_data import send_command_to_terminal
 from app.models.history_model import RentalStatus, RentalHistory
 from app.models.car_model import Car
@@ -272,7 +273,7 @@ async def open_vehicle_delivery(
     db.commit()
 
     # отправка команды (заглушка или реальный вызов)
-    result = await send_command_to_terminal(car.gps_id, "*!CEVT 1")
+    result = await send_command_to_terminal(car.gps_id, "*!CEVT 1", AUTH_TOKEN)
     return {"message": "Команда для открытия автомобиля отправлена", "result": result}
 
 
@@ -294,7 +295,7 @@ async def close_vehicle_delivery(
     db.add(action)
     db.commit()
 
-    result = await send_command_to_terminal(car.gps_id, "*!CEVT 2")
+    result = await send_command_to_terminal(car.gps_id, "*!CEVT 2", AUTH_TOKEN)
     return {"message": "Команда для закрытия автомобиля отправлена", "result": result}
 
 
@@ -316,7 +317,7 @@ async def give_key_delivery(
     db.add(action)
     db.commit()
 
-    result = await send_command_to_terminal(car.gps_id, "*!2Y")
+    result = await send_command_to_terminal(car.gps_id, "*!2Y", AUTH_TOKEN)
     return {"message": "Команда передачи ключа отправлена", "result": result}
 
 
@@ -338,7 +339,7 @@ async def take_key_delivery(
     db.add(action)
     db.commit()
 
-    result = await send_command_to_terminal(car.gps_id, "*!2N")
+    result = await send_command_to_terminal(car.gps_id, "*!2N", AUTH_TOKEN)
     return {"message": "Команда получения ключа отправлена", "result": result}
 
 
