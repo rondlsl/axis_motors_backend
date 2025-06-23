@@ -29,8 +29,7 @@ from app.mechanic_delivery.router import MechanicDeliveryRouter
 
 # === APP ===
 app = FastAPI(
-    title="Azv Motors API",
-    default_response_class=ORJSONResponse
+    title="Azv Motors API"
 )
 scheduler = AsyncIOScheduler()
 
