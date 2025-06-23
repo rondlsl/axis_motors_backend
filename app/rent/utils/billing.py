@@ -19,23 +19,27 @@ _notification_flags: dict[int, dict[str, bool]] = {}
 
 
 async def billing_job():
-    # 1) синхронную часть всё так же в пул потоков
+    # 1) Получаем список пушей и телеграм-текстов (синхронная тяжелая работа в пуле потоков)
     push_notifications, telegram_alerts = await anyio.to_thread.run_sync(process_rentals_sync)
 
-    # 2) шлём пуши параллельно без последовательного await
-    async with anyio.create_task_group() as tg:
-        for token, title, body in push_notifications:
-            tg.start_soon(send_push_notification_async, token, title, body)
+    # 2) Fire-and-forget: запускаем отправку пушей, не дожидаясь их
+    for token, title, body in push_notifications:
+        anyio.start_task_soon(send_push_notification_async, token, title, body)
 
-        # 3) шлём телеграм-уведомления тоже параллельно
+    # 3) Fire-and-forget для Telegram (можно вынести клиент наружу, чтобы не создавать каждый раз)
+    async def _send_telegram(text: str, chat_id: int):
         async with httpx.AsyncClient() as client:
-            for text in telegram_alerts:
-                for chat_id in (965048905, 5941825713):
-                    tg.start_soon(
-                        client.post,
-                        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-                        json={"chat_id": chat_id, "text": text}
-                    )
+            await client.post(
+                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                json={"chat_id": chat_id, "text": text}
+            )
+
+    for text in telegram_alerts:
+        for chat_id in (965048905, 5941825713):
+            anyio.start_task_soon(_send_telegram, text, chat_id)
+
+    # 4) Yield control back to event-loop
+    await asyncio.sleep(0)
 
 
 def process_rentals_sync() -> tuple[list[tuple[str, str, str]], list[str]]:
