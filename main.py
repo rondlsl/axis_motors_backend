@@ -9,6 +9,7 @@ import httpx
 from alembic import command
 from alembic.config import Config
 from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Form
+from fastapi.responses import ORJSONResponse
 from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from starlette.middleware.cors import CORSMiddleware
@@ -27,7 +28,10 @@ from app.push.router import router as PushRouter
 from app.mechanic_delivery.router import MechanicDeliveryRouter
 
 # === APP ===
-app = FastAPI()
+app = FastAPI(
+    title="Azv Motors API",
+    default_response_class=ORJSONResponse
+)
 scheduler = AsyncIOScheduler()
 
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
