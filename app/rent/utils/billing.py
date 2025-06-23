@@ -18,33 +18,24 @@ from app.core.config import TELEGRAM_BOT_TOKEN
 _notification_flags: dict[int, dict[str, bool]] = {}
 
 
-async def rental_billing_loop():
-    """
-    Фон: каждые 10 секунд обрабатываем аренды и рассылаем push + telegram.
-    """
-    while True:
-        await asyncio.sleep(10)
-        push_notifications, telegram_alerts = await anyio.to_thread.run_sync(process_rentals_sync)
+async def billing_job():
+    # 1) синхронную часть всё так же в пул потоков
+    push_notifications, telegram_alerts = await anyio.to_thread.run_sync(process_rentals_sync)
 
-        # 1) Отправляем push-уведомления
+    # 2) шлём пуши параллельно без последовательного await
+    async with anyio.create_task_group() as tg:
         for token, title, body in push_notifications:
-            try:
-                await send_push_notification_async(token, title, body)
-            except Exception as e:
-                print(f"[Push error] token={token}: {e}")
+            tg.start_soon(send_push_notification_async, token, title, body)
 
-        # 2) Отправляем Telegram-сообщения
-        if telegram_alerts:
-            async with httpx.AsyncClient() as client:
-                for text in telegram_alerts:
-                    for chat_id in (965048905, 5941825713):
-                        try:
-                            await client.post(
-                                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-                                json={"chat_id": chat_id, "text": text}
-                            )
-                        except Exception as e:
-                            print(f"[Telegram error] chat_id={chat_id}: {e}")
+        # 3) шлём телеграм-уведомления тоже параллельно
+        async with httpx.AsyncClient() as client:
+            for text in telegram_alerts:
+                for chat_id in (965048905, 5941825713):
+                    tg.start_soon(
+                        client.post,
+                        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                        json={"chat_id": chat_id, "text": text}
+                    )
 
 
 def process_rentals_sync() -> tuple[list[tuple[str, str, str]], list[str]]:

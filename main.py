@@ -22,7 +22,7 @@ from app.mechanic.router import MechanicRouter
 from app.models.car_model import Car
 from app.models.user_model import User, UserRole
 from app.rent.router import RentRouter
-from app.rent.utils.billing import rental_billing_loop
+from app.rent.utils.billing import billing_job
 from app.push.router import router as PushRouter
 from app.mechanic_delivery.router import MechanicDeliveryRouter
 
@@ -157,7 +157,14 @@ def init_app(app: FastAPI):
 
         db_gen = get_db()
         db = next(db_gen)
-        asyncio.create_task(rental_billing_loop())
+        scheduler.add_job(
+            billing_job,
+            trigger="interval",
+            seconds=10,
+            max_instances=1,  # не запустит новую итерацию, пока старая не завершилась
+            coalesce=True  # если промедлили — слить «пропущенные» вызовы в один
+        )
+        scheduler.start()
 
         try:
             owner_phone = "77000250400"
