@@ -9,3 +9,8 @@ class VehicleIdsRequest(BaseModel):
 
 class CommandRequest(BaseModel):
     vehicle_id: int
+
+
+class RentedCar(BaseModel):
+    name: str
+    plate_number: str

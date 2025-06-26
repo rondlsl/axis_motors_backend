@@ -1,14 +1,17 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy import or_, func
 from sqlalchemy.orm import Session
-from typing import Dict, Any
+from typing import Dict, Any, List
 import asyncio
 
-from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
+from starlette import status
+
+from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD, RENTED_CARS_ENDPOINT_KEY
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
+from app.gps_api.schemas import RentedCar
 from app.models.car_model import Car
-from app.models.history_model import RentalHistory
+from app.models.history_model import RentalHistory, RentalStatus
 from app.models.rental_actions_model import ActionType, RentalAction
 from app.models.user_model import User
 from app.gps_api.utils.auth_api import get_auth_token
@@ -270,6 +273,7 @@ async def take_key(
     db.commit()
     return cmd
 
+
 # @Vehicle_Router.post("/block")
 # async def block_engine(request: CommandRequest) -> Dict:
 #     return await send_command_to_terminal(request.vehicle_id, "*!1Y", AUTH_TOKEN)
@@ -278,3 +282,26 @@ async def take_key(
 # @Vehicle_Router.post("/unblock")
 # async def unblock_engine(request: CommandRequest) -> Dict:
 #     return await send_command_to_terminal(request.vehicle_id, "*!1N", AUTH_TOKEN)
+
+
+@Vehicle_Router.get("/rented", response_model=List[RentedCar], summary="Список машин в аренде")
+def get_rented_cars(
+        key: str = Query(..., description="Секретный ключ доступа"),
+        db: Session = Depends(get_db),
+):
+    # 1) Проверяем ключ
+    if key != RENTED_CARS_ENDPOINT_KEY:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access key")
+
+    # 2) Быстрый sync-запрос: только нужные поля, distinct по car_id
+    statuses = [RentalStatus.IN_USE, RentalStatus.DELIVERING_IN_PROGRESS]
+
+    rows = (
+        db.query(Car.name, Car.plate_number)
+        .join(RentalHistory, RentalHistory.car_id == Car.id)
+        .filter(RentalHistory.rental_status.in_(statuses))
+        .distinct(Car.id)
+        .all()
+    )
+
+    return [RentedCar(name=name, plate_number=plate) for name, plate in rows]
