@@ -44,6 +44,8 @@ class User(Base):
                                     foreign_keys="[RentalHistory.delivery_mechanic_id]",
                                     back_populates="delivery_mechanic")
 
+    promos = relationship("UserPromoCode", back_populates="user")
+
     from app.models.car_model import Car
     owned_cars = relationship("Car", foreign_keys=[Car.owner_id], back_populates="owner")
     active_rental = relationship("Car", foreign_keys=[Car.current_renter_id],

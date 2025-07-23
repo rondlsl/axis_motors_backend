@@ -9,6 +9,7 @@ from app.auth.dependencies.get_current_user import get_current_user
 from app.auth.dependencies.save_documents import save_file, validate_photos
 from app.dependencies.database.database import get_db
 from app.models.history_model import RentalType, RentalStatus, RentalHistory, RentalReview
+from app.models.promo_codes_model import PromoCode, UserPromoCode, UserPromoStatus
 from app.models.user_model import User, UserRole
 from app.models.car_model import Car
 from app.push.utils import send_notification_to_all_mechanics_async, send_push_notification_async
@@ -122,14 +123,74 @@ def get_trip_history_detail(
 
 
 @RentRouter.post("/add_money")
-def add_money(amount: int, db: Session = Depends(get_db),
+def add_money(amount: int,
+              db: Session = Depends(get_db),
               current_user: User = Depends(get_current_user)):
-    current_user.wallet_balance += amount
+    # 1) Ищем у юзера активный промокод
+    up = db.query(UserPromoCode) \
+        .filter_by(user_id=current_user.id, status=UserPromoStatus.ACTIVATED) \
+        .join(PromoCode) \
+        .first()
+
+    bonus = 0
+    promo_applied = False
+
+    if up:
+        # считать бонус
+        bonus = int(amount * (float(up.promo.discount_percent) / 100))
+        promo_applied = True
+
+        # начисляем основную сумму + бонус
+        current_user.wallet_balance += amount + bonus
+
+        # меняем статус промокода
+        up.status = UserPromoStatus.USED
+        up.used_at = datetime.utcnow()
+
+    else:
+        # обычное пополнение
+        current_user.wallet_balance += amount
+
     db.commit()
-    print(current_user.wallet_balance)
-    return {"wallet_balance": current_user.wallet_balance}
-    # raise HTTPException(status_code=403,
-    #                     detail="В настоящее время проводится закрытое бета-тестирование приложения. Пополнение кошелька будет доступно после боевого запуска приложения.")
+
+    return {
+        "wallet_balance": float(current_user.wallet_balance),
+        "bonus": bonus,
+        "promo_applied": promo_applied
+    }
+
+
+class ApplyPromoRequest(BaseModel):
+    code: str
+
+
+@RentRouter.post("/promo_codes/apply")
+def apply_promo(body: ApplyPromoRequest,
+                db: Session = Depends(get_db),
+                current_user: User = Depends(get_current_user)):
+    # 1) Проверяем, нет ли уже активного у юзера
+    exist = db.query(UserPromoCode) \
+        .filter_by(user_id=current_user.id, status=UserPromoStatus.ACTIVATED) \
+        .first()
+    if exist:
+        raise HTTPException(400, "У вас уже есть неиспользованный промокод")
+
+    # 2) Находим активный промокод
+    promo = db.query(PromoCode) \
+        .filter_by(code=body.code, is_active=True) \
+        .first()
+    if not promo:
+        raise HTTPException(404, "Промокод не найден или неактивен")
+
+    # 3) Создаём связь
+    up = UserPromoCode(user_id=current_user.id, promo_code_id=promo.id)
+    db.add(up)
+    db.commit()
+    return {
+        "message": "Промокод активирован",
+        "code": promo.code,
+        "discount_percent": float(promo.discount_percent)
+    }
 
 
 @RentRouter.post("/reserve-car/{car_id}")
