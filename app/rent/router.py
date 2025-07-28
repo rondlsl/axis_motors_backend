@@ -558,13 +558,7 @@ async def cancel_delivery(
     Уведомляем назначенного механика, если он есть, и освобождаем автомобиль.
     """
     # Находим активный заказ доставки пользователя
-    fafa = db.query(RentalHistory).filter(
-        RentalHistory.delivery_mechanic_id == current_mechanic.id,
-        RentalHistory.rental_status.in_([
-            RentalStatus.DELIVERY_RESERVED,
-            RentalStatus.DELIVERING_IN_PROGRESS
-        ])
-    ).first()
+
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,
         RentalHistory.rental_status.in_([
