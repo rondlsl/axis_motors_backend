@@ -11,7 +11,6 @@ from app.mechanic.utils import isoformat_or_none, _handle_photos, add_review_if_
 from app.models.history_model import RentalType, RentalStatus, RentalHistory, RentalReview
 from app.models.car_model import Car
 from app.models.user_model import User
-from app.push.utils import send_push_notification_async
 from app.rent.utils.calculate_price import get_open_price
 
 MechanicRouter = APIRouter(tags=["Mechanic"], prefix="/mechanic")

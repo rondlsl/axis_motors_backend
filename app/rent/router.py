@@ -12,7 +12,7 @@ from app.models.history_model import RentalType, RentalStatus, RentalHistory, Re
 from app.models.promo_codes_model import PromoCode, UserPromoCode, UserPromoStatus
 from app.models.user_model import User, UserRole
 from app.models.car_model import Car
-from app.push.utils import send_notification_to_all_mechanics_async, send_push_notification_async
+from app.push.utils import send_notification_to_all_mechanics_async, send_push_to_user_by_id
 from app.rent.exceptions import InsufficientBalanceException
 from app.rent.utils.calculate_price import calculate_total_price, get_open_price
 
@@ -592,14 +592,12 @@ async def cancel_delivery(
 
     # Уведомляем механика, если был назначен
     if mech_id:
-        mech = db.query(User).get(mech_id)
-        if mech and mech.fcm_token:
-            title = "Доставка отменена"
-            body = (
-                f"Доставка автомобиля {car.name} ({car.plate_number}) по заказу #{rental.id} "
-                "была отменена."
-            )
-            await send_push_notification_async(mech.fcm_token, title, body)
+        title = "Доставка отменена"
+        body = (
+            f"Доставка автомобиля {car.name} ({car.plate_number}) по заказу #{rental.id} "
+            "была отменена."
+        )
+        await send_push_to_user_by_id(db, mech_id, title, body)
 
     return {"message": "Доставка отменена успешно"}
 

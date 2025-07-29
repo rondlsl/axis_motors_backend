@@ -2,6 +2,8 @@ import firebase_admin
 from firebase_admin import messaging, credentials
 import asyncio
 
+from sqlalchemy.orm import Session
+
 cred = credentials.Certificate("app/push/firebase-service-account.json")
 firebase_admin.initialize_app(cred)
 
@@ -54,67 +56,42 @@ async def send_push_notification_async(token: str, title: str, body: str):
         return False
 
 
-async def send_notification_to_all_mechanics_async(db_session, title: str, body: str):
+async def send_notification_to_all_mechanics_async(
+        db_session: Session,
+        title: str,
+        body: str
+) -> dict:
     """
-    Sends push notifications to all users with the 'mechanic' role.
-
-    Args:
-        db_session: SQLAlchemy database session
-        title: Notification title
-        body: Notification body message
-
-    Returns:
-        dict: Contains success count and list of failed tokens
+    Sends notification to every active mechanic by user_id.
     """
     from app.models.user_model import User, UserRole
 
-    try:
-        # Query all active mechanics with FCM tokens
-        mechanics = db_session.query(User).filter(
+    mechanics = (
+        db_session.query(User)
+        .filter(
             User.role == UserRole.MECHANIC,
             User.is_active == True,
             User.fcm_token.isnot(None)
-        ).all()
+        )
+        .all()
+    )
+    if not mechanics:
+        return {"success": 0, "failed": 0, "failed_ids": []}
 
-        if not mechanics:
-            print("No active mechanics with FCM tokens found")
-            return {"success": 0, "failed": 0, "failed_tokens": []}
+    tasks = [
+        send_push_to_user_by_id(db_session, mech.id, title, body)
+        for mech in mechanics
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Send notifications in parallel
-        tasks = []
-        for mechanic in mechanics:
-            if mechanic.fcm_token:
-                tasks.append(send_push_notification_async(
-                    token=mechanic.fcm_token,
-                    title=title,
-                    body=body
-                ))
+    success = sum(1 for r in results if r is True)
+    failed_ids = [
+        mech.id
+        for mech, r in zip(mechanics, results)
+        if r is not True
+    ]
 
-        # Wait for all notification tasks to complete
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        # Count successful and failed notifications
-        success_count = sum(1 for r in results if r is True)
-        failed_count = len(results) - success_count
-
-        # Collect failed tokens for debugging
-        failed_tokens = [
-            mechanic.fcm_token
-            for mechanic, result in zip(mechanics, results)
-            if result is not True
-        ]
-
-        print(f"Sent {success_count} notifications to mechanics, {failed_count} failed")
-
-        return {
-            "success": success_count,
-            "failed": failed_count,
-            "failed_tokens": failed_tokens
-        }
-
-    except Exception as e:
-        print(f"Error sending notifications to mechanics: {e}")
-        return {"success": 0, "failed": 0, "error": str(e)}
+    return {"success": success, "failed": len(failed_ids), "failed_ids": failed_ids}
 
 
 async def broadcast_push_notification_async(db_session, title: str, body: str):
@@ -178,3 +155,31 @@ async def broadcast_push_notification_async(db_session, title: str, body: str):
         return {"success": 0, "failed": 0, "error": str(e)}
 
 
+async def send_push_to_user_by_id(
+        db_session: Session,
+        user_id: int,
+        title: str,
+        body: str
+) -> bool:
+    # 1) Сохраняем уведомление в БД
+    from app.models.notification_model import Notification
+    notif = Notification(user_id=user_id, title=title, body=body)
+    db_session.add(notif)
+    db_session.commit()
+
+    # 2) Достаём токен и шлём пуш
+    from app.models.user_model import User
+    user = (
+        db_session
+        .query(User)
+        .filter(User.id == user_id, User.fcm_token.isnot(None))
+        .first()
+    )
+    if not user:
+        return False
+
+    return await send_push_notification_async(
+        token=user.fcm_token,
+        title=title,
+        body=body
+    )

@@ -50,3 +50,12 @@ class User(Base):
     owned_cars = relationship("Car", foreign_keys=[Car.owner_id], back_populates="owner")
     active_rental = relationship("Car", foreign_keys=[Car.current_renter_id],
                                  back_populates="current_renter", uselist=False)
+
+    from app.models.notification_model import Notification
+
+    notifications = relationship(
+        "Notification",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="Notification.sent_at.desc()"
+    )
