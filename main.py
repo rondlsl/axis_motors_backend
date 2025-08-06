@@ -104,54 +104,6 @@ async def check_vehicle_conditions():
     await update_vehicle_data()
 
 
-import random
-import string
-
-
-def create_mock_cars_for_almaty(db: Session):
-    def random_plate():
-        return f"{random.randint(100, 999)}{random.choice('ABCEHKMOPTXY')}{random.randint(10, 999)}"
-
-    def random_string(length=10):
-        return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
-
-    car_names = [
-        "Mercedes-Benz E200", "BMW 530i", "Audi A6", "Lexus RX350",
-        "Genesis G80", "Toyota Camry 3.5", "Kia K900", "Cadillac XT5"
-    ]
-
-    lat_range = (43.200, 43.300)
-    lon_range = (76.800, 77.000)
-
-    for _ in range(20):
-        car = Car(
-            name=random.choice(car_names),
-            plate_number=random_plate(),
-            latitude=round(random.uniform(*lat_range), 6),
-            longitude=round(random.uniform(*lon_range), 6),
-            gps_id=random_string(8),
-            gps_imei=random_string(15),
-            fuel_level=round(random.uniform(0.3, 1.0), 2),
-            mileage=random.randint(10000, 50000),
-            course=random.randint(0, 360),
-            price_per_minute=80,
-            price_per_hour=4000,
-            price_per_day=30000,
-            car_class=random.choice([1, 2, 3]),
-            engine_volume=round(random.uniform(2.0, 4.5), 1),
-            year=random.randint(2018, 2023),
-            drive_type=random.choice([1, 2]),  # 1 — передний, 2 — полный
-            photos=[],
-            description="Тестовая премиум-машина",
-            owner_id=None,
-            current_renter_id=None,
-            status="FREE"
-        )
-        db.add(car)
-
-    db.commit()
-
-
 def init_app(app: FastAPI):
     @app.on_event("startup")
     async def startup_event():
@@ -246,9 +198,6 @@ def init_app(app: FastAPI):
             else:
                 print("ℹ️ MB CLA45s (id=2) уже существует")
 
-            # Теперь добавляем моковые машины
-            create_mock_cars_for_almaty(db)
-
             mechanic_phone = "77007007070"
             mechanic = db.query(User).filter(User.phone_number == mechanic_phone).first()
             if not mechanic:
@@ -267,7 +216,7 @@ def init_app(app: FastAPI):
             db.close()
 
         try:
-            # scheduler.add_job(check_vehicle_conditions, "interval", seconds=1)
+            scheduler.add_job(check_vehicle_conditions, "interval", seconds=1)
             scheduler.start()
         except Exception as e:
             logger.error(f"Ошибка запуска планировщика задач: {e}")

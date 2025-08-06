@@ -51,17 +51,14 @@ async def send_command_to_terminal(
     client = RateLimitedHTTPClient.get_instance()
 
     try:
-        # response: Response = await client.send_request("POST", url, headers=headers, json=payload)
-        # response.raise_for_status()
-        # command_id = response.text.strip('"')
-        # return {"command_id": command_id}
-        return {"command_id": "fwakjfwakfj"}
+        response: Response = await client.send_request("POST", url, headers=headers, json=payload)
+        response.raise_for_status()
+        command_id = response.text.strip('"')
+        return {"command_id": command_id}
 
     except Exception as e:
         logger.error(f"Ошибка отправки команды для {vehicle_id}, {command}, {e}")
         raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {command}, {e}")
-
-    # return {"command_id": "fa214mk"}
 
 
 async def send_open(vehicle_id: int, token: str, retries: int = 1) -> dict:
