@@ -253,8 +253,8 @@ async def read_users_me(
     }
 
 
-@Auth_router.post("/set_locale_body/", summary="Set locale body", description="Доступные locale - ru/en/kz")
-async def set_locale_body(
+@Auth_router.post("/set_locale/", summary="Set locale body", description="Доступные locale - ru/en/kz")
+async def set_locale(
         payload: LocaleUpdate,
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db)
