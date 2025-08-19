@@ -10,7 +10,7 @@ from starlette import status
 
 from app.auth.dependencies.get_current_user import get_current_user  # обновлённая версия — см. ниже
 from app.auth.dependencies.save_documents import save_file
-from app.auth.schemas import SendSmsRequest, VerifySmsRequest, DocumentUploadRequest
+from app.auth.schemas import SendSmsRequest, VerifySmsRequest, DocumentUploadRequest, LocaleUpdate
 from app.auth.security.auth_bearer import JWTBearer
 from app.auth.security.tokens import create_refresh_token, create_access_token
 from app.core.config import SMS_TOKEN
@@ -233,6 +233,7 @@ async def read_users_me(
         "wallet_balance": float(current_user.wallet_balance or 0.0),
         "current_rental": current_rental,
         "owned_cars": owned_cars,
+        "locale": current_user.locale,
         "documents": {
             "documents_verified": current_user.documents_verified,
             "selfie_with_license_url": current_user.selfie_with_license_url,
@@ -250,6 +251,22 @@ async def read_users_me(
             }
         }
     }
+
+
+@Auth_router.post("/set_locale_body/", summary="Set locale body", description="Доступные locale - ru/en/kz")
+async def set_locale_body(
+        payload: LocaleUpdate,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    if payload.locale not in ["ru", "en", "kz"]:  # при необходимости список расширяем
+        raise HTTPException(status_code=400, detail="Unsupported locale")
+
+    current_user.locale = payload.locale
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
+    return {"message": "Locale updated", "locale": current_user.locale}
 
 
 @Auth_router.post("/refresh_token/")

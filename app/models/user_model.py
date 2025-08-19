@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Enum, Numeric, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Enum, Numeric, Boolean, text
 import enum
 from datetime import datetime
 from sqlalchemy.orm import relationship
@@ -36,6 +36,7 @@ class User(Base):
     sms_code_valid_until = Column(DateTime)
     is_active = Column(Boolean, default=True, nullable=False)
     fcm_token = Column(String, nullable=True)
+    locale = Column(String, nullable=False, server_default=text("'ru'"))
 
     rental_history = relationship("RentalHistory", back_populates="user",
                                   foreign_keys="[RentalHistory.user_id]")

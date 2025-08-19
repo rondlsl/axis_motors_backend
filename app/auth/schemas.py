@@ -3,6 +3,10 @@ from datetime import datetime
 from pydantic import BaseModel, Field, validator, constr
 
 
+class LocaleUpdate(BaseModel):
+    locale: str
+
+
 class SendSmsRequest(BaseModel):
     phone_number: constr(min_length=11, max_length=11)
 
