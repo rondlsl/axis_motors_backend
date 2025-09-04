@@ -329,15 +329,30 @@ async def get_trip_details(
     
     # Получаем GPS данные маршрута если есть gps_id
     route_data = None
+    print(f"DEBUG: Car GPS ID: '{car.gps_id}' (type: {type(car.gps_id)})")
+    print(f"DEBUG: Car GPS ID is None: {car.gps_id is None}")
+    print(f"DEBUG: Car GPS ID is empty string: {car.gps_id == ''}")
+    print(f"DEBUG: Trip start_time: {trip.start_time}")
+    print(f"DEBUG: Trip end_time: {trip.end_time}")
+    print(f"DEBUG: Car info: id={car.id}, name={car.name}, plate={car.plate_number}")
+    
     if car.gps_id and trip.start_time and trip.end_time:
+        print(f"DEBUG: Attempting to fetch GPS data for device {car.gps_id}")
         try:
             route_data = await get_gps_route_data(
                 device_id=car.gps_id,
                 start_date=trip.start_time,
                 end_date=trip.end_time
             )
+            print(f"DEBUG: GPS data result: {route_data is not None}")
+            if route_data:
+                print(f"DEBUG: GPS coordinates count: {route_data.total_coordinates}")
         except Exception as e:
             print(f"Ошибка получения GPS данных: {e}")
+            import traceback
+            print(f"DEBUG: Full traceback: {traceback.format_exc()}")
+    else:
+        print(f"DEBUG: Skipping GPS fetch - gps_id: {car.gps_id}, start_time: {trip.start_time}, end_time: {trip.end_time}")
     
     route_map = RouteMapData(
         start_latitude=trip.start_latitude,

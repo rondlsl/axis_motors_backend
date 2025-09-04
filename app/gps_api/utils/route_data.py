@@ -29,41 +29,90 @@ async def get_gps_route_data(
         }
         headers = {"accept": "application/json"}
         
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        print(f"DEBUG GPS: Making request to {url}")
+        print(f"DEBUG GPS: Params: {params}")
+        print(f"DEBUG GPS: Headers: {headers}")
+        
+        async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(url, params=params, headers=headers)
-            response.raise_for_status()
+            print(f"DEBUG GPS: Response status: {response.status_code}")
+            print(f"DEBUG GPS: Response headers: {dict(response.headers)}")
             
-            data = response.json()
+            # Выводим сырой ответ для диагностики
+            response_text = response.text
+            print(f"DEBUG GPS: Raw response (first 500 chars): {response_text[:500]}")
             
-            if not data or "coordinates" not in data:
+            if response.status_code != 200:
+                print(f"DEBUG GPS: Non-200 status code: {response.status_code}")
+                print(f"DEBUG GPS: Response text: {response_text}")
+                return None
+            
+            try:
+                data = response.json()
+            except Exception as json_e:
+                print(f"DEBUG GPS: JSON parse error: {json_e}")
+                print(f"DEBUG GPS: Response text: {response_text}")
+                return None
+                
+            print(f"DEBUG GPS: Response data keys: {list(data.keys()) if data else 'None'}")
+            print(f"DEBUG GPS: Coordinates count in response: {data.get('count', 0) if data else 0}")
+            
+            if not data:
+                print("DEBUG GPS: No data in response")
+                return None
+                
+            if "coordinates" not in data:
+                print("DEBUG GPS: No coordinates key in response")
+                print(f"DEBUG GPS: Available keys: {list(data.keys())}")
+                return None
+                
+            coordinates_list = data["coordinates"]
+            if not coordinates_list:
+                print("DEBUG GPS: Empty coordinates list")
                 return None
                 
             # Преобразуем координаты в наши модели
-            coordinates = [
-                GPSCoordinate(
-                    lat=coord["lat"],
-                    lon=coord["lon"], 
-                    altitude=coord["altitude"],
-                    timestamp=coord["timestamp"]
-                )
-                for coord in data["coordinates"]
-            ]
+            print(f"DEBUG GPS: Processing {len(coordinates_list)} coordinates")
+            
+            coordinates = []
+            for i, coord in enumerate(coordinates_list):
+                try:
+                    gps_coord = GPSCoordinate(
+                        lat=coord["lat"],
+                        lon=coord["lon"], 
+                        altitude=coord["altitude"],
+                        timestamp=coord["timestamp"]
+                    )
+                    coordinates.append(gps_coord)
+                except Exception as coord_e:
+                    print(f"DEBUG GPS: Error processing coordinate {i}: {coord_e}")
+                    print(f"DEBUG GPS: Problematic coordinate: {coord}")
+                    # Продолжаем с другими координатами
+                    continue
+            
+            print(f"DEBUG GPS: Successfully processed {len(coordinates)} coordinates")
             
             # Группируем координаты по дням
             daily_routes = _group_coordinates_by_day(coordinates, start_date, end_date)
+            print(f"DEBUG GPS: Created {len(daily_routes)} daily routes")
             
-            return RouteData(
+            route_data = RouteData(
                 device_id=data.get("device_id", device_id),
                 start_date=start_str,
                 end_date=end_str,
                 total_coordinates=data.get("count", len(coordinates)),
                 daily_routes=daily_routes,
-                fuel_start=data.get("fuel", {}).get("start"),
-                fuel_end=data.get("fuel", {}).get("end")
+                fuel_start=data.get("fuel", {}).get("start") if data.get("fuel") else None,
+                fuel_end=data.get("fuel", {}).get("end") if data.get("fuel") else None
             )
             
+            print(f"DEBUG GPS: Successfully created RouteData object")
+            return route_data
+            
     except Exception as e:
-        print(f"Ошибка получения GPS данных для {device_id}: {e}")
+        print(f"DEBUG GPS: Exception occurred for device {device_id}: {e}")
+        import traceback
+        print(f"DEBUG GPS: Full traceback: {traceback.format_exc()}")
         return None
 
 
