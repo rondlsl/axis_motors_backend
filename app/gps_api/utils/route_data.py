@@ -28,7 +28,6 @@ async def get_gps_route_data(
         headers = {"accept": "application/json"}
         
         print(f"DEBUG GPS: Making request to {url}")
-        print(f"DEBUG GPS: Params: {params}")
         print(f"DEBUG GPS: Headers: {headers}")
         
         async with httpx.AsyncClient(timeout=15.0) as client:
