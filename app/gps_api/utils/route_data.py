@@ -21,23 +21,18 @@ async def get_gps_route_data(
     :param end_date: Дата и время окончания поездки в ISO формате (после apply_offset)
     :return: Данные маршрута или None при ошибке
     """
-    print(f"DEBUG GPS: Function called with device_id={device_id}, start_date={start_date}, end_date={end_date}")
     try:
         
         url = f"http://195.49.210.50:8666/vehicles/{device_id}/gps?start_date={start_date}&end_date={end_date}"
         headers = {"accept": "application/json"}
         
         print(f"DEBUG GPS: Making request to {url}")
-        print(f"DEBUG GPS: Headers: {headers}")
         
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(url, headers=headers)
-            print(f"DEBUG GPS: Response status: {response.status_code}")
-            print(f"DEBUG GPS: Response headers: {dict(response.headers)}")
             
             # Выводим сырой ответ для диагностики
             response_text = response.text
-            print(f"DEBUG GPS: Raw response (first 500 chars): {response_text[:500]}")
             
             if response.status_code != 200:
                 logger.error(f"DEBUG GPS: Non-200 status code: {response.status_code}")
@@ -51,8 +46,6 @@ async def get_gps_route_data(
                 logger.error(f"DEBUG GPS: Response text: {response_text}")
                 return None
                 
-            print(f"DEBUG GPS: Response data keys: {list(data.keys()) if data else 'None'}")
-            print(f"DEBUG GPS: Coordinates count in response: {data.get('count', 0) if data else 0}")
             
             if not data:
                 logger.warning("DEBUG GPS: No data in response")
@@ -67,9 +60,6 @@ async def get_gps_route_data(
             if not coordinates_list:
                 logger.warning("DEBUG GPS: Empty coordinates list")
                 return None
-                
-            # Преобразуем координаты в наши модели
-            print(f"DEBUG GPS: Processing {len(coordinates_list)} coordinates")
             
             coordinates = []
             for i, coord in enumerate(coordinates_list):
@@ -87,11 +77,9 @@ async def get_gps_route_data(
                     # Продолжаем с другими координатами
                     continue
             
-            print(f"DEBUG GPS: Successfully processed {len(coordinates)} coordinates")
             
             # Группируем координаты по дням
             daily_routes = _group_coordinates_by_day(coordinates, start_date, end_date)
-            print(f"DEBUG GPS: Created {len(daily_routes)} daily routes")
             
             route_data = RouteData(
                 device_id=data.get("device_id", device_id),
@@ -103,7 +91,6 @@ async def get_gps_route_data(
                 fuel_end=data.get("fuel", {}).get("end") if data.get("fuel") else None
             )
             
-            print(f"DEBUG GPS: Successfully created RouteData object")
             return route_data
             
     except Exception as e:
