@@ -271,7 +271,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
 
         except Exception as e:
             db.rollback()
-            print(f"[Billing error] rental={rental.id}: {e}")
+            print("[Billing error] rental={rental.id}: {e}")
 
     # Очистка флагов для завершённых/отменённых арен
     for rid in list(_notification_flags):

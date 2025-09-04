@@ -38,7 +38,7 @@ async def start_token_refresh():
                 try:
                     AUTH_TOKEN = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
                 except Exception as e:
-                    print(f"Ошибка обновления токена: {e}")
+                    print("Ошибка обновления токена: {e}")
                 await asyncio.sleep(1800)
 
         asyncio.create_task(refresh_token())

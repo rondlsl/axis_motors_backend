@@ -142,7 +142,7 @@ async def broadcast_push_notification_async(db_session, title: str, body: str):
         ]
         failed_count = len(failed_tokens)
 
-        print(f"Broadcast: {success_count} succeeded, {failed_count} failed")
+        print("Broadcast: {success_count} succeeded, {failed_count} failed")
 
         return {
             "success": success_count,
@@ -151,7 +151,7 @@ async def broadcast_push_notification_async(db_session, title: str, body: str):
         }
 
     except Exception as e:
-        print(f"Error during broadcast: {e}")
+        print("Error during broadcast: {e}")
         return {"success": 0, "failed": 0, "error": str(e)}
 
 

@@ -25,8 +25,8 @@ async def get_auth_token(base_url: str, login: str, password: str) -> Optional[s
             print(auth_data.get("AuthId"))
             return auth_data.get("AuthId")
         else:
-            print(f"Ошибка авторизации: {response.status_code}, {response.text}")
+            print("Ошибка авторизации: {response.status_code}, {response.text}")
     except Exception as e:
-        print(f"Ошибка сети: {e}")
+        print("Ошибка сети: {e}")
 
     return None
