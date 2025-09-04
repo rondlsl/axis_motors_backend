@@ -1,5 +1,9 @@
 FROM python:3.12
 
+# Отключаем буферизацию Python для корректного вывода логов в Docker
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
 WORKDIR /app
 
 COPY requirements.txt .

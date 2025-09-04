@@ -18,6 +18,16 @@ from sqlalchemy.orm import Session
 from app.auth.router import Auth_router
 from app.core.config import logger
 from app.dependencies.database.database import get_db
+import logging
+
+# Настройка логирования для вывода в консоль Docker
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler()
+    ]
+)
 from app.gps_api.router import Vehicle_Router
 from app.mechanic.router import MechanicRouter
 from app.models.car_model import Car

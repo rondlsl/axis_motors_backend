@@ -1,7 +1,11 @@
 import httpx
+import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from app.owner.schemas import RouteData, DailyRoute, GPSCoordinate
+
+# Настройка логгера
+logger = logging.getLogger(__name__)
 
 
 async def get_gps_route_data(
@@ -29,50 +33,50 @@ async def get_gps_route_data(
         }
         headers = {"accept": "application/json"}
         
-        print(f"DEBUG GPS: Making request to {url}")
-        print(f"DEBUG GPS: Params: {params}")
-        print(f"DEBUG GPS: Headers: {headers}")
+        logger.info(f"DEBUG GPS: Making request to {url}")
+        logger.info(f"DEBUG GPS: Params: {params}")
+        logger.info(f"DEBUG GPS: Headers: {headers}")
         
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(url, params=params, headers=headers)
-            print(f"DEBUG GPS: Response status: {response.status_code}")
-            print(f"DEBUG GPS: Response headers: {dict(response.headers)}")
+            logger.info(f"DEBUG GPS: Response status: {response.status_code}")
+            logger.info(f"DEBUG GPS: Response headers: {dict(response.headers)}")
             
             # Выводим сырой ответ для диагностики
             response_text = response.text
-            print(f"DEBUG GPS: Raw response (first 500 chars): {response_text[:500]}")
+            logger.info(f"DEBUG GPS: Raw response (first 500 chars): {response_text[:500]}")
             
             if response.status_code != 200:
-                print(f"DEBUG GPS: Non-200 status code: {response.status_code}")
-                print(f"DEBUG GPS: Response text: {response_text}")
+                logger.error(f"DEBUG GPS: Non-200 status code: {response.status_code}")
+                logger.error(f"DEBUG GPS: Response text: {response_text}")
                 return None
             
             try:
                 data = response.json()
             except Exception as json_e:
-                print(f"DEBUG GPS: JSON parse error: {json_e}")
-                print(f"DEBUG GPS: Response text: {response_text}")
+                logger.error(f"DEBUG GPS: JSON parse error: {json_e}")
+                logger.error(f"DEBUG GPS: Response text: {response_text}")
                 return None
                 
-            print(f"DEBUG GPS: Response data keys: {list(data.keys()) if data else 'None'}")
-            print(f"DEBUG GPS: Coordinates count in response: {data.get('count', 0) if data else 0}")
+            logger.info(f"DEBUG GPS: Response data keys: {list(data.keys()) if data else 'None'}")
+            logger.info(f"DEBUG GPS: Coordinates count in response: {data.get('count', 0) if data else 0}")
             
             if not data:
-                print("DEBUG GPS: No data in response")
+                logger.warning("DEBUG GPS: No data in response")
                 return None
                 
             if "coordinates" not in data:
-                print("DEBUG GPS: No coordinates key in response")
-                print(f"DEBUG GPS: Available keys: {list(data.keys())}")
+                logger.warning("DEBUG GPS: No coordinates key in response")
+                logger.warning(f"DEBUG GPS: Available keys: {list(data.keys())}")
                 return None
                 
             coordinates_list = data["coordinates"]
             if not coordinates_list:
-                print("DEBUG GPS: Empty coordinates list")
+                logger.warning("DEBUG GPS: Empty coordinates list")
                 return None
                 
             # Преобразуем координаты в наши модели
-            print(f"DEBUG GPS: Processing {len(coordinates_list)} coordinates")
+            logger.info(f"DEBUG GPS: Processing {len(coordinates_list)} coordinates")
             
             coordinates = []
             for i, coord in enumerate(coordinates_list):
@@ -85,16 +89,16 @@ async def get_gps_route_data(
                     )
                     coordinates.append(gps_coord)
                 except Exception as coord_e:
-                    print(f"DEBUG GPS: Error processing coordinate {i}: {coord_e}")
-                    print(f"DEBUG GPS: Problematic coordinate: {coord}")
+                    logger.error(f"DEBUG GPS: Error processing coordinate {i}: {coord_e}")
+                    logger.error(f"DEBUG GPS: Problematic coordinate: {coord}")
                     # Продолжаем с другими координатами
                     continue
             
-            print(f"DEBUG GPS: Successfully processed {len(coordinates)} coordinates")
+            logger.info(f"DEBUG GPS: Successfully processed {len(coordinates)} coordinates")
             
             # Группируем координаты по дням
             daily_routes = _group_coordinates_by_day(coordinates, start_date, end_date)
-            print(f"DEBUG GPS: Created {len(daily_routes)} daily routes")
+            logger.info(f"DEBUG GPS: Created {len(daily_routes)} daily routes")
             
             route_data = RouteData(
                 device_id=data.get("device_id", device_id),
@@ -106,13 +110,13 @@ async def get_gps_route_data(
                 fuel_end=data.get("fuel", {}).get("end") if data.get("fuel") else None
             )
             
-            print(f"DEBUG GPS: Successfully created RouteData object")
+            logger.info(f"DEBUG GPS: Successfully created RouteData object")
             return route_data
             
     except Exception as e:
-        print(f"DEBUG GPS: Exception occurred for device {device_id}: {e}")
+        logger.error(f"DEBUG GPS: Exception occurred for device {device_id}: {e}")
         import traceback
-        print(f"DEBUG GPS: Full traceback: {traceback.format_exc()}")
+        logger.error(f"DEBUG GPS: Full traceback: {traceback.format_exc()}")
         return None
 
 
