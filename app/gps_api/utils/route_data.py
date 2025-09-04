@@ -26,7 +26,7 @@ async def get_gps_route_data(
         start_str = start_date.strftime("%Y-%m-%dT%H:%M:%S")
         end_str = end_date.strftime("%Y-%m-%dT%H:%M:%S")
         
-        url = f"http://195.49.210.50:8666/vehicles/{device_id}/gps?start_date={start_str}&end_date={end_str}"
+        url = f"http://195.49.210.50:8666/vehicles/{device_id}/gps?start_date={start_date}&end_date={end_date}"
         headers = {"accept": "application/json"}
         
         print(f"DEBUG GPS: Making request to {url}")
