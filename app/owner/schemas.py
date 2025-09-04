@@ -56,6 +56,31 @@ class TripPhotos(BaseModel):
     mechanic_after: PhotoGroup = Field(..., description="Фото от механика после осмотра")
 
 
+class GPSCoordinate(BaseModel):
+    """GPS координата"""
+    lat: float = Field(..., description="Широта", example=43.238949)
+    lon: float = Field(..., description="Долгота", example=76.889709)
+    altitude: float = Field(..., description="Высота над уровнем моря", example=0.0)
+    timestamp: int = Field(..., description="Временная метка", example=0)
+
+
+class DailyRoute(BaseModel):
+    """Маршрут за один день"""
+    date: str = Field(..., description="Дата в формате YYYY-MM-DD", example="2024-01-15")
+    coordinates: List[GPSCoordinate] = Field(..., description="Координаты за день")
+
+
+class RouteData(BaseModel):
+    """Полные данные маршрута"""
+    device_id: str = Field(..., description="ID GPS устройства", example="800153076")
+    start_date: str = Field(..., description="Дата начала в ISO формате", example="2024-01-15T14:30:00")
+    end_date: str = Field(..., description="Дата окончания в ISO формате", example="2024-01-15T16:30:00")
+    total_coordinates: int = Field(..., description="Общее количество координат", example=658)
+    daily_routes: List[DailyRoute] = Field(..., description="Маршруты по дням")
+    fuel_start: Optional[str] = Field(None, description="Уровень топлива в начале", example="23 л")
+    fuel_end: Optional[str] = Field(None, description="Уровень топлива в конце", example="22 л")
+
+
 class RouteMapData(BaseModel):
     """Данные для отображения маршрута"""
     start_latitude: float = Field(..., description="Широта начальной точки", example=43.238949)
@@ -63,6 +88,7 @@ class RouteMapData(BaseModel):
     end_latitude: Optional[float] = Field(None, description="Широта конечной точки", example=43.245678)
     end_longitude: Optional[float] = Field(None, description="Долгота конечной точки", example=76.901234)
     duration_over_24h: bool = Field(..., description="Длилась ли поездка более 24 часов", example=False)
+    route_data: Optional[RouteData] = Field(None, description="Детальные данные маршрута с координатами")
 
 
 class TripDetailResponse(BaseModel):

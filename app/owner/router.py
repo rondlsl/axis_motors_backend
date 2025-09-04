@@ -14,6 +14,7 @@ from app.owner.schemas import (
     TripResponse, MonthEarnings, TripDetailResponse, TripPhotos, 
     PhotoGroup, RouteMapData
 )
+from app.gps_api.utils.route_data import get_gps_route_data
 
 OwnerRouter = APIRouter(
     tags=["👤 Владелец авто (My Auto)"],
@@ -258,7 +259,7 @@ def get_trips_by_month(
     summary="Детальная информация о поездке",
     description="Возвращает подробную информацию о конкретной поездке с фотографиями и маршрутом"
 )
-def get_trip_details(
+async def get_trip_details(
     vehicle_id: int,
     trip_id: int,
     db: Session = Depends(get_db),
@@ -323,14 +324,28 @@ def get_trip_details(
         mechanic_after=PhotoGroup(photos=trip.delivery_photos_after or [])
     )
     
-    # Маршрут
+    # Маршрут с GPS данными
     duration_over_24h = duration_minutes > (24 * 60)
+    
+    # Получаем GPS данные маршрута если есть gps_id
+    route_data = None
+    if car.gps_id and trip.start_time and trip.end_time:
+        try:
+            route_data = await get_gps_route_data(
+                device_id=car.gps_id,
+                start_date=trip.start_time,
+                end_date=trip.end_time
+            )
+        except Exception as e:
+            print(f"Ошибка получения GPS данных: {e}")
+    
     route_map = RouteMapData(
         start_latitude=trip.start_latitude,
         start_longitude=trip.start_longitude,
         end_latitude=trip.end_latitude,
         end_longitude=trip.end_longitude,
-        duration_over_24h=duration_over_24h
+        duration_over_24h=duration_over_24h,
+        route_data=route_data
     )
     
     return TripDetailResponse(
