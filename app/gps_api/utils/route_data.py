@@ -10,15 +10,15 @@ logger = logging.getLogger(__name__)
 
 async def get_gps_route_data(
     device_id: str, 
-    start_date: datetime, 
-    end_date: datetime
+    start_date: str, 
+    end_date: str
 ) -> Optional[RouteData]:
     """
     Получает данные маршрута от внешнего GPS API.
     
     :param device_id: ID GPS устройства (gps_id из таблицы cars)
-    :param start_date: Дата и время начала поездки
-    :param end_date: Дата и время окончания поездки
+    :param start_date: Дата и время начала поездки в ISO формате (после apply_offset)
+    :param end_date: Дата и время окончания поездки в ISO формате (после apply_offset)
     :return: Данные маршрута или None при ошибке
     """
     print(f"DEBUG GPS: Function called with device_id={device_id}, start_date={start_date}, end_date={end_date}")
@@ -95,8 +95,8 @@ async def get_gps_route_data(
             
             route_data = RouteData(
                 device_id=data.get("device_id", device_id),
-                start_date=start_str,
-                end_date=end_str,
+                start_date=start_date,
+                end_date=end_date,
                 total_coordinates=data.get("count", len(coordinates)),
                 daily_routes=daily_routes,
                 fuel_start=data.get("fuel", {}).get("start") if data.get("fuel") else None,
@@ -115,51 +115,65 @@ async def get_gps_route_data(
 
 def _group_coordinates_by_day(
     coordinates: List[GPSCoordinate], 
-    start_date: datetime, 
-    end_date: datetime
+    start_date: str, 
+    end_date: str
 ) -> List[DailyRoute]:
     """
     Группирует координаты по дням.
     
     :param coordinates: Список всех координат
-    :param start_date: Дата начала поездки
-    :param end_date: Дата окончания поездки
+    :param start_date: Дата начала поездки в ISO формате (после apply_offset)
+    :param end_date: Дата окончания поездки в ISO формате (после apply_offset)
     :return: Список маршрутов по дням
     """
+    if not coordinates:
+        return []
+    
+    # Парсим строковые даты в datetime объекты
+    try:
+        start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+        end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+    except ValueError as e:
+        logger.error(f"Error parsing dates: start_date={start_date}, end_date={end_date}, error={e}")
+        return []
+    
     daily_routes = []
     
     # Определяем все дни в диапазоне поездки
-    current_date = start_date.date()
-    end_date_only = end_date.date()
+    current_date = start_dt.date()
+    end_date_only = end_dt.date()
     
     while current_date <= end_date_only:
-        # Фильтруем координаты для текущего дня
-        # Поскольку timestamp в данных относительный, используем индексы
-        # для примерного разделения по дням
-        
         day_coordinates = []
         
-        if current_date == start_date.date() and current_date == end_date_only:
-            # Одна день - все координаты
+        if current_date == start_dt.date() and current_date == end_date_only:
+            # Поездка в один день - все координаты
             day_coordinates = coordinates
-        elif current_date == start_date.date():
-            # Первый день - примерно первая половина координат
-            total_duration = (end_date - start_date).total_seconds()
-            end_of_day = datetime.combine(current_date, datetime.max.time())
-            first_day_duration = (end_of_day - start_date).total_seconds()
-            ratio = first_day_duration / total_duration
-            split_index = int(len(coordinates) * ratio)
-            day_coordinates = coordinates[:split_index]
+        elif current_date == start_dt.date():
+            # Первый день - вычисляем долю дня от общего времени поездки
+            total_duration = (end_dt - start_dt).total_seconds()
+            if total_duration > 0:
+                # Время до конца дня
+                end_of_day = datetime.combine(current_date, datetime.max.time().replace(microsecond=0))
+                first_day_duration = (end_of_day - start_dt).total_seconds()
+                ratio = min(first_day_duration / total_duration, 1.0)
+                split_index = max(1, int(len(coordinates) * ratio))
+                day_coordinates = coordinates[:split_index]
+            else:
+                day_coordinates = coordinates
         elif current_date == end_date_only:
             # Последний день - оставшиеся координаты
-            days_passed = (current_date - start_date.date()).days
-            total_days = (end_date_only - start_date.date()).days + 1
-            start_index = int(len(coordinates) * (days_passed / total_days))
-            day_coordinates = coordinates[start_index:]
+            days_passed = (current_date - start_dt.date()).days
+            total_days = (end_date_only - start_dt.date()).days + 1
+            if total_days > 1:
+                start_index = int(len(coordinates) * (days_passed / total_days))
+                day_coordinates = coordinates[start_index:]
+            else:
+                day_coordinates = coordinates
         else:
-            # Промежуточный день
-            days_passed = (current_date - start_date.date()).days
-            total_days = (end_date_only - start_date.date()).days + 1
+            # Промежуточный день (полный день)
+            days_passed = (current_date - start_dt.date()).days
+            total_days = (end_date_only - start_dt.date()).days + 1
             start_index = int(len(coordinates) * (days_passed / total_days))
             end_index = int(len(coordinates) * ((days_passed + 1) / total_days))
             day_coordinates = coordinates[start_index:end_index]
