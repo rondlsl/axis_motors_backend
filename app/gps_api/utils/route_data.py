@@ -21,6 +21,7 @@ async def get_gps_route_data(
     :param end_date: Дата и время окончания поездки
     :return: Данные маршрута или None при ошибке
     """
+    print(f"DEBUG GPS: Function called with device_id={device_id}, start_date={start_date}, end_date={end_date}")
     try:
         # Форматируем даты в нужный формат для API
         start_str = start_date.strftime("%Y-%m-%dT%H:%M:%S")
@@ -34,7 +35,7 @@ async def get_gps_route_data(
         print(f"DEBUG GPS: Headers: {headers}")
         
         async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.get(url, params=params, headers=headers)
+            response = await client.get(url, headers=headers)
             print(f"DEBUG GPS: Response status: {response.status_code}")
             print(f"DEBUG GPS: Response headers: {dict(response.headers)}")
             
