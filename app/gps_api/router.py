@@ -67,6 +67,7 @@ def get_vehicle_info(
             "engine_volume": car.engine_volume,
             "year": car.year,
             "drive_type": car.drive_type,
+            "body_type": car.body_type,
             "photos": car.photos,
             "owner_id": car.owner_id,
             "current_renter_id": car.current_renter_id,

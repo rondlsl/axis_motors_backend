@@ -1,6 +1,19 @@
+from enum import Enum
+
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, JSON, Text
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import relationship
 from app.dependencies.database.database import Base
+
+
+class CarBodyType(str, Enum):
+    SEDAN = "SEDAN"             # Седан
+    SUV = "SUV"                 # Внедорожник
+    CROSSOVER = "CROSSOVER"     # Кроссовер
+    COUPE = "COUPE"             # Купе
+    HATCHBACK = "HATCHBACK"     # Хэтчбек
+    CONVERTIBLE = "CONVERTIBLE" # Кабриолет
+    WAGON = "WAGON"             # Универсал
 
 
 class Car(Base):
@@ -25,6 +38,11 @@ class Car(Base):
     engine_volume = Column(Float, nullable=True)
     year = Column(Integer, nullable=True)
     drive_type = Column(Integer, nullable=True)
+    body_type = Column(
+        SAEnum(CarBodyType, name="car_body_type"),
+        default=CarBodyType.SEDAN,
+        nullable=False
+    )
 
     photos = Column(JSON, nullable=True)
 
