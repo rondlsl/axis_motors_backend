@@ -378,7 +378,7 @@ async def reserve_delivery(
     total_price = 0
 
     if car.owner_id == current_user.id:
-        # Владелец — доставка бесплатная
+        delivery_fee = 5000
         total_price = 0
     else:
         # НЕ владелец — сбор за доставку
