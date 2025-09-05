@@ -378,8 +378,17 @@ async def reserve_delivery(
     total_price = 0
 
     if car.owner_id == current_user.id:
-        delivery_fee = 5000
-        total_price = 0
+        delivery_fee = 5_000  # только 5к берем с владельца
+        open_fee = 0  # остальное бесплатно
+        base_price = 0  # база бесплатна
+        total_price = delivery_fee  # к оплате только доставка
+
+        # ### Проверяем и списываем у владельца 5к
+        if current_user.wallet_balance < delivery_fee:
+            raise InsufficientBalanceException(required_amount=delivery_fee)
+        current_user.wallet_balance -= delivery_fee
+
+        db.commit()
     else:
         # НЕ владелец — сбор за доставку
         delivery_fee = extra_fee
