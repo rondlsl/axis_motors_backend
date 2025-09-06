@@ -332,73 +332,72 @@ def get_trips_by_month(
         target_month = month if month is not None else now.month
         target_year = year if year is not None else now.year
 
-    if not (1 <= target_month <= 12):
-        raise HTTPException(status_code=400, detail="Месяц должен быть от 1 до 12")
+        if not (1 <= target_month <= 12):
+            raise HTTPException(status_code=400, detail="Месяц должен быть от 1 до 12")
 
-    # Получаем поездки за указанный месяц
-    trips = (
-        db.query(RentalHistory)
-        .filter(
-            RentalHistory.car_id == vehicle_id,
-            RentalHistory.rental_status == RentalStatus.COMPLETED,
-            extract('year', RentalHistory.end_time) == target_year,
-            extract('month', RentalHistory.end_time) == target_month
+        # Получаем поездки за указанный месяц
+        trips = (
+            db.query(RentalHistory)
+            .filter(
+                RentalHistory.car_id == vehicle_id,
+                RentalHistory.rental_status == RentalStatus.COMPLETED,
+                extract('year', RentalHistory.end_time) == target_year,
+                extract('month', RentalHistory.end_time) == target_month
+            )
+            .order_by(RentalHistory.end_time.desc())
+            .all()
         )
-        .order_by(RentalHistory.end_time.desc())
-        .all()
-    )
 
-    # Формируем ответ для поездок
-    trips_response = []
-    month_total_earnings = 0
+        # Формируем ответ для поездок
+        trips_response = []
+        month_total_earnings = 0
 
-    for trip in trips:
-        duration_minutes = 0
-        if trip.start_time and trip.end_time:
-            duration_seconds = (trip.end_time - trip.start_time).total_seconds()
-            duration_minutes = int(duration_seconds / 60)
+        for trip in trips:
+            duration_minutes = 0
+            if trip.start_time and trip.end_time:
+                duration_seconds = (trip.end_time - trip.start_time).total_seconds()
+                duration_minutes = int(duration_seconds / 60)
 
-        earnings = calculate_owner_earnings(trip)
-        month_total_earnings += earnings
+            earnings = calculate_owner_earnings(trip)
+            month_total_earnings += earnings
 
-        trips_response.append(TripResponse(
-            id=trip.id,
-            duration_minutes=duration_minutes,
-            earnings=earnings,
-            rental_type=trip.rental_type.value,
-            start_time=apply_offset(trip.start_time),
-            end_time=apply_offset(trip.end_time)
-        ))
+            trips_response.append(TripResponse(
+                id=trip.id,
+                duration_minutes=duration_minutes,
+                earnings=earnings,
+                rental_type=trip.rental_type.value,
+                start_time=apply_offset(trip.start_time),
+                end_time=apply_offset(trip.end_time)
+            ))
 
-    # Получаем все доступные месяцы с заработком
-    available_months_query = (
-        db.query(
-            extract('year', RentalHistory.end_time).label('year'),
-            extract('month', RentalHistory.end_time).label('month'),
-            func.sum(RentalHistory.total_price).label('total_earnings'),
-            func.count(RentalHistory.id).label('trip_count')
+        # Получаем все доступные месяцы с заработком
+        available_months_query = (
+            db.query(
+                extract('year', RentalHistory.end_time).label('year'),
+                extract('month', RentalHistory.end_time).label('month'),
+                func.sum(RentalHistory.total_price).label('total_earnings'),
+                func.count(RentalHistory.id).label('trip_count')
+            )
+            .filter(
+                RentalHistory.car_id == vehicle_id,
+                RentalHistory.rental_status == RentalStatus.COMPLETED,
+                RentalHistory.total_price.isnot(None)
+            )
+            .group_by(
+                extract('year', RentalHistory.end_time),
+                extract('month', RentalHistory.end_time)
+            )
+            .order_by(
+                extract('year', RentalHistory.end_time).desc(),
+                extract('month', RentalHistory.end_time).desc()
+            )
+            .all()
         )
-        .filter(
-            RentalHistory.car_id == vehicle_id,
-            RentalHistory.rental_status == RentalStatus.COMPLETED,
-            RentalHistory.total_price.isnot(None)
-        )
-        .group_by(
-            extract('year', RentalHistory.end_time),
-            extract('month', RentalHistory.end_time)
-        )
-        .order_by(
-            extract('year', RentalHistory.end_time).desc(),
-            extract('month', RentalHistory.end_time).desc()
-        )
-        .all()
-    )
 
-    print(f"[MONTH DEBUG] === НАЧАЛО РАСЧЕТА available_months для автомобиля ID:{vehicle_id} ===")
-    print(f"[MONTH DEBUG] Найдено месяцев с заработком: {len(available_months_query)}")
-    
-    available_months = []
-    try:
+        print(f"[MONTH DEBUG] === НАЧАЛО РАСЧЕТА available_months для автомобиля ID:{vehicle_id} ===")
+        print(f"[MONTH DEBUG] Найдено месяцев с заработком: {len(available_months_query)}")
+        
+        available_months = []
         for i, row in enumerate(available_months_query):
             print(f"[MONTH DEBUG] Обрабатываем месяц {i+1}/{len(available_months_query)}: {row.year}-{row.month:02d}")
             
@@ -449,20 +448,12 @@ def get_trips_by_month(
         
         print(f"[MONTH DEBUG] ✅ Текущий месяц {target_year}-{target_month:02d}: заработок={month_total_earnings}, поездок={len(trips)}, доступно_минут={current_month_available_minutes}")
         
-    except Exception as e:
-        print(f"[MONTH DEBUG] ❌ ОШИБКА при расчете available_months: {e}")
-        print(f"[MONTH DEBUG] Тип ошибки: {type(e).__name__}")
-        import traceback
-        print(f"[MONTH DEBUG] Трейс: {traceback.format_exc()}")
-        raise
-
-    print(f"[MONTH DEBUG] === СОЗДАНИЕ ФИНАЛЬНОГО ОТВЕТА ===")
-    print(f"[MONTH DEBUG] vehicle_id={vehicle_id}")
-    print(f"[MONTH DEBUG] vehicle_name={car.name}")
-    print(f"[MONTH DEBUG] available_months count={len(available_months)}")
-    print(f"[MONTH DEBUG] trips_response count={len(trips_response)}")
-    
-    try:
+        print(f"[MONTH DEBUG] === СОЗДАНИЕ ФИНАЛЬНОГО ОТВЕТА ===")
+        print(f"[MONTH DEBUG] vehicle_id={vehicle_id}")
+        print(f"[MONTH DEBUG] vehicle_name={car.name}")
+        print(f"[MONTH DEBUG] available_months count={len(available_months)}")
+        print(f"[MONTH DEBUG] trips_response count={len(trips_response)}")
+        
         response = TripsForMonthResponse(
             vehicle_id=vehicle_id,
             vehicle_name=car.name,
@@ -473,12 +464,6 @@ def get_trips_by_month(
         )
         print(f"[MONTH DEBUG] ✅ Успешно создан TripsForMonthResponse")
         return response
-    except Exception as e:
-        print(f"[MONTH DEBUG] ❌ ОШИБКА при создании TripsForMonthResponse: {e}")
-        print(f"[MONTH DEBUG] Тип ошибки: {type(e).__name__}")
-        import traceback
-        print(f"[MONTH DEBUG] Трейс: {traceback.format_exc()}")
-        raise
         
     except Exception as e:
         print(f"[MONTH DEBUG] 💥 ОБЩАЯ ОШИБКА в get_trips_by_month: {e}")
