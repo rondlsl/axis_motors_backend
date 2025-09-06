@@ -194,29 +194,18 @@ def calculate_month_availability_minutes(
         .all()
     )
     
-    # Собираем ТОЛЬКО интервалы аренд владельца (они делают машину недоступной для клиентов)
-    # Аренды клиентов - это время когда машина доступна для аренды (просто уже арендована)
-    owner_unavailable_intervals = []
+    # Вычисляем общее время поездок владельца в минутах
+    owner_usage_minutes = 0
     for rental in all_rentals:
-        # Добавляем в недоступность только аренды владельца
-        if rental.user_id == owner_id:
-            start_ts = rental.reservation_time
-            end_ts = rental.end_time
-            owner_unavailable_intervals.append((start_ts, end_ts))
+        if rental.user_id == owner_id and rental.start_time and rental.end_time:
+            # Считаем продолжительность поездки владельца
+            duration_seconds = (rental.end_time - rental.start_time).total_seconds()
+            owner_usage_minutes += int(duration_seconds // 60)
     
-    # Вычисляем время недоступности только для аренд владельца
-    # Передаем naive datetime для корректного сравнения
-    unavailable_seconds = calculate_total_unavailable_seconds(
-        owner_unavailable_intervals, month_start_naive, calculation_end_naive
-    )
+    # Общее время периода в минутах
+    total_period_minutes = int((calculation_end - month_start).total_seconds() // 60)
     
-    # Общее время периода в секундах
-    total_period_seconds = int((calculation_end - month_start).total_seconds())
-    
-    # Время доступности = общее время - время недоступности
-    available_seconds = max(0, total_period_seconds - unavailable_seconds)
-    
-    # Переводим в минуты
-    available_minutes = available_seconds // 60
+    # Время доступности = общее время месяца - время поездок владельца
+    available_minutes = max(0, total_period_minutes - owner_usage_minutes)
     
     return available_minutes
