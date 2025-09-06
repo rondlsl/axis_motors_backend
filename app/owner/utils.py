@@ -197,6 +197,10 @@ def calculate_month_availability_minutes(
     # Вычисляем общее время поездок владельца в минутах
     owner_usage_minutes = 0
     for rental in all_rentals:
+        print(f"Rental: {rental.id}, User ID: {rental.user_id}, Start Time: {rental.start_time}, End Time: {rental.end_time}")
+        print(f"Owner ID: {owner_id}")
+        print(f"Start Time: {rental.start_time}")
+        print(f"End Time: {rental.end_time}")
         if rental.user_id == owner_id and rental.start_time and rental.end_time:
             # Считаем продолжительность поездки владельца
             duration_seconds = (rental.end_time - rental.start_time).total_seconds()
