@@ -32,6 +32,7 @@ class MonthEarnings(BaseModel):
     month: int = Field(..., description="Месяц (1-12)", example=1, ge=1, le=12)
     total_earnings: int = Field(..., description="Общий заработок за месяц в тенге", example=45000)
     trip_count: int = Field(..., description="Количество поездок за месяц", example=8)
+    available_minutes: int = Field(..., description="Количество минут доступности для клиентов", example=38400)
 
 
 class TripsForMonthResponse(BaseModel):

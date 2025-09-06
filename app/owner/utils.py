@@ -1,5 +1,7 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Tuple
+from sqlalchemy.orm import Session
+from sqlalchemy import or_
 
 
 def _clip_overlap_seconds(
@@ -96,3 +98,89 @@ def calculate_total_unavailable_seconds(intervals: List[Tuple[datetime, Optional
             total_seconds += int((clipped_end - clipped_start).total_seconds())
     
     return total_seconds
+
+
+def calculate_month_availability_minutes(
+    car_id: int,
+    year: int,
+    month: int,
+    owner_id: int,
+    db: Session
+) -> int:
+    """
+    Рассчитывает количество минут в указанном месяце, когда автомобиль был доступен для аренды клиентами.
+    
+    Args:
+        car_id: ID автомобиля
+        year: Год
+        month: Месяц (1-12)
+        owner_id: ID владельца автомобиля
+        db: Сессия базы данных
+    
+    Returns:
+        Количество минут доступности для клиентов
+    """
+    from app.models.history_model import RentalHistory, RentalStatus
+    
+    # Определяем границы месяца
+    month_start = datetime(year, month, 1, 0, 0, 0, tzinfo=timezone.utc)
+    
+    # Определяем конец месяца
+    if month == 12:
+        month_end = datetime(year + 1, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+    else:
+        month_end = datetime(year, month + 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+    
+    # Если это текущий месяц, используем текущее время как конец периода
+    now = datetime.now(timezone.utc)
+    if year == now.year and month == now.month:
+        calculation_end = now
+    else:
+        calculation_end = month_end
+    
+    print(f"[MONTH CALC DEBUG] Расчет для автомобиля ID:{car_id}, период: {month_start} - {calculation_end}")
+    
+    # Получаем все аренды для этого автомобиля в указанном месяце
+    # Исключаем CANCELLED (отмененные аренды не влияют на доступность)
+    all_rentals = (
+        db.query(RentalHistory)
+        .filter(
+            RentalHistory.car_id == car_id,
+            RentalHistory.rental_status != RentalStatus.CANCELLED,
+            RentalHistory.reservation_time < calculation_end,
+            or_(RentalHistory.end_time == None, RentalHistory.end_time > month_start),
+        )
+        .all()
+    )
+    
+    print(f"[MONTH CALC DEBUG] Найдено аренд в месяце: {len(all_rentals)}")
+    
+    # Собираем все интервалы недоступности
+    unavailable_intervals = []
+    for rental in all_rentals:
+        start_ts = rental.reservation_time
+        end_ts = rental.end_time
+        unavailable_intervals.append((start_ts, end_ts))
+        
+        user_type = "владелец" if rental.user_id == owner_id else "клиент"
+        print(f"[MONTH CALC DEBUG]   Аренда ID:{rental.id}, {user_type}, {start_ts} - {end_ts}, статус: {rental.rental_status.value}")
+    
+    # Вычисляем общее время недоступности с учетом перекрывающихся интервалов
+    unavailable_seconds = calculate_total_unavailable_seconds(
+        unavailable_intervals, month_start, calculation_end
+    )
+    
+    # Общее время периода в секундах
+    total_period_seconds = int((calculation_end - month_start).total_seconds())
+    
+    # Время доступности = общее время - время недоступности
+    available_seconds = max(0, total_period_seconds - unavailable_seconds)
+    
+    # Переводим в минуты
+    available_minutes = available_seconds // 60
+    
+    print(f"[MONTH CALC DEBUG] Общее время периода: {total_period_seconds/3600:.1f} часов")
+    print(f"[MONTH CALC DEBUG] Время недоступности: {unavailable_seconds/3600:.1f} часов")
+    print(f"[MONTH CALC DEBUG] Время доступности: {available_seconds/3600:.1f} часов ({available_minutes} минут)")
+    
+    return available_minutes
