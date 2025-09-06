@@ -295,6 +295,9 @@ def get_trips_by_month(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ) -> TripsForMonthResponse:
+    print(f"[MONTH DEBUG] 🚀 ЗАПУСК get_trips_by_month: vehicle_id={vehicle_id}, month={month}, year={year}, user_id={current_user.id}")
+    
+    try:
     """
     Получить поездки по конкретному автомобилю за определенный месяц.
     
@@ -391,57 +394,98 @@ def get_trips_by_month(
         .all()
     )
 
-    print(f"[MONTH DEBUG] Расчет available_months для автомобиля ID:{vehicle_id}")
+    print(f"[MONTH DEBUG] === НАЧАЛО РАСЧЕТА available_months для автомобиля ID:{vehicle_id} ===")
+    print(f"[MONTH DEBUG] Найдено месяцев с заработком: {len(available_months_query)}")
     
     available_months = []
-    for row in available_months_query:
-        # Рассчитываем доступные минуты для каждого месяца
-        available_minutes = calculate_month_availability_minutes(
+    try:
+        for i, row in enumerate(available_months_query):
+            print(f"[MONTH DEBUG] Обрабатываем месяц {i+1}/{len(available_months_query)}: {row.year}-{row.month:02d}")
+            
+            # Рассчитываем доступные минуты для каждого месяца
+            print(f"[MONTH DEBUG] Вызываем calculate_month_availability_minutes для {row.year}-{row.month:02d}")
+            available_minutes = calculate_month_availability_minutes(
+                car_id=vehicle_id,
+                year=int(row.year),
+                month=int(row.month),
+                owner_id=current_user.id,
+                db=db
+            )
+            print(f"[MONTH DEBUG] Получили available_minutes = {available_minutes}")
+            
+            print(f"[MONTH DEBUG] Создаем MonthEarnings объект")
+            month_earnings = MonthEarnings(
+                year=int(row.year),
+                month=int(row.month),
+                total_earnings=int(row.total_earnings or 0),
+                trip_count=int(row.trip_count),
+                available_minutes=available_minutes
+            )
+            available_months.append(month_earnings)
+            
+            print(f"[MONTH DEBUG] ✅ Месяц {row.year}-{row.month:02d}: заработок={row.total_earnings}, поездок={row.trip_count}, доступно_минут={available_minutes}")
+        
+        print(f"[MONTH DEBUG] === ПЕРЕХОДИМ К ТЕКУЩЕМУ МЕСЯЦУ ===")
+        
+        # Заработок за текущий месяц и расчет доступных минут
+        print(f"[MONTH DEBUG] Вызываем calculate_month_availability_minutes для текущего месяца {target_year}-{target_month:02d}")
+        current_month_available_minutes = calculate_month_availability_minutes(
             car_id=vehicle_id,
-            year=int(row.year),
-            month=int(row.month),
+            year=target_year,
+            month=target_month,
             owner_id=current_user.id,
             db=db
         )
+        print(f"[MONTH DEBUG] Получили current_month_available_minutes = {current_month_available_minutes}")
         
-        month_earnings = MonthEarnings(
-            year=int(row.year),
-            month=int(row.month),
-            total_earnings=int(row.total_earnings or 0),
-            trip_count=int(row.trip_count),
-            available_minutes=available_minutes
+        print(f"[MONTH DEBUG] Создаем текущий MonthEarnings объект")
+        current_month_earnings = MonthEarnings(
+            year=target_year,
+            month=target_month,
+            total_earnings=month_total_earnings,
+            trip_count=len(trips),
+            available_minutes=current_month_available_minutes
         )
-        available_months.append(month_earnings)
         
-        print(f"[MONTH DEBUG] Месяц {row.year}-{row.month:02d}: заработок={row.total_earnings}, поездок={row.trip_count}, доступно_минут={available_minutes}")
+        print(f"[MONTH DEBUG] ✅ Текущий месяц {target_year}-{target_month:02d}: заработок={month_total_earnings}, поездок={len(trips)}, доступно_минут={current_month_available_minutes}")
+        
+    except Exception as e:
+        print(f"[MONTH DEBUG] ❌ ОШИБКА при расчете available_months: {e}")
+        print(f"[MONTH DEBUG] Тип ошибки: {type(e).__name__}")
+        import traceback
+        print(f"[MONTH DEBUG] Трейс: {traceback.format_exc()}")
+        raise
 
-    # Заработок за текущий месяц и расчет доступных минут
-    current_month_available_minutes = calculate_month_availability_minutes(
-        car_id=vehicle_id,
-        year=target_year,
-        month=target_month,
-        owner_id=current_user.id,
-        db=db
-    )
+    print(f"[MONTH DEBUG] === СОЗДАНИЕ ФИНАЛЬНОГО ОТВЕТА ===")
+    print(f"[MONTH DEBUG] vehicle_id={vehicle_id}")
+    print(f"[MONTH DEBUG] vehicle_name={car.name}")
+    print(f"[MONTH DEBUG] available_months count={len(available_months)}")
+    print(f"[MONTH DEBUG] trips_response count={len(trips_response)}")
     
-    current_month_earnings = MonthEarnings(
-        year=target_year,
-        month=target_month,
-        total_earnings=month_total_earnings,
-        trip_count=len(trips),
-        available_minutes=current_month_available_minutes
-    )
-    
-    print(f"[MONTH DEBUG] Текущий месяц {target_year}-{target_month:02d}: заработок={month_total_earnings}, поездок={len(trips)}, доступно_минут={current_month_available_minutes}")
-
-    return TripsForMonthResponse(
-        vehicle_id=vehicle_id,
-        vehicle_name=car.name,
-        vehicle_plate_number=car.plate_number,
-        month_earnings=current_month_earnings,
-        trips=trips_response,
-        available_months=available_months
-    )
+    try:
+        response = TripsForMonthResponse(
+            vehicle_id=vehicle_id,
+            vehicle_name=car.name,
+            vehicle_plate_number=car.plate_number,
+            month_earnings=current_month_earnings,
+            trips=trips_response,
+            available_months=available_months
+        )
+        print(f"[MONTH DEBUG] ✅ Успешно создан TripsForMonthResponse")
+        return response
+    except Exception as e:
+        print(f"[MONTH DEBUG] ❌ ОШИБКА при создании TripsForMonthResponse: {e}")
+        print(f"[MONTH DEBUG] Тип ошибки: {type(e).__name__}")
+        import traceback
+        print(f"[MONTH DEBUG] Трейс: {traceback.format_exc()}")
+        raise
+        
+    except Exception as e:
+        print(f"[MONTH DEBUG] 💥 ОБЩАЯ ОШИБКА в get_trips_by_month: {e}")
+        print(f"[MONTH DEBUG] Тип ошибки: {type(e).__name__}")
+        import traceback
+        print(f"[MONTH DEBUG] Полный трейс: {traceback.format_exc()}")
+        raise
 
 
 @OwnerRouter.get("/cars-with-availability-timer")

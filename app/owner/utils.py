@@ -191,8 +191,10 @@ def calculate_month_availability_minutes(
     # Переводим в минуты
     available_minutes = available_seconds // 60
     
-    print(f"[MONTH CALC DEBUG] Общее время периода: {total_period_seconds/3600:.1f} часов")
-    print(f"[MONTH CALC DEBUG] Время недоступности: {unavailable_seconds/3600:.1f} часов")
-    print(f"[MONTH CALC DEBUG] Время доступности: {available_seconds/3600:.1f} часов ({available_minutes} минут)")
+    print(f"[MONTH CALC DEBUG] Общее время периода: {total_period_seconds/3600:.1f} часов ({total_period_seconds} секунд)")
+    print(f"[MONTH CALC DEBUG] Время недоступности: {unavailable_seconds/3600:.1f} часов ({unavailable_seconds} секунд)")
+    print(f"[MONTH CALC DEBUG] Время доступности: {available_seconds/3600:.1f} часов ({available_seconds} секунд)")
+    print(f"[MONTH CALC DEBUG] Доступные минуты: {available_minutes}")
+    print(f"[MONTH CALC DEBUG] === ЗАВЕРШЕНИЕ РАСЧЕТА ДЛЯ АВТОМОБИЛЯ {car_id} ===")
     
     return available_minutes
