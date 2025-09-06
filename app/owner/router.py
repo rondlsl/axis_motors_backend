@@ -399,10 +399,10 @@ def get_trips_by_month(
         
         available_months = []
         for i, row in enumerate(available_months_query):
-            print(f"[MONTH DEBUG] Обрабатываем месяц {i+1}/{len(available_months_query)}: {row.year}-{row.month:02d}")
+            print(f"[MONTH DEBUG] Обрабатываем месяц {i+1}/{len(available_months_query)}: {row.year}-{int(row.month):02d}")
             
             # Рассчитываем доступные минуты для каждого месяца
-            print(f"[MONTH DEBUG] Вызываем calculate_month_availability_minutes для {row.year}-{row.month:02d}")
+            print(f"[MONTH DEBUG] Вызываем calculate_month_availability_minutes для {row.year}-{int(row.month):02d}")
             available_minutes = calculate_month_availability_minutes(
                 car_id=vehicle_id,
                 year=int(row.year),
@@ -422,7 +422,7 @@ def get_trips_by_month(
             )
             available_months.append(month_earnings)
             
-            print(f"[MONTH DEBUG] ✅ Месяц {row.year}-{row.month:02d}: заработок={row.total_earnings}, поездок={row.trip_count}, доступно_минут={available_minutes}")
+            print(f"[MONTH DEBUG] ✅ Месяц {row.year}-{int(row.month):02d}: заработок={row.total_earnings}, поездок={row.trip_count}, доступно_минут={available_minutes}")
         
         print(f"[MONTH DEBUG] === ПЕРЕХОДИМ К ТЕКУЩЕМУ МЕСЯЦУ ===")
         
