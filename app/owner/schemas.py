@@ -22,6 +22,7 @@ class TripResponse(BaseModel):
     rental_type: str = Field(..., description="Тип тарифа", example="hours", enum=["minutes", "hours", "days"])
     start_time: Optional[str] = Field(None, description="Время начала поездки (ISO 8601)", example="2024-01-15T14:30:00")
     end_time: Optional[str] = Field(None, description="Время окончания поездки (ISO 8601)", example="2024-01-15T16:30:00")
+    user_id: int = Field(..., description="ID водителя (пользователя)", example=123)
     
     class Config:
         from_attributes = True

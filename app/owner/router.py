@@ -357,7 +357,8 @@ def get_trips_by_month(
                 earnings=earnings,
                 rental_type=trip.rental_type.value,
                 start_time=apply_offset(trip.start_time),
-                end_time=apply_offset(trip.end_time)
+                end_time=apply_offset(trip.end_time),
+                user_id=trip.user_id
             ))
 
         # Получаем все доступные месяцы с заработком
