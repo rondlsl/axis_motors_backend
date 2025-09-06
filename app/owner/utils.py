@@ -110,6 +110,12 @@ def calculate_month_availability_minutes(
     """
     Рассчитывает количество минут в указанном месяце, когда автомобиль был доступен для аренды клиентами.
     
+    Логика расчета:
+    - Общее время месяца МИНУС время использования владельца = время доступности
+    - Время когда машина свободна = доступна для аренды
+    - Время когда клиенты арендуют = тоже доступна для аренды (уже арендована клиентами)
+    - Время когда владелец арендует = НЕ доступна для аренды
+    
     Args:
         car_id: ID автомобиля
         year: Год
@@ -155,19 +161,25 @@ def calculate_month_availability_minutes(
     
     print(f"[MONTH CALC DEBUG] Найдено аренд в месяце: {len(all_rentals)}")
     
-    # Собираем все интервалы недоступности
-    unavailable_intervals = []
+    # Собираем ТОЛЬКО интервалы аренд владельца (они делают машину недоступной для клиентов)
+    # Аренды клиентов - это время когда машина доступна для аренды (просто уже арендована)
+    owner_unavailable_intervals = []
     for rental in all_rentals:
-        start_ts = rental.reservation_time
-        end_ts = rental.end_time
-        unavailable_intervals.append((start_ts, end_ts))
-        
         user_type = "владелец" if rental.user_id == owner_id else "клиент"
-        print(f"[MONTH CALC DEBUG]   Аренда ID:{rental.id}, {user_type}, {start_ts} - {end_ts}, статус: {rental.rental_status.value}")
+        print(f"[MONTH CALC DEBUG]   Аренда ID:{rental.id}, {user_type}, {rental.reservation_time} - {rental.end_time}, статус: {rental.rental_status.value}")
+        
+        # Добавляем в недоступность только аренды владельца
+        if rental.user_id == owner_id:
+            start_ts = rental.reservation_time
+            end_ts = rental.end_time
+            owner_unavailable_intervals.append((start_ts, end_ts))
+            print(f"[MONTH CALC DEBUG]     -> Учитывается как недоступность (аренда владельца)")
+        else:
+            print(f"[MONTH CALC DEBUG]     -> НЕ учитывается (аренда клиента = доступность)")
     
-    # Вычисляем общее время недоступности с учетом перекрывающихся интервалов
+    # Вычисляем время недоступности только для аренд владельца
     unavailable_seconds = calculate_total_unavailable_seconds(
-        unavailable_intervals, month_start, calculation_end
+        owner_unavailable_intervals, month_start, calculation_end
     )
     
     # Общее время периода в секундах
