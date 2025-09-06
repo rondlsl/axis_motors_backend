@@ -7,13 +7,14 @@ from app.dependencies.database.database import Base
 
 
 class CarBodyType(str, Enum):
-    SEDAN = "SEDAN"             # Седан
-    SUV = "SUV"                 # Внедорожник
-    CROSSOVER = "CROSSOVER"     # Кроссовер
-    COUPE = "COUPE"             # Купе
-    HATCHBACK = "HATCHBACK"     # Хэтчбек
-    CONVERTIBLE = "CONVERTIBLE" # Кабриолет
-    WAGON = "WAGON"             # Универсал
+    SEDAN = "SEDAN"  # Седан
+    SUV = "SUV"  # Внедорожник
+    CROSSOVER = "CROSSOVER"  # Кроссовер
+    COUPE = "COUPE"  # Купе
+    HATCHBACK = "HATCHBACK"  # Хэтчбек
+    CONVERTIBLE = "CONVERTIBLE"  # Кабриолет
+    WAGON = "WAGON"  # Универсал
+    MINIBUS = "MINIBUS"
 
 
 class Car(Base):
