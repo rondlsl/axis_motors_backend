@@ -112,14 +112,28 @@ def get_my_cars(
         .all()
     )
 
-    cars_response = [
-        CarOwnerResponse(
+    # Получаем текущий месяц и год
+    now = datetime.now(ALMATY_TZ)
+    current_month = now.month
+    current_year = now.year
+    
+    cars_response = []
+    for car in cars_with_history:
+        # Рассчитываем доступные минуты для текущего месяца
+        available_minutes = calculate_month_availability_minutes(
+            car_id=car.id,
+            year=current_year,
+            month=current_month,
+            owner_id=current_user.id,
+            db=db
+        )
+        
+        cars_response.append(CarOwnerResponse(
             id=car.id,
             name=car.name,
-            plate_number=car.plate_number
-        )
-        for car in cars_with_history
-    ]
+            plate_number=car.plate_number,
+            available_minutes=available_minutes
+        ))
 
     return MyAutosResponse(cars=cars_response)
 

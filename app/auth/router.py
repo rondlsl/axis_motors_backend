@@ -19,6 +19,7 @@ from app.models.car_model import Car
 from app.models.history_model import RentalHistory, RentalStatus
 from app.models.user_model import UserRole, User
 from app.rent.utils.calculate_price import get_open_price
+from app.owner.utils import calculate_month_availability_minutes, ALMATY_TZ
 
 Auth_router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -204,7 +205,22 @@ async def read_users_me(
     # Список машин, принадлежащих пользователю
     owned_cars_raw = db.query(Car).filter(Car.owner_id == current_user.id).all()
     owned_cars = []
+    
+    # Получаем текущий месяц и год
+    now = datetime.now(ALMATY_TZ)
+    current_month = now.month
+    current_year = now.year
+    
     for car in owned_cars_raw:
+        # Рассчитываем доступные минуты для текущего месяца
+        available_minutes = calculate_month_availability_minutes(
+            car_id=car.id,
+            year=current_year,
+            month=current_month,
+            owner_id=current_user.id,
+            db=db
+        )
+        
         owned_cars.append({
             "id": car.id,
             "name": car.name,
@@ -223,7 +239,8 @@ async def read_users_me(
             "price_per_minute": car.price_per_minute,
             "price_per_hour": car.price_per_hour,
             "price_per_day": car.price_per_day,
-            "open_price": get_open_price(car)
+            "open_price": get_open_price(car),
+            "available_minutes": available_minutes
         })
 
     return {
