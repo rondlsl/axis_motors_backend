@@ -204,6 +204,7 @@ def calculate_month_availability_minutes(
         if rental.user_id == owner_id and rental.start_time and rental.end_time:
             # Считаем продолжительность поездки владельца
             duration_seconds = (rental.end_time - rental.start_time).total_seconds()
+            print(f"Duration Seconds: {duration_seconds}")
             owner_usage_minutes += int(duration_seconds // 60)
     
     # Общее время периода в минутах
