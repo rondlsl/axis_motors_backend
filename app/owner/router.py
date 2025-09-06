@@ -261,6 +261,164 @@ def get_trips_by_month(
     )
 
 
+@OwnerRouter.get("/cars-with-availability-timer")
+async def get_owner_cars_with_availability_timer(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+) -> List[Dict[str, Any]]:
+    """
+    Возвращает по каждой машине владельца:
+    - полные данные машины
+    - timer: минуты/секунды/total_seconds — сколько времени с начала месяца машина была доступна для аренды клиентами
+      (т.е. всё время месяца минус все интервалы, когда машина была недоступна:
+       - аренды владельцем (все статусы кроме CANCELLED)
+       - аренды клиентами (RESERVED/IN_USE/DELIVERING/DELIVERY_RESERVED/DELIVERING_IN_PROGRESS)
+       - доставки клиентам).
+    - period: отрезок расчёта [month_start, now]
+    """
+    
+    print(f"[TIMER DEBUG] Запрос таймера доступности для пользователя ID: {current_user.id}")
+
+    # Берём «сейчас» в UTC (чтобы не зависеть от TZ); главное — последовательно использовать одно и то же.
+    now = datetime.now(timezone.utc)
+
+    # Начало текущего месяца (UTC)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    print(f"[TIMER DEBUG] Период расчета: {month_start} - {now}")
+    print(f"[TIMER DEBUG] Общее время периода: {(now - month_start).total_seconds() / 3600:.1f} часов")
+
+    # Все машины пользователя
+    cars: List[Car] = (
+        db.query(Car)
+        .filter(Car.owner_id == current_user.id)
+        .all()
+    )
+    
+    print(f"[TIMER DEBUG] Найдено машин владельца: {len(cars)}")
+
+    if not cars:
+        print("[TIMER DEBUG] У пользователя нет машин")
+        return []
+
+    car_ids = [c.id for c in cars]
+    print(f"[TIMER DEBUG] ID машин: {car_ids}")
+
+    # Все аренды по машинам владельца, которые хоть как-то пересекают окно месяца.
+    # Включаем как аренды владельца, так и аренды клиентов.
+    # Логика пересечения:
+    # - reservation_time < window_end (иначе арендный интервал начинается после окна)
+    # - и (end_time IS NULL ИЛИ end_time > window_start) — значит, арендный интервал задел окно
+    # Исключаем CANCELLED (отменённые не делают машину недоступной).
+    all_rentals: List[RentalHistory] = (
+        db.query(RentalHistory)
+        .filter(
+            RentalHistory.car_id.in_(car_ids),
+            RentalHistory.rental_status != RentalStatus.CANCELLED,
+            RentalHistory.reservation_time < now,
+            or_(RentalHistory.end_time == None, RentalHistory.end_time > month_start),
+        )
+        .all()
+    )
+    
+    print(f"[TIMER DEBUG] Найдено аренд в периоде: {len(all_rentals)}")
+    for rental in all_rentals:
+        print(f"[TIMER DEBUG] Аренда ID:{rental.id}, Car:{rental.car_id}, User:{rental.user_id}, Status:{rental.rental_status.value}, Reserved:{rental.reservation_time}, End:{rental.end_time}")
+
+    # Группируем аренды по машине
+    rentals_by_car: Dict[int, List[RentalHistory]] = {}
+    for r in all_rentals:
+        rentals_by_car.setdefault(r.car_id, []).append(r)
+
+    total_window_seconds = int((now - month_start).total_seconds())
+    print(f"[TIMER DEBUG] Общее время окна в секундах: {total_window_seconds}")
+
+    result: List[Dict[str, Any]] = []
+
+    for car in cars:
+        print(f"\n[TIMER DEBUG] Обрабатываем машину ID:{car.id}, Название:'{car.name}'")
+        
+        # Собираем все интервалы недоступности для данной машины
+        unavailable_intervals = []
+        
+        for r in rentals_by_car.get(car.id, []):
+            # Период недоступности начинается с момента резервирования
+            start_ts = r.reservation_time
+            # Период недоступности заканчивается в end_time или продолжается до now
+            end_ts = r.end_time  # None означает, что аренда еще активна
+            
+            unavailable_intervals.append((start_ts, end_ts))
+            print(f"[TIMER DEBUG]   Интервал недоступности: {start_ts} - {end_ts} (Пользователь: {r.user_id}, Статус: {r.rental_status.value})")
+
+        # Вычисляем общее время недоступности с учетом перекрывающихся интервалов
+        unavailable_seconds = calculate_total_unavailable_seconds(
+            unavailable_intervals, month_start, now
+        )
+        
+        print(f"[TIMER DEBUG]   Общее время недоступности: {unavailable_seconds} сек ({unavailable_seconds/3600:.1f} часов)")
+
+        # Время доступности = общее время месяца - время недоступности
+        available_seconds = max(0, total_window_seconds - unavailable_seconds)
+        
+        print(f"[TIMER DEBUG]   Время доступности: {available_seconds} сек ({available_seconds/3600:.1f} часов)")
+
+        minutes = available_seconds // 60
+        seconds = available_seconds % 60
+
+        car_payload = {
+            "id": car.id,
+            "name": car.name,
+            "plate_number": car.plate_number,
+            "fuel_level": car.fuel_level,
+            "latitude": car.latitude,
+            "longitude": car.longitude,
+            "course": car.course,
+            "engine_volume": car.engine_volume,
+            "drive_type": car.drive_type,
+            "year": car.year,
+            "photos": car.photos,
+            "status": car.status,
+            "price_per_minute": car.price_per_minute,
+            "price_per_hour": car.price_per_hour,
+            "price_per_day": car.price_per_day,
+            "open_price": get_open_price(car),
+            "owned_car": True,
+            "description": car.description,
+        }
+
+        # Дополнительная статистика
+        availability_percentage = (available_seconds / total_window_seconds * 100) if total_window_seconds > 0 else 0
+        
+        # Подсчитываем количество аренд владельца и клиентов
+        owner_rentals_count = sum(1 for r in rentals_by_car.get(car.id, []) if r.user_id == current_user.id)
+        client_rentals_count = sum(1 for r in rentals_by_car.get(car.id, []) if r.user_id != current_user.id)
+        
+        print(f"[TIMER DEBUG]   Статистика - Процент доступности: {availability_percentage:.1f}%, Аренд владельца: {owner_rentals_count}, Аренд клиентов: {client_rentals_count}")
+
+        result.append({
+            "car": car_payload,
+            "timer": {
+                "minutes": minutes,
+                "seconds": seconds,
+                "total_seconds": available_seconds
+            },
+            "statistics": {
+                "availability_percentage": round(availability_percentage, 2),
+                "total_rentals": len(rentals_by_car.get(car.id, [])),
+                "owner_rentals": owner_rentals_count,
+                "client_rentals": client_rentals_count,
+                "unavailable_seconds": unavailable_seconds
+            },
+            "period": {
+                "from": month_start.isoformat(),
+                "to": now.isoformat()
+            }
+        })
+
+    print(f"[TIMER DEBUG] Возвращаем результат для {len(result)} машин")
+    return result
+
+
 @OwnerRouter.get(
     "/{vehicle_id}/{trip_id}",
     response_model=TripDetailResponse,
@@ -380,136 +538,3 @@ async def get_trip_details(
         route_map=route_map
     )
 
-
-@OwnerRouter.get("/cars-with-not-owner-timer")
-async def get_owner_cars_with_not_owner_timer(
-        db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user)
-) -> List[Dict[str, Any]]:
-    """
-    Возвращает по каждой машине владельца:
-    - полные данные машины
-    - timer: минуты/секунды/total_seconds — сколько времени с начала месяца машина была доступна для аренды клиентами
-      (т.е. всё время месяца минус все интервалы, когда машина была недоступна:
-       - аренды владельцем (все статусы кроме CANCELLED)
-       - аренды клиентами (RESERVED/IN_USE/DELIVERING/DELIVERY_RESERVED/DELIVERING_IN_PROGRESS)
-       - доставки клиентам).
-    - period: отрезок расчёта [month_start, now]
-    """
-
-    # Берём «сейчас» в UTC (чтобы не зависеть от TZ); главное — последовательно использовать одно и то же.
-    now = datetime.now(timezone.utc)
-
-    # Начало текущего месяца (UTC)
-    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-
-    # Все машины пользователя
-    cars: List[Car] = (
-        db.query(Car)
-        .filter(Car.owner_id == current_user.id)
-        .all()
-    )
-
-    if not cars:
-        return []
-
-    car_ids = [c.id for c in cars]
-
-    # Все аренды по машинам владельца, которые хоть как-то пересекают окно месяца.
-    # Включаем как аренды владельца, так и аренды клиентов.
-    # Логика пересечения:
-    # - reservation_time < window_end (иначе арендный интервал начинается после окна)
-    # - и (end_time IS NULL ИЛИ end_time > window_start) — значит, арендный интервал задел окно
-    # Исключаем CANCELLED (отменённые не делают машину недоступной).
-    all_rentals: List[RentalHistory] = (
-        db.query(RentalHistory)
-        .filter(
-            RentalHistory.car_id.in_(car_ids),
-            RentalHistory.rental_status != RentalStatus.CANCELLED,
-            RentalHistory.reservation_time < now,
-            or_(RentalHistory.end_time == None, RentalHistory.end_time > month_start),
-        )
-        .all()
-    )
-
-    # Группируем аренды по машине
-    rentals_by_car: Dict[int, List[RentalHistory]] = {}
-    for r in all_rentals:
-        rentals_by_car.setdefault(r.car_id, []).append(r)
-
-    total_window_seconds = int((now - month_start).total_seconds())
-
-    result: List[Dict[str, Any]] = []
-
-    for car in cars:
-        # Собираем все интервалы недоступности для данной машины
-        unavailable_intervals = []
-        
-        for r in rentals_by_car.get(car.id, []):
-            # Период недоступности начинается с момента резервирования
-            start_ts = r.reservation_time
-            # Период недоступности заканчивается в end_time или продолжается до now
-            end_ts = r.end_time  # None означает, что аренда еще активна
-            
-            unavailable_intervals.append((start_ts, end_ts))
-
-        # Вычисляем общее время недоступности с учетом перекрывающихся интервалов
-        unavailable_seconds = calculate_total_unavailable_seconds(
-            unavailable_intervals, month_start, now
-        )
-
-        # Время доступности = общее время месяца - время недоступности
-        available_seconds = max(0, total_window_seconds - unavailable_seconds)
-
-        minutes = available_seconds // 60
-        seconds = available_seconds % 60
-
-        car_payload = {
-            "id": car.id,
-            "name": car.name,
-            "plate_number": car.plate_number,
-            "fuel_level": car.fuel_level,
-            "latitude": car.latitude,
-            "longitude": car.longitude,
-            "course": car.course,
-            "engine_volume": car.engine_volume,
-            "drive_type": car.drive_type,
-            "year": car.year,
-            "photos": car.photos,
-            "status": car.status,
-            "price_per_minute": car.price_per_minute,
-            "price_per_hour": car.price_per_hour,
-            "price_per_day": car.price_per_day,
-            "open_price": get_open_price(car),
-            "owned_car": True,
-            "description": car.description,
-        }
-
-        # Дополнительная статистика
-        availability_percentage = (available_seconds / total_window_seconds * 100) if total_window_seconds > 0 else 0
-        
-        # Подсчитываем количество аренд владельца и клиентов
-        owner_rentals_count = sum(1 for r in rentals_by_car.get(car.id, []) if r.user_id == current_user.id)
-        client_rentals_count = sum(1 for r in rentals_by_car.get(car.id, []) if r.user_id != current_user.id)
-
-        result.append({
-            "car": car_payload,
-            "timer": {
-                "minutes": minutes,
-                "seconds": seconds,
-                "total_seconds": available_seconds
-            },
-            "statistics": {
-                "availability_percentage": round(availability_percentage, 2),
-                "total_rentals": len(rentals_by_car.get(car.id, [])),
-                "owner_rentals": owner_rentals_count,
-                "client_rentals": client_rentals_count,
-                "unavailable_seconds": unavailable_seconds
-            },
-            "period": {
-                "from": month_start.isoformat(),
-                "to": now.isoformat()
-            }
-        })
-
-    return result
