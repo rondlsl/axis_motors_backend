@@ -1,7 +1,10 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
+
+# Алматинское время (GMT+5)
+ALMATY_TZ = timezone(timedelta(hours=5))
 
 
 def _clip_overlap_seconds(
@@ -28,11 +31,11 @@ def _clip_overlap_seconds(
         if end.tzinfo is not None:
             end = end.replace(tzinfo=None)
     else:
-        # Если window имеет timezone, добавляем UTC к naive datetime
+        # Если window имеет timezone, добавляем алматинский timezone к naive datetime
         if start.tzinfo is None:
-            start = start.replace(tzinfo=timezone.utc)
+            start = start.replace(tzinfo=ALMATY_TZ)
         if end.tzinfo is None:
-            end = end.replace(tzinfo=timezone.utc)
+            end = end.replace(tzinfo=ALMATY_TZ)
     
     # нормируем к окну
     s = max(start, window_start)
@@ -70,11 +73,11 @@ def merge_overlapping_intervals(intervals: List[Tuple[datetime, Optional[datetim
             if end is not None and end.tzinfo is not None:
                 end = end.replace(tzinfo=None)
         else:
-            # Если window_end имеет timezone, добавляем UTC ко всем naive datetime
+            # Если window_end имеет timezone, добавляем алматинский timezone к naive datetime
             if start.tzinfo is None:
-                start = start.replace(tzinfo=timezone.utc)
+                start = start.replace(tzinfo=ALMATY_TZ)
             if end is not None and end.tzinfo is None:
-                end = end.replace(tzinfo=timezone.utc)
+                end = end.replace(tzinfo=ALMATY_TZ)
         
         end_time = end if end is not None else window_end
         normalized_intervals.append((start, end_time))
@@ -158,27 +161,25 @@ def calculate_month_availability_minutes(
     """
     from app.models.history_model import RentalHistory, RentalStatus
     
-    # Определяем границы месяца
-    month_start = datetime(year, month, 1, 0, 0, 0, tzinfo=timezone.utc)
+    # Определяем границы месяца в алматинском времени
+    month_start = datetime(year, month, 1, 0, 0, 0, tzinfo=ALMATY_TZ)
     
     # Определяем конец месяца
     if month == 12:
-        month_end = datetime(year + 1, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        month_end = datetime(year + 1, 1, 1, 0, 0, 0, tzinfo=ALMATY_TZ)
     else:
-        month_end = datetime(year, month + 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        month_end = datetime(year, month + 1, 1, 0, 0, 0, tzinfo=ALMATY_TZ)
     
     # Если это текущий месяц, используем текущее время как конец периода
-    now = datetime.now(timezone.utc)
+    now = datetime.now(ALMATY_TZ)
     if year == now.year and month == now.month:
         calculation_end = now
     else:
         calculation_end = month_end
     
-    print(f"[MONTH CALC DEBUG] Расчет для автомобиля ID:{car_id}, период: {month_start} - {calculation_end}")
-    
     # Получаем все аренды для этого автомобиля в указанном месяце
     # Исключаем CANCELLED (отмененные аренды не влияют на доступность)
-    # Преобразуем UTC времена в naive datetime для сравнения с БД
+    # Преобразуем времена в naive datetime для сравнения с БД
     calculation_end_naive = calculation_end.replace(tzinfo=None)
     month_start_naive = month_start.replace(tzinfo=None)
     
@@ -193,23 +194,15 @@ def calculate_month_availability_minutes(
         .all()
     )
     
-    print(f"[MONTH CALC DEBUG] Найдено аренд в месяце: {len(all_rentals)}")
-    
     # Собираем ТОЛЬКО интервалы аренд владельца (они делают машину недоступной для клиентов)
     # Аренды клиентов - это время когда машина доступна для аренды (просто уже арендована)
     owner_unavailable_intervals = []
     for rental in all_rentals:
-        user_type = "владелец" if rental.user_id == owner_id else "клиент"
-        print(f"[MONTH CALC DEBUG]   Аренда ID:{rental.id}, {user_type}, {rental.reservation_time} - {rental.end_time}, статус: {rental.rental_status.value}")
-        
         # Добавляем в недоступность только аренды владельца
         if rental.user_id == owner_id:
             start_ts = rental.reservation_time
             end_ts = rental.end_time
             owner_unavailable_intervals.append((start_ts, end_ts))
-            print(f"[MONTH CALC DEBUG]     -> Учитывается как недоступность (аренда владельца)")
-        else:
-            print(f"[MONTH CALC DEBUG]     -> НЕ учитывается (аренда клиента = доступность)")
     
     # Вычисляем время недоступности только для аренд владельца
     # Передаем naive datetime для корректного сравнения
@@ -225,11 +218,5 @@ def calculate_month_availability_minutes(
     
     # Переводим в минуты
     available_minutes = available_seconds // 60
-    
-    print(f"[MONTH CALC DEBUG] Общее время периода: {total_period_seconds/3600:.1f} часов ({total_period_seconds} секунд)")
-    print(f"[MONTH CALC DEBUG] Время недоступности: {unavailable_seconds/3600:.1f} часов ({unavailable_seconds} секунд)")
-    print(f"[MONTH CALC DEBUG] Время доступности: {available_seconds/3600:.1f} часов ({available_seconds} секунд)")
-    print(f"[MONTH CALC DEBUG] Доступные минуты: {available_minutes}")
-    print(f"[MONTH CALC DEBUG] === ЗАВЕРШЕНИЕ РАСЧЕТА ДЛЯ АВТОМОБИЛЯ {car_id} ===")
     
     return available_minutes
