@@ -19,6 +19,21 @@ def _clip_overlap_seconds(
         return 0
     if end is None:
         end = window_end
+    
+    # Синхронизируем timezone с window объектами
+    if window_start.tzinfo is None:
+        # Если window naive, убираем timezone у всех
+        if start.tzinfo is not None:
+            start = start.replace(tzinfo=None)
+        if end.tzinfo is not None:
+            end = end.replace(tzinfo=None)
+    else:
+        # Если window имеет timezone, добавляем UTC к naive datetime
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        if end.tzinfo is None:
+            end = end.replace(tzinfo=timezone.utc)
+    
     # нормируем к окну
     s = max(start, window_start)
     e = min(end, window_end)
@@ -46,6 +61,21 @@ def merge_overlapping_intervals(intervals: List[Tuple[datetime, Optional[datetim
     for start, end in intervals:
         if start is None:
             continue
+        
+        # Работаем с naive datetime если window_end является naive
+        if window_end.tzinfo is None:
+            # Если window_end naive, то убираем timezone у всех datetime
+            if start.tzinfo is not None:
+                start = start.replace(tzinfo=None)
+            if end is not None and end.tzinfo is not None:
+                end = end.replace(tzinfo=None)
+        else:
+            # Если window_end имеет timezone, добавляем UTC ко всем naive datetime
+            if start.tzinfo is None:
+                start = start.replace(tzinfo=timezone.utc)
+            if end is not None and end.tzinfo is None:
+                end = end.replace(tzinfo=timezone.utc)
+        
         end_time = end if end is not None else window_end
         normalized_intervals.append((start, end_time))
     
@@ -148,13 +178,17 @@ def calculate_month_availability_minutes(
     
     # Получаем все аренды для этого автомобиля в указанном месяце
     # Исключаем CANCELLED (отмененные аренды не влияют на доступность)
+    # Преобразуем UTC времена в naive datetime для сравнения с БД
+    calculation_end_naive = calculation_end.replace(tzinfo=None)
+    month_start_naive = month_start.replace(tzinfo=None)
+    
     all_rentals = (
         db.query(RentalHistory)
         .filter(
             RentalHistory.car_id == car_id,
             RentalHistory.rental_status != RentalStatus.CANCELLED,
-            RentalHistory.reservation_time < calculation_end,
-            or_(RentalHistory.end_time == None, RentalHistory.end_time > month_start),
+            RentalHistory.reservation_time < calculation_end_naive,
+            or_(RentalHistory.end_time == None, RentalHistory.end_time > month_start_naive),
         )
         .all()
     )
@@ -178,8 +212,9 @@ def calculate_month_availability_minutes(
             print(f"[MONTH CALC DEBUG]     -> НЕ учитывается (аренда клиента = доступность)")
     
     # Вычисляем время недоступности только для аренд владельца
+    # Передаем naive datetime для корректного сравнения
     unavailable_seconds = calculate_total_unavailable_seconds(
-        owner_unavailable_intervals, month_start, calculation_end
+        owner_unavailable_intervals, month_start_naive, calculation_end_naive
     )
     
     # Общее время периода в секундах
