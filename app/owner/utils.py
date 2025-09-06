@@ -208,8 +208,9 @@ def calculate_month_availability_minutes(
     
     # Общее время периода в минутах
     total_period_minutes = int((calculation_end - month_start).total_seconds() // 60)
-    
+    print(f"Total Period Minutes: {total_period_minutes}")
+    print(f"Owner Usage Minutes: {owner_usage_minutes}")
     # Время доступности = общее время месяца - время поездок владельца
     available_minutes = max(0, total_period_minutes - owner_usage_minutes)
-    
+    print(f"Available Minutes: {available_minutes}")
     return available_minutes
