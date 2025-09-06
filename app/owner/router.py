@@ -295,9 +295,6 @@ def get_trips_by_month(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ) -> TripsForMonthResponse:
-    print(f"[MONTH DEBUG] 🚀 ЗАПУСК get_trips_by_month: vehicle_id={vehicle_id}, month={month}, year={year}, user_id={current_user.id}")
-    
-    try:
     """
     Получить поездки по конкретному автомобилю за определенный месяц.
     
@@ -315,22 +312,25 @@ def get_trips_by_month(
     **Требует аутентификации**: Bearer token
     **Права доступа**: Только владелец автомобиля
     """
-    # Проверяем, что автомобиль принадлежит пользователю
-    car = db.query(Car).filter(
-        Car.id == vehicle_id,
-        Car.owner_id == current_user.id
-    ).first()
+    print(f"[MONTH DEBUG] 🚀 ЗАПУСК get_trips_by_month: vehicle_id={vehicle_id}, month={month}, year={year}, user_id={current_user.id}")
+    
+    try:
+        # Проверяем, что автомобиль принадлежит пользователю
+        car = db.query(Car).filter(
+            Car.id == vehicle_id,
+            Car.owner_id == current_user.id
+        ).first()
 
-    if not car:
-        raise HTTPException(
-            status_code=404,
-            detail="Автомобиль не найден или не принадлежит вам"
-        )
+        if not car:
+            raise HTTPException(
+                status_code=404,
+                detail="Автомобиль не найден или не принадлежит вам"
+            )
 
-    # Определяем месяц и год
-    now = datetime.now()
-    target_month = month if month is not None else now.month
-    target_year = year if year is not None else now.year
+        # Определяем месяц и год
+        now = datetime.now()
+        target_month = month if month is not None else now.month
+        target_year = year if year is not None else now.year
 
     if not (1 <= target_month <= 12):
         raise HTTPException(status_code=400, detail="Месяц должен быть от 1 до 12")
