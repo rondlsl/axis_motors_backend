@@ -244,6 +244,7 @@ async def read_users_me(
         })
 
     return {
+        "id": current_user.id,
         "phone_number": current_user.phone_number,
         "full_name": current_user.full_name,
         "role": current_user.role.value,
