@@ -17,7 +17,7 @@ from app.owner.schemas import (
 from app.gps_api.utils.route_data import get_gps_route_data
 import logging
 
-from app.owner.utils import _clip_overlap_seconds
+from app.owner.utils import _clip_overlap_seconds, calculate_total_unavailable_seconds
 from app.rent.utils.calculate_price import get_open_price
 
 # Настройка логгера
@@ -389,9 +389,11 @@ async def get_owner_cars_with_not_owner_timer(
     """
     Возвращает по каждой машине владельца:
     - полные данные машины
-    - timer: минуты/секунды/total_seconds — сколько времени с начала месяца машина НЕ была арендована самим владельцем
-      (т.е. всё время месяца минус все интервалы любых его собственных аренд по этой машине,
-       включая RESERVED/DELIVERY_RESERVED/DELIVERING/IN_USE и т.д., кроме CANCELLED).
+    - timer: минуты/секунды/total_seconds — сколько времени с начала месяца машина была доступна для аренды клиентами
+      (т.е. всё время месяца минус все интервалы, когда машина была недоступна:
+       - аренды владельцем (все статусы кроме CANCELLED)
+       - аренды клиентами (RESERVED/IN_USE/DELIVERING/DELIVERY_RESERVED/DELIVERING_IN_PROGRESS)
+       - доставки клиентам).
     - period: отрезок расчёта [month_start, now]
     """
 
@@ -413,16 +415,16 @@ async def get_owner_cars_with_not_owner_timer(
 
     car_ids = [c.id for c in cars]
 
-    # Все аренды ТОЛЬКО владельца по этим машинам, которые хоть как-то пересекают окно месяца.
+    # Все аренды по машинам владельца, которые хоть как-то пересекают окно месяца.
+    # Включаем как аренды владельца, так и аренды клиентов.
     # Логика пересечения:
     # - reservation_time < window_end (иначе арендный интервал начинается после окна)
     # - и (end_time IS NULL ИЛИ end_time > window_start) — значит, арендный интервал задел окно
-    # Исключаем CANCELLED (отменённые не считаем временем «арендована владельцем»).
-    owner_rentals: List[RentalHistory] = (
+    # Исключаем CANCELLED (отменённые не делают машину недоступной).
+    all_rentals: List[RentalHistory] = (
         db.query(RentalHistory)
         .filter(
             RentalHistory.car_id.in_(car_ids),
-            RentalHistory.user_id == current_user.id,
             RentalHistory.rental_status != RentalStatus.CANCELLED,
             RentalHistory.reservation_time < now,
             or_(RentalHistory.end_time == None, RentalHistory.end_time > month_start),
@@ -432,7 +434,7 @@ async def get_owner_cars_with_not_owner_timer(
 
     # Группируем аренды по машине
     rentals_by_car: Dict[int, List[RentalHistory]] = {}
-    for r in owner_rentals:
+    for r in all_rentals:
         rentals_by_car.setdefault(r.car_id, []).append(r)
 
     total_window_seconds = int((now - month_start).total_seconds())
@@ -440,23 +442,27 @@ async def get_owner_cars_with_not_owner_timer(
     result: List[Dict[str, Any]] = []
 
     for car in cars:
-        # Суммируем все интервалы, когда МАШИНУ арендовал сам владелец
-        # Отрезок аренды владельца берём от reservation_time (гарантированно не null)
-        # до end_time (или now, если аренда ещё идёт/в зарезервированном/доставочном статусе).
-        owner_used_seconds = 0
-
+        # Собираем все интервалы недоступности для данной машины
+        unavailable_intervals = []
+        
         for r in rentals_by_car.get(car.id, []):
-            # старт — с момента резервирования (или старта, если хотите — тогда замените на r.start_time or r.reservation_time)
-            start_ts = r.start_time or r.reservation_time  # если хотите «жёстче» — берите ровно reservation_time
-            end_ts = r.end_time or None  # None => до now
+            # Период недоступности начинается с момента резервирования
+            start_ts = r.reservation_time
+            # Период недоступности заканчивается в end_time или продолжается до now
+            end_ts = r.end_time  # None означает, что аренда еще активна
+            
+            unavailable_intervals.append((start_ts, end_ts))
 
-            # Пересечение с окном месяца
-            owner_used_seconds += _clip_overlap_seconds(start_ts, end_ts, month_start, now)
+        # Вычисляем общее время недоступности с учетом перекрывающихся интервалов
+        unavailable_seconds = calculate_total_unavailable_seconds(
+            unavailable_intervals, month_start, now
+        )
 
-        not_owner_seconds = max(0, total_window_seconds - owner_used_seconds)
+        # Время доступности = общее время месяца - время недоступности
+        available_seconds = max(0, total_window_seconds - unavailable_seconds)
 
-        minutes = not_owner_seconds // 60
-        seconds = not_owner_seconds % 60
+        minutes = available_seconds // 60
+        seconds = available_seconds % 60
 
         car_payload = {
             "id": car.id,
@@ -479,12 +485,26 @@ async def get_owner_cars_with_not_owner_timer(
             "description": car.description,
         }
 
+        # Дополнительная статистика
+        availability_percentage = (available_seconds / total_window_seconds * 100) if total_window_seconds > 0 else 0
+        
+        # Подсчитываем количество аренд владельца и клиентов
+        owner_rentals_count = sum(1 for r in rentals_by_car.get(car.id, []) if r.user_id == current_user.id)
+        client_rentals_count = sum(1 for r in rentals_by_car.get(car.id, []) if r.user_id != current_user.id)
+
         result.append({
             "car": car_payload,
             "timer": {
                 "minutes": minutes,
                 "seconds": seconds,
-                "total_seconds": not_owner_seconds
+                "total_seconds": available_seconds
+            },
+            "statistics": {
+                "availability_percentage": round(availability_percentage, 2),
+                "total_rentals": len(rentals_by_car.get(car.id, [])),
+                "owner_rentals": owner_rentals_count,
+                "client_rentals": client_rentals_count,
+                "unavailable_seconds": unavailable_seconds
             },
             "period": {
                 "from": month_start.isoformat(),
