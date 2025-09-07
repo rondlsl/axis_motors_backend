@@ -506,10 +506,14 @@ async def get_trip_details(
     earnings = calculate_owner_earnings(trip)
 
     # Фотографии
+    # Фильтруем selfie фотографии из фотографий механика
+    mechanic_photos = trip.delivery_photos_after or []
+    filtered_mechanic_photos = [photo for photo in mechanic_photos if '/selfie/' not in photo]
+    
     photos = TripPhotos(
         client_before=PhotoGroup(photos=trip.photos_before or []),
         client_after=PhotoGroup(photos=trip.photos_after or []),
-        mechanic_after=PhotoGroup(photos=trip.delivery_photos_after or [])
+        mechanic_after=PhotoGroup(photos=filtered_mechanic_photos)
     )
 
     # Маршрут с GPS данными
