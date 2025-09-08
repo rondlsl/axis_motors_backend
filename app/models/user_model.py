@@ -60,3 +60,9 @@ class User(Base):
         cascade="all, delete-orphan",
         order_by="Notification.sent_at.desc()"
     )
+
+    # Guarantor relationships
+    sent_guarantor_requests = relationship("GuarantorRequest", foreign_keys="[GuarantorRequest.requestor_id]", back_populates="requestor")
+    received_guarantor_requests = relationship("GuarantorRequest", foreign_keys="[GuarantorRequest.guarantor_id]", back_populates="guarantor")
+    guaranteeing_for = relationship("Guarantor", foreign_keys="[Guarantor.guarantor_id]", back_populates="guarantor_user")
+    guaranteed_by = relationship("Guarantor", foreign_keys="[Guarantor.client_id]", back_populates="client_user")

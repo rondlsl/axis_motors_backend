@@ -1,0 +1,123 @@
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import List
+
+from app.dependencies.database.database import get_db
+from app.auth.dependencies.get_current_user import get_current_user
+from app.models.user_model import User, UserRole
+from app.guarantor.sms_utils import send_user_rejection_with_guarantor_sms
+from pydantic import BaseModel
+
+admin_router = APIRouter(prefix="/admin", tags=["Admin"])
+
+
+class UserApprovalSchema(BaseModel):
+    user_id: int
+    approved: bool
+    rejection_reason: str = None
+
+
+class UserListItemSchema(BaseModel):
+    id: int
+    phone_number: str
+    full_name: str = None
+    role: str
+    created_at: str = None
+    documents_verified: bool
+    
+    class Config:
+        from_attributes = True
+
+
+@admin_router.get("/pending-users", response_model=List[UserListItemSchema])
+async def get_pending_users(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Получение списка пользователей, ожидающих одобрения"""
+    
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    pending_users = db.query(User).filter(
+        User.role == UserRole.PENDING,
+        User.is_active == True
+    ).all()
+    
+    return [
+        UserListItemSchema(
+            id=user.id,
+            phone_number=user.phone_number,
+            full_name=user.full_name,
+            role=user.role.value,
+            documents_verified=user.documents_verified
+        )
+        for user in pending_users
+    ]
+
+
+@admin_router.post("/approve-user")
+async def approve_or_reject_user(
+    approval_data: UserApprovalSchema,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Одобрение или отклонение пользователя с возможностью предложения гаранта"""
+    
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    user = db.query(User).filter(User.id == approval_data.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    if approval_data.approved:
+        # Одобряем пользователя
+        user.role = UserRole.USER
+        user.documents_verified = True
+        db.commit()
+        
+        return {"message": "Пользователь одобрен"}
+    else:
+        # Отклоняем пользователя
+        user.role = UserRole.REJECTED
+        db.commit()
+        
+        # Отправляем SMS с предложением гаранта
+        if approval_data.rejection_reason:
+            sms_result = await send_user_rejection_with_guarantor_sms(
+                user.phone_number,
+                user.full_name or user.phone_number,
+                approval_data.rejection_reason
+            )
+            
+            return {
+                "message": "Пользователь отклонен. SMS с предложением гаранта отправлено.",
+                "sms_result": sms_result
+            }
+        else:
+            return {"message": "Пользователь отклонен"}
+
+
+@admin_router.get("/users", response_model=List[UserListItemSchema])
+async def get_all_users(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Получение списка всех пользователей"""
+    
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    users = db.query(User).filter(User.is_active == True).all()
+    
+    return [
+        UserListItemSchema(
+            id=user.id,
+            phone_number=user.phone_number,
+            full_name=user.full_name,
+            role=user.role.value,
+            documents_verified=user.documents_verified
+        )
+        for user in users
+    ]

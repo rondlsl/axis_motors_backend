@@ -37,6 +37,8 @@ from app.rent.utils.billing import billing_job
 from app.push.router import router as PushRouter
 from app.mechanic_delivery.router import MechanicDeliveryRouter
 from app.owner.router import OwnerRouter
+from app.guarantor.router import guarantor_router
+from app.admin.router import admin_router
 
 # === APP ===
 app = FastAPI(
@@ -259,6 +261,8 @@ app.include_router(MechanicRouter)
 app.include_router(MechanicDeliveryRouter)
 app.include_router(PushRouter)
 app.include_router(OwnerRouter)
+app.include_router(guarantor_router)
+app.include_router(admin_router)
 
 
 @app.get("/")
