@@ -1,4 +1,4 @@
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator
 from datetime import datetime
 from typing import Optional, List
 from enum import Enum
@@ -16,7 +16,8 @@ class GuarantorInfoSchema(BaseModel):
     full_name: str
     phone_number: str
 
-    @validator('phone_number')
+    @field_validator('phone_number')
+    @classmethod
     def validate_phone(cls, v):
         if not v.isdigit():
             raise ValueError('Phone number must contain only digits')
@@ -24,7 +25,8 @@ class GuarantorInfoSchema(BaseModel):
             raise ValueError('Phone number must be between 10 and 15 digits')
         return v
 
-    @validator('full_name')
+    @field_validator('full_name')
+    @classmethod
     def validate_full_name(cls, v):
         if len(v.strip()) < 2:
             raise ValueError('Full name must be at least 2 characters')

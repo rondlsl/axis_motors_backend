@@ -1,6 +1,18 @@
 import httpx
 from app.core.config import SMS_TOKEN
-from app.auth.router import send_sms_mobizon
+
+
+async def send_sms_mobizon(recipient: str, sms_text: str, api_key: str):
+    """Отправка SMS через Mobizon API"""
+    url = "https://api.mobizon.kz/service/message/sendsmsmessage"
+    params = {
+        "recipient": recipient,
+        "text": sms_text,
+        "apiKey": api_key
+    }
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, params=params)
+        return response.text
 
 
 async def send_guarantor_invitation_sms(guarantor_phone: str, requestor_name: str):
