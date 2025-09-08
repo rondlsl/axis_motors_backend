@@ -204,46 +204,54 @@ async def get_my_guarantor_info(
     ).all()
     
     def format_request(req: GuarantorRequest) -> GuarantorRequestSchema:
-        requestor = db.query(User).get(req.requestor_id)
-        guarantor = db.query(User).get(req.guarantor_id)
-        
-        return GuarantorRequestSchema(
-            id=req.id,
-            requestor_id=req.requestor_id,
-            guarantor_id=req.guarantor_id,
-            status=req.status,
-            reason=req.reason,
-            created_at=req.created_at,
-            responded_at=req.responded_at,
-            requestor_name=requestor.full_name if requestor else None,
-            requestor_phone=requestor.phone_number if requestor else "",
-            guarantor_name=guarantor.full_name if guarantor else None,
-            guarantor_phone=guarantor.phone_number if guarantor else ""
-        )
+        try:
+            requestor = db.query(User).filter(User.id == req.requestor_id).first()
+            guarantor = db.query(User).filter(User.id == req.guarantor_id).first()
+            
+            return GuarantorRequestSchema(
+                id=req.id,
+                requestor_id=req.requestor_id,
+                guarantor_id=req.guarantor_id,
+                status=req.status,
+                reason=req.reason,
+                created_at=req.created_at,
+                responded_at=req.responded_at,
+                requestor_name=requestor.full_name if requestor else None,
+                requestor_phone=requestor.phone_number if requestor else "",
+                guarantor_name=guarantor.full_name if guarantor else None,
+                guarantor_phone=guarantor.phone_number if guarantor else ""
+            )
+        except Exception as e:
+            print(f"Error formatting request {req.id}: {e}")
+            return None
     
     def format_guarantor(g: Guarantor) -> GuarantorSchema:
-        guarantor_user = db.query(User).get(g.guarantor_id)
-        client_user = db.query(User).get(g.client_id)
-        
-        return GuarantorSchema(
-            id=g.id,
-            guarantor_id=g.guarantor_id,
-            client_id=g.client_id,
-            contract_signed=g.contract_signed,
-            sublease_contract_signed=g.sublease_contract_signed,
-            is_active=g.is_active,
-            created_at=g.created_at,
-            guarantor_name=guarantor_user.full_name if guarantor_user else None,
-            guarantor_phone=guarantor_user.phone_number if guarantor_user else "",
-            client_name=client_user.full_name if client_user else None,
-            client_phone=client_user.phone_number if client_user else ""
-        )
+        try:
+            guarantor_user = db.query(User).filter(User.id == g.guarantor_id).first()
+            client_user = db.query(User).filter(User.id == g.client_id).first()
+            
+            return GuarantorSchema(
+                id=g.id,
+                guarantor_id=g.guarantor_id,
+                client_id=g.client_id,
+                contract_signed=g.contract_signed,
+                sublease_contract_signed=g.sublease_contract_signed,
+                is_active=g.is_active,
+                created_at=g.created_at,
+                guarantor_name=guarantor_user.full_name if guarantor_user else None,
+                guarantor_phone=guarantor_user.phone_number if guarantor_user else "",
+                client_name=client_user.full_name if client_user else None,
+                client_phone=client_user.phone_number if client_user else ""
+            )
+        except Exception as e:
+            print(f"Error formatting guarantor {g.id}: {e}")
+            return None
     
     return UserGuarantorInfoSchema(
-        sent_requests=[format_request(req) for req in sent_requests],
-        received_requests=[format_request(req) for req in received_requests],
-        my_clients=[format_guarantor(g) for g in my_clients],
-        my_guarantors=[format_guarantor(g) for g in my_guarantors]
+        sent_requests=[req for req in [format_request(req) for req in sent_requests] if req is not None],
+        received_requests=[req for req in [format_request(req) for req in received_requests] if req is not None],
+        my_clients=[g for g in [format_guarantor(g) for g in my_clients] if g is not None],
+        my_guarantors=[g for g in [format_guarantor(g) for g in my_guarantors] if g is not None]
     )
 
 
