@@ -153,3 +153,32 @@ class UserEligibilityResultSchema(BaseModel):
     has_car_access: bool
     user_name: Optional[str]
     reason: Optional[str]  # Причина, если не подходит
+
+
+class SimpleGuarantorSchema(BaseModel):
+    """Упрощенная схема для активного гаранта"""
+    id: int
+    name: str
+    phone: str
+    contract_signed: bool
+    sublease_contract_signed: bool
+    created_at: datetime
+
+
+class SimpleClientSchema(BaseModel):
+    """Упрощенная схема для клиента"""
+    id: int
+    name: str
+    phone: str
+    contract_signed: bool
+    sublease_contract_signed: bool
+    created_at: datetime
+
+
+class IncomingRequestSchema(BaseModel):
+    """Схема входящей заявки для 'Я гарант'"""
+    id: int
+    requestor_name: str
+    requestor_phone: str
+    reason: Optional[str]
+    created_at: datetime
