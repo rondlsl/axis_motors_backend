@@ -331,6 +331,83 @@ async def link_pending_requests(
     }
 
 
+@guarantor_router.get("/relationships")
+async def get_guarantor_relationships(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Получить полную информацию о связях гарант-клиент для текущего пользователя"""
+    
+    # Заявки где я клиент (ищу гаранта)
+    my_requests = db.query(GuarantorRequest).filter(
+        GuarantorRequest.requestor_id == current_user.id
+    ).all()
+    
+    # Заявки где я гарант (мне нужно ответить)
+    guarantor_requests = db.query(GuarantorRequest).filter(
+        GuarantorRequest.guarantor_id == current_user.id
+    ).all()
+    
+    # Активные связи где я гарант
+    my_clients = db.query(Guarantor).filter(
+        Guarantor.guarantor_id == current_user.id,
+        Guarantor.is_active == True
+    ).all()
+    
+    # Активные связи где я клиент
+    my_guarantors = db.query(Guarantor).filter(
+        Guarantor.client_id == current_user.id,
+        Guarantor.is_active == True
+    ).all()
+    
+    return {
+        "user_id": current_user.id,
+        "user_phone": current_user.phone_number,
+        "summary": {
+            "requests_sent": len(my_requests),
+            "requests_received": len(guarantor_requests), 
+            "active_clients": len(my_clients),
+            "active_guarantors": len(my_guarantors)
+        },
+        "details": {
+            "sent_requests": [
+                {
+                    "id": req.id,
+                    "guarantor_phone": req.guarantor_phone,
+                    "guarantor_name": req.guarantor_name,
+                    "guarantor_id": req.guarantor_id,
+                    "status": req.status.value,
+                    "created_at": req.created_at
+                } for req in my_requests
+            ],
+            "received_requests": [
+                {
+                    "id": req.id,
+                    "requestor_id": req.requestor_id,
+                    "status": req.status.value,
+                    "created_at": req.created_at
+                } for req in guarantor_requests
+            ],
+            "my_clients": [
+                {
+                    "id": rel.id,
+                    "client_id": rel.client_id,
+                    "created_at": rel.created_at,
+                    "contract_signed": rel.contract_signed
+                } for rel in my_clients
+            ],
+            "my_guarantors": [
+                {
+                    "id": rel.id,
+                    "guarantor_id": rel.guarantor_id,
+                    "created_at": rel.created_at,
+                    "contract_signed": rel.contract_signed
+                } for rel in my_guarantors
+            ]
+        }
+    }
+
+
 @guarantor_router.get("/info")
 async def get_guarantor_info():
     """Информация о функции гаранта (для кнопки '?')"""

@@ -116,10 +116,27 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
     access_token = create_access_token(data={"sub": user.phone_number})
     refresh_token = create_refresh_token(data={"sub": user.phone_number})
 
+    # Автоматически связываем ожидающие заявки гаранта
+    from app.models.guarantor_model import GuarantorRequest, GuarantorRequestStatus
+    pending_requests = db.query(GuarantorRequest).filter(
+        GuarantorRequest.guarantor_phone == user.phone_number,
+        GuarantorRequest.guarantor_id == None,
+        GuarantorRequest.status == GuarantorRequestStatus.PENDING
+    ).all()
+    
+    linked_count = 0
+    for request in pending_requests:
+        request.guarantor_id = user.id
+        linked_count += 1
+    
+    if linked_count > 0:
+        db.commit()
+
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
-        "token_type": "bearer"
+        "token_type": "bearer",
+        "linked_guarantor_requests": linked_count  # Сколько заявок связано
     }
 
 
