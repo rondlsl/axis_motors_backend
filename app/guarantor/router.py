@@ -53,11 +53,26 @@ async def invite_guarantor(
     ).first()
     
     if not guarantor_user:
-        # Пользователя нет - отправляем SMS приглашение
+        # Пользователя нет - создаем предварительную запись и отправляем SMS
+        # Создаем временного пользователя или запись с номером телефона
+        pending_request = GuarantorRequest(
+            requestor_id=current_user.id,
+            guarantor_id=None,  # Пока не знаем ID гаранта
+            guarantor_phone=guarantor_phone,  # Сохраняем номер телефона
+            guarantor_name=guarantor_name,    # Сохраняем имя
+            reason=request_data.reason,
+            status=GuarantorRequestStatus.PENDING
+        )
+        
+        db.add(pending_request)
+        db.commit()
+        db.refresh(pending_request)
+        
         sms_result = await send_guarantor_invitation_sms(guarantor_phone, current_user.full_name or current_user.phone_number)
         return {
-            "message": "Пользователь не найден. SMS приглашение отправлено.",
+            "message": "Пользователь не найден. SMS приглашение отправлено. Заявка создана.",
             "user_exists": False,
+            "request_id": pending_request.id,
             "sms_result": sms_result
         }
     
@@ -283,6 +298,37 @@ async def get_contracts(
         guarantor_contracts=[format_contract(c) for c in guarantor_contracts],
         sublease_contracts=[format_contract(c) for c in sublease_contracts]
     )
+
+
+@guarantor_router.post("/link-pending-requests")
+async def link_pending_requests(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Связывание ожидающих заявок с новозарегистрированным пользователем.
+    Вызывается автоматически при регистрации или входе пользователя.
+    """
+    
+    # Ищем заявки с номером телефона этого пользователя
+    pending_requests = db.query(GuarantorRequest).filter(
+        GuarantorRequest.guarantor_phone == current_user.phone_number,
+        GuarantorRequest.guarantor_id == None,
+        GuarantorRequest.status == GuarantorRequestStatus.PENDING
+    ).all()
+    
+    linked_count = 0
+    for request in pending_requests:
+        request.guarantor_id = current_user.id
+        linked_count += 1
+    
+    if linked_count > 0:
+        db.commit()
+    
+    return {
+        "message": f"Связано {linked_count} заявок с вашим аккаунтом",
+        "linked_requests": linked_count
+    }
 
 
 @guarantor_router.get("/info")
