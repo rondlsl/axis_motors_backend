@@ -164,7 +164,7 @@ async def get_guarantor_requests(
             guarantor_name=guarantor.full_name if guarantor else request.guarantor_name,
             guarantor_phone=guarantor.phone_number if guarantor else request.guarantor_phone,
             status=request.status.value,
-            verification_status=request.verification_status.value,
+            verification_status=request.verification_status,
             reason=request.reason,
             admin_notes=request.admin_notes,
             created_at=request.created_at,
