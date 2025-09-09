@@ -4,9 +4,16 @@ from typing import List
 
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
-from app.models.user_model import User, UserRole
+from app.models.user_model import User, UserRole, AutoClass
+from app.models.guarantor_model import GuarantorRequest, VerificationStatus
 from app.guarantor.sms_utils import send_user_rejection_with_guarantor_sms
+from app.guarantor.schemas import (
+    GuarantorRequestAdminSchema, 
+    AdminApproveGuarantorSchema, 
+    AdminRejectGuarantorSchema
+)
 from pydantic import BaseModel
+from datetime import datetime
 
 admin_router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -121,3 +128,110 @@ async def get_all_users(
         )
         for user in users
     ]
+
+
+@admin_router.get("/guarantor-requests", response_model=List[GuarantorRequestAdminSchema])
+async def get_guarantor_requests(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    show_verified: bool = False
+):
+    """Получение списка заявок гарантов для проверки"""
+    
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    query = db.query(GuarantorRequest)
+    
+    if not show_verified:
+        query = query.filter(GuarantorRequest.verification_status == VerificationStatus.NOT_VERIFIED)
+    
+    requests = query.all()
+    
+    result = []
+    for request in requests:
+        requestor = db.query(User).filter(User.id == request.requestor_id).first()
+        guarantor = None
+        if request.guarantor_id:
+            guarantor = db.query(User).filter(User.id == request.guarantor_id).first()
+        
+        result.append(GuarantorRequestAdminSchema(
+            id=request.id,
+            requestor_id=request.requestor_id,
+            requestor_name=requestor.full_name if requestor else None,
+            requestor_phone=requestor.phone_number if requestor else "Unknown",
+            guarantor_id=request.guarantor_id,
+            guarantor_name=guarantor.full_name if guarantor else request.guarantor_name,
+            guarantor_phone=guarantor.phone_number if guarantor else request.guarantor_phone,
+            status=request.status.value,
+            verification_status=request.verification_status.value,
+            reason=request.reason,
+            admin_notes=request.admin_notes,
+            created_at=request.created_at,
+            responded_at=request.responded_at,
+            verified_at=request.verified_at
+        ))
+    
+    return result
+
+
+@admin_router.post("/guarantor-requests/{request_id}/approve")
+async def approve_guarantor_request(
+    request_id: int,
+    approval_data: AdminApproveGuarantorSchema,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Одобрение заявки гаранта администратором"""
+    
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    request = db.query(GuarantorRequest).filter(GuarantorRequest.id == request_id).first()
+    if not request:
+        raise HTTPException(status_code=404, detail="Заявка не найдена")
+    
+    # Обновляем статус заявки
+    request.verification_status = VerificationStatus.VERIFIED
+    request.admin_notes = approval_data.admin_notes
+    request.verified_at = datetime.utcnow()
+    
+    # Присваиваем классы авто клиенту (requestor)
+    requestor = db.query(User).filter(User.id == request.requestor_id).first()
+    if requestor:
+        # Конвертируем схемы в enum'ы
+        auto_classes_enum = [AutoClass(cls.value) for cls in approval_data.auto_classes]
+        requestor.auto_class = auto_classes_enum
+    
+    db.commit()
+    
+    return {
+        "message": "Заявка одобрена",
+        "assigned_classes": [cls.value for cls in approval_data.auto_classes]
+    }
+
+
+@admin_router.post("/guarantor-requests/{request_id}/reject")
+async def reject_guarantor_request(
+    request_id: int,
+    rejection_data: AdminRejectGuarantorSchema,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Отклонение заявки гаранта администратором"""
+    
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    request = db.query(GuarantorRequest).filter(GuarantorRequest.id == request_id).first()
+    if not request:
+        raise HTTPException(status_code=404, detail="Заявка не найдена")
+    
+    # Обновляем статус заявки
+    request.verification_status = VerificationStatus.REJECTED_BY_ADMIN
+    request.admin_notes = rejection_data.admin_notes
+    request.verified_at = datetime.utcnow()
+    
+    db.commit()
+    
+    return {"message": "Заявка отклонена"}

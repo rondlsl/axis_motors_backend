@@ -116,8 +116,11 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
     access_token = create_access_token(data={"sub": user.phone_number})
     refresh_token = create_refresh_token(data={"sub": user.phone_number})
 
-    # Автоматически связываем ожидающие заявки гаранта
+    # Автоматически связываем ожидающие заявки гаранта и присваиваем роль
     from app.models.guarantor_model import GuarantorRequest, GuarantorRequestStatus
+    from app.models.user_model import UserRole
+    
+    # 1. Связываем несвязанные заявки
     pending_requests = db.query(GuarantorRequest).filter(
         GuarantorRequest.guarantor_phone == user.phone_number,
         GuarantorRequest.guarantor_id == None,
@@ -129,7 +132,17 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
         request.guarantor_id = user.id
         linked_count += 1
     
-    if linked_count > 0:
+    # 2. Проверяем есть ли ЛЮБЫЕ заявки с этим номером телефона (включая уже связанные)
+    any_guarantor_requests = db.query(GuarantorRequest).filter(
+        GuarantorRequest.guarantor_phone == user.phone_number
+    ).first()
+    
+    # 3. Если есть заявки гаранта, автоматически присваиваем роль GARANT
+    if any_guarantor_requests and user.role != UserRole.GARANT:
+        user.role = UserRole.GARANT
+    
+    # 4. Сохраняем изменения
+    if linked_count > 0 or (any_guarantor_requests and user.role == UserRole.GARANT):
         db.commit()
 
     return {

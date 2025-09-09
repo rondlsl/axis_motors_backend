@@ -13,6 +13,12 @@ class GuarantorRequestStatus(enum.Enum):
     EXPIRED = "expired"  # Истекло время ответа
 
 
+class VerificationStatus(enum.Enum):
+    NOT_VERIFIED = "not_verified"  # Не проверено администратором
+    VERIFIED = "verified"  # Проверено и одобрено администратором
+    REJECTED_BY_ADMIN = "rejected_by_admin"  # Отклонено администратором
+
+
 class GuarantorRequest(Base):
     """Заявки на гарантов"""
     __tablename__ = "guarantor_requests"
@@ -23,9 +29,12 @@ class GuarantorRequest(Base):
     guarantor_phone = Column(String, nullable=True)  # Номер телефона гаранта (для незарегистрированных)
     guarantor_name = Column(String, nullable=True)   # Имя гаранта (для незарегистрированных)
     status = Column(Enum(GuarantorRequestStatus), default=GuarantorRequestStatus.PENDING)
+    verification_status = Column(Enum(VerificationStatus), default=VerificationStatus.NOT_VERIFIED)  # Статус проверки администратором
     reason = Column(Text, nullable=True)  # Причина отказа в регистрации (если применимо)
+    admin_notes = Column(Text, nullable=True)  # Заметки администратора при проверке
     created_at = Column(DateTime, default=datetime.utcnow)
     responded_at = Column(DateTime, nullable=True)
+    verified_at = Column(DateTime, nullable=True)  # Когда проверено администратором
     
     # Relationships
     requestor = relationship("User", foreign_keys=[requestor_id], back_populates="sent_guarantor_requests")

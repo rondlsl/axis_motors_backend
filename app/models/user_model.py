@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Enum, Numeric, Boolean, text
+from sqlalchemy import Column, Integer, String, DateTime, Enum, Numeric, Boolean, text, ARRAY
 import enum
 from datetime import datetime
 from sqlalchemy.orm import relationship
@@ -12,6 +12,13 @@ class UserRole(enum.Enum):
     FIRST = "first"
     PENDING = "pending"
     MECHANIC = "mechanic"
+    GARANT = "garant"
+
+
+class AutoClass(enum.Enum):
+    A = "A"  # До 25 млн
+    B = "B"  # До 40 млн  
+    C = "C"  # 40+ млн
 
 
 class User(Base):
@@ -37,6 +44,7 @@ class User(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     fcm_token = Column(String, nullable=True)
     locale = Column(String, nullable=False, server_default=text("'ru'"))
+    auto_class = Column(ARRAY(Enum(AutoClass)), nullable=True)  # Доступные классы авто (может быть несколько)
 
     rental_history = relationship("RentalHistory", back_populates="user",
                                   foreign_keys="[RentalHistory.user_id]")

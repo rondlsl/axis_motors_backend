@@ -11,6 +11,18 @@ class GuarantorRequestStatusSchema(str, Enum):
     EXPIRED = "expired"
 
 
+class VerificationStatusSchema(str, Enum):
+    NOT_VERIFIED = "not_verified"
+    VERIFIED = "verified"
+    REJECTED_BY_ADMIN = "rejected_by_admin"
+
+
+class AutoClassSchema(str, Enum):
+    A = "A"  # До 25 млн
+    B = "B"  # До 40 млн  
+    C = "C"  # 40+ млн
+
+
 class GuarantorInfoSchema(BaseModel):
     """Схема для указания данных гаранта"""
     full_name: str
@@ -182,3 +194,35 @@ class IncomingRequestSchema(BaseModel):
     requestor_phone: str
     reason: Optional[str]
     created_at: datetime
+
+
+class AdminApproveGuarantorSchema(BaseModel):
+    """Схема для одобрения заявки гаранта администратором"""
+    auto_classes: List[AutoClassSchema]  # Классы авто которые можно присвоить клиенту
+    admin_notes: Optional[str] = None
+
+
+class AdminRejectGuarantorSchema(BaseModel):
+    """Схема для отклонения заявки гаранта администратором"""
+    admin_notes: str  # Причина отклонения
+
+
+class GuarantorRequestAdminSchema(BaseModel):
+    """Схема заявки гаранта для администратора"""
+    id: int
+    requestor_id: int
+    requestor_name: Optional[str]
+    requestor_phone: str
+    guarantor_id: Optional[int]
+    guarantor_name: Optional[str]
+    guarantor_phone: Optional[str]
+    status: GuarantorRequestStatusSchema
+    verification_status: VerificationStatusSchema
+    reason: Optional[str]
+    admin_notes: Optional[str]
+    created_at: datetime
+    responded_at: Optional[datetime]
+    verified_at: Optional[datetime]
+
+    class Config:
+        from_attributes = True
