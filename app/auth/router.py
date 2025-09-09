@@ -125,7 +125,7 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
         # 1. Ищем заявки с этим номером телефона где guarantor_id = NULL
         pending_requests = db.query(GuarantorRequest).filter(
             GuarantorRequest.guarantor_phone == user.phone_number,
-            GuarantorRequest.guarantor_id == None,
+            GuarantorRequest.guarantor_id.is_(None),
             GuarantorRequest.status == GuarantorRequestStatus.PENDING
         ).all()
         

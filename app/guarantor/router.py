@@ -313,7 +313,7 @@ async def link_pending_requests(
     # Ищем заявки с номером телефона этого пользователя
     pending_requests = db.query(GuarantorRequest).filter(
         GuarantorRequest.guarantor_phone == current_user.phone_number,
-        GuarantorRequest.guarantor_id == None,
+        GuarantorRequest.guarantor_id.is_(None),
         GuarantorRequest.status == GuarantorRequestStatus.PENDING
     ).all()
     
