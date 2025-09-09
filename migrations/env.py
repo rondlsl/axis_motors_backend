@@ -7,6 +7,10 @@ from alembic import context
 from app.core.config import DATABASE_URL
 from app.dependencies.database.base import Base
 
+# Импорт всех моделей для autogenerate
+from app.models import user_model, car_model, history_model, notification_model, promo_codes_model, rental_actions_model
+from app.models import guarantor_model  # Новые модели гарантов
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
