@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, DateTime, Enum, Numeric, Boolean, text, ARRAY
+from sqlalchemy import Column, Integer, String, DateTime, Enum, Numeric, Boolean, text
+from sqlalchemy.dialects.postgresql import ARRAY
 import enum
 from datetime import datetime
 from sqlalchemy.orm import relationship
@@ -44,7 +45,7 @@ class User(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     fcm_token = Column(String, nullable=True)
     locale = Column(String, nullable=False, server_default=text("'ru'"))
-    auto_class = Column(ARRAY(Enum(AutoClass)), nullable=True)  # Доступные классы авто (может быть несколько)
+    auto_class = Column(ARRAY(String), nullable=True)  # Доступные классы авто (может быть несколько): A, B, C
 
     rental_history = relationship("RentalHistory", back_populates="user",
                                   foreign_keys="[RentalHistory.user_id]")

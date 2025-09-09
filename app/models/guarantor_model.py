@@ -16,7 +16,7 @@ class GuarantorRequestStatus(enum.Enum):
 class VerificationStatus(enum.Enum):
     NOT_VERIFIED = "not_verified"  # Не проверено администратором
     VERIFIED = "verified"  # Проверено и одобрено администратором
-    REJECTED_BY_ADMIN = "rejected_by_admin"  # Отклонено администратором
+    REJECTED_BY_ADMIN = "rejected"  # Отклонено администратором
 
 
 class GuarantorRequest(Base):
@@ -29,7 +29,7 @@ class GuarantorRequest(Base):
     guarantor_phone = Column(String, nullable=True)  # Номер телефона гаранта (для незарегистрированных)
     guarantor_name = Column(String, nullable=True)   # Имя гаранта (для незарегистрированных)
     status = Column(Enum(GuarantorRequestStatus), default=GuarantorRequestStatus.PENDING)
-    verification_status = Column(Enum(VerificationStatus), default=VerificationStatus.NOT_VERIFIED)  # Статус проверки администратором
+    verification_status = Column(String, default="not_verified")  # Статус проверки администратором: not_verified, verified, rejected
     reason = Column(Text, nullable=True)  # Причина отказа в регистрации (если применимо)
     admin_notes = Column(Text, nullable=True)  # Заметки администратора при проверке
     created_at = Column(DateTime, default=datetime.utcnow)

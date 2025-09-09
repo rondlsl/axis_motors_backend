@@ -5,7 +5,7 @@ from typing import List
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole, AutoClass
-from app.models.guarantor_model import GuarantorRequest, VerificationStatus
+from app.models.guarantor_model import GuarantorRequest
 from app.guarantor.sms_utils import send_user_rejection_with_guarantor_sms
 from app.guarantor.schemas import (
     GuarantorRequestAdminSchema, 
@@ -144,7 +144,7 @@ async def get_guarantor_requests(
     query = db.query(GuarantorRequest)
     
     if not show_verified:
-        query = query.filter(GuarantorRequest.verification_status == VerificationStatus.NOT_VERIFIED)
+        query = query.filter(GuarantorRequest.verification_status == "not_verified")
     
     requests = query.all()
     
@@ -192,16 +192,16 @@ async def approve_guarantor_request(
         raise HTTPException(status_code=404, detail="Заявка не найдена")
     
     # Обновляем статус заявки
-    request.verification_status = VerificationStatus.VERIFIED
+    request.verification_status = "verified"
     request.admin_notes = approval_data.admin_notes
     request.verified_at = datetime.utcnow()
     
     # Присваиваем классы авто клиенту (requestor)
     requestor = db.query(User).filter(User.id == request.requestor_id).first()
     if requestor:
-        # Конвертируем схемы в enum'ы
-        auto_classes_enum = [AutoClass(cls.value) for cls in approval_data.auto_classes]
-        requestor.auto_class = auto_classes_enum
+        # Конвертируем схемы в строки
+        auto_classes_strings = [cls.value for cls in approval_data.auto_classes]
+        requestor.auto_class = auto_classes_strings
     
     db.commit()
     
@@ -228,7 +228,7 @@ async def reject_guarantor_request(
         raise HTTPException(status_code=404, detail="Заявка не найдена")
     
     # Обновляем статус заявки
-    request.verification_status = VerificationStatus.REJECTED_BY_ADMIN
+    request.verification_status = "rejected"
     request.admin_notes = rejection_data.admin_notes
     request.verified_at = datetime.utcnow()
     
