@@ -6,7 +6,7 @@ from typing import List, Optional, Dict, Any
 
 from app.auth.dependencies.get_current_user import get_current_user
 from app.dependencies.database.database import get_db
-from app.models.user_model import User
+from app.models.user_model import User, UserRole
 from app.models.car_model import Car
 from app.models.history_model import RentalHistory, RentalStatus, RentalType
 from app.owner.schemas import (
@@ -325,14 +325,16 @@ def get_trips_by_month(
         if not (1 <= target_month <= 12):
             raise HTTPException(status_code=400, detail="Месяц должен быть от 1 до 12")
 
-        # Получаем поездки за указанный месяц
+        # Получаем поездки за указанный месяц, исключая поездки механиков
         trips = (
             db.query(RentalHistory)
+            .join(User, RentalHistory.user_id == User.id)
             .filter(
                 RentalHistory.car_id == vehicle_id,
                 RentalHistory.rental_status == RentalStatus.COMPLETED,
                 extract('year', RentalHistory.end_time) == target_year,
-                extract('month', RentalHistory.end_time) == target_month
+                extract('month', RentalHistory.end_time) == target_month,
+                User.role != UserRole.MECHANIC  # Исключаем поездки механиков
             )
             .order_by(RentalHistory.end_time.desc())
             .all()
@@ -361,7 +363,7 @@ def get_trips_by_month(
                 user_id=trip.user_id
             ))
 
-        # Получаем все доступные месяцы с заработком
+        # Получаем все доступные месяцы с заработком, исключая поездки механиков
         available_months_query = (
             db.query(
                 extract('year', RentalHistory.end_time).label('year'),
@@ -369,10 +371,12 @@ def get_trips_by_month(
                 func.sum(RentalHistory.total_price).label('total_earnings'),
                 func.count(RentalHistory.id).label('trip_count')
             )
+            .join(User, RentalHistory.user_id == User.id)
             .filter(
                 RentalHistory.car_id == vehicle_id,
                 RentalHistory.rental_status == RentalStatus.COMPLETED,
-                RentalHistory.total_price.isnot(None)
+                RentalHistory.total_price.isnot(None),
+                User.role != UserRole.MECHANIC  # Исключаем поездки механиков
             )
             .group_by(
                 extract('year', RentalHistory.end_time),
