@@ -424,15 +424,40 @@ async def upload_contract(
         )
     
     try:
-        # Декодируем base64
-        file_content = base64.b64decode(contract_data.file_content)
+        # Обрабатываем data URL или обычный base64
+        file_content_str = contract_data.file_content
+        file_extension = ".pdf"  # По умолчанию
+        
+        if file_content_str.startswith("data:"):
+            # Обрабатываем data URL: data:application/pdf;base64,...
+            header, base64_data = file_content_str.split(",", 1)
+            
+            # Извлекаем MIME type для определения расширения
+            if "application/pdf" in header:
+                file_extension = ".pdf"
+            elif "application/msword" in header or "application/vnd.openxmlformats-officedocument.wordprocessingml.document" in header:
+                file_extension = ".docx"
+            elif "text/plain" in header:
+                file_extension = ".txt"
+            elif "image/jpeg" in header:
+                file_extension = ".jpg"
+            elif "image/png" in header:
+                file_extension = ".png"
+            elif "image/gif" in header:
+                file_extension = ".gif"
+            else:
+                file_extension = ".pdf"  # По умолчанию
+            
+            file_content = base64.b64decode(base64_data)
+        else:
+            # Обычный base64
+            file_content = base64.b64decode(file_content_str)
         
         # Создаем папку для договоров если не существует
         contracts_dir = "contracts"
         os.makedirs(contracts_dir, exist_ok=True)
         
-        # Генерируем случайное имя файла
-        file_extension = ".pdf"  # По умолчанию PDF
+        # Генерируем случайное имя файла с правильным расширением
         unique_filename = f"{contract_data.contract_type}_{uuid.uuid4()}{file_extension}"
         file_path = os.path.join(contracts_dir, unique_filename)
         

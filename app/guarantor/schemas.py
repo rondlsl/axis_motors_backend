@@ -134,7 +134,7 @@ class ContractSignSchema(BaseModel):
 class ContractUploadSchema(BaseModel):
     """Схема для загрузки договора (только админ)"""
     contract_type: str = Field(..., description="Тип договора: 'guarantor' или 'sublease'", example="guarantor")
-    file_content: str = Field(..., description="Содержимое файла в формате base64", example="JVBERi0xLjQKJcfsj6IKNSAwIG9iago8PAovVHlwZSAvUGFnZQovUGFyZW50IDMgMCBSCi9SZXNvdXJjZXMgPDwKL0ZvbnQgPDwKL0YxIDIgMCBSCj4+Cj4+Ci9NZWRpYUJveCBbMCAwIDU5NSA4NDJdCi9Db250ZW50cyA0IDAgUgo+PgplbmRvYmoK")
+    file_content: str = Field(..., description="Data URL файла (data:application/pdf;base64,...) или base64", example="data:application/pdf;base64,JVBERi0xLjQKJcfsj6IKNSAwIG9iago8PAovVHlwZSAvUGFnZQovUGFyZW50IDMgMCBSCi9SZXNvdXJjZXMgPDwKL0ZvbnQgPDwKL0YxIDIgMCBSCj4+Cj4+Ci9NZWRpYUJveCBbMCAwIDU5NSA4NDJdCi9Db250ZW50cyA0IDAgUgo+PgplbmRvYmoK")
 
 
 class ContractDownloadSchema(BaseModel):
