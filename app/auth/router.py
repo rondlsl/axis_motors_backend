@@ -116,7 +116,6 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
     access_token = create_access_token(data={"sub": user.phone_number})
     refresh_token = create_refresh_token(data={"sub": user.phone_number})
 
-    # Связываем ожидающие заявки гаранта с пользователем (БЕЗ автоматического принятия)
     try:
         from app.models.guarantor_model import GuarantorRequest, GuarantorRequestStatus
         from datetime import datetime
