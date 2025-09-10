@@ -506,7 +506,7 @@ async def upload_contract(
                         "id": 1,
                         "contract_type": "guarantor",
                         "file_name": "guarantor_contract.pdf",
-                        "file_content": "JVBERi0xLjQKJcfsj6IKNSAwIG9iago8PAovVHlwZSAvUGFnZQovUGFyZW50IDMgMCBSCi9SZXNvdXJjZXMgPDwKL0ZvbnQgPDwKL0YxIDIgMCBSCj4+Cj4+Ci9NZWRpYUJveCBbMCAwIDU5NSA4NDJdCi9Db250ZW50cyA0IDAgUgo+PgplbmRvYmoK",
+                        "file_url": "https://api.azvmotors.kz/contracts/guarantor_a1b2c3d4.pdf",
                         "uploaded_at": "2024-01-15T10:30:00Z",
                         "is_active": True
                     }
@@ -552,16 +552,14 @@ async def get_guarantor_contract(
         )
     
     try:
-        # Читаем файл и кодируем в base64
-        with open(contract.file_path, "rb") as f:
-            file_content = f.read()
-            file_content_base64 = base64.b64encode(file_content).decode('utf-8')
+        # Формируем прямую ссылку на файл
+        file_url = f"https://api.azvmotors.kz/contracts/{contract.file_name}"
         
         return ContractDownloadSchema(
             id=contract.id,
             contract_type=contract.contract_type,
             file_name=contract.file_name,
-            file_content=file_content_base64,
+            file_url=file_url,
             uploaded_at=contract.uploaded_at,
             is_active=contract.is_active
         )
@@ -569,7 +567,7 @@ async def get_guarantor_contract(
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Ошибка при чтении файла: {str(e)}"
+            detail=f"Ошибка при получении файла: {str(e)}"
         )
 
 
@@ -585,7 +583,7 @@ async def get_guarantor_contract(
                         "id": 2,
                         "contract_type": "sublease",
                         "file_name": "sublease_contract.pdf",
-                        "file_content": "JVBERi0xLjQKJcfsj6IKNSAwIG9iago8PAovVHlwZSAvUGFnZQovUGFyZW50IDMgMCBSCi9SZXNvdXJjZXMgPDwKL0ZvbnQgPDwKL0YxIDIgMCBSCj4+Cj4+Ci9NZWRpYUJveCBbMCAwIDU5NSA4NDJdCi9Db250ZW50cyA0IDAgUgo+PgplbmRvYmoK",
+                        "file_url": "https://api.azvmotors.kz/contracts/guarantor_a1b2c3d4.pdf",
                         "uploaded_at": "2024-01-15T10:30:00Z",
                         "is_active": True
                     }
@@ -631,16 +629,14 @@ async def get_sublease_contract(
         )
     
     try:
-        # Читаем файл и кодируем в base64
-        with open(contract.file_path, "rb") as f:
-            file_content = f.read()
-            file_content_base64 = base64.b64encode(file_content).decode('utf-8')
+        # Формируем прямую ссылку на файл
+        file_url = f"https://api.azvmotors.kz/contracts/{contract.file_name}"
         
         return ContractDownloadSchema(
             id=contract.id,
             contract_type=contract.contract_type,
             file_name=contract.file_name,
-            file_content=file_content_base64,
+            file_url=file_url,
             uploaded_at=contract.uploaded_at,
             is_active=contract.is_active
         )
@@ -648,7 +644,7 @@ async def get_sublease_contract(
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Ошибка при чтении файла: {str(e)}"
+            detail=f"Ошибка при получении файла: {str(e)}"
         )
 
 

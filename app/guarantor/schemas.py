@@ -142,7 +142,7 @@ class ContractDownloadSchema(BaseModel):
     id: int = Field(..., description="ID договора", example=1)
     contract_type: str = Field(..., description="Тип договора", example="guarantor")
     file_name: str = Field(..., description="Имя файла", example="guarantor_contract.pdf")
-    file_content: str = Field(..., description="Содержимое файла в base64", example="JVBERi0xLjQKJcfsj6IKNSAwIG9iago8PAovVHlwZSAvUGFnZQovUGFyZW50IDMgMCBSCi9SZXNvdXJjZXMgPDwKL0ZvbnQgPDwKL0YxIDIgMCBSCj4+Cj4+Ci9NZWRpYUJveCBbMCAwIDU5NSA4NDJdCi9Db250ZW50cyA0IDAgUgo+PgplbmRvYmoK")
+    file_url: str = Field(..., description="Прямая ссылка на файл", example="https://api.azvmotors.kz/contracts/guarantor_a1b2c3d4.pdf")
     uploaded_at: datetime = Field(..., description="Дата загрузки", example="2024-01-15T10:30:00Z")
     is_active: bool = Field(..., description="Активен ли договор", example=True)
 

@@ -47,6 +47,7 @@ app = FastAPI(
 scheduler = AsyncIOScheduler()
 
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+app.mount("/contracts", StaticFiles(directory="contracts"), name="contracts")
 
 
 def run_migrations():
