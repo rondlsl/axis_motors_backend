@@ -42,7 +42,10 @@ from app.admin.router import admin_router
 
 # === APP ===
 app = FastAPI(
-    title="Azv Motors API"
+    title="Azv Motors API",
+    swagger_ui_parameters={
+        "persistAuthorization": True
+    }
 )
 scheduler = AsyncIOScheduler()
 
