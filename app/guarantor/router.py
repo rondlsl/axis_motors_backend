@@ -2,6 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List
+import base64
+import os
+import uuid
 
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
@@ -16,16 +19,19 @@ from app.guarantor.schemas import (
     GuarantorRequestCreateSchema,
     ContractListSchema,
     ContractFileSchema,
+    ContractUploadSchema,
+    ContractDownloadSchema,
+    ContractSignSchema,
     SimpleGuarantorSchema,
     SimpleClientSchema,
     IncomingRequestSchema,
     InviteGuarantorResponseSchema,
     AcceptGuarantorResponseSchema,
     MessageResponseSchema,
-    LinkPendingRequestsResponseSchema,
     GuarantorRelationshipsSchema,
     GuarantorInfoSchema,
-    ErrorResponseSchema
+    ErrorResponseSchema,
+    GuarantorRequestAdminSchema
 )
 from app.guarantor.sms_utils import send_guarantor_invitation_sms
 
@@ -235,9 +241,10 @@ async def get_my_guarantors(
     for relationship in guarantor_relationships:
         guarantor_user = db.query(User).filter(User.id == relationship.guarantor_id).first()
         if guarantor_user:
+            guarantor_name = relationship.original_request.guarantor_name if relationship.original_request else None
             result.append(SimpleGuarantorSchema(
                 id=relationship.id,
-                name=guarantor_user.full_name or guarantor_user.phone_number,
+                name=guarantor_name or guarantor_user.full_name or guarantor_user.phone_number,
                 phone=guarantor_user.phone_number,
                 contract_signed=relationship.contract_signed,
                 sublease_contract_signed=relationship.sublease_contract_signed,
@@ -349,35 +356,451 @@ async def get_contracts(
     )
 
 
-@guarantor_router.post("/link-pending-requests", response_model=LinkPendingRequestsResponseSchema)
-async def link_pending_requests(
+@guarantor_router.post(
+    "/contracts/upload",
+    response_model=MessageResponseSchema,
+    responses={
+        200: {
+            "description": "Договор успешно загружен",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "message": "Договор guarantor успешно загружен"
+                    }
+                }
+            }
+        },
+        400: {
+            "model": ErrorResponseSchema,
+            "description": "Ошибка валидации данных",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Тип договора должен быть 'guarantor' или 'sublease'"
+                    }
+                }
+            }
+        },
+        401: {
+            "model": ErrorResponseSchema,
+            "description": "Не авторизован"
+        },
+        403: {
+            "model": ErrorResponseSchema,
+            "description": "Доступ запрещен. Требуются права администратора",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Доступ запрещен. Требуются права администратора"
+                    }
+                }
+            }
+        },
+        500: {
+            "model": ErrorResponseSchema,
+            "description": "Ошибка сервера при загрузке файла"
+        }
+    },
+)
+async def upload_contract(
+    contract_data: ContractUploadSchema,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """
-    Связывание ожидающих заявок с новозарегистрированным пользователем.
-    Вызывается автоматически при регистрации или входе пользователя.
-    """
+    """Загрузка договора (только для админа)"""
     
-    # Ищем заявки с номером телефона этого пользователя
+    # Проверяем, что пользователь админ
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=403,
+            detail="Доступ запрещен. Требуются права администратора"
+        )
+    
+    # Проверяем тип договора
+    if contract_data.contract_type not in ["guarantor", "sublease"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Тип договора должен быть 'guarantor' или 'sublease'"
+        )
+    
+    try:
+        # Декодируем base64
+        file_content = base64.b64decode(contract_data.file_content_base64)
+        
+        # Создаем папку для договоров если не существует
+        contracts_dir = "contracts"
+        os.makedirs(contracts_dir, exist_ok=True)
+        
+        # Генерируем уникальное имя файла
+        file_extension = os.path.splitext(contract_data.file_name)[1]
+        unique_filename = f"{contract_data.contract_type}_{uuid.uuid4()}{file_extension}"
+        file_path = os.path.join(contracts_dir, unique_filename)
+        
+        # Сохраняем файл
+        with open(file_path, "wb") as f:
+            f.write(file_content)
+        
+        # Деактивируем старые договоры этого типа
+        old_contracts = db.query(ContractFile).filter(
+            ContractFile.contract_type == contract_data.contract_type,
+            ContractFile.is_active == True
+        ).all()
+        
+        for old_contract in old_contracts:
+            old_contract.is_active = False
+        
+        # Создаем новую запись в БД
+        new_contract = ContractFile(
+            contract_type=contract_data.contract_type,
+            file_name=contract_data.file_name,
+            file_path=file_path,
+            is_active=True
+        )
+        
+        db.add(new_contract)
+        db.commit()
+        
+        return {"message": f"Договор {contract_data.contract_type} успешно загружен"}
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка при загрузке файла: {str(e)}"
+        )
+
+
+@guarantor_router.get(
+    "/contracts/guarantor",
+    response_model=ContractDownloadSchema,
+    responses={
+        200: {
+            "description": "Договор гаранта успешно получен",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "id": 1,
+                        "contract_type": "guarantor",
+                        "file_name": "guarantor_contract.pdf",
+                        "file_content_base64": "JVBERi0xLjQKJcfsj6IKNSAwIG9iago8PAovVHlwZSAvUGFnZQovUGFyZW50IDMgMCBSCi9SZXNvdXJjZXMgPDwKL0ZvbnQgPDwKL0YxIDIgMCBSCj4+Cj4+Ci9NZWRpYUJveCBbMCAwIDU5NSA4NDJdCi9Db250ZW50cyA0IDAgUgo+PgplbmRvYmoK",
+                        "uploaded_at": "2024-01-15T10:30:00Z",
+                        "is_active": True
+                    }
+                }
+            }
+        },
+        401: {
+            "model": ErrorResponseSchema,
+            "description": "Не авторизован"
+        },
+        404: {
+            "model": ErrorResponseSchema,
+            "description": "Договор гаранта не найден",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Договор гаранта не найден"
+                    }
+                }
+            }
+        },
+        500: {
+            "model": ErrorResponseSchema,
+            "description": "Ошибка при чтении файла"
+        }
+    },
+)
+async def get_guarantor_contract(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Просмотр договора гаранта"""
+    
+    contract = db.query(ContractFile).filter(
+        ContractFile.contract_type == "guarantor",
+        ContractFile.is_active == True
+    ).first()
+    
+    if not contract:
+        raise HTTPException(
+            status_code=404,
+            detail="Договор гаранта не найден"
+        )
+    
+    try:
+        # Читаем файл и кодируем в base64
+        with open(contract.file_path, "rb") as f:
+            file_content = f.read()
+            file_content_base64 = base64.b64encode(file_content).decode('utf-8')
+        
+        return ContractDownloadSchema(
+            id=contract.id,
+            contract_type=contract.contract_type,
+            file_name=contract.file_name,
+            file_content_base64=file_content_base64,
+            uploaded_at=contract.uploaded_at,
+            is_active=contract.is_active
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка при чтении файла: {str(e)}"
+        )
+
+
+@guarantor_router.get(
+    "/contracts/sublease",
+    response_model=ContractDownloadSchema,
+    responses={
+        200: {
+            "description": "Договор субаренды успешно получен",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "id": 2,
+                        "contract_type": "sublease",
+                        "file_name": "sublease_contract.pdf",
+                        "file_content_base64": "JVBERi0xLjQKJcfsj6IKNSAwIG9iago8PAovVHlwZSAvUGFnZQovUGFyZW50IDMgMCBSCi9SZXNvdXJjZXMgPDwKL0ZvbnQgPDwKL0YxIDIgMCBSCj4+Cj4+Ci9NZWRpYUJveCBbMCAwIDU5NSA4NDJdCi9Db250ZW50cyA0IDAgUgo+PgplbmRvYmoK",
+                        "uploaded_at": "2024-01-15T10:30:00Z",
+                        "is_active": True
+                    }
+                }
+            }
+        },
+        401: {
+            "model": ErrorResponseSchema,
+            "description": "Не авторизован"
+        },
+        404: {
+            "model": ErrorResponseSchema,
+            "description": "Договор субаренды не найден",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Договор субаренды не найден"
+                    }
+                }
+            }
+        },
+        500: {
+            "model": ErrorResponseSchema,
+            "description": "Ошибка при чтении файла"
+        }
+    },
+)
+async def get_sublease_contract(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Просмотр договора субаренды"""
+    
+    contract = db.query(ContractFile).filter(
+        ContractFile.contract_type == "sublease",
+        ContractFile.is_active == True
+    ).first()
+    
+    if not contract:
+        raise HTTPException(
+            status_code=404,
+            detail="Договор субаренды не найден"
+        )
+    
+    try:
+        # Читаем файл и кодируем в base64
+        with open(contract.file_path, "rb") as f:
+            file_content = f.read()
+            file_content_base64 = base64.b64encode(file_content).decode('utf-8')
+        
+        return ContractDownloadSchema(
+            id=contract.id,
+            contract_type=contract.contract_type,
+            file_name=contract.file_name,
+            file_content_base64=file_content_base64,
+            uploaded_at=contract.uploaded_at,
+            is_active=contract.is_active
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка при чтении файла: {str(e)}"
+        )
+
+
+@guarantor_router.post(
+    "/contracts/sign",
+    response_model=MessageResponseSchema,
+    responses={
+        200: {
+            "description": "Договор успешно подписан",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "message": "Договор guarantor успешно подписан"
+                    }
+                }
+            }
+        },
+        400: {
+            "model": ErrorResponseSchema,
+            "description": "Ошибка валидации или договор уже подписан",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "already_signed": {
+                            "summary": "Договор уже подписан",
+                            "value": {
+                                "detail": "Договор гаранта уже подписан"
+                            }
+                        },
+                        "invalid_type": {
+                            "summary": "Неверный тип договора",
+                            "value": {
+                                "detail": "Неверный тип договора. Должен быть 'guarantor' или 'sublease'"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        401: {
+            "model": ErrorResponseSchema,
+            "description": "Не авторизован"
+        },
+        403: {
+            "model": ErrorResponseSchema,
+            "description": "Только гарант может подписать договор",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Только гарант может подписать договор"
+                    }
+                }
+            }
+        },
+        404: {
+            "model": ErrorResponseSchema,
+            "description": "Связь гарант-клиент не найдена",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Связь гарант-клиент не найдена"
+                    }
+                }
+            }
+        }
+    },
+)
+async def sign_contract(
+    sign_data: ContractSignSchema,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Подписание договора (только гарант)"""
+    
+    # Находим связь гарант-клиент
+    relationship = db.query(Guarantor).filter(
+        Guarantor.id == sign_data.guarantor_relationship_id,
+        Guarantor.is_active == True
+    ).first()
+    
+    if not relationship:
+        raise HTTPException(
+            status_code=404,
+            detail="Связь гарант-клиент не найдена"
+        )
+    
+    # Проверяем, что пользователь является гарантом в этой связи
+    if current_user.id != relationship.guarantor_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Только гарант может подписать договор"
+        )
+    
+    # Обновляем статус подписания в таблице guarantors
+    if sign_data.contract_type == "guarantor":
+        if relationship.contract_signed:
+            raise HTTPException(
+                status_code=400,
+                detail="Договор гаранта уже подписан"
+            )
+        relationship.contract_signed = True
+    elif sign_data.contract_type == "sublease":
+        if relationship.sublease_contract_signed:
+            raise HTTPException(
+                status_code=400,
+                detail="Договор субаренды уже подписан"
+            )
+        relationship.sublease_contract_signed = True
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Неверный тип договора. Должен быть 'guarantor' или 'sublease'"
+        )
+    
+    db.commit()
+    
+    return {"message": f"Договор {sign_data.contract_type} успешно подписан"}
+
+@guarantor_router.get(
+    "/admin/pending_verification",
+    response_model=List[GuarantorRequestAdminSchema],
+    responses={401: {"model": ErrorResponseSchema}, 403: {"model": ErrorResponseSchema}},
+)
+async def get_pending_verification_requests(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Админ: заявки ожидающие проверки (verification_status = not_verified)"""
+    
+    # Проверяем, что пользователь админ
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=403,
+            detail="Доступ запрещен. Требуются права администратора"
+        )
+    
+    # Заявки ожидающие проверки администратором
     pending_requests = db.query(GuarantorRequest).filter(
-        GuarantorRequest.guarantor_phone == current_user.phone_number,
-        GuarantorRequest.guarantor_id.is_(None),
-        GuarantorRequest.status == GuarantorRequestStatus.PENDING
+        GuarantorRequest.verification_status == "not_verified"
     ).all()
     
-    linked_count = 0
+    result = []
     for request in pending_requests:
-        request.guarantor_id = current_user.id
-        linked_count += 1
+        # Получаем информацию о запрашивающем
+        requestor = db.query(User).filter(User.id == request.requestor_id).first()
+        requestor_name = requestor.full_name if requestor else None
+        requestor_phone = requestor.phone_number if requestor else None
+        
+        # Получаем информацию о гаранте (если есть)
+        guarantor = None
+        guarantor_name = request.guarantor_name
+        guarantor_phone = request.guarantor_phone
+        
+        if request.guarantor_id:
+            guarantor = db.query(User).filter(User.id == request.guarantor_id).first()
+            if guarantor:
+                guarantor_name = guarantor.full_name
+                guarantor_phone = guarantor.phone_number
+        
+        result.append(GuarantorRequestAdminSchema(
+            id=request.id,
+            requestor_id=request.requestor_id,
+            requestor_name=requestor_name,
+            requestor_phone=requestor_phone or "",
+            guarantor_id=request.guarantor_id,
+            guarantor_name=guarantor_name,
+            guarantor_phone=guarantor_phone or "",
+            status=request.status,
+            verification_status=request.verification_status,
+            reason=request.reason,
+            admin_notes=request.admin_notes,
+            created_at=request.created_at,
+            responded_at=request.responded_at,
+            verified_at=request.verified_at
+        ))
     
-    if linked_count > 0:
-        db.commit()
-    
-    return {
-        "message": f"Связано {linked_count} заявок с вашим аккаунтом",
-        "linked_requests": linked_count
-    }
+    return result
 
 
 @guarantor_router.get("/relationships", response_model=GuarantorRelationshipsSchema)
@@ -457,16 +880,3 @@ async def get_guarantor_relationships(
     }
 
 
-@guarantor_router.get("/info", response_model=GuarantorInfoSchema)
-async def get_guarantor_info():
-    """Информация о функции гаранта (для кнопки '?')"""
-    return {
-        "title": "Что такое Гарант?",
-        "description": "Гарант — лицо, которое в случае ДТП несёт материальную ответственность",
-        "details": [
-            "Гарант - это человек, который берет на себя материальную ответственность за ваши действия",
-            "В случае ДТП или других обязательств, гарант будет нести финансовую ответственность",
-            "Для оформления услуги гарант должен подписать специальный договор",
-            "После подписания договора гаранта, также подписывается договор субаренды автомобиля"
-        ]
-    }

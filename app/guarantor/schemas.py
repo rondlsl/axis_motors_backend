@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, Field
 from datetime import datetime
 from typing import Optional, List
 from enum import Enum
@@ -127,8 +127,25 @@ class UserGuarantorInfoSchema(BaseModel):
 
 class ContractSignSchema(BaseModel):
     """Схема для подписания договора"""
-    contract_type: str  # "guarantor" или "sublease"
-    guarantor_relationship_id: int
+    contract_type: str = Field(..., description="Тип договора для подписания", example="guarantor", enum=["guarantor", "sublease"])
+    guarantor_relationship_id: int = Field(..., description="ID связи гарант-клиент", example=1)
+
+
+class ContractUploadSchema(BaseModel):
+    """Схема для загрузки договора (только админ)"""
+    contract_type: str = Field(..., description="Тип договора: 'guarantor' или 'sublease'", example="guarantor")
+    file_name: str = Field(..., description="Имя файла с расширением", example="guarantor_contract.pdf")
+    file_content_base64: str = Field(..., description="Содержимое файла в формате base64", example="JVBERi0xLjQKJcfsj6IKNSAwIG9iago8PAovVHlwZSAvUGFnZQovUGFyZW50IDMgMCBSCi9SZXNvdXJjZXMgPDwKL0ZvbnQgPDwKL0YxIDIgMCBSCj4+Cj4+Ci9NZWRpYUJveCBbMCAwIDU5NSA4NDJdCi9Db250ZW50cyA0IDAgUgo+PgplbmRvYmoK")
+
+
+class ContractDownloadSchema(BaseModel):
+    """Схема для просмотра договора"""
+    id: int = Field(..., description="ID договора", example=1)
+    contract_type: str = Field(..., description="Тип договора", example="guarantor")
+    file_name: str = Field(..., description="Имя файла", example="guarantor_contract.pdf")
+    file_content_base64: str = Field(..., description="Содержимое файла в base64", example="JVBERi0xLjQKJcfsj6IKNSAwIG9iago8PAovVHlwZSAvUGFnZQovUGFyZW50IDMgMCBSCi9SZXNvdXJjZXMgPDwKL0ZvbnQgPDwKL0YxIDIgMCBSCj4+Cj4+Ci9NZWRpYUJveCBbMCAwIDU5NSA4NDJdCi9Db250ZW50cyA0IDAgUgo+PgplbmRvYmoK")
+    uploaded_at: datetime = Field(..., description="Дата загрузки", example="2024-01-15T10:30:00Z")
+    is_active: bool = Field(..., description="Активен ли договор", example=True)
 
 
 class ContractFileSchema(BaseModel):
