@@ -226,3 +226,75 @@ class GuarantorRequestAdminSchema(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ===== Detailed response schemas for Swagger =====
+
+class InviteGuarantorResponseSchema(BaseModel):
+    message: str
+    user_exists: bool
+    request_id: int
+    sms_result: Optional[dict] = None
+    guarantor_name: Optional[str] = None
+
+
+class AcceptGuarantorResponseSchema(BaseModel):
+    message: str
+    guarantor_relationship_id: int
+
+
+class MessageResponseSchema(BaseModel):
+    message: str
+
+
+class LinkPendingRequestsResponseSchema(BaseModel):
+    message: str
+    linked_requests: int
+
+
+class GuarantorRelationshipItemSchema(BaseModel):
+    id: int
+    created_at: datetime
+    contract_signed: bool
+    client_id: Optional[int] = None
+    guarantor_id: Optional[int] = None
+
+
+class GuarantorRelationshipsSchema(BaseModel):
+    user_id: int
+    user_phone: str
+
+    class SummarySchema(BaseModel):
+        requests_sent: int
+        requests_received: int
+        active_clients: int
+        active_guarantors: int
+
+    class SentRequestItemSchema(BaseModel):
+        id: int
+        guarantor_phone: Optional[str] = None
+        guarantor_name: Optional[str] = None
+        guarantor_id: Optional[int] = None
+        status: str
+        created_at: datetime
+
+    class ReceivedRequestItemSchema(BaseModel):
+        id: int
+        requestor_id: int
+        status: str
+        created_at: datetime
+
+    class DetailsSchema(BaseModel):
+        sent_requests: List["GuarantorRelationshipsSchema.SentRequestItemSchema"]
+        received_requests: List["GuarantorRelationshipsSchema.ReceivedRequestItemSchema"]
+        my_clients: List[GuarantorRelationshipItemSchema]
+        my_guarantors: List[GuarantorRelationshipItemSchema]
+
+    summary: SummarySchema
+    details: DetailsSchema
+
+
+class GuarantorInfoSchema(BaseModel):
+    title: str
+    description: str
+    details: List[str]

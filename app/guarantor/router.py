@@ -18,14 +18,20 @@ from app.guarantor.schemas import (
     ContractFileSchema,
     SimpleGuarantorSchema,
     SimpleClientSchema,
-    IncomingRequestSchema
+    IncomingRequestSchema,
+    InviteGuarantorResponseSchema,
+    AcceptGuarantorResponseSchema,
+    MessageResponseSchema,
+    LinkPendingRequestsResponseSchema,
+    GuarantorRelationshipsSchema,
+    GuarantorInfoSchema
 )
 from app.guarantor.sms_utils import send_guarantor_invitation_sms
 
 guarantor_router = APIRouter(prefix="/guarantor", tags=["Guarantor"])
 
 
-@guarantor_router.post("/invite", response_model=dict)
+@guarantor_router.post("/invite", response_model=InviteGuarantorResponseSchema)
 async def invite_guarantor(
     request_data: GuarantorRequestCreateSchema,
     current_user: User = Depends(get_current_user),
@@ -109,7 +115,7 @@ async def invite_guarantor(
     }
 
 
-@guarantor_router.post("/{id}/accept")
+@guarantor_router.post("/{id}/accept", response_model=AcceptGuarantorResponseSchema)
 async def accept_guarantor_request(
     id: int,
     current_user: User = Depends(get_current_user),
@@ -151,7 +157,7 @@ async def accept_guarantor_request(
     }
 
 
-@guarantor_router.post("/{id}/reject")
+@guarantor_router.post("/{id}/reject", response_model=MessageResponseSchema)
 async def reject_guarantor_request(
     id: int,
     current_user: User = Depends(get_current_user),
@@ -300,7 +306,7 @@ async def get_contracts(
     )
 
 
-@guarantor_router.post("/link-pending-requests")
+@guarantor_router.post("/link-pending-requests", response_model=LinkPendingRequestsResponseSchema)
 async def link_pending_requests(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -331,7 +337,7 @@ async def link_pending_requests(
     }
 
 
-@guarantor_router.get("/relationships")
+@guarantor_router.get("/relationships", response_model=GuarantorRelationshipsSchema)
 async def get_guarantor_relationships(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -408,7 +414,7 @@ async def get_guarantor_relationships(
     }
 
 
-@guarantor_router.get("/info")
+@guarantor_router.get("/info", response_model=GuarantorInfoSchema)
 async def get_guarantor_info():
     """Информация о функции гаранта (для кнопки '?')"""
     return {
