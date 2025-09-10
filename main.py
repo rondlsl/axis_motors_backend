@@ -50,6 +50,10 @@ app = FastAPI(
 scheduler = AsyncIOScheduler()
 
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
+# Создаем папку contracts если не существует
+import os
+os.makedirs("contracts", exist_ok=True)
 app.mount("/contracts", StaticFiles(directory="contracts"), name="contracts")
 
 
