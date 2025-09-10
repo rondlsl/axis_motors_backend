@@ -116,13 +116,12 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
     access_token = create_access_token(data={"sub": user.phone_number})
     refresh_token = create_refresh_token(data={"sub": user.phone_number})
 
-    # Автоматически связываем ожидающие заявки гаранта и присваиваем роль
+    # Связываем ожидающие заявки гаранта с пользователем (БЕЗ автоматического принятия)
     try:
-        from app.models.guarantor_model import GuarantorRequest, GuarantorRequestStatus, Guarantor
-        from app.models.user_model import UserRole
+        from app.models.guarantor_model import GuarantorRequest, GuarantorRequestStatus
         from datetime import datetime
         
-        # 1. Ищем заявки с этим номером телефона где guarantor_id = NULL
+        # Ищем заявки с этим номером телефона где guarantor_id = NULL
         pending_requests = db.query(GuarantorRequest).filter(
             GuarantorRequest.guarantor_phone == user.phone_number,
             GuarantorRequest.guarantor_id.is_(None),
@@ -131,39 +130,16 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
         
         linked_count = 0
         for request in pending_requests:
-            # Связываем заявку с пользователем
+            # Только связываем заявку с пользователем, НЕ принимаем автоматически
             request.guarantor_id = user.id
-            
-            # Автоматически принимаем заявку (регистрация = согласие)
-            request.status = GuarantorRequestStatus.ACCEPTED
-            request.responded_at = datetime.utcnow()
-            
-            # Создаем активную связь в таблице guarantors
-            guarantor_relationship = Guarantor(
-                guarantor_id=user.id,
-                client_id=request.requestor_id,
-                request_id=request.id,
-                contract_signed=False,
-                sublease_contract_signed=False,
-                is_active=True,
-                created_at=datetime.utcnow()
-            )
-            db.add(guarantor_relationship)
-            
             linked_count += 1
         
-        # 2. Если есть заявки с этим номером, присваиваем роль GARANT
-        role_changed = False
-        if linked_count > 0 and user.role != UserRole.GARANT:
-            user.role = UserRole.GARANT
-            role_changed = True
-        
-        # 3. Сохраняем изменения
+        # Сохраняем изменения
         if linked_count > 0:
             db.commit()
             
     except Exception as e:
-        print(f"Ошибка при обработке заявок гарантов: {e}")
+        print(f"Ошибка при связывании заявок гарантов: {e}")
         # Продолжаем выполнение без обработки гарантов
         linked_count = 0
 

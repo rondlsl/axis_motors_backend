@@ -13,7 +13,7 @@ class GuarantorRequestStatusSchema(str, Enum):
 
 class ErrorResponseSchema(BaseModel):
     """Унифицированный ответ об ошибке для Swagger"""
-    detail: str
+    detail: str = Field(..., description="Описание ошибки", example="Пользователь не найден")
 
 
 class VerificationStatusSchema(str, Enum):
@@ -30,8 +30,8 @@ class AutoClassSchema(str, Enum):
 
 class GuarantorInfoSchema(BaseModel):
     """Схема для указания данных гаранта"""
-    full_name: str
-    phone_number: str
+    full_name: str = Field(..., description="Полное ФИО гаранта", example="Кайрат Нуртас", min_length=2, max_length=100)
+    phone_number: str = Field(..., description="Номер телефона гаранта (только цифры)", example="7777654321", min_length=10, max_length=15)
 
     @field_validator('phone_number')
     @classmethod
@@ -56,14 +56,14 @@ class GuarantorInfoSchema(BaseModel):
 
 class GuarantorRequestCreateSchema(BaseModel):
     """Схема для создания заявки на гаранта"""
-    guarantor_info: GuarantorInfoSchema
-    reason: Optional[str] = None  # Причина отказа в регистрации
+    guarantor_info: GuarantorInfoSchema = Field(..., description="Информация о гаранте")
+    reason: Optional[str] = Field(None, description="Причина запроса гаранта", example="Нужен гарант для аренды автомобиля", max_length=500)
 
 
 class GuarantorRequestResponseSchema(BaseModel):
     """Ответ на заявку гаранта"""
-    accept: bool
-    rejection_reason: Optional[str] = None
+    accept: bool = Field(..., description="Принять заявку", example=True)
+    rejection_reason: Optional[str] = Field(None, description="Причина отклонения (если accept=false)", example="Не могу быть гарантом", max_length=500)
 
 
 class GuarantorRequestSchema(BaseModel):
@@ -189,60 +189,61 @@ class UserEligibilityResultSchema(BaseModel):
 
 class SimpleGuarantorSchema(BaseModel):
     """Упрощенная схема для активного гаранта"""
-    id: int
-    name: str
-    phone: str
-    contract_signed: bool
-    sublease_contract_signed: bool
-    created_at: datetime
+    id: int = Field(..., description="ID связи гарант-клиент", example=1)
+    name: str = Field(..., description="Имя гаранта", example="Анна Смирнова")
+    phone: str = Field(..., description="Номер телефона гаранта", example="7777654321")
+    contract_signed: bool = Field(..., description="Подписан ли договор гаранта", example=True)
+    sublease_contract_signed: bool = Field(..., description="Подписан ли договор субаренды", example=False)
+    created_at: datetime = Field(..., description="Дата создания связи", example="2024-01-15T10:30:00Z")
 
 
 class SimpleClientSchema(BaseModel):
     """Упрощенная схема для клиента"""
-    id: int
-    name: str
-    phone: str
-    contract_signed: bool
-    sublease_contract_signed: bool
-    created_at: datetime
+    id: int = Field(..., description="ID связи гарант-клиент", example=1)
+    name: str = Field(..., description="Имя клиента", example="Петр Иванов")
+    phone: str = Field(..., description="Номер телефона клиента", example="7771234567")
+    contract_signed: bool = Field(..., description="Подписан ли договор гаранта", example=True)
+    sublease_contract_signed: bool = Field(..., description="Подписан ли договор субаренды", example=True)
+    created_at: datetime = Field(..., description="Дата создания связи", example="2024-01-15T10:30:00Z")
 
 
 class IncomingRequestSchema(BaseModel):
     """Схема входящей заявки для 'Я гарант'"""
-    id: int
-    requestor_name: str
-    requestor_phone: str
-    reason: Optional[str]
-    created_at: datetime
+    id: int = Field(..., description="ID заявки", example=123)
+    requestor_id: int = Field(..., description="ID пользователя, который просит быть гарантом", example=456)
+    requestor_name: str = Field(..., description="Имя пользователя", example="Иван Петров")
+    requestor_phone: str = Field(..., description="Номер телефона пользователя", example="7771234567")
+    reason: Optional[str] = Field(None, description="Причина запроса гаранта", example="Нужен гарант для аренды авто")
+    created_at: datetime = Field(..., description="Дата создания заявки", example="2024-01-15T10:30:00Z")
 
 
 class AdminApproveGuarantorSchema(BaseModel):
     """Схема для одобрения заявки гаранта администратором"""
-    auto_classes: List[AutoClassSchema]  # Классы авто которые можно присвоить клиенту
-    admin_notes: Optional[str] = None
+    auto_classes: List[AutoClassSchema] = Field(..., description="Классы авто которые можно присвоить клиенту")
+    admin_notes: Optional[str] = Field(None, description="Заметки администратора", example="Одобрено после проверки документов")
 
 
 class AdminRejectGuarantorSchema(BaseModel):
     """Схема для отклонения заявки гаранта администратором"""
-    admin_notes: str  # Причина отклонения
+    admin_notes: str = Field(..., description="Причина отклонения", example="Не подходит по возрасту", min_length=10, max_length=500)
 
 
 class GuarantorRequestAdminSchema(BaseModel):
     """Схема заявки гаранта для администратора"""
-    id: int
-    requestor_id: int
-    requestor_name: Optional[str]
-    requestor_phone: str
-    guarantor_id: Optional[int]
-    guarantor_name: Optional[str]
-    guarantor_phone: Optional[str]
-    status: GuarantorRequestStatusSchema
-    verification_status: VerificationStatusSchema
-    reason: Optional[str]
-    admin_notes: Optional[str]
-    created_at: datetime
-    responded_at: Optional[datetime]
-    verified_at: Optional[datetime]
+    id: int = Field(..., description="ID заявки", example=123)
+    requestor_id: int = Field(..., description="ID запрашивающего", example=456)
+    requestor_name: Optional[str] = Field(None, description="Имя запрашивающего", example="Петр Иванов")
+    requestor_phone: str = Field(..., description="Номер телефона запрашивающего", example="7771234567")
+    guarantor_id: Optional[int] = Field(None, description="ID гаранта", example=789)
+    guarantor_name: Optional[str] = Field(None, description="Имя гаранта", example="Анна Смирнова")
+    guarantor_phone: Optional[str] = Field(None, description="Номер телефона гаранта", example="7777654321")
+    status: GuarantorRequestStatusSchema = Field(..., description="Статус заявки")
+    verification_status: VerificationStatusSchema = Field(..., description="Статус верификации")
+    reason: Optional[str] = Field(None, description="Причина запроса", example="Нужен гарант для аренды")
+    admin_notes: Optional[str] = Field(None, description="Заметки администратора", example="Требует дополнительной проверки")
+    created_at: datetime = Field(..., description="Дата создания", example="2024-01-15T10:30:00Z")
+    responded_at: Optional[datetime] = Field(None, description="Дата ответа", example="2024-01-15T11:30:00Z")
+    verified_at: Optional[datetime] = Field(None, description="Дата верификации", example="2024-01-15T12:00:00Z")
 
     class Config:
         from_attributes = True
@@ -251,70 +252,70 @@ class GuarantorRequestAdminSchema(BaseModel):
 # ===== Detailed response schemas for Swagger =====
 
 class InviteGuarantorResponseSchema(BaseModel):
-    message: str
-    user_exists: bool
-    request_id: int
-    sms_result: Optional[dict] = None
-    guarantor_name: Optional[str] = None
+    message: str = Field(..., description="Сообщение о результате", example="Заявка на гаранта создана успешно")
+    user_exists: bool = Field(..., description="Существует ли пользователь в системе", example=True)
+    request_id: int = Field(..., description="ID созданной заявки", example=123)
+    sms_result: Optional[dict] = Field(None, description="Результат отправки SMS", example={"status": "sent", "message_id": "12345"})
+    guarantor_name: Optional[str] = Field(None, description="Имя гаранта (если пользователь существует)", example="Анна Смирнова")
 
 
 class AcceptGuarantorResponseSchema(BaseModel):
-    message: str
-    guarantor_relationship_id: int
+    message: str = Field(..., description="Сообщение о результате", example="Заявка принята. Теперь вам необходимо подписать договор гаранта.")
+    guarantor_relationship_id: int = Field(..., description="ID созданной связи гарант-клиент", example=1)
 
 
 class MessageResponseSchema(BaseModel):
-    message: str
+    message: str = Field(..., description="Сообщение о результате операции", example="Операция выполнена успешно")
 
 
 class LinkPendingRequestsResponseSchema(BaseModel):
-    message: str
-    linked_requests: int
+    message: str = Field(..., description="Сообщение о результате", example="Связано 2 заявки с вашим номером телефона")
+    linked_requests: int = Field(..., description="Количество связанных заявок", example=2)
 
 
 class GuarantorRelationshipItemSchema(BaseModel):
-    id: int
-    created_at: datetime
-    contract_signed: bool
-    client_id: Optional[int] = None
-    guarantor_id: Optional[int] = None
+    id: int = Field(..., description="ID связи гарант-клиент", example=1)
+    created_at: datetime = Field(..., description="Дата создания связи", example="2024-01-15T10:30:00Z")
+    contract_signed: bool = Field(..., description="Подписан ли договор гаранта", example=True)
+    client_id: Optional[int] = Field(None, description="ID клиента", example=123)
+    guarantor_id: Optional[int] = Field(None, description="ID гаранта", example=456)
 
 
 class GuarantorRelationshipsSchema(BaseModel):
-    user_id: int
-    user_phone: str
+    user_id: int = Field(..., description="ID текущего пользователя", example=123)
+    user_phone: str = Field(..., description="Номер телефона текущего пользователя", example="7771234567")
 
     class SummarySchema(BaseModel):
-        requests_sent: int
-        requests_received: int
-        active_clients: int
-        active_guarantors: int
+        requests_sent: int = Field(..., description="Количество отправленных заявок", example=2)
+        requests_received: int = Field(..., description="Количество полученных заявок", example=1)
+        active_clients: int = Field(..., description="Количество активных клиентов", example=1)
+        active_guarantors: int = Field(..., description="Количество активных гарантов", example=1)
 
     class SentRequestItemSchema(BaseModel):
-        id: int
-        guarantor_phone: Optional[str] = None
-        guarantor_name: Optional[str] = None
-        guarantor_id: Optional[int] = None
-        status: str
-        created_at: datetime
+        id: int = Field(..., description="ID заявки", example=123)
+        guarantor_phone: Optional[str] = Field(None, description="Номер телефона гаранта", example="7777654321")
+        guarantor_name: Optional[str] = Field(None, description="Имя гаранта", example="Анна Смирнова")
+        guarantor_id: Optional[int] = Field(None, description="ID гаранта", example=456)
+        status: str = Field(..., description="Статус заявки", example="pending")
+        created_at: datetime = Field(..., description="Дата создания заявки", example="2024-01-15T10:30:00Z")
 
     class ReceivedRequestItemSchema(BaseModel):
-        id: int
-        requestor_id: int
-        status: str
-        created_at: datetime
+        id: int = Field(..., description="ID заявки", example=124)
+        requestor_id: int = Field(..., description="ID запрашивающего", example=789)
+        status: str = Field(..., description="Статус заявки", example="accepted")
+        created_at: datetime = Field(..., description="Дата создания заявки", example="2024-01-15T10:30:00Z")
 
     class DetailsSchema(BaseModel):
-        sent_requests: List["GuarantorRelationshipsSchema.SentRequestItemSchema"]
-        received_requests: List["GuarantorRelationshipsSchema.ReceivedRequestItemSchema"]
-        my_clients: List[GuarantorRelationshipItemSchema]
-        my_guarantors: List[GuarantorRelationshipItemSchema]
+        sent_requests: List["GuarantorRelationshipsSchema.SentRequestItemSchema"] = Field(..., description="Отправленные заявки")
+        received_requests: List["GuarantorRelationshipsSchema.ReceivedRequestItemSchema"] = Field(..., description="Полученные заявки")
+        my_clients: List[GuarantorRelationshipItemSchema] = Field(..., description="Мои клиенты")
+        my_guarantors: List[GuarantorRelationshipItemSchema] = Field(..., description="Мои гаранты")
 
-    summary: SummarySchema
-    details: DetailsSchema
+    summary: SummarySchema = Field(..., description="Сводная статистика")
+    details: DetailsSchema = Field(..., description="Детальная информация")
 
 
 class GuarantorInfoSchema(BaseModel):
-    title: str
-    description: str
-    details: List[str]
+    title: str = Field(..., description="Заголовок", example="Что такое Гарант?")
+    description: str = Field(..., description="Описание", example="Гарант — лицо, которое в случае ДТП несёт материальную ответственность")
+    details: List[str] = Field(..., description="Детальная информация", example=["Гарант - это человек, который берет на себя материальную ответственность за ваши действия"])

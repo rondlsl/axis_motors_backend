@@ -161,6 +161,19 @@ async def accept_guarantor_request(
             detail="Заявка не найдена или вы не имеете права на неё отвечать"
         )
     
+    # Проверяем, нет ли уже активной связи между этими пользователями
+    existing_relationship = db.query(Guarantor).filter(
+        Guarantor.guarantor_id == current_user.id,
+        Guarantor.client_id == guarantor_request.requestor_id,
+        Guarantor.is_active == True
+    ).first()
+    
+    if existing_relationship:
+        raise HTTPException(
+            status_code=409,
+            detail="У вас уже есть активная связь с этим пользователем"
+        )
+    
     # Обновляем статус заявки
     guarantor_request.status = GuarantorRequestStatus.ACCEPTED
     guarantor_request.responded_at = datetime.utcnow()
@@ -263,7 +276,7 @@ async def get_incoming_requests(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """«Я гарант»: входящие заявки"""
+    """«Я гарант»: входящие заявки на роль гаранта"""
     
     # Заявки, где меня просят быть гарантом и которые ещё не обработаны
     incoming_requests = db.query(GuarantorRequest).filter(
@@ -277,6 +290,7 @@ async def get_incoming_requests(
         if requestor:
             result.append(IncomingRequestSchema(
                 id=request.id,
+                requestor_id=request.requestor_id,
                 requestor_name=requestor.full_name or requestor.phone_number,
                 requestor_phone=requestor.phone_number,
                 reason=request.reason,
@@ -717,7 +731,7 @@ async def sign_contract(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Подписание договора (только гарант)"""
+    """Подписание договора (только для принятых заявок)"""
     
     # Находим активную связь где пользователь является гарантом
     relationship = db.query(Guarantor).filter(
@@ -728,7 +742,19 @@ async def sign_contract(
     if not relationship:
         raise HTTPException(
             status_code=404,
-            detail="Вы не являетесь активным гарантом"
+            detail="Вы не являетесь активным гарантом. Сначала примите заявку."
+        )
+    
+    # Проверяем, что заявка была принята
+    original_request = db.query(GuarantorRequest).filter(
+        GuarantorRequest.id == relationship.request_id,
+        GuarantorRequest.status == GuarantorRequestStatus.ACCEPTED
+    ).first()
+    
+    if not original_request:
+        raise HTTPException(
+            status_code=400,
+            detail="Заявка не была принята. Сначала примите заявку на роль гаранта."
         )
     
     # Обновляем статус подписания в таблице guarantors
