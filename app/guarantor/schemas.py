@@ -128,7 +128,6 @@ class UserGuarantorInfoSchema(BaseModel):
 class ContractSignSchema(BaseModel):
     """Схема для подписания договора"""
     contract_type: str = Field(..., description="Тип договора для подписания", example="guarantor", enum=["guarantor", "sublease"])
-    guarantor_relationship_id: int = Field(..., description="ID связи гарант-клиент", example=1)
 
 
 class ContractUploadSchema(BaseModel):

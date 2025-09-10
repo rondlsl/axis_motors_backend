@@ -719,23 +719,16 @@ async def sign_contract(
 ):
     """Подписание договора (только гарант)"""
     
-    # Находим связь гарант-клиент
+    # Находим активную связь где пользователь является гарантом
     relationship = db.query(Guarantor).filter(
-        Guarantor.id == sign_data.guarantor_relationship_id,
+        Guarantor.guarantor_id == current_user.id,
         Guarantor.is_active == True
     ).first()
     
     if not relationship:
         raise HTTPException(
             status_code=404,
-            detail="Связь гарант-клиент не найдена"
-        )
-    
-    # Проверяем, что пользователь является гарантом в этой связи
-    if current_user.id != relationship.guarantor_id:
-        raise HTTPException(
-            status_code=403,
-            detail="Только гарант может подписать договор"
+            detail="Вы не являетесь активным гарантом"
         )
     
     # Обновляем статус подписания в таблице guarantors
