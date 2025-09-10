@@ -425,14 +425,14 @@ async def upload_contract(
     
     try:
         # Декодируем base64
-        file_content = base64.b64decode(contract_data.file_content_base64)
+        file_content = base64.b64decode(contract_data.file_content)
         
         # Создаем папку для договоров если не существует
         contracts_dir = "contracts"
         os.makedirs(contracts_dir, exist_ok=True)
         
-        # Генерируем уникальное имя файла
-        file_extension = os.path.splitext(contract_data.file_name)[1]
+        # Генерируем случайное имя файла
+        file_extension = ".pdf"  # По умолчанию PDF
         unique_filename = f"{contract_data.contract_type}_{uuid.uuid4()}{file_extension}"
         file_path = os.path.join(contracts_dir, unique_filename)
         
@@ -452,7 +452,7 @@ async def upload_contract(
         # Создаем новую запись в БД
         new_contract = ContractFile(
             contract_type=contract_data.contract_type,
-            file_name=contract_data.file_name,
+            file_name=unique_filename,
             file_path=file_path,
             is_active=True
         )
@@ -481,7 +481,7 @@ async def upload_contract(
                         "id": 1,
                         "contract_type": "guarantor",
                         "file_name": "guarantor_contract.pdf",
-                        "file_content_base64": "JVBERi0xLjQKJcfsj6IKNSAwIG9iago8PAovVHlwZSAvUGFnZQovUGFyZW50IDMgMCBSCi9SZXNvdXJjZXMgPDwKL0ZvbnQgPDwKL0YxIDIgMCBSCj4+Cj4+Ci9NZWRpYUJveCBbMCAwIDU5NSA4NDJdCi9Db250ZW50cyA0IDAgUgo+PgplbmRvYmoK",
+                        "file_content": "JVBERi0xLjQKJcfsj6IKNSAwIG9iago8PAovVHlwZSAvUGFnZQovUGFyZW50IDMgMCBSCi9SZXNvdXJjZXMgPDwKL0ZvbnQgPDwKL0YxIDIgMCBSCj4+Cj4+Ci9NZWRpYUJveCBbMCAwIDU5NSA4NDJdCi9Db250ZW50cyA0IDAgUgo+PgplbmRvYmoK",
                         "uploaded_at": "2024-01-15T10:30:00Z",
                         "is_active": True
                     }
@@ -536,7 +536,7 @@ async def get_guarantor_contract(
             id=contract.id,
             contract_type=contract.contract_type,
             file_name=contract.file_name,
-            file_content_base64=file_content_base64,
+            file_content=file_content_base64,
             uploaded_at=contract.uploaded_at,
             is_active=contract.is_active
         )
@@ -560,7 +560,7 @@ async def get_guarantor_contract(
                         "id": 2,
                         "contract_type": "sublease",
                         "file_name": "sublease_contract.pdf",
-                        "file_content_base64": "JVBERi0xLjQKJcfsj6IKNSAwIG9iago8PAovVHlwZSAvUGFnZQovUGFyZW50IDMgMCBSCi9SZXNvdXJjZXMgPDwKL0ZvbnQgPDwKL0YxIDIgMCBSCj4+Cj4+Ci9NZWRpYUJveCBbMCAwIDU5NSA4NDJdCi9Db250ZW50cyA0IDAgUgo+PgplbmRvYmoK",
+                        "file_content": "JVBERi0xLjQKJcfsj6IKNSAwIG9iago8PAovVHlwZSAvUGFnZQovUGFyZW50IDMgMCBSCi9SZXNvdXJjZXMgPDwKL0ZvbnQgPDwKL0YxIDIgMCBSCj4+Cj4+Ci9NZWRpYUJveCBbMCAwIDU5NSA4NDJdCi9Db250ZW50cyA0IDAgUgo+PgplbmRvYmoK",
                         "uploaded_at": "2024-01-15T10:30:00Z",
                         "is_active": True
                     }
@@ -615,7 +615,7 @@ async def get_sublease_contract(
             id=contract.id,
             contract_type=contract.contract_type,
             file_name=contract.file_name,
-            file_content_base64=file_content_base64,
+            file_content=file_content_base64,
             uploaded_at=contract.uploaded_at,
             is_active=contract.is_active
         )
@@ -803,7 +803,7 @@ async def get_pending_verification_requests(
     return result
 
 
-@guarantor_router.get("/relationships", response_model=GuarantorRelationshipsSchema)
+@guarantor_router.get("/dashboard", response_model=GuarantorRelationshipsSchema)
 async def get_guarantor_relationships(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)

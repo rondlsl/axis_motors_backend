@@ -134,8 +134,7 @@ class ContractSignSchema(BaseModel):
 class ContractUploadSchema(BaseModel):
     """Схема для загрузки договора (только админ)"""
     contract_type: str = Field(..., description="Тип договора: 'guarantor' или 'sublease'", example="guarantor")
-    file_name: str = Field(..., description="Имя файла с расширением", example="guarantor_contract.pdf")
-    file_content_base64: str = Field(..., description="Содержимое файла в формате base64", example="JVBERi0xLjQKJcfsj6IKNSAwIG9iago8PAovVHlwZSAvUGFnZQovUGFyZW50IDMgMCBSCi9SZXNvdXJjZXMgPDwKL0ZvbnQgPDwKL0YxIDIgMCBSCj4+Cj4+Ci9NZWRpYUJveCBbMCAwIDU5NSA4NDJdCi9Db250ZW50cyA0IDAgUgo+PgplbmRvYmoK")
+    file_content: str = Field(..., description="Содержимое файла в формате base64", example="JVBERi0xLjQKJcfsj6IKNSAwIG9iago8PAovVHlwZSAvUGFnZQovUGFyZW50IDMgMCBSCi9SZXNvdXJjZXMgPDwKL0ZvbnQgPDwKL0YxIDIgMCBSCj4+Cj4+Ci9NZWRpYUJveCBbMCAwIDU5NSA4NDJdCi9Db250ZW50cyA0IDAgUgo+PgplbmRvYmoK")
 
 
 class ContractDownloadSchema(BaseModel):
@@ -143,7 +142,7 @@ class ContractDownloadSchema(BaseModel):
     id: int = Field(..., description="ID договора", example=1)
     contract_type: str = Field(..., description="Тип договора", example="guarantor")
     file_name: str = Field(..., description="Имя файла", example="guarantor_contract.pdf")
-    file_content_base64: str = Field(..., description="Содержимое файла в base64", example="JVBERi0xLjQKJcfsj6IKNSAwIG9iago8PAovVHlwZSAvUGFnZQovUGFyZW50IDMgMCBSCi9SZXNvdXJjZXMgPDwKL0ZvbnQgPDwKL0YxIDIgMCBSCj4+Cj4+Ci9NZWRpYUJveCBbMCAwIDU5NSA4NDJdCi9Db250ZW50cyA0IDAgUgo+PgplbmRvYmoK")
+    file_content: str = Field(..., description="Содержимое файла в base64", example="JVBERi0xLjQKJcfsj6IKNSAwIG9iago8PAovVHlwZSAvUGFnZQovUGFyZW50IDMgMCBSCi9SZXNvdXJjZXMgPDwKL0ZvbnQgPDwKL0YxIDIgMCBSCj4+Cj4+Ci9NZWRpYUJveCBbMCAwIDU5NSA4NDJdCi9Db250ZW50cyA0IDAgUgo+PgplbmRvYmoK")
     uploaded_at: datetime = Field(..., description="Дата загрузки", example="2024-01-15T10:30:00Z")
     is_active: bool = Field(..., description="Активен ли договор", example=True)
 
