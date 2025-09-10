@@ -11,6 +11,11 @@ class GuarantorRequestStatusSchema(str, Enum):
     EXPIRED = "expired"
 
 
+class ErrorResponseSchema(BaseModel):
+    """Унифицированный ответ об ошибке для Swagger"""
+    detail: str
+
+
 class VerificationStatusSchema(str, Enum):
     NOT_VERIFIED = "not_verified"
     VERIFIED = "verified"

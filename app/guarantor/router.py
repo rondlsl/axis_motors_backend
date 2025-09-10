@@ -24,14 +24,24 @@ from app.guarantor.schemas import (
     MessageResponseSchema,
     LinkPendingRequestsResponseSchema,
     GuarantorRelationshipsSchema,
-    GuarantorInfoSchema
+    GuarantorInfoSchema,
+    ErrorResponseSchema
 )
 from app.guarantor.sms_utils import send_guarantor_invitation_sms
 
 guarantor_router = APIRouter(prefix="/guarantor", tags=["Guarantor"])
 
 
-@guarantor_router.post("/invite", response_model=InviteGuarantorResponseSchema)
+@guarantor_router.post(
+    "/invite",
+    response_model=InviteGuarantorResponseSchema,
+    responses={
+        400: {"model": ErrorResponseSchema, "description": "Validation error"},
+        401: {"model": ErrorResponseSchema, "description": "Not authenticated"},
+        403: {"model": ErrorResponseSchema, "description": "Forbidden"},
+        500: {"model": ErrorResponseSchema, "description": "Internal Server Error"},
+    },
+)
 async def invite_guarantor(
     request_data: GuarantorRequestCreateSchema,
     current_user: User = Depends(get_current_user),
@@ -115,7 +125,16 @@ async def invite_guarantor(
     }
 
 
-@guarantor_router.post("/{id}/accept", response_model=AcceptGuarantorResponseSchema)
+@guarantor_router.post(
+    "/{id}/accept",
+    response_model=AcceptGuarantorResponseSchema,
+    responses={
+        401: {"model": ErrorResponseSchema},
+        403: {"model": ErrorResponseSchema},
+        404: {"model": ErrorResponseSchema},
+        409: {"model": ErrorResponseSchema},
+    },
+)
 async def accept_guarantor_request(
     id: int,
     current_user: User = Depends(get_current_user),
@@ -157,7 +176,15 @@ async def accept_guarantor_request(
     }
 
 
-@guarantor_router.post("/{id}/reject", response_model=MessageResponseSchema)
+@guarantor_router.post(
+    "/{id}/reject",
+    response_model=MessageResponseSchema,
+    responses={
+        401: {"model": ErrorResponseSchema},
+        403: {"model": ErrorResponseSchema},
+        404: {"model": ErrorResponseSchema},
+    },
+)
 async def reject_guarantor_request(
     id: int,
     current_user: User = Depends(get_current_user),
@@ -187,7 +214,11 @@ async def reject_guarantor_request(
     return {"message": "Заявка отклонена."}
 
 
-@guarantor_router.get("/my_guarantors", response_model=List[SimpleGuarantorSchema])
+@guarantor_router.get(
+    "/my_guarantors",
+    response_model=List[SimpleGuarantorSchema],
+    responses={401: {"model": ErrorResponseSchema}},
+)
 async def get_my_guarantors(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -216,7 +247,11 @@ async def get_my_guarantors(
     return result
 
 
-@guarantor_router.get("/incoming", response_model=List[IncomingRequestSchema])
+@guarantor_router.get(
+    "/incoming",
+    response_model=List[IncomingRequestSchema],
+    responses={401: {"model": ErrorResponseSchema}},
+)
 async def get_incoming_requests(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -244,7 +279,11 @@ async def get_incoming_requests(
     return result
 
 
-@guarantor_router.get("/my_clients", response_model=List[SimpleClientSchema])
+@guarantor_router.get(
+    "/my_clients",
+    response_model=List[SimpleClientSchema],
+    responses={401: {"model": ErrorResponseSchema}},
+)
 async def get_my_clients(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -273,7 +312,11 @@ async def get_my_clients(
     return result
 
 
-@guarantor_router.get("/contracts", response_model=ContractListSchema)
+@guarantor_router.get(
+    "/contracts",
+    response_model=ContractListSchema,
+    responses={401: {"model": ErrorResponseSchema}},
+)
 async def get_contracts(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
