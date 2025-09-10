@@ -783,11 +783,11 @@ async def sign_contract(
     return {"message": f"Договор {sign_data.contract_type} успешно подписан"}
 
 @guarantor_router.get(
-    "/admin/pending_verification",
+    "/admin/guarantor_requests",
     response_model=List[GuarantorRequestAdminSchema],
     responses={401: {"model": ErrorResponseSchema}, 403: {"model": ErrorResponseSchema}},
 )
-async def get_pending_verification_requests(
+async def get_guarantor_requests(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
