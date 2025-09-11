@@ -254,10 +254,12 @@ async def get_my_guarantors(
     for relationship in guarantor_relationships:
         guarantor_user = db.query(User).filter(User.id == relationship.guarantor_id).first()
         if guarantor_user:
+            # Имя приоритезируем так: из заявки (guarantor_requests.guarantor_name),
+            # затем из users.full_name, иначе null
             guarantor_name = relationship.original_request.guarantor_name if relationship.original_request else None
             result.append(SimpleGuarantorSchema(
                 id=relationship.id,
-                name=guarantor_name or guarantor_user.full_name or guarantor_user.phone_number,
+                name=guarantor_name or guarantor_user.full_name,
                 phone=guarantor_user.phone_number,
                 contract_signed=relationship.contract_signed,
                 sublease_contract_signed=relationship.sublease_contract_signed,
@@ -483,8 +485,8 @@ async def upload_contract(
         old_contracts = db.query(ContractFile).filter(
             ContractFile.contract_type == contract_data.contract_type,
             ContractFile.is_active == True
-        ).all()
-        
+    ).all()
+    
         for old_contract in old_contracts:
             old_contract.is_active = False
         
@@ -498,7 +500,7 @@ async def upload_contract(
         
         db.add(new_contract)
         db.commit()
-        
+    
         return {"message": f"Договор {contract_data.contract_type} успешно загружен"}
         
     except Exception as e:

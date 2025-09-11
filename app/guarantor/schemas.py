@@ -190,7 +190,7 @@ class UserEligibilityResultSchema(BaseModel):
 class SimpleGuarantorSchema(BaseModel):
     """Упрощенная схема для активного гаранта"""
     id: int = Field(..., description="ID связи гарант-клиент", example=1)
-    name: str = Field(..., description="Имя гаранта", example="Анна Смирнова")
+    name: Optional[str] = Field(None, description="Имя гаранта (может быть null, если нет в заявке и профиле)")
     phone: str = Field(..., description="Номер телефона гаранта", example="7777654321")
     contract_signed: bool = Field(..., description="Подписан ли договор гаранта", example=True)
     sublease_contract_signed: bool = Field(..., description="Подписан ли договор субаренды", example=False)
