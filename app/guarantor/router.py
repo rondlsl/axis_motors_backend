@@ -31,7 +31,10 @@ from app.guarantor.schemas import (
     GuarantorRelationshipsSchema,
     GuarantorInfoSchema,
     ErrorResponseSchema,
-    GuarantorRequestAdminSchema
+    GuarantorRequestAdminSchema,
+    ClientGuarantorRequestsResponseSchema,
+    ClientGuarantorRequestItemSchema,
+    VerificationStatusSchema
 )
 from app.guarantor.sms_utils import send_guarantor_invitation_sms
 
@@ -267,6 +270,52 @@ async def get_my_guarantors(
             ))
     
     return result
+
+
+@guarantor_router.get(
+    "/my_guarantor_requests",
+    response_model=ClientGuarantorRequestsResponseSchema,
+    responses={401: {"model": ErrorResponseSchema}},
+)
+async def get_my_guarantor_requests(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Мои заявки гарантов (от лица клиента) со статусами"""
+    requests = db.query(GuarantorRequest).filter(
+        GuarantorRequest.requestor_id == current_user.id
+    ).all()
+
+    items: list[ClientGuarantorRequestItemSchema] = []
+    for req in requests:
+        guarantor_name: str | None = req.guarantor_name
+        guarantor_phone: str | None = req.guarantor_phone
+
+        if req.guarantor_id:
+            g_user = db.query(User).filter(User.id == req.guarantor_id).first()
+            if g_user:
+                # Если в заявке нет имени, берём из профиля
+                guarantor_name = guarantor_name or g_user.full_name
+                guarantor_phone = guarantor_phone or g_user.phone_number
+
+        items.append(ClientGuarantorRequestItemSchema(
+            id=req.id,
+            guarantor_id=req.guarantor_id,
+            guarantor_name=guarantor_name,
+            guarantor_phone=guarantor_phone,
+            status=req.status,
+            verification_status=VerificationStatusSchema(req.verification_status) if isinstance(req.verification_status, str) else req.verification_status,
+            reason=req.reason,
+            admin_notes=req.admin_notes,
+            created_at=req.created_at,
+            responded_at=req.responded_at,
+            verified_at=req.verified_at
+        ))
+
+    return {
+        "total": len(items),
+        "items": items
+    }
 
 
 @guarantor_router.get(

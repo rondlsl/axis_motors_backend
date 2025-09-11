@@ -54,6 +54,27 @@ class GuarantorInfoSchema(BaseModel):
         return v.strip()
 
 
+class ClientGuarantorRequestItemSchema(BaseModel):
+    """Список заявок клиента с детальным статусом"""
+    id: int = Field(..., description="ID заявки")
+    guarantor_id: Optional[int] = Field(None, description="ID гаранта, если зарегистрирован")
+    guarantor_name: Optional[str] = Field(None, description="Имя гаранта из заявки или профиля")
+    guarantor_phone: Optional[str] = Field(None, description="Телефон гаранта")
+    status: GuarantorRequestStatusSchema = Field(..., description="Статус заявки")
+    verification_status: VerificationStatusSchema = Field(..., description="Статус проверки администратором")
+    reason: Optional[str] = Field(None, description="Причина запроса")
+    admin_notes: Optional[str] = Field(None, description="Заметки администратора")
+    created_at: datetime = Field(..., description="Дата создания")
+    responded_at: Optional[datetime] = Field(None, description="Дата ответа гаранта")
+    verified_at: Optional[datetime] = Field(None, description="Дата проверки админом")
+
+
+class ClientGuarantorRequestsResponseSchema(BaseModel):
+    """Ответ: мои заявки гарантов для клиента"""
+    total: int = Field(..., description="Всего заявок")
+    items: List[ClientGuarantorRequestItemSchema] = Field(..., description="Список заявок")
+
+
 class GuarantorRequestCreateSchema(BaseModel):
     """Схема для создания заявки на гаранта"""
     guarantor_info: GuarantorInfoSchema = Field(..., description="Информация о гаранте")
