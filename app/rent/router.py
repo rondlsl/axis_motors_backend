@@ -30,12 +30,15 @@ def get_trip_history(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ) -> dict:
+    # Показываем поездки только после проверки механика:
+    # признак — автомобиль уже возвращён в доступ (FREE) после механика
     histories = (
         db.query(RentalHistory, Car)
         .join(Car, Car.id == RentalHistory.car_id)
         .filter(
             RentalHistory.user_id == current_user.id,
-            RentalHistory.rental_status == RentalStatus.COMPLETED
+            RentalHistory.rental_status == RentalStatus.COMPLETED,
+            Car.status == "FREE"
         )
         .order_by(RentalHistory.end_time.desc())
         .all()
@@ -48,7 +51,10 @@ def get_trip_history(
             # Сдвиг +5 ч
             "date": apply_offset(rental.end_time),
             "car_name": car.name,
-            "final_total_price": rental.total_price
+            "final_total_price": rental.total_price,
+            # Фото механика: до/после
+            "mechanic_photos_before": rental.photos_before or [],
+            "mechanic_photos_after": rental.photos_after or []
         })
 
     return {"trip_history": result}
