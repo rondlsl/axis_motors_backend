@@ -259,7 +259,10 @@ async def get_my_guarantors(
         if guarantor_user:
             # Имя приоритезируем так: из заявки (guarantor_requests.guarantor_name),
             # затем из users.full_name, иначе null
-            guarantor_name = relationship.original_request.guarantor_name if relationship.original_request else None
+            guarantor_name = None
+            if relationship.original_request:
+                guarantor_name = relationship.original_request.guarantor_name
+            
             result.append(SimpleGuarantorSchema(
                 id=relationship.id,
                 name=guarantor_name or guarantor_user.full_name,
@@ -374,7 +377,10 @@ async def get_my_clients(
         if client_user:
             # Имя приоритезируем так: из заявки (guarantor_requests.guarantor_name),
             # затем из users.full_name, иначе null
-            client_name = relationship.original_request.guarantor_name if relationship.original_request else None
+            client_name = None
+            if relationship.original_request:
+                client_name = relationship.original_request.guarantor_name
+            
             result.append(SimpleClientSchema(
                 id=relationship.id,
                 name=client_name or client_user.full_name,
