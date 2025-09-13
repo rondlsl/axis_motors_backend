@@ -54,7 +54,12 @@ def get_trip_history(
             "final_total_price": rental.total_price,
             # Фото механика: до/после
             "mechanic_photos_before": rental.photos_before or [],
-            "mechanic_photos_after": rental.photos_after or []
+            "mechanic_photos_after": rental.photos_after or [],
+            # GPS координаты маршрута
+            "start_latitude": rental.start_latitude,
+            "start_longitude": rental.start_longitude,
+            "end_latitude": rental.end_latitude,
+            "end_longitude": rental.end_longitude
         })
 
     return {"trip_history": result}
