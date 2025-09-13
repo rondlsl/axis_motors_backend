@@ -204,13 +204,13 @@ async def open_vehicle(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
+    global AUTH_TOKEN
     rental = get_active_rental(db, current_user.id)
     car = db.query(Car).get(rental.car_id)
     
     # Проверяем и обновляем токен если необходимо
     if not AUTH_TOKEN:
         try:
-            global AUTH_TOKEN
             AUTH_TOKEN = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
@@ -234,13 +234,13 @@ async def close_vehicle(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
+    global AUTH_TOKEN
     rental = get_active_rental(db, current_user.id)
     car = db.query(Car).get(rental.car_id)
     
     # Проверяем и обновляем токен если необходимо
     if not AUTH_TOKEN:
         try:
-            global AUTH_TOKEN
             AUTH_TOKEN = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
@@ -262,13 +262,13 @@ async def give_key(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
+    global AUTH_TOKEN
     rental = get_active_rental(db, current_user.id)
     car = db.query(Car).get(rental.car_id)
     
     # Проверяем и обновляем токен если необходимо
     if not AUTH_TOKEN:
         try:
-            global AUTH_TOKEN
             AUTH_TOKEN = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
@@ -289,13 +289,13 @@ async def take_key(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
+    global AUTH_TOKEN
     rental = get_active_rental(db, current_user.id)
     car = db.query(Car).get(rental.car_id)
     
     # Проверяем и обновляем токен если необходимо
     if not AUTH_TOKEN:
         try:
-            global AUTH_TOKEN
             AUTH_TOKEN = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
