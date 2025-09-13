@@ -129,13 +129,17 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
         
         linked_count = 0
         for request in pending_requests:
-            # Связываем заявку с пользователем и обновляем данные
+            # Связываем заявку с пользователем
             request.guarantor_id = user.id
-            # Обновляем имя и телефон из профиля пользователя, если они есть
-            if user.full_name:
-                request.guarantor_name = user.full_name
+            
+            # Если у пользователя нет имени, но есть в заявке - подставляем из заявки
+            if not user.full_name and request.guarantor_name:
+                user.full_name = request.guarantor_name
+            
+            # Обновляем телефон в заявке из профиля пользователя
             if user.phone_number:
                 request.guarantor_phone = user.phone_number
+            
             linked_count += 1
         
         # Сохраняем изменения
