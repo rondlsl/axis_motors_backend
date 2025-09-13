@@ -15,6 +15,8 @@ from app.models.car_model import Car
 from app.push.utils import send_notification_to_all_mechanics_async, send_push_to_user_by_id
 from app.rent.exceptions import InsufficientBalanceException
 from app.rent.utils.calculate_price import calculate_total_price, get_open_price
+from app.gps_api.utils.route_data import get_gps_route_data
+from app.owner.schemas import RouteMapData
 
 RentRouter = APIRouter(tags=["Rent"], prefix="/rent")
 
@@ -66,7 +68,7 @@ def get_trip_history(
 
 
 @RentRouter.get("/history/{history_id}")
-def get_trip_history_detail(
+async def get_trip_history_detail(
         history_id: int,
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
@@ -129,6 +131,59 @@ def get_trip_history_detail(
         for action in rental.actions
         if action.user_id == current_user.id
     ]
+
+    # Добавляем данные маршрута с координатами
+    route_map = None
+    if car and car.gps_id and rental.start_time and rental.end_time:
+        try:
+            # Применяем смещение к времени для GPS API
+            start_time_iso = apply_offset(rental.start_time)
+            end_time_iso = apply_offset(rental.end_time)
+            
+            if start_time_iso and end_time_iso:
+                # Получаем GPS данные маршрута
+                route_data = await get_gps_route_data(
+                    device_id=car.gps_id,
+                    start_date=start_time_iso,
+                    end_date=end_time_iso
+                )
+                
+                # Проверяем, длилась ли поездка более 24 часов
+                duration_over_24h = False
+                if rental.start_time and rental.end_time:
+                    duration = rental.end_time - rental.start_time
+                    duration_over_24h = duration.total_seconds() > 24 * 3600
+
+                route_map = RouteMapData(
+                    start_latitude=rental.start_latitude or 0.0,
+                    start_longitude=rental.start_longitude or 0.0,
+                    end_latitude=rental.end_latitude,
+                    end_longitude=rental.end_longitude,
+                    duration_over_24h=duration_over_24h,
+                    route_data=route_data
+                )
+        except Exception as e:
+            print(f"Ошибка при получении GPS данных маршрута: {e}")
+            # Создаем базовые данные маршрута без детальных координат
+            route_map = RouteMapData(
+                start_latitude=rental.start_latitude or 0.0,
+                start_longitude=rental.start_longitude or 0.0,
+                end_latitude=rental.end_latitude,
+                end_longitude=rental.end_longitude,
+                duration_over_24h=False,
+                route_data=None
+            )
+
+    # Добавляем данные маршрута в ответ
+    if route_map:
+        rental_detail["route_map"] = {
+            "start_latitude": route_map.start_latitude,
+            "start_longitude": route_map.start_longitude,
+            "end_latitude": route_map.end_latitude,
+            "end_longitude": route_map.end_longitude,
+            "duration_over_24h": route_map.duration_over_24h,
+            "route_data": route_map.route_data.dict() if route_map.route_data else None
+        }
 
     return {"rental_history_detail": rental_detail}
 
