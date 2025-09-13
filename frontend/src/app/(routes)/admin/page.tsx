@@ -1,5 +1,5 @@
 "use client"
-import {useState, useMemo, useRef} from "react"
+import {useState, useMemo, useRef, useEffect} from "react"
 import {GoogleMap, useLoadScript, OverlayView} from "@react-google-maps/api"
 import toast from "react-hot-toast"
 import Link from "next/link"
@@ -301,9 +301,43 @@ export default function AdminMap() {
     const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState<boolean>(false)
     const [mapCenter, setMapCenter] = useState({lat: 43.222, lng: 76.851})
     const [mapZoom, setMapZoom] = useState(13)
+    const [cars, setCars] = useState<Car[]>([])
+    const [loading, setLoading] = useState(true)
 
     // Ссылка на карту
     const mapRef = useRef<google.maps.Map | null>(null)
+
+    // Загрузка данных автомобилей
+    useEffect(() => {
+        const fetchCars = async () => {
+            try {
+                const token = localStorage.getItem('token')
+                const response = await fetch('/api/admin/cars', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                })
+                
+                if (response.ok) {
+                    const data = await response.json()
+                    setCars(data.cars || [])
+                } else {
+                    console.error('Failed to fetch cars')
+                    // Fallback to mock data
+                    setCars(mockCars)
+                }
+            } catch (error) {
+                console.error('Error fetching cars:', error)
+                // Fallback to mock data
+                setCars(mockCars)
+            } finally {
+                setLoading(false)
+            }
+        }
+
+        fetchCars()
+    }, [])
 
     // Хук для установки ссылки на карту
     const onMapLoad = (map: google.maps.Map) => {
@@ -325,7 +359,7 @@ export default function AdminMap() {
 
     // Фильтрация по статусу и поиск по номеру
     const filteredCars = useMemo(() => {
-        let result = mockCars
+        let result = cars
 
         // Применяем фильтр по статусу
         if (filter !== "Все") {
@@ -339,9 +373,9 @@ export default function AdminMap() {
         }
 
         return result
-    }, [filter, searchQuery])
+    }, [cars, filter, searchQuery])
 
-    if (!isLoaded) return <div className="flex items-center justify-center h-screen">Загрузка карты...</div>
+    if (!isLoaded || loading) return <div className="flex items-center justify-center h-screen">Загрузка...</div>
 
     return (
         <div className="flex flex-col md:flex-row h-screen">

@@ -29,69 +29,73 @@ async def get_gps_route_data(
         print(f"DEBUG GPS: Making request to {url}")
         
         async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.get(url, headers=headers)
-            
-            # Выводим сырой ответ для диагностики
-            response_text = response.text
-            
-            if response.status_code != 200:
-                logger.error(f"DEBUG GPS: Non-200 status code: {response.status_code}")
-                logger.error(f"DEBUG GPS: Response text: {response_text}")
-                return None
-            
             try:
-                data = response.json()
-            except Exception as json_e:
-                logger.error(f"DEBUG GPS: JSON parse error: {json_e}")
-                logger.error(f"DEBUG GPS: Response text: {response_text}")
-                return None
+                response = await client.get(url, headers=headers)
+                print(f"DEBUG GPS: Response status: {response.status_code}")
                 
-            
-            if not data:
-                logger.warning("DEBUG GPS: No data in response")
-                return None
+                # Выводим сырой ответ для диагностики
+                response_text = response.text
                 
-            if "coordinates" not in data:
-                logger.warning("DEBUG GPS: No coordinates key in response")
-                logger.warning(f"DEBUG GPS: Available keys: {list(data.keys())}")
-                return None
+                if response.status_code != 200:
+                    logger.error(f"DEBUG GPS: Non-200 status code: {response.status_code}")
+                    logger.error(f"DEBUG GPS: Response text: {response_text}")
+                    return None
                 
-            coordinates_list = data["coordinates"]
-            if not coordinates_list:
-                logger.warning("DEBUG GPS: Empty coordinates list")
-                return None
-            
-            coordinates = []
-            for i, coord in enumerate(coordinates_list):
                 try:
-                    gps_coord = GPSCoordinate(
-                        lat=coord["lat"],
-                        lon=coord["lon"], 
-                        altitude=coord["altitude"],
-                        timestamp=coord["timestamp"]
-                    )
-                    coordinates.append(gps_coord)
-                except Exception as coord_e:
-                    logger.error(f"DEBUG GPS: Error processing coordinate {i}: {coord_e}")
-                    logger.error(f"DEBUG GPS: Problematic coordinate: {coord}")
-                    # Продолжаем с другими координатами
-                    continue
-            
-            
-            # Группируем координаты по дням
-            daily_routes = _group_coordinates_by_day(coordinates, start_date, end_date)
-            
-            route_data = RouteData(
-                device_id=data.get("device_id", device_id),
-                start_date=start_date,
-                end_date=end_date,
-                total_coordinates=data.get("count", len(coordinates)),
-                daily_routes=daily_routes,
-                fuel_start=data.get("fuel", {}).get("start") if data.get("fuel") else None,
-                fuel_end=data.get("fuel", {}).get("end") if data.get("fuel") else None
-            )
-            
-            return route_data
+                    data = response.json()
+                except Exception as json_e:
+                    logger.error(f"DEBUG GPS: JSON parse error: {json_e}")
+                    logger.error(f"DEBUG GPS: Response text: {response_text}")
+                    return None
+                
+                if not data:
+                    logger.warning("DEBUG GPS: No data in response")
+                    return None
+                    
+                if "coordinates" not in data:
+                    logger.warning("DEBUG GPS: No coordinates key in response")
+                    logger.warning(f"DEBUG GPS: Available keys: {list(data.keys())}")
+                    return None
+                    
+                coordinates_list = data["coordinates"]
+                if not coordinates_list:
+                    logger.warning("DEBUG GPS: Empty coordinates list")
+                    return None
+                
+                coordinates = []
+                for i, coord in enumerate(coordinates_list):
+                    try:
+                        gps_coord = GPSCoordinate(
+                            lat=coord["lat"],
+                            lon=coord["lon"], 
+                            altitude=coord["altitude"],
+                            timestamp=coord["timestamp"]
+                        )
+                        coordinates.append(gps_coord)
+                    except Exception as coord_e:
+                        logger.error(f"DEBUG GPS: Error processing coordinate {i}: {coord_e}")
+                        logger.error(f"DEBUG GPS: Problematic coordinate: {coord}")
+                        # Продолжаем с другими координатами
+                        continue
+                
+                # Группируем координаты по дням
+                daily_routes = _group_coordinates_by_day(coordinates, start_date, end_date)
+                
+                route_data = RouteData(
+                    device_id=data.get("device_id", device_id),
+                    start_date=start_date,
+                    end_date=end_date,
+                    total_coordinates=data.get("count", len(coordinates)),
+                    daily_routes=daily_routes,
+                    fuel_start=data.get("fuel", {}).get("start") if data.get("fuel") else None,
+                    fuel_end=data.get("fuel", {}).get("end") if data.get("fuel") else None
+                )
+                
+                return route_data
+                
+            except Exception as e:
+                logger.error(f"DEBUG GPS: Request failed: {e}")
+                return None
             
     except Exception as e:
         logger.error(f"DEBUG GPS: Exception occurred for device {device_id}: {e}")

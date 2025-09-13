@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Dict, Any
 
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole, AutoClass
 from app.models.guarantor_model import GuarantorRequest
+from app.models.car_model import Car
 from app.guarantor.sms_utils import send_user_rejection_with_guarantor_sms
 from app.guarantor.schemas import (
     GuarantorRequestAdminSchema, 
@@ -235,3 +236,56 @@ async def reject_guarantor_request(
     db.commit()
     
     return {"message": "Заявка отклонена"}
+
+
+@admin_router.get("/cars", response_model=Dict[str, List[Dict[str, Any]]])
+async def get_all_cars_for_admin(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Получение всех автомобилей для админ панели"""
+    
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    cars = db.query(Car).all()
+    
+    vehicles_data = []
+    for car in cars:
+        # Определяем статус для отображения
+        status_display = {
+            "FREE": "Свободно",
+            "IN_USE": "В аренде", 
+            "MAINTENANCE": "На тех обслуживании",
+            "DELIVERING": "Доставляется",
+            "DELIVERED": "Доставлено",
+            "RETURNING": "Возвращается",
+            "RETURNED": "Возвращено",
+            "OWNER": "У владельца"
+        }.get(car.status, car.status)
+        
+        # Получаем данные арендатора если есть
+        current_renter_details = None
+        if car.current_renter_id:
+            renter = db.query(User).filter(User.id == car.current_renter_id).first()
+            if renter:
+                current_renter_details = {
+                    "name": renter.full_name,
+                    "selfie": renter.selfie_with_license_url
+                }
+        
+        vehicle_data = {
+            "id": car.id,
+            "name": car.name,
+            "status": status_display,
+            "lat": car.latitude or 0.0,
+            "lng": car.longitude or 0.0,
+            "fuel": car.fuel_level or 0,  # Преобразуем fuel_level в fuel для frontend
+            "plate": car.plate_number,
+            "photos": car.photos or [],
+            "course": car.course or 0,
+            "user": current_renter_details
+        }
+        vehicles_data.append(vehicle_data)
+    
+    return {"cars": vehicles_data}
