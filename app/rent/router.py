@@ -136,14 +136,25 @@ async def get_trip_history_detail(
     route_data = None
     if car and car.gps_id and rental.start_time and rental.end_time:
         try:
+            print(f"DEBUG: Fetching GPS data for car {car.id}, gps_id: {car.gps_id}")
+            print(f"DEBUG: Start time: {rental.start_time}, End time: {rental.end_time}")
+            
             route_data = await get_gps_route_data(
                 device_id=car.gps_id,
                 start_date=apply_offset(rental.start_time),
                 end_date=apply_offset(rental.end_time)
             )
+            
+            if route_data:
+                print(f"DEBUG: GPS data received - {route_data.total_coordinates} coordinates")
+            else:
+                print("DEBUG: GPS data is None")
+                
         except Exception as e:
-            print(f"GPS fetch error: {e}")
+            print(f"DEBUG: GPS fetch error: {e}")
             route_data = None
+    else:
+        print(f"DEBUG: Missing GPS data - car: {car is not None}, gps_id: {car.gps_id if car else 'N/A'}, times: {rental.start_time}, {rental.end_time}")
 
     # Добавляем данные маршрута в ответ
     rental_detail["route_map"] = {

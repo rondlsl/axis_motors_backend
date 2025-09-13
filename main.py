@@ -86,20 +86,17 @@ def _update_vehicle_data_sync(vehicles_data: list, db: Session) -> int:
             vehicle_id = str(vehicle["vehicle_id"])
             car = db.query(Car).filter(Car.gps_id == vehicle_id).first()
             if car:
-                # Обновляем только если автомобиль свободен или в аренде
-                if car.status in ["FREE", "IN_USE"]:
-                    # Обновляем только валидные данные (не None)
-                    if vehicle.get("latitude") is not None:
-                        car.latitude = vehicle["latitude"]
-                    if vehicle.get("longitude") is not None:
-                        car.longitude = vehicle["longitude"]
-                    if vehicle.get("fuel_level") is not None:
-                        car.fuel_level = vehicle["fuel_level"]
-                    if vehicle.get("mileage") is not None:
-                        car.mileage = vehicle["mileage"]
-                    updated += 1
-                else:
-                    print(f"DEBUG: Skipping car {car.name} (GPS ID: {vehicle_id}, Status: {car.status})")
+                # Обновляем данные для всех автомобилей независимо от статуса
+                # Обновляем только валидные данные (не None)
+                if vehicle.get("latitude") is not None:
+                    car.latitude = vehicle["latitude"]
+                if vehicle.get("longitude") is not None:
+                    car.longitude = vehicle["longitude"]
+                if vehicle.get("fuel_level") is not None:
+                    car.fuel_level = vehicle["fuel_level"]
+                if vehicle.get("mileage") is not None:
+                    car.mileage = vehicle["mileage"]
+                updated += 1
         db.commit()
     except Exception as e:
         logger.error(f"Ошибка при обновлении данных машин в БД: {e}")
