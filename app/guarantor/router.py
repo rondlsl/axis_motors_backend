@@ -342,10 +342,13 @@ async def get_incoming_requests(
     for request in incoming_requests:
         requestor = db.query(User).filter(User.id == request.requestor_id).first()
         if requestor:
+            # Приоритет: сначала User.full_name, иначе null
+            requestor_name = requestor.full_name if requestor.full_name else None
+            
             result.append(IncomingRequestSchema(
                 id=request.id,
                 requestor_id=request.requestor_id,
-                requestor_name=requestor.full_name or requestor.phone_number,
+                requestor_name=requestor_name,
                 requestor_phone=requestor.phone_number,
                 reason=request.reason,
                 created_at=request.created_at

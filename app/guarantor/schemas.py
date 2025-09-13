@@ -233,7 +233,7 @@ class IncomingRequestSchema(BaseModel):
     """Схема входящей заявки для 'Я гарант'"""
     id: int = Field(..., description="ID заявки", example=123)
     requestor_id: int = Field(..., description="ID пользователя, который просит быть гарантом", example=456)
-    requestor_name: str = Field(..., description="Имя пользователя", example="Иван Петров")
+    requestor_name: Optional[str] = Field(None, description="Имя пользователя", example="Иван Петров")
     requestor_phone: str = Field(..., description="Номер телефона пользователя", example="7771234567")
     reason: Optional[str] = Field(None, description="Причина запроса гаранта", example="Нужен гарант для аренды авто")
     created_at: datetime = Field(..., description="Дата создания заявки", example="2024-01-15T10:30:00Z")
