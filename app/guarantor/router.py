@@ -372,9 +372,12 @@ async def get_my_clients(
     for relationship in client_relationships:
         client_user = db.query(User).filter(User.id == relationship.client_id).first()
         if client_user:
+            # Имя приоритезируем так: из заявки (guarantor_requests.guarantor_name),
+            # затем из users.full_name, иначе null
+            client_name = relationship.original_request.guarantor_name if relationship.original_request else None
             result.append(SimpleClientSchema(
                 id=relationship.id,
-                name=client_user.full_name or client_user.phone_number,
+                name=client_name or client_user.full_name,
                 phone=client_user.phone_number,
                 contract_signed=relationship.contract_signed,
                 sublease_contract_signed=relationship.sublease_contract_signed,
