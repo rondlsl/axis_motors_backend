@@ -9,6 +9,8 @@ from app.auth.dependencies.save_documents import validate_photos, save_file
 from app.dependencies.database.database import get_db
 from app.gps_api.router import AUTH_TOKEN
 from app.gps_api.utils.car_data import send_command_to_terminal
+from app.gps_api.utils.auth_api import get_auth_token
+from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.models.history_model import RentalStatus, RentalHistory
 from app.models.car_model import Car
 from app.models.rental_actions_model import ActionType, RentalAction
@@ -275,8 +277,16 @@ async def open_vehicle_delivery(
     db.add(action)
     db.commit()
 
-    # отправка команды (заглушка или реальный вызов)
-    result = await send_command_to_terminal(car.gps_id, "*!CEVT 1", AUTH_TOKEN)
+    # Проверяем и обновляем токен если необходимо
+    token = AUTH_TOKEN
+    if not token:
+        try:
+            token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
+    
+    # отправка команды
+    result = await send_command_to_terminal(car.gps_id, "*!CEVT 1", token)
     return {"message": "Команда для открытия автомобиля отправлена", "result": result}
 
 
@@ -298,7 +308,15 @@ async def close_vehicle_delivery(
     db.add(action)
     db.commit()
 
-    result = await send_command_to_terminal(car.gps_id, "*!CEVT 2", AUTH_TOKEN)
+    # Проверяем и обновляем токен если необходимо
+    token = AUTH_TOKEN
+    if not token:
+        try:
+            token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
+    
+    result = await send_command_to_terminal(car.gps_id, "*!CEVT 2", token)
     return {"message": "Команда для закрытия автомобиля отправлена", "result": result}
 
 
@@ -320,7 +338,15 @@ async def give_key_delivery(
     db.add(action)
     db.commit()
 
-    result = await send_command_to_terminal(car.gps_id, "*!2Y", AUTH_TOKEN)
+    # Проверяем и обновляем токен если необходимо
+    token = AUTH_TOKEN
+    if not token:
+        try:
+            token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
+    
+    result = await send_command_to_terminal(car.gps_id, "*!2Y", token)
     return {"message": "Команда передачи ключа отправлена", "result": result}
 
 

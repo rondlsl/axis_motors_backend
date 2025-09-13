@@ -206,6 +206,15 @@ async def open_vehicle(
 ):
     rental = get_active_rental(db, current_user.id)
     car = db.query(Car).get(rental.car_id)
+    
+    # Проверяем и обновляем токен если необходимо
+    if not AUTH_TOKEN:
+        try:
+            global AUTH_TOKEN
+            AUTH_TOKEN = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
+    
     # логируем действие
     action = RentalAction(
         rental_id=rental.id,
@@ -227,6 +236,15 @@ async def close_vehicle(
 ):
     rental = get_active_rental(db, current_user.id)
     car = db.query(Car).get(rental.car_id)
+    
+    # Проверяем и обновляем токен если необходимо
+    if not AUTH_TOKEN:
+        try:
+            global AUTH_TOKEN
+            AUTH_TOKEN = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
+    
     action = RentalAction(
         rental_id=rental.id,
         user_id=current_user.id,
@@ -246,6 +264,15 @@ async def give_key(
 ):
     rental = get_active_rental(db, current_user.id)
     car = db.query(Car).get(rental.car_id)
+    
+    # Проверяем и обновляем токен если необходимо
+    if not AUTH_TOKEN:
+        try:
+            global AUTH_TOKEN
+            AUTH_TOKEN = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
+    
     action = RentalAction(
         rental_id=rental.id,
         user_id=current_user.id,
@@ -264,6 +291,15 @@ async def take_key(
 ):
     rental = get_active_rental(db, current_user.id)
     car = db.query(Car).get(rental.car_id)
+    
+    # Проверяем и обновляем токен если необходимо
+    if not AUTH_TOKEN:
+        try:
+            global AUTH_TOKEN
+            AUTH_TOKEN = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
+    
     action = RentalAction(
         rental_id=rental.id,
         user_id=current_user.id,
