@@ -326,12 +326,15 @@ def get_trips_by_month(
             raise HTTPException(status_code=400, detail="Месяц должен быть от 1 до 12")
 
         # Получаем поездки за указанный месяц, исключая поездки механиков
+        # Показываем только после проверки механика (Car.status == "FREE")
         trips = (
             db.query(RentalHistory)
             .join(User, RentalHistory.user_id == User.id)
+            .join(Car, RentalHistory.car_id == Car.id)
             .filter(
                 RentalHistory.car_id == vehicle_id,
                 RentalHistory.rental_status == RentalStatus.COMPLETED,
+                Car.status == "FREE",  # Только после проверки механика
                 extract('year', RentalHistory.end_time) == target_year,
                 extract('month', RentalHistory.end_time) == target_month,
                 User.role != UserRole.MECHANIC  # Исключаем поездки механиков
@@ -372,9 +375,11 @@ def get_trips_by_month(
                 func.count(RentalHistory.id).label('trip_count')
             )
             .join(User, RentalHistory.user_id == User.id)
+            .join(Car, RentalHistory.car_id == Car.id)
             .filter(
                 RentalHistory.car_id == vehicle_id,
                 RentalHistory.rental_status == RentalStatus.COMPLETED,
+                Car.status == "FREE",  # Только после проверки механика
                 RentalHistory.total_price.isnot(None),
                 User.role != UserRole.MECHANIC  # Исключаем поездки механиков
             )
@@ -487,11 +492,12 @@ async def get_trip_details(
             detail="Автомобиль не найден или не принадлежит вам"
         )
 
-    # Получаем поездку
-    trip = db.query(RentalHistory).filter(
+    # Получаем поездку только после проверки механика
+    trip = db.query(RentalHistory).join(Car, RentalHistory.car_id == Car.id).filter(
         RentalHistory.id == trip_id,
         RentalHistory.car_id == vehicle_id,
-        RentalHistory.rental_status == RentalStatus.COMPLETED
+        RentalHistory.rental_status == RentalStatus.COMPLETED,
+        Car.status == "FREE"  # Только после проверки механика
     ).first()
 
     if not trip:
