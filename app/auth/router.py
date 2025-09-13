@@ -129,8 +129,13 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
         
         linked_count = 0
         for request in pending_requests:
-            # Только связываем заявку с пользователем, НЕ принимаем автоматически
+            # Связываем заявку с пользователем и обновляем данные
             request.guarantor_id = user.id
+            # Обновляем имя и телефон из профиля пользователя, если они есть
+            if user.full_name:
+                request.guarantor_name = user.full_name
+            if user.phone_number:
+                request.guarantor_phone = user.phone_number
             linked_count += 1
         
         # Сохраняем изменения
@@ -421,6 +426,20 @@ async def upload_documents(
         current_user.selfie_url = selfie_path
 
         current_user.role = UserRole.PENDING
+
+        # Обновляем имя в заявках гаранта, где этот пользователь является гарантом
+        try:
+            from app.models.guarantor_model import GuarantorRequest
+            guarantor_requests = db.query(GuarantorRequest).filter(
+                GuarantorRequest.guarantor_id == current_user.id
+            ).all()
+            
+            for request in guarantor_requests:
+                request.guarantor_name = current_user.full_name
+                request.guarantor_phone = current_user.phone_number
+        except Exception as e:
+            print(f"Ошибка при обновлении заявок гаранта: {e}")
+            # Продолжаем выполнение без обработки гарантов
 
         db.commit()
 
