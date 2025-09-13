@@ -88,14 +88,15 @@ def _update_vehicle_data_sync(vehicles_data: list, db: Session) -> int:
             if car:
                 # Обновляем только если автомобиль свободен или в аренде
                 if car.status in ["FREE", "IN_USE"]:
-                    # Временное логирование для отладки fuel_level
-                    print(f"DEBUG: Updating car {car.name} (GPS ID: {vehicle_id}, Status: {car.status})")
-                    print(f"  Raw fuel_level: {vehicle.get('fuel_level')} (type: {type(vehicle.get('fuel_level'))})")
-                    
-                    car.latitude = vehicle["latitude"]
-                    car.longitude = vehicle["longitude"]
-                    car.fuel_level = vehicle["fuel_level"]
-                    car.mileage = vehicle["mileage"]
+                    # Обновляем только валидные данные (не None)
+                    if vehicle.get("latitude") is not None:
+                        car.latitude = vehicle["latitude"]
+                    if vehicle.get("longitude") is not None:
+                        car.longitude = vehicle["longitude"]
+                    if vehicle.get("fuel_level") is not None:
+                        car.fuel_level = vehicle["fuel_level"]
+                    if vehicle.get("mileage") is not None:
+                        car.mileage = vehicle["mileage"]
                     updated += 1
                 else:
                     print(f"DEBUG: Skipping car {car.name} (GPS ID: {vehicle_id}, Status: {car.status})")
