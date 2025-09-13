@@ -222,7 +222,7 @@ class SimpleGuarantorSchema(BaseModel):
 class SimpleClientSchema(BaseModel):
     """Упрощенная схема для клиента"""
     id: int = Field(..., description="ID связи гарант-клиент", example=1)
-    name: str = Field(..., description="Имя клиента", example="Петр Иванов")
+    name: Optional[str] = Field(None, description="Имя клиента", example="Петр Иванов")
     phone: str = Field(..., description="Номер телефона клиента", example="7771234567")
     contract_signed: bool = Field(..., description="Подписан ли договор гаранта", example=True)
     sublease_contract_signed: bool = Field(..., description="Подписан ли договор субаренды", example=True)
