@@ -27,6 +27,8 @@ class GuarantorRequest(Base):
     requestor_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # Кто запрашивает гаранта
     guarantor_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # Кого просят быть гарантом (может быть NULL пока не зарегистрирован)
     guarantor_phone = Column(String, nullable=True)  # Номер телефона гаранта (для незарегистрированных)
+    guarantor_first_name = Column(String, nullable=True)   # Имя гаранта (для незарегистрированных)
+    guarantor_last_name = Column(String, nullable=True)   # Фамилия гаранта (для незарегистрированных)
     status = Column(Enum(GuarantorRequestStatus), default=GuarantorRequestStatus.PENDING)
     verification_status = Column(String, default="not_verified")  # Статус проверки администратором: not_verified, verified, rejected
     reason = Column(Text, nullable=True)  # Причина отказа в регистрации (если применимо)

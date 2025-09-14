@@ -30,8 +30,6 @@ class AutoClassSchema(str, Enum):
 
 class GuarantorInfoSchema(BaseModel):
     """Схема для указания данных гаранта"""
-    first_name: str = Field(..., description="Имя гаранта", example="Кайрат", min_length=1, max_length=50)
-    last_name: str = Field(..., description="Фамилия гаранта", example="Нуртас", min_length=1, max_length=50)
     phone_number: str = Field(..., description="Номер телефона гаранта (только цифры)", example="7777654321", min_length=10, max_length=15)
 
     @field_validator('phone_number')
@@ -43,19 +41,6 @@ class GuarantorInfoSchema(BaseModel):
             raise ValueError('Phone number must be between 10 and 15 digits')
         return v
 
-    @field_validator('first_name')
-    @classmethod
-    def validate_first_name(cls, v):
-        if len(v.strip()) < 1:
-            raise ValueError('First name must be at least 1 character')
-        return v.strip()
-
-    @field_validator('last_name')
-    @classmethod
-    def validate_last_name(cls, v):
-        if len(v.strip()) < 1:
-            raise ValueError('Last name must be at least 1 character')
-        return v.strip()
 
 
 class ClientGuarantorRequestItemSchema(BaseModel):
@@ -216,8 +201,6 @@ class UserEligibilityResultSchema(BaseModel):
 class SimpleGuarantorSchema(BaseModel):
     """Упрощенная схема для активного гаранта"""
     id: int = Field(..., description="ID связи гарант-клиент", example=1)
-    first_name: Optional[str] = Field(None, description="Имя гаранта (может быть null, если нет в заявке и профиле)")
-    last_name: Optional[str] = Field(None, description="Фамилия гаранта (может быть null, если нет в заявке и профиле)")
     phone: str = Field(..., description="Номер телефона гаранта", example="7777654321")
     contract_signed: bool = Field(..., description="Подписан ли договор гаранта", example=True)
     sublease_contract_signed: bool = Field(..., description="Подписан ли договор субаренды", example=False)

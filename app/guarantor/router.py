@@ -300,8 +300,6 @@ async def get_my_guarantors(
         if guarantor_user:
             result.append(SimpleGuarantorSchema(
                 id=relationship.id,
-                first_name=guarantor_user.first_name,
-                last_name=guarantor_user.last_name,
                 phone=guarantor_user.phone_number,
                 contract_signed=relationship.contract_signed,
                 sublease_contract_signed=relationship.sublease_contract_signed,
