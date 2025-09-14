@@ -33,7 +33,7 @@ async def billing_job():
 
     # 3) Fire-and-forget push notifications
     for user_id, title, body in push_notifications:
-        anyio.start_soon(send_push_to_user_by_id, db, user_id, title, body)
+        asyncio.create_task(send_push_to_user_by_id(db, user_id, title, body))
 
     # 4) Fire-and-forget Telegram alerts
     async def _send_telegram(text: str, chat_id: int):
@@ -45,7 +45,7 @@ async def billing_job():
 
     for text in telegram_alerts:
         for chat_id in (965048905, 5941825713):
-            anyio.start_soon(_send_telegram, text, chat_id)
+            asyncio.create_task(_send_telegram(text, chat_id))
 
     # 5) Yield back to event loop
     await asyncio.sleep(0)
