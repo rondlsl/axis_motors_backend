@@ -175,8 +175,6 @@ async def get_guarantor_requests(
             requestor_last_name=requestor.last_name if requestor else None,
             requestor_phone=requestor.phone_number if requestor else "Unknown",
             guarantor_id=request.guarantor_id,
-            guarantor_first_name=guarantor.first_name if guarantor else request.guarantor_first_name,
-            guarantor_last_name=guarantor.last_name if guarantor else request.guarantor_last_name,
             guarantor_phone=guarantor.phone_number if guarantor else request.guarantor_phone,
             status=request.status.value,
             verification_status=request.verification_status,

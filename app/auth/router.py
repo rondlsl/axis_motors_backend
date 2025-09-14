@@ -140,12 +140,6 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
             # Связываем заявку с пользователем
             request.guarantor_id = user.id
             
-            # Если у пользователя нет имени, но есть в заявке - подставляем из заявки
-            if not user.first_name and request.guarantor_first_name:
-                user.first_name = request.guarantor_first_name
-            if not user.last_name and request.guarantor_last_name:
-                user.last_name = request.guarantor_last_name
-            
             # Обновляем телефон в заявке из профиля пользователя
             if user.phone_number:
                 request.guarantor_phone = user.phone_number
@@ -455,8 +449,6 @@ async def upload_documents(
             ).all()
             
             for request in guarantor_requests:
-                request.guarantor_first_name = current_user.first_name
-                request.guarantor_last_name = current_user.last_name
                 request.guarantor_phone = current_user.phone_number
         except Exception as e:
             print(f"Ошибка при обновлении заявок гаранта: {e}")

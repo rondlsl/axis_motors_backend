@@ -62,8 +62,6 @@ class ClientGuarantorRequestItemSchema(BaseModel):
     """Список заявок клиента с детальным статусом"""
     id: int = Field(..., description="ID заявки")
     guarantor_id: Optional[int] = Field(None, description="ID гаранта, если зарегистрирован")
-    guarantor_first_name: Optional[str] = Field(None, description="Имя гаранта из заявки или профиля")
-    guarantor_last_name: Optional[str] = Field(None, description="Фамилия гаранта из заявки или профиля")
     guarantor_phone: Optional[str] = Field(None, description="Телефон гаранта")
     status: GuarantorRequestStatusSchema = Field(..., description="Статус заявки")
     verification_status: VerificationStatusSchema = Field(..., description="Статус проверки администратором")
@@ -108,8 +106,6 @@ class GuarantorRequestSchema(BaseModel):
     requestor_phone: str
     
     # Информация о гаранте
-    guarantor_first_name: Optional[str]
-    guarantor_last_name: Optional[str]
     guarantor_phone: str
     
     class Config:
@@ -127,8 +123,6 @@ class GuarantorSchema(BaseModel):
     created_at: datetime
     
     # Информация о гаранте
-    guarantor_first_name: Optional[str]
-    guarantor_last_name: Optional[str]
     guarantor_phone: str
     
     # Информация о клиенте
@@ -271,8 +265,6 @@ class GuarantorRequestAdminSchema(BaseModel):
     requestor_last_name: Optional[str] = Field(None, description="Фамилия запрашивающего", example="Иванов")
     requestor_phone: str = Field(..., description="Номер телефона запрашивающего", example="7771234567")
     guarantor_id: Optional[int] = Field(None, description="ID гаранта", example=789)
-    guarantor_first_name: Optional[str] = Field(None, description="Имя гаранта", example="Анна")
-    guarantor_last_name: Optional[str] = Field(None, description="Фамилия гаранта", example="Смирнова")
     guarantor_phone: Optional[str] = Field(None, description="Номер телефона гаранта", example="7777654321")
     status: GuarantorRequestStatusSchema = Field(..., description="Статус заявки")
     verification_status: VerificationStatusSchema = Field(..., description="Статус верификации")
@@ -293,8 +285,6 @@ class InviteGuarantorResponseSchema(BaseModel):
     user_exists: bool = Field(..., description="Существует ли пользователь в системе", example=True)
     request_id: int = Field(..., description="ID созданной заявки", example=123)
     sms_result: Optional[dict] = Field(None, description="Результат отправки SMS", example={"status": "sent", "message_id": "12345"})
-    guarantor_first_name: Optional[str] = Field(None, description="Имя гаранта (если пользователь существует)", example="Кайрат")
-    guarantor_last_name: Optional[str] = Field(None, description="Фамилия гаранта (если пользователь существует)", example="Нуртас")
 
 
 class AcceptGuarantorResponseSchema(BaseModel):
@@ -332,8 +322,6 @@ class GuarantorRelationshipsSchema(BaseModel):
     class SentRequestItemSchema(BaseModel):
         id: int = Field(..., description="ID заявки", example=123)
         guarantor_phone: Optional[str] = Field(None, description="Номер телефона гаранта", example="7777654321")
-        guarantor_first_name: Optional[str] = Field(None, description="Имя гаранта", example="Кайрат")
-        guarantor_last_name: Optional[str] = Field(None, description="Фамилия гаранта", example="Нуртас")
         guarantor_id: Optional[int] = Field(None, description="ID гаранта", example=456)
         status: str = Field(..., description="Статус заявки", example="pending")
         created_at: datetime = Field(..., description="Дата создания заявки", example="2024-01-15T10:30:00Z")
