@@ -325,7 +325,7 @@ class GuarantorRelationshipsSchema(BaseModel):
     details: DetailsSchema = Field(..., description="Детальная информация")
 
 
-class GuarantorInfoSchema(BaseModel):
+class GuarantorInfoContentSchema(BaseModel):
     title: str = Field(..., description="Заголовок", example="Что такое Гарант?")
     description: str = Field(..., description="Описание", example="Гарант — лицо, которое в случае ДТП несёт материальную ответственность")
     details: List[str] = Field(..., description="Детальная информация", example=["Гарант - это человек, который берет на себя материальную ответственность за ваши действия"])
