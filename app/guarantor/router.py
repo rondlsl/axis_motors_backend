@@ -62,30 +62,16 @@ async def invite_guarantor(
     Если пользователя с указанным номером нет - отправляется SMS с приглашением.
     Если пользователь есть - создается заявка.
     """
-    try:
-        print(f"🔍 DEBUG: invite_guarantor вызвана")
-        print(f"🔍 DEBUG: current_user.id = {current_user.id}")
-        print(f"🔍 DEBUG: current_user.phone_number = {current_user.phone_number}")
-        print(f"🔍 DEBUG: request_data = {request_data}")
-        
-        guarantor_phone = request_data.guarantor_info.phone_number
-        print(f"🔍 DEBUG: guarantor_phone = {guarantor_phone}")
-    except Exception as e:
-        print(f"🔍 DEBUG: ОШИБКА в начале функции: {e}")
-        print(f"🔍 DEBUG: Тип ошибки: {type(e)}")
-        raise
+    guarantor_phone = request_data.guarantor_info.phone_number
     
     # Проверяем, что пользователь не пытается назначить себя гарантом
-    print(f"🔍 DEBUG: Проверяем, что пользователь не назначает себя гарантом")
     if current_user.phone_number == guarantor_phone:
-        print(f"🔍 DEBUG: ОШИБКА: Пользователь пытается назначить себя гарантом")
         raise HTTPException(
             status_code=400,
             detail="Вы не можете назначить себя гарантом"
         )
     
     # Проверяем, нет ли уже активной заявки к этому номеру телефона
-    print(f"🔍 DEBUG: Проверяем существующие заявки")
     existing_request = db.query(GuarantorRequest).filter(
         GuarantorRequest.requestor_id == current_user.id,
         GuarantorRequest.guarantor_phone == guarantor_phone,
@@ -93,25 +79,20 @@ async def invite_guarantor(
     ).first()
     
     if existing_request:
-        print(f"🔍 DEBUG: ОШИБКА: Уже есть активная заявка к этому номеру")
         raise HTTPException(
             status_code=400,
             detail="У вас уже есть активная заявка к этому номеру телефона"
         )
     
     # Ищем пользователя с указанным номером
-    print(f"🔍 DEBUG: Ищем пользователя с номером {guarantor_phone}")
     guarantor_user = db.query(User).filter(
         User.phone_number == guarantor_phone,
         User.is_active == True
     ).first()
-    print(f"🔍 DEBUG: guarantor_user найден: {guarantor_user is not None}")
     
     if not guarantor_user:
-        print(f"🔍 DEBUG: Пользователь не найден, создаем заявку для несуществующего пользователя")
         # Пользователя нет - создаем предварительную запись и отправляем SMS
         # Создаем временного пользователя или запись с номером телефона
-        print(f"🔍 DEBUG: Создаем GuarantorRequest объект")
         pending_request = GuarantorRequest(
             requestor_id=current_user.id,
             guarantor_id=None,  # Пока не знаем ID гаранта
@@ -119,34 +100,23 @@ async def invite_guarantor(
             reason=request_data.reason,
             status=GuarantorRequestStatus.PENDING
         )
-        print(f"🔍 DEBUG: GuarantorRequest создан: {pending_request}")
         
-        print(f"🔍 DEBUG: Добавляем в базу данных")
         db.add(pending_request)
-        print(f"🔍 DEBUG: Коммитим изменения")
         db.commit()
-        print(f"🔍 DEBUG: Обновляем объект из базы")
         db.refresh(pending_request)
-        print(f"🔍 DEBUG: pending_request.id = {pending_request.id}")
         
         # Формируем имя для SMS
         requestor_first_name = current_user.first_name or "Пользователь"
         requestor_last_name = current_user.last_name
-        print(f"🔍 DEBUG: Отправляем SMS: {guarantor_phone}, {requestor_first_name}, {requestor_last_name}")
         
         sms_result = await send_guarantor_invitation_sms(guarantor_phone, requestor_first_name, requestor_last_name)
-        print(f"🔍 DEBUG: SMS результат: {sms_result}")
-        
-        result = {
+        return {
             "message": "Пользователь не найден. SMS приглашение отправлено. Заявка создана.",
             "user_exists": False,
             "request_id": pending_request.id,
             "sms_result": sms_result
         }
-        print(f"🔍 DEBUG: Возвращаем результат: {result}")
-        return result
     
-    print(f"🔍 DEBUG: Пользователь найден, проверяем существующие заявки между пользователями")
     # Проверяем, нет ли уже активной заявки между этими пользователями
     existing_request = db.query(GuarantorRequest).filter(
         GuarantorRequest.requestor_id == current_user.id,
@@ -155,13 +125,11 @@ async def invite_guarantor(
     ).first()
     
     if existing_request:
-        print(f"🔍 DEBUG: ОШИБКА: Уже есть активная заявка к этому пользователю")
         raise HTTPException(
             status_code=400,
             detail="У вас уже есть активная заявка к этому пользователю"
         )
         
-    print(f"🔍 DEBUG: Проверяем взаимные отношения гарантства")
     # Проверяем, не является ли текущий пользователь уже гарантом для этого пользователя
     existing_guarantor_relationship = db.query(Guarantor).filter(
         Guarantor.guarantor_id == current_user.id,
@@ -170,7 +138,6 @@ async def invite_guarantor(
     ).first()
     
     if existing_guarantor_relationship:
-        print(f"🔍 DEBUG: ОШИБКА: Пользователь уже является гарантом для этого пользователя")
         raise HTTPException(
             status_code=400,
             detail="Вы уже являетесь гарантом для этого пользователя. Взаимное гарантство не допускается."
@@ -184,13 +151,11 @@ async def invite_guarantor(
     ).first()
     
     if existing_client_relationship:
-        print(f"🔍 DEBUG: ОШИБКА: Этот пользователь уже является гарантом для текущего пользователя")
         raise HTTPException(
             status_code=400,
             detail="Этот пользователь уже является вашим гарантом. Взаимное гарантство не допускается."
         )
     
-    print(f"🔍 DEBUG: Создаем заявку для существующего пользователя")
     # Создаем новую заявку
     new_request = GuarantorRequest(
         requestor_id=current_user.id,
@@ -198,23 +163,16 @@ async def invite_guarantor(
         reason=request_data.reason,
         status=GuarantorRequestStatus.PENDING
     )
-    print(f"🔍 DEBUG: GuarantorRequest создан: {new_request}")
     
-    print(f"🔍 DEBUG: Добавляем в базу данных")
     db.add(new_request)
-    print(f"🔍 DEBUG: Коммитим изменения")
     db.commit()
-    print(f"🔍 DEBUG: Обновляем объект из базы")
     db.refresh(new_request)
-    print(f"🔍 DEBUG: new_request.id = {new_request.id}")
     
-    result = {
+    return {
         "message": "Заявка на гаранта создана успешно",
         "user_exists": True,
         "request_id": new_request.id,
     }
-    print(f"🔍 DEBUG: Возвращаем результат: {result}")
-    return result
 
 
 @guarantor_router.post(
