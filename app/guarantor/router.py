@@ -62,7 +62,8 @@ async def invite_guarantor(
     Если пользователь есть - создается заявка.
     """
     guarantor_phone = request_data.guarantor_info.phone_number
-    guarantor_name = request_data.guarantor_info.full_name
+    guarantor_first_name = request_data.guarantor_info.first_name
+    guarantor_last_name = request_data.guarantor_info.last_name
     
     # Проверяем, что пользователь не пытается назначить себя гарантом
     if current_user.phone_number == guarantor_phone:
@@ -84,7 +85,8 @@ async def invite_guarantor(
             requestor_id=current_user.id,
             guarantor_id=None,  # Пока не знаем ID гаранта
             guarantor_phone=guarantor_phone,  # Сохраняем номер телефона
-            guarantor_name=guarantor_name,    # Сохраняем имя
+            guarantor_first_name=guarantor_first_name,    # Сохраняем имя
+            guarantor_last_name=guarantor_last_name,    # Сохраняем фамилию
             reason=request_data.reason,
             status=GuarantorRequestStatus.PENDING
         )
@@ -93,7 +95,11 @@ async def invite_guarantor(
         db.commit()
         db.refresh(pending_request)
         
-        sms_result = await send_guarantor_invitation_sms(guarantor_phone, current_user.full_name or current_user.phone_number)
+        # Формируем имя для SMS
+        requestor_first_name = current_user.first_name or "Пользователь"
+        requestor_last_name = current_user.last_name
+        
+        sms_result = await send_guarantor_invitation_sms(guarantor_phone, requestor_first_name, requestor_last_name)
         return {
             "message": "Пользователь не найден. SMS приглашение отправлено. Заявка создана.",
             "user_exists": False,
@@ -130,7 +136,8 @@ async def invite_guarantor(
         "message": "Заявка на гаранта создана успешно",
         "user_exists": True,
         "request_id": new_request.id,
-        "guarantor_name": guarantor_user.full_name
+        "guarantor_first_name": guarantor_user.first_name,
+        "guarantor_last_name": guarantor_user.last_name
     }
 
 
@@ -257,15 +264,18 @@ async def get_my_guarantors(
     for relationship in guarantor_relationships:
         guarantor_user = db.query(User).filter(User.id == relationship.guarantor_id).first()
         if guarantor_user:
-            # Имя приоритезируем так: из заявки (guarantor_requests.guarantor_name),
-            # затем из users.full_name, иначе null
-            guarantor_name = None
+            # Имя приоритезируем так: из заявки (guarantor_requests.guarantor_first_name/last_name),
+            # затем из users.first_name/last_name, иначе null
+            guarantor_first_name = None
+            guarantor_last_name = None
             if relationship.original_request:
-                guarantor_name = relationship.original_request.guarantor_name
+                guarantor_first_name = relationship.original_request.guarantor_first_name
+                guarantor_last_name = relationship.original_request.guarantor_last_name
             
             result.append(SimpleGuarantorSchema(
                 id=relationship.id,
-                name=guarantor_name or guarantor_user.full_name,
+                first_name=guarantor_first_name or guarantor_user.first_name,
+                last_name=guarantor_last_name or guarantor_user.last_name,
                 phone=guarantor_user.phone_number,
                 contract_signed=relationship.contract_signed,
                 sublease_contract_signed=relationship.sublease_contract_signed,
@@ -291,20 +301,23 @@ async def get_my_guarantor_requests(
 
     items: list[ClientGuarantorRequestItemSchema] = []
     for req in requests:
-        guarantor_name: str | None = req.guarantor_name
+        guarantor_first_name: str | None = req.guarantor_first_name
+        guarantor_last_name: str | None = req.guarantor_last_name
         guarantor_phone: str | None = req.guarantor_phone
 
         if req.guarantor_id:
             g_user = db.query(User).filter(User.id == req.guarantor_id).first()
             if g_user:
                 # Если в заявке нет имени, берём из профиля
-                guarantor_name = guarantor_name or g_user.full_name
+                guarantor_first_name = guarantor_first_name or g_user.first_name
+                guarantor_last_name = guarantor_last_name or g_user.last_name
                 guarantor_phone = guarantor_phone or g_user.phone_number
 
         items.append(ClientGuarantorRequestItemSchema(
             id=req.id,
             guarantor_id=req.guarantor_id,
-            guarantor_name=guarantor_name,
+            guarantor_first_name=guarantor_first_name,
+            guarantor_last_name=guarantor_last_name,
             guarantor_phone=guarantor_phone,
             status=req.status,
             verification_status=VerificationStatusSchema(req.verification_status) if isinstance(req.verification_status, str) else req.verification_status,
@@ -342,13 +355,15 @@ async def get_incoming_requests(
     for request in incoming_requests:
         requestor = db.query(User).filter(User.id == request.requestor_id).first()
         if requestor:
-            # Приоритет: сначала User.full_name, иначе null
-            requestor_name = requestor.full_name if requestor.full_name else None
+            # Приоритет: сначала User.first_name/last_name, иначе null
+            requestor_first_name = requestor.first_name
+            requestor_last_name = requestor.last_name
             
             result.append(IncomingRequestSchema(
                 id=request.id,
                 requestor_id=request.requestor_id,
-                requestor_name=requestor_name,
+                requestor_first_name=requestor_first_name,
+                requestor_last_name=requestor_last_name,
                 requestor_phone=requestor.phone_number,
                 reason=request.reason,
                 created_at=request.created_at
@@ -378,15 +393,18 @@ async def get_my_clients(
     for relationship in client_relationships:
         client_user = db.query(User).filter(User.id == relationship.client_id).first()
         if client_user:
-            # Имя приоритезируем так: из заявки (guarantor_requests.guarantor_name),
-            # затем из users.full_name, иначе null
-            client_name = None
+            # Имя приоритезируем так: из заявки (guarantor_requests.guarantor_first_name/last_name),
+            # затем из users.first_name/last_name, иначе null
+            client_first_name = None
+            client_last_name = None
             if relationship.original_request:
-                client_name = relationship.original_request.guarantor_name
+                client_first_name = relationship.original_request.guarantor_first_name
+                client_last_name = relationship.original_request.guarantor_last_name
             
             result.append(SimpleClientSchema(
                 id=relationship.id,
-                name=client_name or client_user.full_name,
+                first_name=client_first_name or client_user.first_name,
+                last_name=client_last_name or client_user.last_name,
                 phone=client_user.phone_number,
                 contract_signed=relationship.contract_signed,
                 sublease_contract_signed=relationship.sublease_contract_signed,
@@ -873,27 +891,32 @@ async def get_guarantor_requests(
     for request in pending_requests:
         # Получаем информацию о запрашивающем
         requestor = db.query(User).filter(User.id == request.requestor_id).first()
-        requestor_name = requestor.full_name if requestor else None
+        requestor_first_name = requestor.first_name if requestor else None
+        requestor_last_name = requestor.last_name if requestor else None
         requestor_phone = requestor.phone_number if requestor else None
         
         # Получаем информацию о гаранте (если есть)
         guarantor = None
-        guarantor_name = request.guarantor_name
+        guarantor_first_name = request.guarantor_first_name
+        guarantor_last_name = request.guarantor_last_name
         guarantor_phone = request.guarantor_phone
         
         if request.guarantor_id:
             guarantor = db.query(User).filter(User.id == request.guarantor_id).first()
             if guarantor:
-                guarantor_name = guarantor.full_name
+                guarantor_first_name = guarantor.first_name
+                guarantor_last_name = guarantor.last_name
                 guarantor_phone = guarantor.phone_number
         
         result.append(GuarantorRequestAdminSchema(
             id=request.id,
             requestor_id=request.requestor_id,
-            requestor_name=requestor_name,
+            requestor_first_name=requestor_first_name,
+            requestor_last_name=requestor_last_name,
             requestor_phone=requestor_phone or "",
             guarantor_id=request.guarantor_id,
-            guarantor_name=guarantor_name,
+            guarantor_first_name=guarantor_first_name,
+            guarantor_last_name=guarantor_last_name,
             guarantor_phone=guarantor_phone or "",
             status=request.status,
             verification_status=request.verification_status,
@@ -950,7 +973,8 @@ async def get_guarantor_relationships(
                 {
                     "id": req.id,
                     "guarantor_phone": req.guarantor_phone,
-                    "guarantor_name": req.guarantor_name,
+                    "guarantor_first_name": req.guarantor_first_name,
+                    "guarantor_last_name": req.guarantor_last_name,
                     "guarantor_id": req.guarantor_id,
                     "status": req.status.value,
                     "created_at": req.created_at

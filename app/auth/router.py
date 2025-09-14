@@ -133,8 +133,10 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
             request.guarantor_id = user.id
             
             # Если у пользователя нет имени, но есть в заявке - подставляем из заявки
-            if not user.full_name and request.guarantor_name:
-                user.full_name = request.guarantor_name
+            if not user.first_name and request.guarantor_first_name:
+                user.first_name = request.guarantor_first_name
+            if not user.last_name and request.guarantor_last_name:
+                user.last_name = request.guarantor_last_name
             
             # Обновляем телефон в заявке из профиля пользователя
             if user.phone_number:
@@ -207,7 +209,8 @@ async def read_users_me(
             mech = db.query(User).get(rental.delivery_mechanic_id)
             current_mechanic = {
                 "id": mech.id,
-                "full_name": mech.full_name,
+                "first_name": mech.first_name,
+                "last_name": mech.last_name,
                 "phone_number": mech.phone_number
             } if mech else None
         else:
@@ -282,7 +285,8 @@ async def read_users_me(
     return {
         "id": current_user.id,
         "phone_number": current_user.phone_number,
-        "full_name": current_user.full_name,
+        "first_name": current_user.first_name,
+        "last_name": current_user.last_name,
         "role": current_user.role.value,
         "wallet_balance": float(current_user.wallet_balance or 0.0),
         "current_rental": current_rental,
@@ -357,7 +361,8 @@ async def refresh_token(db: Session = Depends(get_db), token: str = Depends(JWTB
 - selfie: Обычное селфи (JPEG/PNG)
 
 **Требуемые данные:**
-- full_name: Полное ФИО (2-100 символов). Пример: "Иванов Иван Иванович"
+- first_name: Имя (1-50 символов). Пример: "Иван"
+- last_name: Фамилия (1-50 символов). Пример: "Иванов"
 - birth_date: Дата рождения в формате YYYY-MM-DD. Пример: "1990-05-15"
 - iin: ИИН из 12 цифр без пробелов. Пример: "900515123456"
 - id_card_expiry: Дата истечения ID карты в формате YYYY-MM-DD (будущая дата). Пример: "2030-12-31"
@@ -374,7 +379,8 @@ async def upload_documents(
         selfie: UploadFile = File(...),
 
         # Данные формы
-        full_name: str = Form(..., min_length=2, max_length=100),
+        first_name: str = Form(..., min_length=1, max_length=50),
+        last_name: str = Form(..., min_length=1, max_length=50),
         birth_date: str = Form(...),
         iin: str = Form(..., min_length=12, max_length=12),
         id_card_expiry: str = Form(...),
@@ -394,7 +400,8 @@ async def upload_documents(
     # Валидация данных через Pydantic-схему
     try:
         document_data = DocumentUploadRequest(
-            full_name=full_name,
+            first_name=first_name,
+            last_name=last_name,
             birth_date=birth_date,
             iin=iin,
             id_card_expiry=id_card_expiry,
@@ -415,7 +422,8 @@ async def upload_documents(
         selfie_path = await save_file(selfie, current_user.id, "uploads/documents")
 
         # Обновление данных пользователя
-        current_user.full_name = document_data.full_name
+        current_user.first_name = document_data.first_name
+        current_user.last_name = document_data.last_name
         current_user.birth_date = datetime.strptime(document_data.birth_date, '%Y-%m-%d')
         current_user.iin = document_data.iin
 
@@ -439,7 +447,8 @@ async def upload_documents(
             ).all()
             
             for request in guarantor_requests:
-                request.guarantor_name = current_user.full_name
+                request.guarantor_first_name = current_user.first_name
+                request.guarantor_last_name = current_user.last_name
                 request.guarantor_phone = current_user.phone_number
         except Exception as e:
             print(f"Ошибка при обновлении заявок гаранта: {e}")
@@ -451,7 +460,8 @@ async def upload_documents(
             "message": "Documents and data uploaded successfully",
             "status": "pending review",
             "data": {
-                "full_name": current_user.full_name,
+                "first_name": current_user.first_name,
+                "last_name": current_user.last_name,
                 "birth_date": current_user.birth_date.strftime('%Y-%m-%d'),
                 "iin": current_user.iin,
                 "id_card_expiry": current_user.id_card_expiry.strftime('%Y-%m-%d'),

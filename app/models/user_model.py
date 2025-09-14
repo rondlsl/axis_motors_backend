@@ -26,7 +26,8 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    full_name = Column(String, nullable=True)
+    first_name = Column(String, nullable=True)
+    last_name = Column(String, nullable=True)
     phone_number = Column(String, nullable=False, unique=False)
     birth_date = Column(DateTime, nullable=True)
     iin = Column(String(12), nullable=True, unique=False)

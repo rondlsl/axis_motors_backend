@@ -97,7 +97,8 @@ def get_all_vehicles_plain(
                         )
 
                     car_dict["current_renter_details"] = {
-                        "full_name": renter.full_name,
+                        "first_name": renter.first_name,
+                        "last_name": renter.last_name,
                         "phone_number": renter.phone_number,
                         "selfie_url": renter.selfie_with_license_url,
                         "rent_selfie_url": rent_selfie_url,
@@ -159,7 +160,8 @@ def get_in_use_vehicles(
     Список машин со статусом IN_USE.
     Дополнительно:
       • current_renter_details:
-          - full_name
+          - first_name
+          - last_name
           - phone_number
           - selfie_url              (профильное селфи пользователя)
           - rent_selfie_url         (селфи, снятое перед арендой - из photos_before)
@@ -223,7 +225,8 @@ def get_in_use_vehicles(
                         )
 
                     renter_info = {
-                        "full_name": current_renter.full_name,
+                        "first_name": current_renter.first_name,
+                        "last_name": current_renter.last_name,
                         "phone_number": current_renter.phone_number,
                         "selfie_url": current_renter.selfie_with_license_url,
                         "rent_selfie_url": rent_selfie_url,
@@ -249,7 +252,7 @@ def search_vehicles(
 ) -> Dict[str, Any]:
     """
     Ищет автомобили по имени или номеру, но возвращает только машины со статусом IN_USE или PENDING.
-    Для автомобилей со статусом IN_USE дополнительно возвращаются данные текущего арендатора (full_name, phone_number, URL селфи).
+    Для автомобилей со статусом IN_USE дополнительно возвращаются данные текущего арендатора (first_name, last_name, phone_number, URL селфи).
     """
     try:
         cars = db.query(Car).filter(
@@ -287,7 +290,8 @@ def search_vehicles(
                 current_renter = db.query(User).filter(User.id == car.current_renter_id).first()
                 if current_renter:
                     car_data["current_renter_details"] = {
-                        "full_name": current_renter.full_name,
+                        "first_name": current_renter.first_name,
+                        "last_name": current_renter.last_name,
                         "phone_number": current_renter.phone_number,
                         "selfie_url": current_renter.selfie_with_license_url
                     }

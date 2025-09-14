@@ -17,11 +17,17 @@ class VerifySmsRequest(BaseModel):
 
 
 class DocumentUploadRequest(BaseModel):
-    full_name: str = Field(
+    first_name: str = Field(
         ...,
-        min_length=2,
-        max_length=100,
-        description="Полное имя пользователя. Пример: 'Иванов Иван Иванович'"
+        min_length=1,
+        max_length=50,
+        description="Имя пользователя. Пример: 'Иван'"
+    )
+    last_name: str = Field(
+        ...,
+        min_length=1,
+        max_length=50,
+        description="Фамилия пользователя. Пример: 'Иванов'"
     )
     birth_date: str = Field(
         ...,

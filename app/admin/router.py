@@ -28,7 +28,8 @@ class UserApprovalSchema(BaseModel):
 class UserListItemSchema(BaseModel):
     id: int
     phone_number: str
-    full_name: str = None
+    first_name: str = None
+    last_name: str = None
     role: str
     created_at: str = None
     documents_verified: bool
@@ -56,7 +57,8 @@ async def get_pending_users(
         UserListItemSchema(
             id=user.id,
             phone_number=user.phone_number,
-            full_name=user.full_name,
+            first_name=user.first_name,
+            last_name=user.last_name,
             role=user.role.value,
             documents_verified=user.documents_verified
         )
@@ -93,9 +95,18 @@ async def approve_or_reject_user(
         
         # Отправляем SMS с предложением гаранта
         if approval_data.rejection_reason:
+            # Формируем имя для SMS
+            user_display_name = None
+            if user.first_name and user.last_name:
+                user_display_name = f"{user.first_name} {user.last_name}"
+            elif user.first_name:
+                user_display_name = user.first_name
+            else:
+                user_display_name = user.phone_number
+                
             sms_result = await send_user_rejection_with_guarantor_sms(
                 user.phone_number,
-                user.full_name or user.phone_number,
+                user_display_name,
                 approval_data.rejection_reason
             )
             
@@ -123,7 +134,8 @@ async def get_all_users(
         UserListItemSchema(
             id=user.id,
             phone_number=user.phone_number,
-            full_name=user.full_name,
+            first_name=user.first_name,
+            last_name=user.last_name,
             role=user.role.value,
             documents_verified=user.documents_verified
         )
@@ -159,10 +171,12 @@ async def get_guarantor_requests(
         result.append(GuarantorRequestAdminSchema(
             id=request.id,
             requestor_id=request.requestor_id,
-            requestor_name=requestor.full_name if requestor else None,
+            requestor_first_name=requestor.first_name if requestor else None,
+            requestor_last_name=requestor.last_name if requestor else None,
             requestor_phone=requestor.phone_number if requestor else "Unknown",
             guarantor_id=request.guarantor_id,
-            guarantor_name=guarantor.full_name if guarantor else request.guarantor_name,
+            guarantor_first_name=guarantor.first_name if guarantor else request.guarantor_first_name,
+            guarantor_last_name=guarantor.last_name if guarantor else request.guarantor_last_name,
             guarantor_phone=guarantor.phone_number if guarantor else request.guarantor_phone,
             status=request.status.value,
             verification_status=request.verification_status,
@@ -270,7 +284,8 @@ async def get_all_cars_for_admin(
             renter = db.query(User).filter(User.id == car.current_renter_id).first()
             if renter:
                 current_renter_details = {
-                    "name": renter.full_name,
+                    "first_name": renter.first_name,
+                    "last_name": renter.last_name,
                     "selfie": renter.selfie_with_license_url
                 }
         

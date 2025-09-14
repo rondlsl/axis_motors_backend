@@ -15,9 +15,15 @@ async def send_sms_mobizon(recipient: str, sms_text: str, api_key: str):
         return response.text
 
 
-async def send_guarantor_invitation_sms(guarantor_phone: str, requestor_name: str):
+async def send_guarantor_invitation_sms(guarantor_phone: str, requestor_first_name: str, requestor_last_name: str = None):
     """Отправка SMS приглашения гаранту"""
-    sms_text = f"{requestor_name} выбрал(а) вас в качестве Гаранта. Перейдите по ссылке и скачайте приложение"
+    # Формируем имя для SMS
+    if requestor_last_name:
+        requestor_display_name = f"{requestor_first_name} {requestor_last_name}"
+    else:
+        requestor_display_name = requestor_first_name
+    
+    sms_text = f"{requestor_display_name} выбрал(а) вас в качестве Гаранта. Перейдите по ссылке и скачайте приложение"
     
     # Если SMS_TOKEN = "6666" - тестовый режим, SMS не отправляем
     if SMS_TOKEN == "6666":
