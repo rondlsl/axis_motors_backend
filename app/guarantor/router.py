@@ -9,6 +9,7 @@ import uuid
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole
+from app.models.guarantor_model import Guarantor
 from app.models.guarantor_model import (
     GuarantorRequest, 
     GuarantorRequestStatus, 
@@ -72,6 +73,19 @@ async def invite_guarantor(
             detail="Вы не можете назначить себя гарантом"
         )
     
+    # Проверяем, нет ли уже активной заявки к этому номеру телефона
+    existing_request = db.query(GuarantorRequest).filter(
+        GuarantorRequest.requestor_id == current_user.id,
+        GuarantorRequest.guarantor_phone == guarantor_phone,
+        GuarantorRequest.status == GuarantorRequestStatus.PENDING
+    ).first()
+    
+    if existing_request:
+        raise HTTPException(
+            status_code=400,
+            detail="У вас уже есть активная заявка к этому номеру телефона"
+        )
+    
     # Ищем пользователя с указанным номером
     guarantor_user = db.query(User).filter(
         User.phone_number == guarantor_phone,
@@ -118,6 +132,32 @@ async def invite_guarantor(
         raise HTTPException(
             status_code=400,
             detail="У вас уже есть активная заявка к этому пользователю"
+        )
+        
+    # Проверяем, не является ли текущий пользователь уже гарантом для этого пользователя
+    existing_guarantor_relationship = db.query(Guarantor).filter(
+        Guarantor.guarantor_id == current_user.id,
+        Guarantor.client_id == guarantor_user.id,
+        Guarantor.is_active == True
+    ).first()
+    
+    if existing_guarantor_relationship:
+        raise HTTPException(
+            status_code=400,
+            detail="Вы уже являетесь гарантом для этого пользователя. Взаимное гарантство не допускается."
+        )
+    
+    # Проверяем, не является ли этот пользователь уже гарантом для текущего пользователя
+    existing_client_relationship = db.query(Guarantor).filter(
+        Guarantor.guarantor_id == guarantor_user.id,
+        Guarantor.client_id == current_user.id,
+        Guarantor.is_active == True
+    ).first()
+    
+    if existing_client_relationship:
+        raise HTTPException(
+            status_code=400,
+            detail="Этот пользователь уже является вашим гарантом. Взаимное гарантство не допускается."
         )
     
     # Создаем новую заявку
