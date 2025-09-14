@@ -6,6 +6,7 @@ from sqlalchemy import create_engine, text
 from app.models.car_model import Car
 from app.models.history_model import RentalHistory, RentalStatus
 from app.models.user_model import User, UserRole
+from app.models.rental_actions_model import RentalAction, ActionType
 from sqlalchemy.orm import sessionmaker
 
 engine = create_engine(DATABASE_URL)
