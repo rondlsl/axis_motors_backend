@@ -9,6 +9,18 @@ class LocaleUpdate(BaseModel):
 
 class SendSmsRequest(BaseModel):
     phone_number: constr(min_length=11, max_length=11)
+    first_name: str = Field(
+        ...,
+        min_length=1,
+        max_length=50,
+        description="Имя пользователя. Пример: 'Иван'"
+    )
+    last_name: str = Field(
+        ...,
+        min_length=1,
+        max_length=50,
+        description="Фамилия пользователя. Пример: 'Иванов'"
+    )
 
 
 class VerifySmsRequest(BaseModel):
