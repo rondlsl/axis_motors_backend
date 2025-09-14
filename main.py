@@ -82,6 +82,7 @@ async def get_last_vehicles_data():
 def _update_vehicle_data_sync(vehicles_data: list, db: Session) -> int:
     updated = 0
     try:
+        print(f"🔄 Обновление данных автомобилей: получено {len(vehicles_data)} автомобилей")
         for vehicle in vehicles_data:
             vehicle_id = str(vehicle["vehicle_id"])
             car = db.query(Car).filter(Car.gps_id == vehicle_id).first()
@@ -96,12 +97,14 @@ def _update_vehicle_data_sync(vehicles_data: list, db: Session) -> int:
                 if (vehicle.get("is_engine_on") is True and 
                     vehicle.get("fuel_level") is not None):
                     car.fuel_level = vehicle["fuel_level"]
+                    print(f"⛽ Обновлен fuel_level для {car.name}: {vehicle['fuel_level']}")
                 
                 # Обновляем пробег всегда
                 if vehicle.get("mileage") is not None:
                     car.mileage = vehicle["mileage"]
                 updated += 1
         db.commit()
+        print(f"✅ Обновлено {updated} автомобилей")
     except Exception as e:
         logger.error(f"Ошибка при обновлении данных машин в БД: {e}")
     return updated
@@ -132,6 +135,7 @@ async def update_vehicle_data():
 
 
 async def check_vehicle_conditions():
+    print("⏰ Планировщик: проверка данных автомобилей")
     await update_vehicle_data()
 
 
