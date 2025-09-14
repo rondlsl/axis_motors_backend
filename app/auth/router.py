@@ -66,6 +66,12 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
 
     if not user:
         # Нет активного — создаём новый аккаунт
+        if not request.first_name or not request.last_name:
+            raise HTTPException(
+                status_code=400, 
+                detail="Для новых пользователей обязательно указать имя и фамилию"
+            )
+        
         user = User(
             phone_number=phone_number,
             first_name=request.first_name,
