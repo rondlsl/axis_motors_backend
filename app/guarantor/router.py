@@ -301,6 +301,8 @@ async def get_my_guarantors(
             result.append(SimpleGuarantorSchema(
                 id=relationship.id,
                 phone=guarantor_user.phone_number,
+                first_name=guarantor_user.first_name,
+                last_name=guarantor_user.last_name,
                 contract_signed=relationship.contract_signed,
                 sublease_contract_signed=relationship.sublease_contract_signed,
                 created_at=relationship.created_at
@@ -326,16 +328,22 @@ async def get_my_guarantor_requests(
     items: list[ClientGuarantorRequestItemSchema] = []
     for req in requests:
         guarantor_phone: str | None = req.guarantor_phone
+        guarantor_first_name: str | None = None
+        guarantor_last_name: str | None = None
 
         if req.guarantor_id:
             g_user = db.query(User).filter(User.id == req.guarantor_id).first()
             if g_user:
                 guarantor_phone = guarantor_phone or g_user.phone_number
+                guarantor_first_name = g_user.first_name
+                guarantor_last_name = g_user.last_name
 
         items.append(ClientGuarantorRequestItemSchema(
             id=req.id,
             guarantor_id=req.guarantor_id,
             guarantor_phone=guarantor_phone,
+            guarantor_first_name=guarantor_first_name,
+            guarantor_last_name=guarantor_last_name,
             status=req.status,
             verification_status=VerificationStatusSchema(req.verification_status) if isinstance(req.verification_status, str) else req.verification_status,
             reason=req.reason,

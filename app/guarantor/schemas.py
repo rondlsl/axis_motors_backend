@@ -48,6 +48,8 @@ class ClientGuarantorRequestItemSchema(BaseModel):
     id: int = Field(..., description="ID заявки")
     guarantor_id: Optional[int] = Field(None, description="ID гаранта, если зарегистрирован")
     guarantor_phone: Optional[str] = Field(None, description="Телефон гаранта")
+    guarantor_first_name: Optional[str] = Field(None, description="Имя гаранта", example="Петр")
+    guarantor_last_name: Optional[str] = Field(None, description="Фамилия гаранта", example="Иванов")
     status: GuarantorRequestStatusSchema = Field(..., description="Статус заявки")
     verification_status: VerificationStatusSchema = Field(..., description="Статус проверки администратором")
     reason: Optional[str] = Field(None, description="Причина запроса")
@@ -202,6 +204,8 @@ class SimpleGuarantorSchema(BaseModel):
     """Упрощенная схема для активного гаранта"""
     id: int = Field(..., description="ID связи гарант-клиент", example=1)
     phone: str = Field(..., description="Номер телефона гаранта", example="7777654321")
+    first_name: Optional[str] = Field(None, description="Имя гаранта", example="Петр")
+    last_name: Optional[str] = Field(None, description="Фамилия гаранта", example="Иванов")
     contract_signed: bool = Field(..., description="Подписан ли договор гаранта", example=True)
     sublease_contract_signed: bool = Field(..., description="Подписан ли договор субаренды", example=False)
     created_at: datetime = Field(..., description="Дата создания связи", example="2024-01-15T10:30:00Z")
