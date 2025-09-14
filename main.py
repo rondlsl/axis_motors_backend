@@ -86,14 +86,18 @@ def _update_vehicle_data_sync(vehicles_data: list, db: Session) -> int:
             vehicle_id = str(vehicle["vehicle_id"])
             car = db.query(Car).filter(Car.gps_id == vehicle_id).first()
             if car:
-                # Обновляем данные для всех автомобилей независимо от статуса
-                # Обновляем только валидные данные (не None)
+                # Обновляем координаты всегда
                 if vehicle.get("latitude") is not None:
                     car.latitude = vehicle["latitude"]
                 if vehicle.get("longitude") is not None:
                     car.longitude = vehicle["longitude"]
-                if vehicle.get("fuel_level") is not None:
+                
+                # Обновляем fuel_level только когда двигатель включен
+                if (vehicle.get("is_engine_on") is True and 
+                    vehicle.get("fuel_level") is not None):
                     car.fuel_level = vehicle["fuel_level"]
+                
+                # Обновляем пробег всегда
                 if vehicle.get("mileage") is not None:
                     car.mileage = vehicle["mileage"]
                 updated += 1

@@ -2,7 +2,6 @@ import asyncio
 import math
 from datetime import datetime
 
-import anyio
 import httpx
 from sqlalchemy import or_
 
@@ -26,7 +25,7 @@ async def billing_job():
       4) Yield control to event loop.
     """
     # 1) Run sync processing in thread pool
-    push_notifications, telegram_alerts = await anyio.to_thread.run_sync(process_rentals_sync)
+    push_notifications, telegram_alerts = await asyncio.to_thread(process_rentals_sync)
 
     # 2) Open one DB session
     db = SessionLocal()
