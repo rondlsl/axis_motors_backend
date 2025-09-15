@@ -58,6 +58,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
          - MINUTES → списание каждую минуту
          - HOURS/DAYS → пред-уведомление за 10 мин + списание сверхлимита
       3) Уведомления о низком и нулевом балансе
+      4) Штрафы механиков за задержку доставки
 
     Returns:
       push_notifications: list of (user_id, title, body)
@@ -101,7 +102,16 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
 
             # === RESERVED stage ===
             if rental.rental_status == RentalStatus.RESERVED:
-                waited = (now - (rental.reservation_time or rental.start_time)).total_seconds() / 60
+                # Исключаем время доставки из расчета waiting_fee
+                base_time = rental.reservation_time or rental.start_time
+                if rental.delivery_start_time and rental.delivery_end_time:
+                    # Если доставка завершена, считаем время ожидания только до начала доставки
+                    base_time = rental.delivery_end_time
+                elif rental.delivery_start_time:
+                    # Если доставка в процессе, считаем время ожидания только до начала доставки
+                    base_time = rental.delivery_start_time
+                
+                waited = (now - base_time).total_seconds() / 60
 
                 # Pre‑waiting alert
                 if 14 <= waited < 15 and not flags["pre_waiting"] and user.fcm_token:
@@ -271,6 +281,51 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
         except Exception as e:
             db.rollback()
             print("[Billing error] rental={rental.id}: {e}")
+
+    # Обработка штрафов механиков за задержку доставки
+    try:
+        # Находим доставки, которые превысили 1.5 часа
+        overdue_deliveries = db.query(RentalHistory).filter(
+            RentalHistory.rental_status == RentalStatus.DELIVERING_IN_PROGRESS,
+            RentalHistory.delivery_start_time.isnot(None),
+            RentalHistory.delivery_penalty_fee == 0  # Еще не начислен штраф
+        ).all()
+        
+        for rental in overdue_deliveries:
+            if rental.delivery_start_time:
+                delivery_duration_minutes = (now - rental.delivery_start_time).total_seconds() / 60
+                if delivery_duration_minutes > 90:  # 1.5 часа
+                    # Рассчитываем штраф
+                    penalty_minutes = delivery_duration_minutes - 90
+                    penalty_fee = int(penalty_minutes * 1000)  # 1000 тенге за минуту
+                    
+                    # Находим механика
+                    mechanic = db.query(User).filter(User.id == rental.delivery_mechanic_id).first()
+                    if mechanic:
+                        # Списываем штраф с механика
+                        mechanic.wallet_balance -= penalty_fee
+                        rental.delivery_penalty_fee = penalty_fee
+                        
+                        # Уведомляем механика
+                        if mechanic.fcm_token:
+                            push_notifications.append((
+                                mechanic.id,
+                                "Штраф за задержку доставки",
+                                f"Списан штраф {penalty_fee}₸ за задержку доставки на {penalty_minutes:.1f} мин."
+                            ))
+                        
+                        # Уведомляем в Telegram
+                        telegram_alerts.append(
+                            f"⚠️ Механик {mechanic.phone_number} получил штраф {penalty_fee}₸ "
+                            f"за задержку доставки автомобиля ID {rental.car_id} на {penalty_minutes:.1f} мин."
+                        )
+                        
+                        print(f"Штраф за задержку доставки: {penalty_fee}₸ с механика {mechanic.phone_number}")
+                        db.commit()
+                        
+    except Exception as e:
+        print(f"[Delivery penalty error]: {e}")
+        db.rollback()
 
     # Очистка флагов для завершённых/отменённых арен
     for rid in list(_notification_flags):

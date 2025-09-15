@@ -199,10 +199,19 @@ async def read_users_me(
         }
 
         if rental.rental_status == RentalStatus.DELIVERING or rental.rental_status == RentalStatus.DELIVERING_IN_PROGRESS or rental.rental_status == RentalStatus.DELIVERY_RESERVED:
+            # Рассчитываем время доставки если она началась
+            delivery_duration_minutes = None
+            if rental.delivery_start_time:
+                from datetime import datetime
+                delivery_duration_minutes = int((datetime.utcnow() - rental.delivery_start_time).total_seconds() / 60)
+            
             rental_details.update({
                 "delivery_latitude": rental.delivery_latitude,
                 "delivery_longitude": rental.delivery_longitude,
-                "delivery_in_progress": rental.delivery_mechanic_id is not None
+                "delivery_in_progress": rental.delivery_mechanic_id is not None,
+                "delivery_start_time": rental.delivery_start_time.isoformat() if rental.delivery_start_time else None,
+                "delivery_duration_minutes": delivery_duration_minutes,
+                "delivery_penalty_fee": rental.delivery_penalty_fee or 0
             })
         else:
             rental_details["delivery_in_progress"] = False

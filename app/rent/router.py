@@ -636,6 +636,11 @@ async def cancel_delivery(
     # Отменяем доставку
     rental.rental_status = RentalStatus.CANCELLED
     rental.end_time = datetime.utcnow()
+    
+    # Если доставка была в процессе, записываем время окончания
+    if rental.delivery_start_time and not rental.delivery_end_time:
+        rental.delivery_end_time = datetime.utcnow()
+    
     rental.delivery_mechanic_id = None
 
     # Освобождаем машину

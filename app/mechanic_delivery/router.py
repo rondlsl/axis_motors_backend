@@ -44,6 +44,11 @@ def get_delivery_vehicles(
         car = db.query(Car).filter(Car.id == rental.car_id).first()
         if not car:
             continue
+            
+        # Рассчитываем время ожидания доставки
+        from datetime import datetime
+        waiting_time_minutes = int((datetime.utcnow() - rental.reservation_time).total_seconds() / 60)
+        
         vehicles_data.append({
             "rental_id": rental.id,
             "car_id": car.id,
@@ -63,6 +68,7 @@ def get_delivery_vehicles(
                 "longitude": rental.delivery_longitude,
             },
             "reservation_time": rental.reservation_time.isoformat(),
+            "waiting_time_minutes": waiting_time_minutes,
             "delivery_assigned": rental.delivery_mechanic_id is not None
         })
 
@@ -148,6 +154,7 @@ async def start_delivery(
         raise HTTPException(404, "Автомобиль не найден")
 
     rental.rental_status = RentalStatus.DELIVERING_IN_PROGRESS
+    rental.delivery_start_time = datetime.utcnow()  # Записываем время начала доставки
     db.commit()
     db.refresh(rental)
 
@@ -186,7 +193,26 @@ async def complete_delivery(
     rental.fuel_after = car.fuel_level
     rental.mileage_after = car.mileage
 
-    rental.end_time = datetime.utcnow()
+    # Записываем время окончания доставки
+    delivery_end_time = datetime.utcnow()
+    rental.delivery_end_time = delivery_end_time
+    
+    # Рассчитываем штраф за задержку доставки (если больше 1.5 часа = 90 минут)
+    if rental.delivery_start_time:
+        delivery_duration_minutes = (delivery_end_time - rental.delivery_start_time).total_seconds() / 60
+        if delivery_duration_minutes > 90:  # 1.5 часа
+            # Штраф: 1000 тенге за каждую минуту превышения
+            penalty_minutes = delivery_duration_minutes - 90
+            penalty_fee = int(penalty_minutes * 1000)
+            rental.delivery_penalty_fee = penalty_fee
+            
+            # Списываем штраф с механика
+            mechanic = db.query(User).filter(User.id == rental.delivery_mechanic_id).first()
+            if mechanic:
+                mechanic.wallet_balance -= penalty_fee
+                print(f"Штраф за задержку доставки: {penalty_fee}₸ с механика {mechanic.phone_number}")
+
+    rental.end_time = delivery_end_time
     rental.rental_status = RentalStatus.RESERVED
     car.status = "RESERVED"
     rental.delivery_mechanic_id = None
@@ -236,6 +262,12 @@ def current_delivery(
     if not car:
         raise HTTPException(404, "Автомобиль не найден")
 
+    # Рассчитываем продолжительность доставки если она началась
+    delivery_duration_minutes = None
+    if rental.delivery_start_time:
+        from datetime import datetime
+        delivery_duration_minutes = int((datetime.utcnow() - rental.delivery_start_time).total_seconds() / 60)
+
     return {
         "rental_id": rental.id,
         "car_id": car.id,
@@ -254,6 +286,9 @@ def current_delivery(
             "longitude": rental.delivery_longitude,
         },
         "reservation_time": rental.reservation_time.isoformat(),
+        "delivery_start_time": rental.delivery_start_time.isoformat() if rental.delivery_start_time else None,
+        "delivery_duration_minutes": delivery_duration_minutes,
+        "delivery_penalty_fee": rental.delivery_penalty_fee or 0,
         "status": rental.rental_status.value
     }
 

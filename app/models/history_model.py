@@ -69,6 +69,11 @@ class RentalHistory(Base):
     delivery_latitude = Column(Float, nullable=True)
     delivery_longitude = Column(Float, nullable=True)
     delivery_mechanic_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    
+    # Время доставки
+    delivery_start_time = Column(DateTime, nullable=True)  # Когда механик начал доставку
+    delivery_end_time = Column(DateTime, nullable=True)    # Когда механик завершил доставку
+    delivery_penalty_fee = Column(Integer, nullable=True, default=0)  # Штраф за задержку доставки
 
     # Поля для хранения фотографий перед и после доставки
     delivery_photos_before = Column(ARRAY(String), nullable=True)
