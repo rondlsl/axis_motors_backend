@@ -13,6 +13,7 @@ from fastapi.responses import ORJSONResponse
 from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from starlette.middleware.cors import CORSMiddleware
+from fastapi.requests import Request
 
 from sqlalchemy.orm import Session
 from app.auth.router import Auth_router
@@ -270,6 +271,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+async def log_exception_handler(request: Request, exc: Exception):
+	logger.exception(f"Unhandled exception at {request.url}: {exc}")
+	return ORJSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+
+
+app.add_exception_handler(Exception, log_exception_handler)
 
 init_app(app)
 app.include_router(Auth_router)
