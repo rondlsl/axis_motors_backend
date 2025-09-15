@@ -4,6 +4,8 @@ services:
     build: .
     ports:
       - "7138:7138"
+    environment:
+      - DEBUG_API_ERRORS=1
     env_file:
       - .env
     depends_on:

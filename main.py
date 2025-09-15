@@ -274,6 +274,20 @@ app.add_middleware(
 
 async def log_exception_handler(request: Request, exc: Exception):
 	logger.exception(f"Unhandled exception at {request.url}: {exc}")
+	# Показ подробной ошибки по запросу через переменную окружения
+	try:
+		show_errors = os.getenv("DEBUG_API_ERRORS", "0") == "1"
+		if show_errors:
+			import traceback
+			return ORJSONResponse(
+				status_code=500,
+				content={
+					"detail": str(exc),
+					"traceback": traceback.format_exc(),
+				}
+			)
+	except Exception:
+		pass
 	return ORJSONResponse(status_code=500, content={"detail": "Internal Server Error"})
 
 
