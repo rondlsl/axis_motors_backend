@@ -293,12 +293,17 @@ async def read_users_me(
             "available_minutes": available_minutes
         })
 
+    # Safe coercion for potentially problematic fields
+    safe_first_name = current_user.first_name if isinstance(current_user.first_name, str) else None
+    safe_last_name = current_user.last_name if isinstance(current_user.last_name, str) else None
+    safe_role = getattr(current_user.role, "value", current_user.role) if current_user.role is not None else None
+
     return {
         "id": current_user.id,
         "phone_number": current_user.phone_number,
-        "first_name": current_user.first_name,
-        "last_name": current_user.last_name,
-        "role": current_user.role.value,
+        "first_name": safe_first_name,
+        "last_name": safe_last_name,
+        "role": safe_role,
         "wallet_balance": float(current_user.wallet_balance or 0.0),
         "current_rental": current_rental,
         "owned_cars": owned_cars,
