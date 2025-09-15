@@ -74,7 +74,13 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
         .join(User, RentalHistory.user_id == User.id)
         .join(Car, RentalHistory.car_id == Car.id)
         .filter(
-            RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE]),
+            RentalHistory.rental_status.in_([
+                RentalStatus.RESERVED, 
+                RentalStatus.IN_USE,
+                RentalStatus.DELIVERING,
+                RentalStatus.DELIVERY_RESERVED,
+                RentalStatus.DELIVERING_IN_PROGRESS
+            ]),
             User.role != UserRole.MECHANIC,
             or_(
                 Car.owner_id.is_(None),
@@ -141,6 +147,80 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                                 (rental.distance_fee or 0)
                         )
                         rental.already_payed = (rental.already_payed or 0) + charge
+                        user.wallet_balance -= charge
+                        db.commit()
+
+                        # Low balance ≤1000
+                        if 0 < user.wallet_balance <= 1000 and not flags["low_balance_1000"] and user.fcm_token:
+                            push_notifications.append((
+                                user.id,
+                                "Низкий баланс",
+                                f"На балансе {int(user.wallet_balance)}₸ — осталось менее 1000₸."
+                            ))
+                            flags["low_balance_1000"] = True
+
+                        # Balance zero
+                        if user.wallet_balance <= 0 and not flags["low_balance_zero"] and user.fcm_token:
+                            push_notifications.append((
+                                user.id,
+                                "Баланс исчерпан",
+                                "Ваш баланс 0₸ — завершите аренду, чтобы избежать штрафов."
+                            ))
+                            flags["low_balance_zero"] = True
+                            telegram_alerts.append(
+                                f"🔔 У клиента (тел.: {user.phone_number}) на авто ID {car.id} баланс исчерпан."
+                            )
+
+                        # First paid waiting
+                        if not flags["waiting"] and user.fcm_token:
+                            push_notifications.append((
+                                user.id,
+                                "Началось платное ожидание",
+                                f"Списано за ожидание: {charge}₸ за {extra} мин."
+                            ))
+                            flags["waiting"] = True
+
+            # === DELIVERY stages ===
+            elif rental.rental_status in [RentalStatus.DELIVERING, RentalStatus.DELIVERY_RESERVED, RentalStatus.DELIVERING_IN_PROGRESS]:
+                # Во время доставки клиент не платит waiting_fee
+                # Время доставки исключается из расчета waiting_fee
+                base_time = rental.reservation_time or rental.start_time
+                if rental.delivery_start_time and rental.delivery_end_time:
+                    # Если доставка завершена, считаем время ожидания только до начала доставки
+                    base_time = rental.delivery_end_time
+                elif rental.delivery_start_time:
+                    # Если доставка в процессе, считаем время ожидания только до начала доставки
+                    base_time = rental.delivery_start_time
+                
+                waited = (now - base_time).total_seconds() / 60
+
+                # Pre‑waiting alert (только если доставка еще не началась)
+                if not rental.delivery_start_time and 14 <= waited < 15 and not flags["pre_waiting"] and user.fcm_token:
+                    mins_left = math.ceil(15 - waited)
+                    push_notifications.append((
+                        user.id,
+                        "Скоро начнётся платное ожидание",
+                        f"Через {mins_left} мин бесплатного ожидания начнётся списание "
+                        f"{math.ceil(car.price_per_minute * 0.5)}₸/мин."
+                    ))
+                    flags["pre_waiting"] = True
+
+                # Charge waiting fee after 15 min (только если доставка еще не началась)
+                if not rental.delivery_start_time and waited > 15:
+                    extra = math.ceil(waited - 15)
+                    fee_total_wait = math.ceil(extra * car.price_per_minute * 0.5)
+                    prev_wait = rental.waiting_fee or 0
+                    charge = fee_total_wait - prev_wait
+                    if charge > 0:
+                        rental.waiting_fee = fee_total_wait
+                        rental.total_price = (
+                                (rental.base_price or 0) +
+                                (rental.open_fee or 0) +
+                                (rental.delivery_fee or 0) +
+                                rental.waiting_fee +
+                                (rental.overtime_fee or 0) +
+                                (rental.distance_fee or 0)
+                        )
                         user.wallet_balance -= charge
                         db.commit()
 
