@@ -293,38 +293,44 @@ async def read_users_me(
             "available_minutes": available_minutes
         })
 
-    # Safe coercion for potentially problematic fields
-    safe_first_name = current_user.first_name if isinstance(current_user.first_name, str) else None
-    safe_last_name = current_user.last_name if isinstance(current_user.last_name, str) else None
-    safe_role = getattr(current_user.role, "value", current_user.role) if current_user.role is not None else None
+    try:
+        first_name = current_user.first_name if isinstance(current_user.first_name, str) else None
+        last_name = current_user.last_name if isinstance(current_user.last_name, str) else None
+        role = getattr(current_user.role, "value", current_user.role) if current_user.role is not None else None
 
-    return {
-        "id": current_user.id,
-        "phone_number": current_user.phone_number,
-        "first_name": safe_first_name,
-        "last_name": safe_last_name,
-        "role": safe_role,
-        "wallet_balance": float(current_user.wallet_balance or 0.0),
-        "current_rental": current_rental,
-        "owned_cars": owned_cars,
-        "locale": current_user.locale,
-        "documents": {
-            "documents_verified": current_user.documents_verified,
-            "selfie_with_license_url": current_user.selfie_with_license_url,
-            "selfie_url": current_user.selfie_url,
-            "drivers_license": {
-                "url": current_user.drivers_license_url,
-                "expiry": current_user.drivers_license_expiry.isoformat()
-                if current_user.drivers_license_expiry else None,
-            },
-            "id_card": {
-                "front_url": current_user.id_card_front_url,
-                "back_url": current_user.id_card_back_url,
-                "expiry": current_user.id_card_expiry.isoformat()
-                if current_user.id_card_expiry else None,
+        return {
+            "id": current_user.id,
+            "phone_number": current_user.phone_number,
+            "first_name": first_name,
+            "last_name": last_name,
+            "role": role,
+            "wallet_balance": float(current_user.wallet_balance or 0.0),
+            "current_rental": current_rental,
+            "owned_cars": owned_cars,
+            "locale": current_user.locale,
+            "documents": {
+                "documents_verified": current_user.documents_verified,
+                "selfie_with_license_url": current_user.selfie_with_license_url,
+                "selfie_url": current_user.selfie_url,
+                "drivers_license": {
+                    "url": current_user.drivers_license_url,
+                    "expiry": current_user.drivers_license_expiry.isoformat()
+                    if current_user.drivers_license_expiry else None,
+                },
+                "id_card": {
+                    "front_url": current_user.id_card_front_url,
+                    "back_url": current_user.id_card_back_url,
+                    "expiry": current_user.id_card_expiry.isoformat()
+                    if current_user.id_card_expiry else None,
+                }
             }
         }
-    }
+    except Exception as e:
+        from app.core.config import logger
+        import traceback
+        logger.error(f"Error in /auth/user/me: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
 @Auth_router.post("/set_locale/", summary="Set locale body", description="Доступные locale - ru/en/kz")
