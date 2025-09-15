@@ -217,7 +217,7 @@ async def read_users_me(
             rental_details["delivery_in_progress"] = False
 
         if rental.delivery_mechanic_id:
-            mech = db.query(User).get(rental.delivery_mechanic_id)
+            mech = db.get(User, rental.delivery_mechanic_id)
             current_mechanic = {
                 "id": mech.id,
                 "first_name": mech.first_name,
