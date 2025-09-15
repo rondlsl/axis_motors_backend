@@ -202,7 +202,6 @@ async def read_users_me(
             # Рассчитываем время доставки если она началась
             delivery_duration_minutes = None
             if rental.delivery_start_time:
-                from datetime import datetime
                 delivery_duration_minutes = int((datetime.utcnow() - rental.delivery_start_time).total_seconds() / 60)
             
             rental_details.update({
