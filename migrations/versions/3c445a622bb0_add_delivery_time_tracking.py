@@ -1,6 +1,6 @@
 """Add delivery time tracking fields
 
-Revision ID: add_delivery_time_tracking
+Revision ID: 3c445a622bb0
 Revises: 9a47928fea56
 Create Date: 2025-01-14 12:00:00.000000
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = 'add_delivery_time_tracking'
+revision = '3c445a622bb0'
 down_revision = '9a47928fea56'
 branch_labels = None
 depends_on = None
