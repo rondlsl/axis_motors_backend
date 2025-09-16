@@ -29,6 +29,34 @@ ALLOWED_TYPES = ["image/jpeg", "image/png"]
 DEFAULT_DOC_EXPIRY = datetime(2025, 7, 15)
 
 
+class UpdateNameRequest(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "first_name": "Иван",
+                "last_name": "Иванов"
+            }
+        }
+
+
+class UpdateNameResponse(BaseModel):
+    message: str
+    first_name: Optional[str]
+    last_name: Optional[str]
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "message": "Profile updated",
+                "first_name": "Иван",
+                "last_name": "Иванов"
+            }
+        }
+
+
 async def send_sms_mobizon(recipient: str, sms_text: str, api_key: str):
     url = "https://api.mobizon.kz/service/message/sendsmsmessage"
     params = {
@@ -93,6 +121,50 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
     # можно раскомментировать, когда подключите SMS
     # await send_sms_mobizon(phone_number, sms_text, f"{SMS_TOKEN}")
     return {"message": "SMS code sent successfully"}
+
+
+@Auth_router.patch(
+    "/user/name",
+    summary="Обновить имя и фамилию пользователя",
+    description="Позволяет изменить `first_name` и/или `last_name` текущего пользователя",
+    response_model=UpdateNameResponse
+)
+async def update_user_name(
+        payload: UpdateNameRequest,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    # Нормализуем входные данные
+    new_first = payload.first_name.strip() if isinstance(payload.first_name, str) else None
+    new_last = payload.last_name.strip() if isinstance(payload.last_name, str) else None
+
+    if not new_first and not new_last:
+        raise HTTPException(status_code=400, detail="Nothing to update")
+
+    # Валидация длин
+    if new_first is not None and (len(new_first) < 1 or len(new_first) > 50):
+        raise HTTPException(status_code=422, detail="first_name must be 1..50 chars")
+    if new_last is not None and (len(new_last) < 1 or len(new_last) > 50):
+        raise HTTPException(status_code=422, detail="last_name must be 1..50 chars")
+
+    try:
+        if new_first is not None:
+            current_user.first_name = new_first
+        if new_last is not None:
+            current_user.last_name = new_last
+
+        db.add(current_user)
+        db.commit()
+        db.refresh(current_user)
+
+        return UpdateNameResponse(
+            message="Profile updated",
+            first_name=current_user.first_name,
+            last_name=current_user.last_name
+        )
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to update profile")
 
 
 @Auth_router.post("/verify_sms/")
