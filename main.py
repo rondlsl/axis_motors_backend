@@ -93,10 +93,10 @@ def _update_vehicle_data_sync(vehicles_data: list, db: Session) -> int:
                 if vehicle.get("longitude") is not None:
                     car.longitude = vehicle["longitude"]
                 
-                # Обновляем fuel_level только когда двигатель включен
-                if (vehicle.get("is_engine_on") is True and 
-                    vehicle.get("fuel_level") is not None):
-                    car.fuel_level = vehicle["fuel_level"]
+                # Обновляем fuel_level, если пришло валидное значение (не null и не 0)
+                fuel = vehicle.get("fuel_level")
+                if fuel is not None and fuel != 0 and fuel != 0.0:
+                    car.fuel_level = fuel
                 
                 # Обновляем пробег всегда
                 if vehicle.get("mileage") is not None:
@@ -231,6 +231,33 @@ def init_app(app: FastAPI):
                 print("✅ MB CLA45s (id=2) добавлена")
             else:
                 print("ℹ️ MB CLA45s (id=2) уже существует")
+
+            if not db.query(Car).filter(Car.id == 3).first():
+                photos_dir = os.path.join(os.path.dirname(__file__), "uploads", "cars", "3")
+                photos = []
+                if os.path.isdir(photos_dir):
+                    for fname in sorted(os.listdir(photos_dir)):
+                        if os.path.isfile(os.path.join(photos_dir, fname)):
+                            photos.append(f"/uploads/cars/3/{fname}")
+
+                car3 = Car(
+                    id=3,
+                    name="Hongqi e-qm5",
+                    gps_id="800283232",
+                    gps_imei="869132074464026",
+                    price_per_minute=70,
+                    price_per_hour=3125,
+                    price_per_day=50000,
+                    plate_number="890AVB09",
+                    body_type=CarBodyType.SEDAN,
+                    owner_id=owner.id,
+                    photos=photos
+                )
+                db.add(car3)
+                db.commit()
+                print("✅ Hongqi e-qm5 (id=3) добавлена")
+            else:
+                print("ℹ️ Hongqi e-qm5 (id=3) уже существует")
 
             mechanic_phone = "77007007070"
             mechanic = db.query(User).filter(User.phone_number == mechanic_phone).first()
