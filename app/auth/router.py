@@ -134,6 +134,13 @@ async def update_user_name(
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db)
 ):
+    # Проверяем, что документы не верифицированы
+    if current_user.documents_verified:
+        raise HTTPException(
+            status_code=403, 
+            detail="Cannot update name after documents verification"
+        )
+    
     # Нормализуем входные данные
     new_first = payload.first_name.strip() if isinstance(payload.first_name, str) else None
     new_last = payload.last_name.strip() if isinstance(payload.last_name, str) else None
