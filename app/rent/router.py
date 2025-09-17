@@ -4,6 +4,7 @@ from pydantic import BaseModel, constr, Field, conint
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
+import httpx
 
 from app.auth.dependencies.get_current_user import get_current_user
 from app.auth.dependencies.save_documents import save_file, validate_photos
@@ -885,6 +886,83 @@ class RentalReviewInput(BaseModel):
     comment: Optional[constr(max_length=255)] = Field(None, description="Комментарий к аренде (до 255 символов)")
 
 
+async def check_vehicle_status_for_completion(vehicle_imei: str) -> Dict[str, Any]:
+    """
+    Проверяет состояние автомобиля для завершения аренды.
+    Возвращает ошибки если автомобиль не готов к завершению аренды.
+    """
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"http://195.93.152.69:8666/vehicles/?skip=0&limit=100")
+            response.raise_for_status()
+            vehicles = response.json()
+            
+            # Найти нужный автомобиль по IMEI
+            vehicle = None
+            for v in vehicles:
+                if v.get("vehicle_imei") == vehicle_imei:
+                    vehicle = v
+                    break
+            
+            if not vehicle:
+                return {"error": "Автомобиль не найден в системе мониторинга"}
+            
+            errors = []
+            
+            # Проверка капота (категорически запрещено открывать)
+            if vehicle.get("is_hood_open", False):
+                errors.append("Капот открыт! Категорически запрещено открывать капот. Штраф 1,000,000 тг")
+            
+            # Проверка багажника
+            if vehicle.get("is_trunk_open", False):
+                errors.append("Для завершения аренды пожалуйста закройте багажник")
+            
+            # Проверка дверей
+            doors_open = []
+            if vehicle.get("front_left_door_open", False):
+                doors_open.append("передняя левая")
+            if vehicle.get("front_right_door_open", False):
+                doors_open.append("передняя правая")
+            if vehicle.get("rear_left_door_open", False):
+                doors_open.append("задняя левая")
+            if vehicle.get("rear_right_door_open", False):
+                doors_open.append("задняя правая")
+            
+            if doors_open:
+                errors.append(f"Для завершения аренды пожалуйста закройте двери: {', '.join(doors_open)}")
+            
+            # Проверка окон (должны быть закрыты)
+            windows_open = []
+            if not vehicle.get("front_left_window_closed", True):
+                windows_open.append("переднее левое")
+            if not vehicle.get("front_right_window_closed", True):
+                windows_open.append("переднее правое")
+            if not vehicle.get("rear_left_window_closed", True):
+                windows_open.append("заднее левое")
+            if not vehicle.get("rear_right_window_closed", True):
+                windows_open.append("заднее правое")
+            
+            if windows_open:
+                errors.append(f"Для завершения аренды пожалуйста закройте окна: {', '.join(windows_open)}")
+            
+            # Проверка ручника (должен быть активирован)
+            if not vehicle.get("is_handbrake_on", False):
+                errors.append("Для завершения аренды пожалуйста активируйте стояночный тормоз")
+            
+            # Проверка фар (должны быть выключены или в режиме AUTO)
+            if vehicle.get("are_lights_on", False) and not vehicle.get("is_light_auto_mode_on", False):
+                errors.append("Для завершения аренды пожалуйста выключите фары или переведите в режим AUTO")
+            
+            # Проверка двигателя (обороты должны быть 0)
+            if vehicle.get("rpm", 0) > 0:
+                errors.append("Для завершения аренды пожалуйста заглушите двигатель")
+            
+            return {"errors": errors, "vehicle": vehicle}
+            
+    except Exception as e:
+        return {"error": f"Ошибка при проверке состояния автомобиля: {str(e)}"}
+
+
 @RentRouter.post("/complete")
 async def complete_rental(
         review_input: Optional[RentalReviewInput] = None,
@@ -910,7 +988,17 @@ async def complete_rental(
     if not car:
         raise HTTPException(status_code=404, detail="Car not found")
 
-    # 3) Завершить аренду: время, координаты, состояние
+    # 3) Проверить состояние автомобиля для завершения аренды
+    vehicle_status = await check_vehicle_status_for_completion(car.vehicle_imei)
+    
+    if "error" in vehicle_status:
+        raise HTTPException(status_code=400, detail=vehicle_status["error"])
+    
+    if vehicle_status.get("errors"):
+        error_message = "Нельзя завершить аренду:\n" + "\n".join(vehicle_status["errors"])
+        raise HTTPException(status_code=400, detail=error_message)
+
+    # 4) Завершить аренду: время, координаты, состояние
     now = datetime.utcnow()
     rental.end_time = now
     rental.end_latitude = car.latitude
@@ -923,7 +1011,7 @@ async def complete_rental(
     car.current_renter_id = None
     car.status = "PENDING"
 
-    # 4) Сохранить отзыв (если есть)
+    # 5) Сохранить отзыв (если есть)
     if review_input:
         review = RentalReview(
             rental_id=rental.id,
@@ -932,12 +1020,12 @@ async def complete_rental(
         )
         db.add(review)
 
-    # 5) Рассчитать фактическую длительность в минутах
+    # 6) Рассчитать фактическую длительность в минутах
     total_seconds = (now - rental.start_time).total_seconds()
     actual_minutes = total_seconds / 60
     rounded_minutes = ceil(actual_minutes)
 
-    # 6) Базовая плата по типу аренды
+    # 7) Базовая плата по типу аренды
     if rental.rental_type == RentalType.MINUTES:
         rental.base_price = rounded_minutes * car.price_per_minute
     elif rental.rental_type == RentalType.HOURS:
@@ -945,7 +1033,7 @@ async def complete_rental(
     else:  # DAYS
         rental.base_price = rental.duration * car.price_per_day
 
-    # 7) Переработка для часов/дней
+    # 8) Переработка для часов/дней
     if rental.rental_type in (RentalType.HOURS, RentalType.DAYS):
         planned_minutes = (
             rental.duration * 60
@@ -957,13 +1045,13 @@ async def complete_rental(
     else:
         rental.overtime_fee = 0
 
-    # 8) Убедиться, что все сборы не None
+    # 9) Убедиться, что все сборы не None
     rental.open_fee = rental.open_fee or 0
     rental.delivery_fee = rental.delivery_fee or 0
     rental.waiting_fee = rental.waiting_fee or 0
     rental.distance_fee = rental.distance_fee or 0
 
-    # 9) Если арендатор — владелец, обнуляем все сборы
+    # 10) Если арендатор — владелец, обнуляем все сборы
     if car.owner_id == current_user.id:
         rental.base_price = 0
         rental.open_fee = 0
@@ -972,7 +1060,7 @@ async def complete_rental(
         rental.overtime_fee = 0
         rental.distance_fee = 0
 
-    # 10) Итоговая сумма и списание
+    # 11) Итоговая сумма и списание
     rental.total_price = (
             rental.base_price + rental.open_fee + rental.delivery_fee +
             rental.waiting_fee + rental.overtime_fee + rental.distance_fee
@@ -984,7 +1072,7 @@ async def complete_rental(
     current_user.wallet_balance -= amount_to_charge
     rental.already_payed = rental.total_price
 
-    # 11) Коммит и уведомление механиков
+    # 12) Коммит и уведомление механиков
     db.commit()
     try:
         await send_notification_to_all_mechanics_async(
