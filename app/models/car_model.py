@@ -15,6 +15,7 @@ class CarBodyType(str, Enum):
     CONVERTIBLE = "CONVERTIBLE"  # Кабриолет
     WAGON = "WAGON"  # Универсал
     MINIBUS = "MINIBUS"
+    ELECTRIC = "ELECTRIC"
 
 
 class Car(Base):
