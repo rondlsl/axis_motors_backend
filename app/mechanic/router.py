@@ -44,6 +44,7 @@ def get_all_vehicles_plain(
                 "engine_volume": car.engine_volume,
                 "year": car.year,
                 "drive_type": car.drive_type,
+                "body_type": car.body_type,
                 "photos": car.photos,
                 "description": car.description,
                 "owner_id": car.owner_id,
