@@ -989,7 +989,7 @@ async def complete_rental(
         raise HTTPException(status_code=404, detail="Car not found")
 
     # 3) Проверить состояние автомобиля для завершения аренды
-    vehicle_status = await check_vehicle_status_for_completion(car.vehicle_imei)
+    vehicle_status = await check_vehicle_status_for_completion(car.gps_imei)
     
     if "error" in vehicle_status:
         raise HTTPException(status_code=400, detail=vehicle_status["error"])
