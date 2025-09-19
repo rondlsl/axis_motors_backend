@@ -120,6 +120,8 @@ async def get_trip_history_detail(
             "course": car.course,
             "engine_volume": car.engine_volume,
             "drive_type": car.drive_type,
+            "body_type": car.body_type,
+            "auto_class": car.auto_class,
             "year": car.year,
             "status": car.status,
         }

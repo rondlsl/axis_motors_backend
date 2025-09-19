@@ -18,6 +18,12 @@ class CarBodyType(str, Enum):
     ELECTRIC = "ELECTRIC"
 
 
+class CarAutoClass(str, Enum):
+    A = "A"  # До 25 млн
+    B = "B"  # До 40 млн
+    C = "C"  # 40+ млн
+
+
 class Car(Base):
     __tablename__ = "cars"
 
@@ -36,6 +42,11 @@ class Car(Base):
     price_per_hour = Column(Integer, nullable=False)
     price_per_day = Column(Integer, nullable=False)
     car_class = Column(Integer, nullable=True, default=1)
+    auto_class = Column(
+        SAEnum(CarAutoClass, name="car_auto_class"),
+        default=CarAutoClass.A,
+        nullable=False
+    )
 
     engine_volume = Column(Float, nullable=True)
     year = Column(Integer, nullable=True)

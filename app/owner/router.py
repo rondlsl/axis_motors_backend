@@ -233,6 +233,8 @@ async def get_owner_cars_with_availability_timer(
             "course": car.course,
             "engine_volume": car.engine_volume,
             "drive_type": car.drive_type,
+            "body_type": car.body_type,
+            "auto_class": car.auto_class,
             "year": car.year,
             "photos": car.photos,
             "status": car.status,
@@ -517,6 +519,7 @@ async def get_trip_details(
 
     # Фотографии
     # Фильтруем selfie фотографии из фотографий механика
+    # Фото механика есть только для поездок с доставкой
     mechanic_photos = trip.delivery_photos_after or []
     filtered_mechanic_photos = [photo for photo in mechanic_photos if '/selfie/' not in photo]
     

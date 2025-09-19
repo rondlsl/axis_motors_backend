@@ -60,6 +60,8 @@ def get_delivery_vehicles(
             "course": car.course,
             "engine_volume": car.engine_volume,
             "drive_type": car.drive_type,
+            "body_type": car.body_type,
+            "auto_class": car.auto_class,
             "year": car.year,
             "photos": car.photos,
             "status": car.status,
@@ -279,6 +281,8 @@ def current_delivery(
         "course": car.course,
         "engine_volume": car.engine_volume,
         "drive_type": car.drive_type,
+        "body_type": car.body_type,
+        "auto_class": car.auto_class,
         "photos": car.photos,
         "year": car.year,
         "delivery_coordinates": {
