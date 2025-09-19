@@ -946,7 +946,7 @@ async def check_vehicle_status_for_completion(vehicle_imei: str) -> Dict[str, An
                 errors.append(f"Для завершения аренды пожалуйста закройте окна: {', '.join(windows_open)}")
             
             # Проверка ручника (должен быть деактивирован)
-            if vehicle.get("is_handbrake_on", False):
+            if vehicle.get("is_handbrake_on", True):
                 errors.append("Для завершения аренды пожалуйста активируйте стояночный тормоз")
             
             # Проверка фар (должны быть выключены или в режиме AUTO)
