@@ -223,7 +223,7 @@ async def open_vehicle(
     )
     db.add(action)
     # отправляем команду
-    cmd = await send_open(car.gps_id, AUTH_TOKEN)
+    cmd = await send_open(car.gps_imei, AUTH_TOKEN)
     db.commit()
 
     return cmd
@@ -251,7 +251,7 @@ async def close_vehicle(
         action_type=ActionType.CLOSE_VEHICLE
     )
     db.add(action)
-    cmd = await send_close(car.gps_id, AUTH_TOKEN)
+    cmd = await send_close(car.gps_imei, AUTH_TOKEN)
     db.commit()
 
     return cmd
