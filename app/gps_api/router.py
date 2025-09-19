@@ -16,7 +16,7 @@ from app.models.rental_actions_model import ActionType, RentalAction
 from app.models.user_model import User
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.get_active_rental import get_active_rental_car, get_active_rental
-from app.gps_api.utils.car_data import send_command_to_terminal, send_open, send_close
+from app.gps_api.utils.car_data import send_command_to_terminal, send_open, send_close, send_give_key, send_take_key
 from app.rent.utils.calculate_price import get_open_price
 
 Vehicle_Router = APIRouter(prefix="/vehicles", tags=["Vehicles"])
@@ -206,7 +206,7 @@ async def open_vehicle(
 ):
     global AUTH_TOKEN
     rental = get_active_rental(db, current_user.id)
-    car = db.query(Car).get(rental.car_id)
+    car = db.get(Car, rental.car_id)
     
     # Проверяем и обновляем токен если необходимо
     if not AUTH_TOKEN:
@@ -236,7 +236,7 @@ async def close_vehicle(
 ):
     global AUTH_TOKEN
     rental = get_active_rental(db, current_user.id)
-    car = db.query(Car).get(rental.car_id)
+    car = db.get(Car, rental.car_id)
     
     # Проверяем и обновляем токен если необходимо
     if not AUTH_TOKEN:
@@ -264,7 +264,7 @@ async def give_key(
 ):
     global AUTH_TOKEN
     rental = get_active_rental(db, current_user.id)
-    car = db.query(Car).get(rental.car_id)
+    car = db.get(Car, rental.car_id)
     
     # Проверяем и обновляем токен если необходимо
     if not AUTH_TOKEN:
@@ -279,7 +279,7 @@ async def give_key(
         action_type=ActionType.GIVE_KEY
     )
     db.add(action)
-    cmd = await send_command_to_terminal(car.gps_id, "*!2Y", AUTH_TOKEN)
+    cmd = await send_give_key(car.gps_imei, AUTH_TOKEN)
     db.commit()
     return cmd
 
@@ -291,7 +291,7 @@ async def take_key(
 ):
     global AUTH_TOKEN
     rental = get_active_rental(db, current_user.id)
-    car = db.query(Car).get(rental.car_id)
+    car = db.get(Car, rental.car_id)
     
     # Проверяем и обновляем токен если необходимо
     if not AUTH_TOKEN:
@@ -306,7 +306,7 @@ async def take_key(
         action_type=ActionType.TAKE_KEY
     )
     db.add(action)
-    cmd = await send_command_to_terminal(car.gps_id, "*!2N", AUTH_TOKEN)
+    cmd = await send_take_key(car.gps_imei, AUTH_TOKEN)
     db.commit()
     return cmd
 
