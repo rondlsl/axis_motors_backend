@@ -8,7 +8,7 @@ from app.auth.dependencies.get_current_user import get_current_mechanic
 from app.auth.dependencies.save_documents import validate_photos, save_file
 from app.dependencies.database.database import get_db
 from app.gps_api.router import AUTH_TOKEN
-from app.gps_api.utils.car_data import send_command_to_terminal
+from app.gps_api.utils.car_data import send_command_to_terminal, send_open, send_close
 from app.gps_api.utils.auth_api import get_auth_token
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.models.history_model import RentalStatus, RentalHistory
@@ -321,7 +321,7 @@ async def open_vehicle_delivery(
             raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
     
     # отправка команды
-    result = await send_command_to_terminal(car.gps_id, "*!CEVT 1", token)
+    result = await send_open(car.gps_id, token)
     return {"message": "Команда для открытия автомобиля отправлена", "result": result}
 
 
@@ -351,7 +351,7 @@ async def close_vehicle_delivery(
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
     
-    result = await send_command_to_terminal(car.gps_id, "*!CEVT 2", token)
+    result = await send_close(car.gps_id, token)
     return {"message": "Команда для закрытия автомобиля отправлена", "result": result}
 
 

@@ -16,7 +16,7 @@ from app.models.rental_actions_model import ActionType, RentalAction
 from app.models.user_model import User
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.get_active_rental import get_active_rental_car, get_active_rental
-from app.gps_api.utils.car_data import send_command_to_terminal
+from app.gps_api.utils.car_data import send_command_to_terminal, send_open, send_close
 from app.rent.utils.calculate_price import get_open_price
 
 Vehicle_Router = APIRouter(prefix="/vehicles", tags=["Vehicles"])
@@ -223,7 +223,7 @@ async def open_vehicle(
     )
     db.add(action)
     # отправляем команду
-    cmd = await send_command_to_terminal(car.gps_id, "*!CEVT 1", AUTH_TOKEN)
+    cmd = await send_open(car.gps_id, AUTH_TOKEN)
     db.commit()
 
     return cmd
@@ -251,7 +251,7 @@ async def close_vehicle(
         action_type=ActionType.CLOSE_VEHICLE
     )
     db.add(action)
-    cmd = await send_command_to_terminal(car.gps_id, "*!CEVT 2", AUTH_TOKEN)
+    cmd = await send_close(car.gps_id, AUTH_TOKEN)
     db.commit()
 
     return cmd

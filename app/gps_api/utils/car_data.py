@@ -61,25 +61,69 @@ async def send_command_to_terminal(
         raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {command}, {e}")
 
 
+def get_commands_by_vehicle_id(vehicle_id: int) -> dict:
+    """Возвращает команды для конкретного vehicle_id"""
+    commands_map = {
+        800283232: {  # imei 869132074464026
+            "open": "chat OPEN",
+            "close": "chat CLOSE",
+            "give_key": "OUTPUT1 1",
+            "take_key": "OUTPUT1 0",
+            "lock_engine": "chat LOCK",
+            "unlock_engine": "chat UNLOCK"
+        },
+        800212421: {  # imei 869132074567851
+            "open": "chat OP|chat OPEN",
+            "close": "chat CL|chat CLOSE",
+            "give_key": "OUTPUT1 1",
+            "take_key": "OUTPUT1 0",
+            "lock_engine": "OUTPUT0 1",
+            "unlock_engine": "OUTPUT0 0"
+        },
+        800153076: {  # imei 866011056063951
+            "open": "*!CEVT 1",
+            "close": "*!CEVT 2",
+            "give_key": "*!2Y",
+            "take_key": "*!2N",
+            "lock_engine": "*!1Y",
+            "unlock_engine": "*!1N"
+        }
+    }
+    return commands_map.get(vehicle_id, {
+        "open": "*!CEVT 1",
+        "close": "*!CEVT 2",
+        "give_key": "*!2Y",
+        "take_key": "*!2N",
+        "lock_engine": "*!1Y",
+        "unlock_engine": "*!1N"
+    })
+
+
 async def send_open(vehicle_id: int, token: str, retries: int = 1) -> dict:
-    return await send_command_to_terminal(vehicle_id, "*!CEVT 1", token, retries)
+    commands = get_commands_by_vehicle_id(vehicle_id)
+    return await send_command_to_terminal(vehicle_id, commands["open"], token, retries)
 
 
 async def send_close(vehicle_id: int, token: str, retries: int = 1) -> dict:
-    return await send_command_to_terminal(vehicle_id, "*!CEVT 2", token, retries)
+    commands = get_commands_by_vehicle_id(vehicle_id)
+    return await send_command_to_terminal(vehicle_id, commands["close"], token, retries)
 
 
 async def send_give_key(vehicle_id: int, token: str, retries: int = 1) -> dict:
-    return await send_command_to_terminal(vehicle_id, "*!2Y", token, retries)
+    commands = get_commands_by_vehicle_id(vehicle_id)
+    return await send_command_to_terminal(vehicle_id, commands["give_key"], token, retries)
 
 
 async def send_take_key(vehicle_id: int, token: str, retries: int = 1) -> dict:
-    return await send_command_to_terminal(vehicle_id, "*!2N", token, retries)
+    commands = get_commands_by_vehicle_id(vehicle_id)
+    return await send_command_to_terminal(vehicle_id, commands["take_key"], token, retries)
 
 
 async def send_lock_engine(vehicle_id: int, token: str, retries: int = 1) -> dict:
-    return await send_command_to_terminal(vehicle_id, "*!1Y", token, retries)
+    commands = get_commands_by_vehicle_id(vehicle_id)
+    return await send_command_to_terminal(vehicle_id, commands["lock_engine"], token, retries)
 
 
 async def send_unlock_engine(vehicle_id: int, token: str, retries: int = 1) -> dict:
-    return await send_command_to_terminal(vehicle_id, "*!1N", token, retries)
+    commands = get_commands_by_vehicle_id(vehicle_id)
+    return await send_command_to_terminal(vehicle_id, commands["unlock_engine"], token, retries)
