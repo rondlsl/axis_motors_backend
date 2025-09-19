@@ -111,7 +111,6 @@ def get_commands_by_imei(imei: str) -> dict:
 
 async def send_open(imei: str, token: str, retries: int = 1) -> dict:
     commands = get_commands_by_imei(imei)
-    # Нужно получить vehicle_id из IMEI для отправки команды
     vehicle_id = get_vehicle_id_by_imei(imei)
     return await send_command_to_terminal(vehicle_id, commands["open"], token, retries)
 
