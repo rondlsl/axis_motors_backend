@@ -19,7 +19,6 @@ from app.models.car_model import Car
 from app.models.history_model import RentalHistory, RentalStatus
 from app.models.user_model import UserRole, User
 from app.models.notification_model import Notification
-from app.models.application_model import Application
 from app.rent.utils.calculate_price import get_open_price
 from app.owner.utils import calculate_month_availability_minutes, ALMATY_TZ
 
@@ -555,15 +554,8 @@ async def upload_documents(
         current_user.selfie_url = selfie_path
 
         current_user.role = UserRole.PENDING
-        current_user.documents_verified = True
-
-        # Создаем заявку для проверки документов
-        application = Application(
-            user_id=current_user.id,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
-        )
-        db.add(application)
+        # documents_verified остается False до одобрения администратором
+        # Заявка создается только после одобрения администратором
 
         # Обновляем имя в заявках гаранта, где этот пользователь является гарантом
         try:

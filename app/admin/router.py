@@ -6,6 +6,7 @@ from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole, AutoClass
 from app.models.guarantor_model import GuarantorRequest
+from app.models.application_model import Application
 from app.models.car_model import Car
 from app.guarantor.sms_utils import send_user_rejection_with_guarantor_sms
 from app.guarantor.schemas import (
@@ -82,12 +83,22 @@ async def approve_or_reject_user(
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
     if approval_data.approved:
-        # Одобряем пользователя
-        user.role = UserRole.USER
         user.documents_verified = True
+        # Создаем заявку для проверки финансистом
+        # Проверяем, есть ли уже заявка для этого пользователя
+        existing_application = db.query(Application).filter(Application.user_id == user.id).first()
+        
+        if not existing_application:
+            application = Application(
+                user_id=user.id,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            db.add(application)
+        
         db.commit()
         
-        return {"message": "Пользователь одобрен"}
+        return {"message": "Документы одобрены. Заявка передана на рассмотрение финансисту."}
     else:
         # Отклоняем пользователя
         user.role = UserRole.REJECTED
