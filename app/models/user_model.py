@@ -14,6 +14,8 @@ class UserRole(enum.Enum):
     PENDING = "pending"
     MECHANIC = "mechanic"
     GARANT = "GARANT"
+    FINANCIER = "financier"
+    MVD = "mvd"
 
 
 class AutoClass(enum.Enum):
@@ -76,3 +78,6 @@ class User(Base):
     received_guarantor_requests = relationship("GuarantorRequest", foreign_keys="[GuarantorRequest.guarantor_id]", back_populates="guarantor")
     guaranteeing_for = relationship("Guarantor", foreign_keys="[Guarantor.guarantor_id]", back_populates="guarantor_user")
     guaranteed_by = relationship("Guarantor", foreign_keys="[Guarantor.client_id]", back_populates="client_user")
+    
+    # Application relationship
+    application = relationship("Application", back_populates="user", uselist=False)
