@@ -1,0 +1,22 @@
+[1mdiff --git a/app/auth/router.py b/app/auth/router.py[m
+[1mindex a809ee3..b387990 100644[m
+[1m--- a/app/auth/router.py[m
+[1m+++ b/app/auth/router.py[m
+[36m@@ -554,17 +554,6 @@[m [masync def upload_documents([m
+         current_user.selfie_url = selfie_path[m
+ [m
+         current_user.role = UserRole.PENDING[m
+[31m-        current_user.documents_verified = True[m
+[31m-[m
+[31m-        # Создаем заявку для проверки документов[m
+[31m-        from app.models.application_model import Application[m
+[31m-        from datetime import datetime[m
+[31m-        application = Application([m
+[31m-            user_id=current_user.id,[m
+[31m-            created_at=datetime.utcnow(),[m
+[31m-            updated_at=datetime.utcnow()[m
+[31m-        )[m
+[31m-        db.add(application)[m
+ [m
+         # Обновляем имя в заявках гаранта, где этот пользователь является гарантом[m
+         try:[m
