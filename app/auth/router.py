@@ -18,6 +18,7 @@ from app.dependencies.database.database import get_db
 from app.models.car_model import Car
 from app.models.history_model import RentalHistory, RentalStatus
 from app.models.user_model import UserRole, User
+from app.models.notification_model import Notification
 from app.rent.utils.calculate_price import get_open_price
 from app.owner.utils import calculate_month_availability_minutes, ALMATY_TZ
 
@@ -375,6 +376,16 @@ async def read_users_me(
             "available_minutes": available_minutes
         })
 
+    # Подсчитываем количество непрочитанных уведомлений
+    unread_messages = (
+        db.query(Notification)
+        .filter(
+            Notification.user_id == current_user.id,
+            Notification.is_read.is_(False)
+        )
+        .count()
+    )
+
     try:
         first_name = current_user.first_name if isinstance(current_user.first_name, str) else None
         last_name = current_user.last_name if isinstance(current_user.last_name, str) else None
@@ -390,6 +401,7 @@ async def read_users_me(
             "current_rental": current_rental,
             "owned_cars": owned_cars,
             "locale": current_user.locale,
+            "unread_message": unread_messages,
             "documents": {
                 "documents_verified": current_user.documents_verified,
                 "selfie_with_license_url": current_user.selfie_with_license_url,
