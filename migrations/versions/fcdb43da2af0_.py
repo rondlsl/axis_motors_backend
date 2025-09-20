@@ -34,7 +34,7 @@ def upgrade() -> None:
     sa.Column('id_card_back_url', sa.String(), nullable=True),
     sa.Column('id_card_expiry', sa.DateTime(), nullable=True),
     sa.Column('documents_verified', sa.Boolean(), server_default='false', nullable=True),
-    sa.Column('role', sa.Enum('ADMIN', 'USER', 'REJECTED', 'FIRST', 'PENDING', 'MECHANIC', name='userrole'), nullable=True),
+    sa.Column('role', sa.Enum('ADMIN', 'USER', 'REJECTED', 'CLIENT', 'PENDING', 'MECHANIC', name='userrole'), nullable=True),
     sa.Column('last_sms_code', sa.String(), nullable=True),
     sa.Column('sms_code_valid_until', sa.DateTime(), nullable=True),
     sa.Column('is_active', sa.Boolean(), nullable=False),

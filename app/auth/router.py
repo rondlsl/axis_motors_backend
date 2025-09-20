@@ -104,7 +104,7 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
             phone_number=phone_number,
             first_name=request.first_name,
             last_name=request.last_name,
-            role=UserRole.FIRST,  # Новым пользователям даём роль FIRST
+            role=UserRole.CLIENT,  # Новым пользователям даём роль CLIENT
             last_sms_code=sms_code,
             sms_code_valid_until=current_time + timedelta(hours=1),
             is_active=True  # Новый аккаунт активен

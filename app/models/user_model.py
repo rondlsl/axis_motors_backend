@@ -10,7 +10,7 @@ class UserRole(enum.Enum):
     ADMIN = "admin"
     USER = "user"
     REJECTED = "rejected"
-    FIRST = "first"
+    CLIENT = "client"
     PENDING = "pending"
     MECHANIC = "mechanic"
     GARANT = "GARANT"
@@ -40,7 +40,7 @@ class User(Base):
     id_card_back_url = Column(String, nullable=True)
     id_card_expiry = Column(DateTime, nullable=True)
     documents_verified = Column(Boolean, default=False, server_default="false")
-    role = Column(Enum(UserRole), default=UserRole.FIRST)
+    role = Column(Enum(UserRole), default=UserRole.CLIENT)
     last_sms_code = Column(String)
     sms_code_valid_until = Column(DateTime)
     is_active = Column(Boolean, default=True, nullable=False)

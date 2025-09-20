@@ -157,7 +157,7 @@ def init_app(app: FastAPI):
             owner_phone = "77000250400"
             owner = db.query(User).filter(User.phone_number == owner_phone).first()
             if not owner:
-                owner = User(phone_number=owner_phone, role=UserRole.FIRST, wallet_balance=0)
+                owner = User(phone_number=owner_phone, role=UserRole.CLIENT, wallet_balance=0)
                 db.add(owner)
                 db.commit()
                 db.refresh(owner)
