@@ -554,9 +554,6 @@ async def upload_documents(
         current_user.selfie_url = selfie_path
 
         current_user.role = UserRole.PENDING
-        # documents_verified остается False до одобрения администратором
-        # Заявка создается только после одобрения администратором
-
         # Обновляем имя в заявках гаранта, где этот пользователь является гарантом
         try:
             from app.models.guarantor_model import GuarantorRequest
