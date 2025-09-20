@@ -19,6 +19,7 @@ from app.models.car_model import Car
 from app.models.history_model import RentalHistory, RentalStatus
 from app.models.user_model import UserRole, User
 from app.models.notification_model import Notification
+from app.models.application_model import Application
 from app.rent.utils.calculate_price import get_open_price
 from app.owner.utils import calculate_month_availability_minutes, ALMATY_TZ
 
@@ -557,8 +558,6 @@ async def upload_documents(
         current_user.documents_verified = True
 
         # Создаем заявку для проверки документов
-        from app.models.application_model import Application
-        from datetime import datetime
         application = Application(
             user_id=current_user.id,
             created_at=datetime.utcnow(),
