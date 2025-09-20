@@ -184,7 +184,7 @@ async def get_rejected_applications(
 @FinancierRouter.post("/approve/{application_id}", summary="Одобрить заявку")
 async def approve_application(
         application_id: int,
-        auto_class: str = Query(..., description="Класс доступа: A, B, C или комбинации (например, AB, ABC)"),
+        auto_class: str = Query(..., description="Класс доступа: A или комбинации (например, A, B)"),
         db: Session = Depends(get_db),
         current_financier: User = Depends(get_current_financier)
 ) -> Dict[str, Any]:
