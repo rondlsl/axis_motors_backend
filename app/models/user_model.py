@@ -80,4 +80,4 @@ class User(Base):
     guaranteed_by = relationship("Guarantor", foreign_keys="[Guarantor.client_id]", back_populates="client_user")
     
     # Application relationship
-    application = relationship("Application", back_populates="user", uselist=False)
+    application = relationship("Application", foreign_keys="[Application.user_id]", back_populates="user", uselist=False)
