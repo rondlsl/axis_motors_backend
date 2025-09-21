@@ -233,6 +233,7 @@ async def get_owner_cars_with_availability_timer(
             "course": car.course,
             "engine_volume": car.engine_volume,
             "drive_type": car.drive_type,
+            "transmission_type": car.transmission_type,
             "body_type": car.body_type,
             "auto_class": car.auto_class,
             "year": car.year,
