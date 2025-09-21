@@ -24,6 +24,13 @@ class CarAutoClass(str, Enum):
     C = "C"  # 40+ млн
 
 
+class TransmissionType(str, Enum):
+    MANUAL = "manual"  # Механическая
+    AUTOMATIC = "automatic"  # Автоматическая
+    CVT = "cvt"  # Вариатор
+    SEMI_AUTOMATIC = "semi_automatic"  # Полуавтоматическая
+
+
 class Car(Base):
     __tablename__ = "cars"
 
@@ -51,6 +58,10 @@ class Car(Base):
     engine_volume = Column(Float, nullable=True)
     year = Column(Integer, nullable=True)
     drive_type = Column(Integer, nullable=True)
+    transmission_type = Column(
+        SAEnum(TransmissionType, name="transmission_type"),
+        nullable=True
+    )
     body_type = Column(
         SAEnum(CarBodyType, name="car_body_type"),
         default=CarBodyType.SEDAN,
