@@ -18,6 +18,13 @@ from app.rent.exceptions import InsufficientBalanceException
 from app.rent.utils.calculate_price import calculate_total_price, get_open_price
 from app.gps_api.utils.route_data import get_gps_route_data
 from app.owner.schemas import RouteData, RouteMapData
+from app.rent.schemas import (
+    AdvanceBookingRequest, 
+    BookingResponse, 
+    BookingListResponse, 
+    CancelBookingRequest, 
+    CancelBookingResponse
+)
 
 RentRouter = APIRouter(tags=["Rent"], prefix="/rent")
 
@@ -1098,4 +1105,291 @@ async def complete_rental(
             "rating": review.rating,
             "comment": review.comment
         } if review_input else None
+    }
+
+
+# ============================================================================
+# НОВЫЕ ENDPOINTS ДЛЯ БРОНИРОВАНИЯ ЗАРАНЕЕ
+# ============================================================================
+
+@RentRouter.post("/advance-booking", response_model=BookingResponse)
+async def create_advance_booking(
+    booking_request: AdvanceBookingRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Создание бронирования заранее с указанием даты и времени
+    """
+    # 1) Проверяем, нет ли у пользователя уже активной аренды
+    active_rental = db.query(RentalHistory).filter(
+        RentalHistory.user_id == current_user.id,
+        RentalHistory.rental_status.in_([
+            RentalStatus.RESERVED,
+            RentalStatus.IN_USE,
+            RentalStatus.SCHEDULED
+        ])
+    ).first()
+    if active_rental:
+        raise HTTPException(
+            status_code=400,
+            detail="У вас уже есть активная аренда или бронирование. Завершите текущую аренду, прежде чем бронировать новую машину."
+        )
+
+    # 2) Проверяем, что запланированное время в будущем
+    now = datetime.utcnow()
+    if booking_request.scheduled_start_time <= now:
+        raise HTTPException(
+            status_code=400,
+            detail="Запланированное время начала должно быть в будущем"
+        )
+
+    # 3) Выбираем машину только если она доступна
+    car = db.query(Car).filter(
+        Car.id == booking_request.car_id,
+        Car.status == "FREE"
+    ).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден или не доступен")
+
+    # 4) Проверяем, что автомобиль не забронирован на это время
+    conflicting_booking = db.query(RentalHistory).filter(
+        RentalHistory.car_id == booking_request.car_id,
+        RentalHistory.rental_status.in_([
+            RentalStatus.RESERVED,
+            RentalStatus.IN_USE,
+            RentalStatus.SCHEDULED
+        ]),
+        RentalHistory.scheduled_start_time <= booking_request.scheduled_start_time,
+        RentalHistory.scheduled_end_time >= booking_request.scheduled_start_time
+    ).first()
+    
+    if conflicting_booking:
+        raise HTTPException(
+            status_code=400,
+            detail="Автомобиль уже забронирован на это время"
+        )
+
+    # 5) Рассчитываем запланированное время окончания
+    if booking_request.scheduled_end_time is None:
+        if booking_request.rental_type == RentalType.MINUTES:
+            # Для поминутной аренды используем 2 часа по умолчанию
+            booking_request.scheduled_end_time = booking_request.scheduled_start_time + timedelta(hours=2)
+        elif booking_request.rental_type == RentalType.HOURS:
+            if booking_request.duration is None:
+                raise HTTPException(status_code=400, detail="Duration обязателен для аренды по часам")
+            booking_request.scheduled_end_time = booking_request.scheduled_start_time + timedelta(hours=booking_request.duration)
+        else:  # DAYS
+            if booking_request.duration is None:
+                raise HTTPException(status_code=400, detail="Duration обязателен для посуточной аренды")
+            booking_request.scheduled_end_time = booking_request.scheduled_start_time + timedelta(days=booking_request.duration)
+
+    # 6) Рассчитываем стоимость
+    orig_open_fee = get_open_price(car)
+    open_fee = orig_open_fee if booking_request.rental_type in (RentalType.MINUTES, RentalType.HOURS) else 0
+    
+    price_per_hour = car.price_per_hour
+    price_per_day = car.price_per_day
+    
+    if booking_request.rental_type == RentalType.MINUTES:
+        base = 0  # Для поминутной аренды цена не считается заранее
+    elif booking_request.rental_type == RentalType.HOURS:
+        base = calculate_total_price(booking_request.rental_type, booking_request.duration, price_per_hour, price_per_day)
+    else:  # DAYS
+        base = calculate_total_price(booking_request.rental_type, booking_request.duration, price_per_hour, price_per_day)
+
+    # 7) Создаем бронирование
+    rental = RentalHistory(
+        user_id=current_user.id,
+        car_id=car.id,
+        rental_type=booking_request.rental_type,
+        duration=booking_request.duration,
+        rental_status=RentalStatus.SCHEDULED,
+        start_latitude=car.latitude,
+        start_longitude=car.longitude,
+        base_price=base,
+        open_fee=open_fee,
+        delivery_fee=0,
+        waiting_fee=0,
+        overtime_fee=0,
+        distance_fee=0,
+        total_price=base + open_fee,
+        reservation_time=datetime.utcnow(),
+        scheduled_start_time=booking_request.scheduled_start_time,
+        scheduled_end_time=booking_request.scheduled_end_time,
+        is_advance_booking="true",
+        delivery_latitude=booking_request.delivery_latitude,
+        delivery_longitude=booking_request.delivery_longitude
+    )
+    
+    db.add(rental)
+    db.commit()
+    db.refresh(rental)
+
+    # 8) Обновляем машину: устанавливаем текущего арендатора и меняем статус
+    car.current_renter_id = current_user.id
+    car.status = "SCHEDULED"
+    db.commit()
+
+    return BookingResponse(
+        message="Автомобиль успешно забронирован заранее",
+        rental_id=rental.id,
+        reservation_time=rental.reservation_time.isoformat(),
+        scheduled_start_time=rental.scheduled_start_time.isoformat() if rental.scheduled_start_time else None,
+        scheduled_end_time=rental.scheduled_end_time.isoformat() if rental.scheduled_end_time else None,
+        is_advance_booking=True
+    )
+
+
+@RentRouter.get("/my-bookings", response_model=List[BookingListResponse])
+async def get_my_bookings(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Получить список всех бронирований пользователя (включая забронированные заранее)
+    """
+    bookings = (
+        db.query(RentalHistory, Car)
+        .join(Car, Car.id == RentalHistory.car_id)
+        .filter(
+            RentalHistory.user_id == current_user.id,
+            RentalHistory.rental_status.in_([
+                RentalStatus.RESERVED,
+                RentalStatus.IN_USE,
+                RentalStatus.SCHEDULED,
+                RentalStatus.DELIVERY_RESERVED,
+                RentalStatus.DELIVERING
+            ])
+        )
+        .order_by(RentalHistory.reservation_time.desc())
+        .all()
+    )
+
+    result = []
+    for rental, car in bookings:
+        result.append(BookingListResponse(
+            id=rental.id,
+            car_id=rental.car_id,
+            car_name=car.name,
+            car_plate_number=car.plate_number,
+            rental_type=rental.rental_type,
+            duration=rental.duration,
+            scheduled_start_time=rental.scheduled_start_time,
+            scheduled_end_time=rental.scheduled_end_time,
+            start_time=rental.start_time,
+            end_time=rental.end_time,
+            rental_status=rental.rental_status,
+            total_price=rental.total_price,
+            base_price=rental.base_price,
+            open_fee=rental.open_fee,
+            delivery_fee=rental.delivery_fee,
+            reservation_time=rental.reservation_time,
+            is_advance_booking=rental.is_advance_booking == "true",
+            car_photos=car.photos
+        ))
+
+    return result
+
+
+@RentRouter.post("/cancel-booking/{rental_id}", response_model=CancelBookingResponse)
+async def cancel_booking(
+    rental_id: int,
+    cancel_request: CancelBookingRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Отменить бронирование
+    """
+    # 1) Находим бронирование
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.id == rental_id,
+        RentalHistory.user_id == current_user.id,
+        RentalHistory.rental_status.in_([
+            RentalStatus.RESERVED,
+            RentalStatus.SCHEDULED,
+            RentalStatus.DELIVERY_RESERVED
+        ])
+    ).first()
+    
+    if not rental:
+        raise HTTPException(status_code=404, detail="Бронирование не найдено или уже отменено")
+
+    # 2) Загружаем автомобиль
+    car = db.query(Car).get(rental.car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+
+    # 3) Рассчитываем возврат (если есть предоплата)
+    refund_amount = 0
+    if rental.already_payed and rental.already_payed > 0:
+        # Возвращаем предоплату
+        refund_amount = rental.already_payed
+        current_user.wallet_balance += refund_amount
+        rental.already_payed = 0
+
+    # 4) Отменяем бронирование
+    rental.rental_status = RentalStatus.CANCELLED
+    
+    # 5) Освобождаем автомобиль
+    car.current_renter_id = None
+    car.status = "FREE"
+    
+    db.commit()
+
+    return CancelBookingResponse(
+        message="Бронирование успешно отменено",
+        rental_id=rental.id,
+        refund_amount=refund_amount
+    )
+
+
+@RentRouter.get("/available-cars")
+async def get_available_cars_for_booking(
+    scheduled_start_time: datetime = Query(..., description="Запланированное время начала"),
+    scheduled_end_time: datetime = Query(..., description="Запланированное время окончания"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Получить список доступных автомобилей для бронирования на указанное время
+    """
+    # 1) Находим все автомобили, которые забронированы на это время
+    conflicting_rentals = db.query(RentalHistory.car_id).filter(
+        RentalHistory.rental_status.in_([
+            RentalStatus.RESERVED,
+            RentalStatus.IN_USE,
+            RentalStatus.SCHEDULED
+        ]),
+        RentalHistory.scheduled_start_time <= scheduled_end_time,
+        RentalHistory.scheduled_end_time >= scheduled_start_time
+    ).subquery()
+
+    # 2) Находим доступные автомобили
+    available_cars = db.query(Car).filter(
+        Car.status == "FREE",
+        ~Car.id.in_(conflicting_rentals)
+    ).all()
+
+    result = []
+    for car in available_cars:
+        result.append({
+            "id": car.id,
+            "name": car.name,
+            "plate_number": car.plate_number,
+            "price_per_minute": car.price_per_minute,
+            "price_per_hour": car.price_per_hour,
+            "price_per_day": car.price_per_day,
+            "auto_class": car.auto_class,
+            "body_type": car.body_type,
+            "transmission_type": car.transmission_type,
+            "photos": car.photos,
+            "description": car.description
+        })
+
+    return {
+        "available_cars": result,
+        "scheduled_start_time": scheduled_start_time.isoformat(),
+        "scheduled_end_time": scheduled_end_time.isoformat()
     }

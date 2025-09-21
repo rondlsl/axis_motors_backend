@@ -21,6 +21,7 @@ class RentalStatus(enum.Enum):
     DELIVERING_IN_PROGRESS = "delivering_in_progress"
     DELIVERY_RESERVED = "delivery_reserved"
     CANCELLED = "cancelled"
+    SCHEDULED = "scheduled"  # Забронировано заранее
 
 
 class RentalHistory(Base):
@@ -44,6 +45,11 @@ class RentalHistory(Base):
     start_time = Column(DateTime, nullable=True)
     end_time = Column(DateTime)
     reservation_time = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    # Поля для бронирования заранее
+    scheduled_start_time = Column(DateTime, nullable=True)  # Запланированное время начала аренды
+    scheduled_end_time = Column(DateTime, nullable=True)    # Запланированное время окончания аренды
+    is_advance_booking = Column(String, default="false", nullable=False)  # Флаг бронирования заранее
 
     base_price = Column(Integer, nullable=True)
     open_fee = Column(Integer, nullable=True)
