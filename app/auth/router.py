@@ -22,6 +22,8 @@ from app.models.notification_model import Notification
 from app.rent.utils.calculate_price import get_open_price
 from app.owner.utils import calculate_month_availability_minutes, ALMATY_TZ
 from app.models.application_model import Application
+from app.core.config import logger
+import traceback
 
 Auth_router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -604,8 +606,6 @@ async def upload_documents(
     except Exception as e:
         db.rollback()
         try:
-            from app.core.config import logger
-            import traceback
             logger.error(f"Error in /auth/upload-documents: {e}")
             logger.error(traceback.format_exc())
         except Exception:
