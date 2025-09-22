@@ -504,8 +504,8 @@ async def upload_documents(
         first_name: str = Form(..., min_length=1, max_length=50),
         last_name: str = Form(..., min_length=1, max_length=50),
         birth_date: str = Form(...),
-        iin: Optional[str] = Form(None, min_length=12, max_length=12),
-        passport_number: Optional[str] = Form(None, min_length=3, max_length=50),
+        iin: Optional[str] = Form(None),
+        passport_number: Optional[str] = Form(None),
         id_card_expiry: str = Form(...),
         drivers_license_expiry: str = Form(...),
 

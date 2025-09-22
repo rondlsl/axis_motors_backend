@@ -66,12 +66,24 @@ class DocumentUploadRequest(BaseModel):
         description="Дата окончания действия водительских прав в формате YYYY-MM-DD. Должна быть в будущем. Пример: '2029-08-20'"
     )
 
+    @validator('iin', pre=True)
+    def normalize_iin(cls, v):
+        if v is None or (isinstance(v, str) and v.strip() == ""):
+            return None
+        return v
+
     @validator('iin')
     def validate_iin(cls, v):
         if v is None:
             return v
         if not v.isdigit():
             raise ValueError('ИИН должен содержать только цифры. Пример: 900515123456')
+        return v
+
+    @validator('passport_number', pre=True)
+    def normalize_passport(cls, v):
+        if v is None or (isinstance(v, str) and v.strip() == ""):
+            return None
         return v
 
     @validator('passport_number')
