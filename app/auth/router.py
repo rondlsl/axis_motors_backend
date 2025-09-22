@@ -556,6 +556,16 @@ async def upload_documents(
         current_user.selfie_url = selfie_path
 
         current_user.role = UserRole.PENDING
+        current_user.documents_verified = True
+
+        # Создаем заявку для проверки документов
+        application = Application(
+            user_id=current_user.id,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        db.add(application)
+
         # Обновляем имя в заявках гаранта, где этот пользователь является гарантом
         try:
             from app.models.guarantor_model import GuarantorRequest
