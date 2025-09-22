@@ -33,6 +33,7 @@ class User(Base):
     phone_number = Column(String, nullable=False, unique=False)
     birth_date = Column(DateTime, nullable=True)
     iin = Column(String(12), nullable=True, unique=False)
+    passport_number = Column(String(50), nullable=True)
     drivers_license_expiry = Column(DateTime, nullable=True)
     wallet_balance = Column(Numeric(10, 2), nullable=False, default=0)
     selfie_with_license_url = Column(String, nullable=True)

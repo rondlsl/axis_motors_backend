@@ -485,7 +485,8 @@ async def refresh_token(db: Session = Depends(get_db), token: str = Depends(JWTB
 - first_name: Имя (1-50 символов). Пример: "Иван"
 - last_name: Фамилия (1-50 символов). Пример: "Иванов"
 - birth_date: Дата рождения в формате YYYY-MM-DD. Пример: "1990-05-15"
-- iin: ИИН из 12 цифр без пробелов. Пример: "900515123456"
+- iin: ИИН из 12 цифр без пробелов. Пример: "900515123456" (или)
+- passport_number: Номер паспорта (можно указать вместо ИИН)
 - id_card_expiry: Дата истечения ID карты в формате YYYY-MM-DD (будущая дата). Пример: "2030-12-31"
 - drivers_license_expiry: Дата истечения прав в формате YYYY-MM-DD (будущая дата). Пример: "2029-08-20"
 
@@ -503,7 +504,8 @@ async def upload_documents(
         first_name: str = Form(..., min_length=1, max_length=50),
         last_name: str = Form(..., min_length=1, max_length=50),
         birth_date: str = Form(...),
-        iin: str = Form(..., min_length=12, max_length=12),
+        iin: Optional[str] = Form(None, min_length=12, max_length=12),
+        passport_number: Optional[str] = Form(None, min_length=3, max_length=50),
         id_card_expiry: str = Form(...),
         drivers_license_expiry: str = Form(...),
 
@@ -525,6 +527,7 @@ async def upload_documents(
             last_name=last_name,
             birth_date=birth_date,
             iin=iin,
+            passport_number=passport_number,
             id_card_expiry=id_card_expiry,
             drivers_license_expiry=drivers_license_expiry
         )
@@ -546,7 +549,9 @@ async def upload_documents(
         current_user.first_name = document_data.first_name
         current_user.last_name = document_data.last_name
         current_user.birth_date = datetime.strptime(document_data.birth_date, '%Y-%m-%d')
+        # Сохраняем ИИН или паспорт
         current_user.iin = document_data.iin
+        current_user.passport_number = document_data.passport_number
 
         current_user.id_card_front_url = id_front_path
         current_user.id_card_back_url = id_back_path
@@ -596,6 +601,7 @@ async def upload_documents(
                 "last_name": current_user.last_name,
                 "birth_date": current_user.birth_date.strftime('%Y-%m-%d'),
                 "iin": current_user.iin,
+                "passport_number": current_user.passport_number,
                 "id_card_expiry": current_user.id_card_expiry.strftime('%Y-%m-%d'),
                 "drivers_license_expiry": current_user.drivers_license_expiry.strftime('%Y-%m-%d'),
                 "selfie_with_license_url": current_user.selfie_with_license_url,

@@ -45,11 +45,17 @@ class DocumentUploadRequest(BaseModel):
         ...,
         description="Дата рождения в формате YYYY-MM-DD. Пример: '1990-05-15'"
     )
-    iin: str = Field(
-        ...,
+    iin: str | None = Field(
+        None,
         min_length=12,
         max_length=12,
         description="ИИН - 12 цифр подряд без пробелов и дефисов. Пример: '900515123456'"
+    )
+    passport_number: str | None = Field(
+        None,
+        min_length=3,
+        max_length=50,
+        description="Номер паспорта. Можно указать вместо ИИН"
     )
     id_card_expiry: str = Field(
         ...,
@@ -62,8 +68,17 @@ class DocumentUploadRequest(BaseModel):
 
     @validator('iin')
     def validate_iin(cls, v):
+        if v is None:
+            return v
         if not v.isdigit():
             raise ValueError('ИИН должен содержать только цифры. Пример: 900515123456')
+        return v
+
+    @validator('passport_number')
+    def validate_passport(cls, v, values):
+        # Разрешаем либо ИИН, либо паспорт. Если оба пустые — ошибка
+        if v is None and not values.get('iin'):
+            raise ValueError('Нужно указать либо ИИН, либо номер паспорта')
         return v
 
     @validator('birth_date', 'id_card_expiry', 'drivers_license_expiry')

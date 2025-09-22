@@ -21,7 +21,7 @@ def get_current_financier(current_user: User = Depends(get_current_user)) -> Use
 
 @FinancierRouter.get("/pending", summary="Получить заявки на рассмотрении")
 async def get_pending_applications(
-        search: Optional[str] = Query(None, description="Поиск по имени, телефону или ИИН"),
+        search: Optional[str] = Query(None, description="Поиск по имени, телефону, ИИН или номеру паспорта"),
         db: Session = Depends(get_db),
         current_financier: User = Depends(get_current_financier)
 ) -> Dict[str, Any]:
@@ -33,13 +33,14 @@ async def get_pending_applications(
         Application.financier_status == ApplicationStatus.PENDING
     )
     
-    # Поиск по имени, телефону или ИИН
+    # Поиск по имени, телефону, ИИН или номеру паспорта
     if search:
         search_filter = or_(
             User.first_name.ilike(f"%{search}%"),
             User.last_name.ilike(f"%{search}%"),
             User.phone_number.ilike(f"%{search}%"),
-            User.iin.ilike(f"%{search}%")
+            User.iin.ilike(f"%{search}%"),
+            User.passport_number.ilike(f"%{search}%")
         )
         query = query.filter(search_filter)
     
@@ -55,6 +56,7 @@ async def get_pending_applications(
             "last_name": user.last_name,
             "phone_number": user.phone_number,
             "iin": user.iin,
+            "passport_number": user.passport_number,
             "birth_date": user.birth_date.isoformat() if user.birth_date else None,
             "id_card_expiry": user.id_card_expiry.isoformat() if user.id_card_expiry else None,
             "drivers_license_expiry": user.drivers_license_expiry.isoformat() if user.drivers_license_expiry else None,
@@ -74,7 +76,7 @@ async def get_pending_applications(
 
 @FinancierRouter.get("/approved", summary="Получить одобренные заявки")
 async def get_approved_applications(
-        search: Optional[str] = Query(None, description="Поиск по имени, телефону или ИИН"),
+        search: Optional[str] = Query(None, description="Поиск по имени, телефону, ИИН или номеру паспорта"),
         db: Session = Depends(get_db),
         current_financier: User = Depends(get_current_financier)
 ) -> Dict[str, Any]:
@@ -86,13 +88,14 @@ async def get_approved_applications(
         Application.financier_status == ApplicationStatus.APPROVED
     )
     
-    # Поиск по имени, телефону или ИИН
+    # Поиск по имени, телефону, ИИН или номеру паспорта
     if search:
         search_filter = or_(
             User.first_name.ilike(f"%{search}%"),
             User.last_name.ilike(f"%{search}%"),
             User.phone_number.ilike(f"%{search}%"),
-            User.iin.ilike(f"%{search}%")
+            User.iin.ilike(f"%{search}%"),
+            User.passport_number.ilike(f"%{search}%")
         )
         query = query.filter(search_filter)
     
@@ -108,6 +111,7 @@ async def get_approved_applications(
             "last_name": user.last_name,
             "phone_number": user.phone_number,
             "iin": user.iin,
+            "passport_number": user.passport_number,
             "birth_date": user.birth_date.isoformat() if user.birth_date else None,
             "id_card_expiry": user.id_card_expiry.isoformat() if user.id_card_expiry else None,
             "drivers_license_expiry": user.drivers_license_expiry.isoformat() if user.drivers_license_expiry else None,
@@ -129,7 +133,7 @@ async def get_approved_applications(
 
 @FinancierRouter.get("/rejected", summary="Получить отклоненные заявки")
 async def get_rejected_applications(
-        search: Optional[str] = Query(None, description="Поиск по имени, телефону или ИИН"),
+        search: Optional[str] = Query(None, description="Поиск по имени, телефону, ИИН или номеру паспорта"),
         db: Session = Depends(get_db),
         current_financier: User = Depends(get_current_financier)
 ) -> Dict[str, Any]:
@@ -141,13 +145,14 @@ async def get_rejected_applications(
         Application.financier_status == ApplicationStatus.REJECTED
     )
     
-    # Поиск по имени, телефону или ИИН
+    # Поиск по имени, телефону, ИИН или номеру паспорта
     if search:
         search_filter = or_(
             User.first_name.ilike(f"%{search}%"),
             User.last_name.ilike(f"%{search}%"),
             User.phone_number.ilike(f"%{search}%"),
-            User.iin.ilike(f"%{search}%")
+            User.iin.ilike(f"%{search}%"),
+            User.passport_number.ilike(f"%{search}%")
         )
         query = query.filter(search_filter)
     
@@ -163,6 +168,7 @@ async def get_rejected_applications(
             "last_name": user.last_name,
             "phone_number": user.phone_number,
             "iin": user.iin,
+            "passport_number": user.passport_number,
             "birth_date": user.birth_date.isoformat() if user.birth_date else None,
             "id_card_expiry": user.id_card_expiry.isoformat() if user.id_card_expiry else None,
             "drivers_license_expiry": user.drivers_license_expiry.isoformat() if user.drivers_license_expiry else None,
