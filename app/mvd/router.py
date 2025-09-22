@@ -8,6 +8,7 @@ from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole
 from app.models.application_model import Application, ApplicationStatus
+from app.push.utils import send_push_to_user_by_id
 
 MvdRouter = APIRouter(prefix="/mvd", tags=["MVD"])
 
@@ -271,6 +272,14 @@ async def reject_application(
     
     db.commit()
     
+    # Пуш пользователю
+    try:
+        title = "Заявка отклонена МВД"
+        body = f"Причина: {reason}" if reason else "Заявка отклонена МВД"
+        await send_push_to_user_by_id(db, application.user.id, title, body)
+    except Exception:
+        pass
+
     return {
         "message": "Заявка отклонена МВД",
         "application_id": application_id,

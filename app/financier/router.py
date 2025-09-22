@@ -8,6 +8,7 @@ from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole
 from app.models.application_model import Application, ApplicationStatus
+from app.push.utils import send_push_to_user_by_id
 
 FinancierRouter = APIRouter(prefix="/financier", tags=["Financier"])
 
@@ -311,6 +312,14 @@ async def reject_application(
             guarantor_user.auto_class = list(set(all_client_classes)) if all_client_classes else None
     
     db.commit()
+
+    # Уведомление пользователю
+    try:
+        title = "Заявка отклонена финансистом"
+        body = f"Причина: {reason}" if reason else "Заявка отклонена финансистом"
+        await send_push_to_user_by_id(db, application.user.id, title, body)
+    except Exception:
+        pass
     
     return {
         "message": "Заявка отклонена",
