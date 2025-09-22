@@ -68,7 +68,8 @@ async def get_pending_applications(
                 "selfie_with_license_url": user.selfie_with_license_url
             },
             "created_at": app.created_at.isoformat(),
-            "updated_at": app.updated_at.isoformat()
+            "updated_at": app.updated_at.isoformat(),
+            "financier_reason": app.financier_reason
         })
     
     return {"applications": applications_data}
@@ -125,7 +126,8 @@ async def get_approved_applications(
             "auto_class": app.user.auto_class,
             "approved_at": app.financier_approved_at.isoformat() if app.financier_approved_at else None,
             "created_at": app.created_at.isoformat(),
-            "updated_at": app.updated_at.isoformat()
+            "updated_at": app.updated_at.isoformat(),
+            "financier_reason": app.financier_reason
         })
     
     return {"applications": applications_data}
@@ -181,7 +183,8 @@ async def get_rejected_applications(
             },
             "rejected_at": app.financier_rejected_at.isoformat() if app.financier_rejected_at else None,
             "created_at": app.created_at.isoformat(),
-            "updated_at": app.updated_at.isoformat()
+            "updated_at": app.updated_at.isoformat(),
+            "financier_reason": app.financier_reason
         })
     
     return {"applications": applications_data}
@@ -257,6 +260,7 @@ async def approve_application(
 @FinancierRouter.post("/reject/{application_id}", summary="Отклонить заявку")
 async def reject_application(
         application_id: int,
+        reason: Optional[str] = Query(None, description="Причина отклонения"),
         db: Session = Depends(get_db),
         current_financier: User = Depends(get_current_financier)
 ) -> Dict[str, Any]:
@@ -275,6 +279,7 @@ async def reject_application(
     application.financier_rejected_at = datetime.utcnow()
     application.financier_user_id = current_financier.id
     application.updated_at = datetime.utcnow()
+    application.financier_reason = reason
     
     # Обновляем пользователя
     user = application.user
@@ -310,5 +315,6 @@ async def reject_application(
     return {
         "message": "Заявка отклонена",
         "application_id": application_id,
-        "user_id": user.id
+        "user_id": user.id,
+        "reason": application.financier_reason
     }

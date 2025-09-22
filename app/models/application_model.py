@@ -20,12 +20,14 @@ class Application(Base):
     financier_status = Column(SAEnum(ApplicationStatus), default=ApplicationStatus.PENDING)
     financier_approved_at = Column(DateTime, nullable=True)
     financier_rejected_at = Column(DateTime, nullable=True)
+    financier_reason = Column(String, nullable=True)
     financier_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     
     # Статус проверки МВД
     mvd_status = Column(SAEnum(ApplicationStatus), default=ApplicationStatus.PENDING)
     mvd_approved_at = Column(DateTime, nullable=True)
     mvd_rejected_at = Column(DateTime, nullable=True)
+    mvd_reason = Column(String, nullable=True)
     mvd_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     
     created_at = Column(DateTime, nullable=False)

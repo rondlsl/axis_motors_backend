@@ -73,7 +73,8 @@ async def get_pending_applications(
             "auto_class": app.user.auto_class,
             "financier_approved_at": app.financier_approved_at.isoformat() if app.financier_approved_at else None,
             "created_at": app.created_at.isoformat(),
-            "updated_at": app.updated_at.isoformat()
+            "updated_at": app.updated_at.isoformat(),
+            "mvd_reason": app.mvd_reason
         })
     
     return {"applications": applications_data}
@@ -134,7 +135,8 @@ async def get_approved_applications(
             "financier_approved_at": app.financier_approved_at.isoformat() if app.financier_approved_at else None,
             "mvd_approved_at": app.mvd_approved_at.isoformat() if app.mvd_approved_at else None,
             "created_at": app.created_at.isoformat(),
-            "updated_at": app.updated_at.isoformat()
+            "updated_at": app.updated_at.isoformat(),
+            "mvd_reason": app.mvd_reason
         })
     
     return {"applications": applications_data}
@@ -195,7 +197,8 @@ async def get_rejected_applications(
             "financier_approved_at": app.financier_approved_at.isoformat() if app.financier_approved_at else None,
             "mvd_rejected_at": app.mvd_rejected_at.isoformat() if app.mvd_rejected_at else None,
             "created_at": app.created_at.isoformat(),
-            "updated_at": app.updated_at.isoformat()
+            "updated_at": app.updated_at.isoformat(),
+            "mvd_reason": app.mvd_reason
         })
     
     return {"applications": applications_data}
@@ -240,6 +243,7 @@ async def approve_application(
 @MvdRouter.post("/reject/{application_id}", summary="Отклонить заявку")
 async def reject_application(
         application_id: int,
+        reason: Optional[str] = Query(None, description="Причина отклонения"),
         db: Session = Depends(get_db),
         current_mvd: User = Depends(get_current_mvd_user)
 ) -> Dict[str, Any]:
@@ -263,11 +267,13 @@ async def reject_application(
     application.mvd_rejected_at = datetime.utcnow()
     application.mvd_user_id = current_mvd.id
     application.updated_at = datetime.utcnow()
+    application.mvd_reason = reason
     
     db.commit()
     
     return {
         "message": "Заявка отклонена МВД",
         "application_id": application_id,
-        "user_id": application.user.id
+        "user_id": application.user.id,
+        "reason": application.mvd_reason
     }
