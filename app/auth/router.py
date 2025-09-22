@@ -392,6 +392,9 @@ async def read_users_me(
     )
 
     try:
+        # Достаём заявку пользователя (если есть)
+        user_application = db.query(Application).filter(Application.user_id == current_user.id).first()
+
         first_name = current_user.first_name if isinstance(current_user.first_name, str) else None
         last_name = current_user.last_name if isinstance(current_user.last_name, str) else None
         role = getattr(current_user.role, "value", current_user.role) if current_user.role is not None else None
@@ -407,6 +410,12 @@ async def read_users_me(
             "owned_cars": owned_cars,
             "locale": current_user.locale,
             "unread_message": unread_messages,
+            "application": {
+                "financier_status": getattr(user_application.financier_status, "value", None) if user_application else None,
+                "financier_reason": getattr(user_application, "financier_reason", None) if user_application else None,
+                "mvd_status": getattr(user_application.mvd_status, "value", None) if user_application else None,
+                "mvd_reason": getattr(user_application, "mvd_reason", None) if user_application else None,
+            },
             "documents": {
                 "documents_verified": current_user.documents_verified,
                 "selfie_with_license_url": current_user.selfie_with_license_url,
