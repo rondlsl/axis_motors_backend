@@ -21,6 +21,7 @@ from app.models.user_model import UserRole, User
 from app.models.notification_model import Notification
 from app.rent.utils.calculate_price import get_open_price
 from app.owner.utils import calculate_month_availability_minutes, ALMATY_TZ
+from app.models.application_model import Application
 
 Auth_router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -558,13 +559,17 @@ async def upload_documents(
         current_user.role = UserRole.PENDING
         current_user.documents_verified = True
 
-        # Создаем заявку для проверки документов
-        application = Application(
-            user_id=current_user.id,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
-        )
-        db.add(application)
+        # Создаем/обновляем заявку для проверки документов (idempotent)
+        existing_application = db.query(Application).filter(Application.user_id == current_user.id).first()
+        if existing_application:
+            existing_application.updated_at = datetime.utcnow()
+        else:
+            application = Application(
+                user_id=current_user.id,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            db.add(application)
 
         # Обновляем имя в заявках гаранта, где этот пользователь является гарантом
         try:
@@ -596,8 +601,15 @@ async def upload_documents(
             }
         }
 
-    except Exception:
+    except Exception as e:
         db.rollback()
+        try:
+            from app.core.config import logger
+            import traceback
+            logger.error(f"Error in /auth/upload-documents: {e}")
+            logger.error(traceback.format_exc())
+        except Exception:
+            pass
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while uploading documents and data"
