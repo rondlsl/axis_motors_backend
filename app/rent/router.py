@@ -258,6 +258,12 @@ async def reserve_car(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user),
 ):
+    # Запреты по ролям/верификации
+    if current_user.role == UserRole.CLIENT:
+        raise HTTPException(status_code=403, detail="Клиент не может арендовать автомобиль")
+    if current_user.role == UserRole.USER and not bool(current_user.documents_verified):
+        raise HTTPException(status_code=403, detail="Для аренды необходимо пройти верификацию документов")
+
     # 1) Проверяем, нет ли у пользователя уже активной аренды
     active_rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,
@@ -400,6 +406,12 @@ async def reserve_delivery(
     - car_id, rental_type, delivery координаты, опционально duration.
     - Дополнительно списываем 10000₸ за услугу доставки, если арендатор не является владельцем.
     """
+    # Запреты по ролям/верификации
+    if current_user.role == UserRole.CLIENT:
+        raise HTTPException(status_code=403, detail="Клиент не может оформлять доставку автомобиля")
+    if current_user.role == UserRole.USER and not bool(current_user.documents_verified):
+        raise HTTPException(status_code=403, detail="Для оформления аренды с доставкой необходимо пройти верификацию документов")
+
     # 1) Проверяем, нет ли у пользователя активной аренды (RESERVED, IN_USE или DELIVERING)
     active_rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,
@@ -678,6 +690,12 @@ async def start_rental(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user),
 ):
+    # Запреты по ролям/верификации (на случай, если обошли резервацию)
+    if current_user.role == UserRole.CLIENT:
+        raise HTTPException(status_code=403, detail="Клиент не может начать аренду автомобиля")
+    if current_user.role == UserRole.USER and not bool(current_user.documents_verified):
+        raise HTTPException(status_code=403, detail="Для начала аренды необходимо пройти верификацию документов")
+
     # Получаем активную аренду пользователя со статусом RESERVED
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,

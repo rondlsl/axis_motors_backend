@@ -10,10 +10,10 @@ from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD, RENTED_C
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.gps_api.schemas import RentedCar
-from app.models.car_model import Car
+from app.models.car_model import Car, CarAutoClass
 from app.models.history_model import RentalHistory, RentalStatus
 from app.models.rental_actions_model import ActionType, RentalAction
-from app.models.user_model import User
+from app.models.user_model import User, UserRole
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.get_active_rental import get_active_rental_car, get_active_rental
 from app.gps_api.utils.car_data import send_command_to_terminal, send_open, send_close, send_give_key, send_take_key
@@ -50,8 +50,40 @@ def get_vehicle_info(
         current_user: User = Depends(get_current_user)
 ) -> Dict[str, Any]:
     try:
-        # Выбираем только машины со статусом "FREE"
-        cars = db.query(Car).filter(Car.status == "FREE").all()
+        # Базовый фильтр: только свободные машины
+        query = db.query(Car).filter(Car.status == "FREE")
+
+        # Фильтрация по классам авто для роли USER при верифицированных документах
+        if current_user.role == UserRole.USER and bool(current_user.documents_verified):
+            allowed_classes: list[str] = []
+
+            # Поле users.auto_class может прийти как массив ["A","B"] или строка вида "{A, B}"
+            if isinstance(current_user.auto_class, list):
+                allowed_classes = [str(c).strip().upper() for c in current_user.auto_class if c]
+            elif isinstance(current_user.auto_class, str):
+                raw = current_user.auto_class.strip()
+                # Удаляем фигурные скобки и разбиваем по запятым
+                if raw.startswith("{") and raw.endswith("}"):
+                    raw = raw[1:-1]
+                allowed_classes = [part.strip().upper() for part in raw.split(",") if part.strip()]
+
+            # Преобразуем в enum значения, игнорируя неизвестные элементы
+            allowed_enum: list[CarAutoClass] = []
+            for cls in allowed_classes:
+                try:
+                    allowed_enum.append(CarAutoClass(cls))
+                except Exception:
+                    # Пропускаем некорректные значения
+                    pass
+
+            # Если список разрешенных классов пуст, то показывать нечего
+            if len(allowed_enum) == 0:
+                cars = []
+            else:
+                cars = query.filter(Car.auto_class.in_(allowed_enum)).all()
+        else:
+            # Для CLIENT и прочих ролей — без ограничений по классу (только FREE)
+            cars = query.all()
 
         vehicles_data = [{
             "id": car.id,
