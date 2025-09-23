@@ -260,7 +260,7 @@ async def reserve_car(
 ):
     # Запреты по ролям/верификации
     if current_user.role == UserRole.CLIENT:
-        raise HTTPException(status_code=403, detail="Клиент не может арендовать автомобиль")
+        raise HTTPException(status_code=403, detail="Для аренды необходимо пройти верификацию документов")
     if current_user.role == UserRole.USER and not bool(current_user.documents_verified):
         raise HTTPException(status_code=403, detail="Для аренды необходимо пройти верификацию документов")
 
@@ -408,7 +408,7 @@ async def reserve_delivery(
     """
     # Запреты по ролям/верификации
     if current_user.role == UserRole.CLIENT:
-        raise HTTPException(status_code=403, detail="Клиент не может оформлять доставку автомобиля")
+        raise HTTPException(status_code=403, detail="Для оформления аренды с доставкой необходимо пройти верификацию документов")
     if current_user.role == UserRole.USER and not bool(current_user.documents_verified):
         raise HTTPException(status_code=403, detail="Для оформления аренды с доставкой необходимо пройти верификацию документов")
 
@@ -692,7 +692,7 @@ async def start_rental(
 ):
     # Запреты по ролям/верификации (на случай, если обошли резервацию)
     if current_user.role == UserRole.CLIENT:
-        raise HTTPException(status_code=403, detail="Клиент не может начать аренду автомобиля")
+        raise HTTPException(status_code=403, detail="Для начала аренды необходимо пройти верификацию документов")
     if current_user.role == UserRole.USER and not bool(current_user.documents_verified):
         raise HTTPException(status_code=403, detail="Для начала аренды необходимо пройти верификацию документов")
 
