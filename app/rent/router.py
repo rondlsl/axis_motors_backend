@@ -12,6 +12,7 @@ from app.dependencies.database.database import get_db
 from app.models.history_model import RentalType, RentalStatus, RentalHistory, RentalReview
 from app.models.promo_codes_model import PromoCode, UserPromoCode, UserPromoStatus
 from app.models.user_model import User, UserRole
+from app.models.application_model import Application, ApplicationStatus
 from app.models.car_model import Car
 from app.push.utils import send_notification_to_all_mechanics_async, send_push_to_user_by_id
 from app.rent.exceptions import InsufficientBalanceException
@@ -261,8 +262,17 @@ async def reserve_car(
     # Запреты по ролям/верификации
     if current_user.role == UserRole.CLIENT:
         raise HTTPException(status_code=403, detail="Для аренды необходимо пройти верификацию документов")
-    if current_user.role == UserRole.USER and not bool(current_user.documents_verified):
-        raise HTTPException(status_code=403, detail="Для аренды необходимо пройти верификацию документов")
+    if current_user.role == UserRole.USER:
+        if not bool(current_user.documents_verified):
+            raise HTTPException(status_code=403, detail="Для аренды необходимо пройти верификацию документов")
+        # Требуем одобрения финансиста и МВД
+        application = (
+            db.query(Application)
+            .filter(Application.user_id == current_user.id)
+            .first()
+        )
+        if not application or application.financier_status != ApplicationStatus.APPROVED or application.mvd_status != ApplicationStatus.APPROVED:
+            raise HTTPException(status_code=403, detail="Для аренды требуется одобрение финансиста и МВД")
 
     # 1) Проверяем, нет ли у пользователя уже активной аренды
     active_rental = db.query(RentalHistory).filter(
