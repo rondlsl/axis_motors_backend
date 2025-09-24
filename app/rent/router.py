@@ -259,7 +259,6 @@ async def reserve_car(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user),
 ):
-    # 0) Узнаём владельца машины, чтобы корректно применить проверки
     car_meta = db.query(Car.id, Car.owner_id, Car.status).filter(Car.id == car_id).first()
     if not car_meta:
         raise HTTPException(status_code=404, detail="Car not found")
@@ -318,7 +317,6 @@ async def reserve_car(
             RentalStatus.DELIVERY_RESERVED,
             RentalStatus.DELIVERING,
             RentalStatus.DELIVERING_IN_PROGRESS,
-            RentalStatus.SCHEDULED,
         ]
 
         active_client_rental = (
