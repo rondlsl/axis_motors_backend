@@ -259,20 +259,26 @@ async def reserve_car(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user),
 ):
-    # Запреты по ролям/верификации
-    if current_user.role == UserRole.CLIENT:
-        raise HTTPException(status_code=403, detail="Для аренды необходимо пройти верификацию документов")
-    if current_user.role == UserRole.USER:
-        if not bool(current_user.documents_verified):
+    # 0) Узнаём владельца машины, чтобы корректно применить проверки
+    car_meta = db.query(Car.id, Car.owner_id, Car.status).filter(Car.id == car_id).first()
+    if not car_meta:
+        raise HTTPException(status_code=404, detail="Car not found")
+
+    # Запреты по ролям/верификации для НЕ владельцев
+    if car_meta.owner_id != current_user.id:
+        if current_user.role == UserRole.CLIENT:
             raise HTTPException(status_code=403, detail="Для аренды необходимо пройти верификацию документов")
-        # Требуем одобрения финансиста и МВД
-        application = (
-            db.query(Application)
-            .filter(Application.user_id == current_user.id)
-            .first()
-        )
-        if not application or application.financier_status != ApplicationStatus.APPROVED or application.mvd_status != ApplicationStatus.APPROVED:
-            raise HTTPException(status_code=403, detail="Для аренды требуется одобрение финансиста и МВД")
+        if current_user.role == UserRole.USER:
+            if not bool(current_user.documents_verified):
+                raise HTTPException(status_code=403, detail="Для аренды необходимо пройти верификацию документов")
+            # Требуем одобрения финансиста и МВД
+            application = (
+                db.query(Application)
+                .filter(Application.user_id == current_user.id)
+                .first()
+            )
+            if not application or application.financier_status != ApplicationStatus.APPROVED or application.mvd_status != ApplicationStatus.APPROVED:
+                raise HTTPException(status_code=403, detail="Для аренды требуется одобрение финансиста и МВД")
 
     # 1) Проверяем, нет ли у пользователя уже активной аренды
     active_rental = db.query(RentalHistory).filter(
