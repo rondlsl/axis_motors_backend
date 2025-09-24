@@ -294,6 +294,33 @@ async def reserve_car(
     price_per_day = car.price_per_day
 
     if car.owner_id == current_user.id:
+        # Перед тем как владелец «снимет с аренды» (берёт у себя),
+        # проверяем, нет ли активных/запланированных аренд клиентов
+        blocking_statuses = [
+            RentalStatus.RESERVED,
+            RentalStatus.IN_USE,
+            RentalStatus.DELIVERY_RESERVED,
+            RentalStatus.DELIVERING,
+            RentalStatus.DELIVERING_IN_PROGRESS,
+            RentalStatus.SCHEDULED,
+        ]
+
+        active_client_rental = (
+            db.query(RentalHistory)
+            .filter(
+                RentalHistory.car_id == car.id,
+                RentalHistory.rental_status.in_(blocking_statuses),
+                RentalHistory.user_id != current_user.id,
+            )
+            .first()
+        )
+
+        if active_client_rental:
+            raise HTTPException(
+                status_code=400,
+                detail="Нельзя снять с аренды: автомобиль забронирован/в доставке/в использовании клиентом",
+            )
+
         # Владелец берёт свою машину бесплатно
         total_price = 0
         rental = RentalHistory(
