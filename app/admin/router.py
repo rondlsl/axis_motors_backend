@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
@@ -16,6 +16,19 @@ from app.guarantor.schemas import (
 )
 from pydantic import BaseModel
 from datetime import datetime
+from sqlalchemy import or_, func
+
+# New imports for admin car endpoints
+from app.admin.schemas import (
+    CarFilterSchema,
+    CarMapItemSchema,
+    CarMapResponseSchema,
+    CarListItemSchema,
+    CarListResponseSchema,
+    CarStatusUpdateSchema,
+    CarStatus,
+    CarStatisticsSchema,
+)
 
 admin_router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -313,3 +326,209 @@ async def get_all_cars_for_admin(
         vehicles_data.append(vehicle_data)
     
     return {"cars": vehicles_data}
+
+@admin_router.get("/cars/map", response_model=CarMapResponseSchema)
+async def get_cars_map(
+    status: Optional[CarStatus] = None,
+    search_query: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> CarMapResponseSchema:
+    """
+    Карта автопарка: вернуть все машины с координатами и статусами.
+    Фильтры: статус и поиск по госномеру/марке.
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+
+    base_query = db.query(Car)
+
+    if status is not None:
+        base_query = base_query.filter(Car.status == status.value)
+
+    if search_query:
+        like = f"%{search_query}%"
+        base_query = base_query.filter(or_(Car.plate_number.ilike(like), Car.name.ilike(like)))
+
+    cars = base_query.all()
+
+    def _status_display(s: Optional[str]) -> str:
+        return {
+            "FREE": "Свободно",
+            "IN_USE": "В аренде",
+            "MAINTENANCE": "На тех обслуживании",
+            "DELIVERING": "В доставке",
+            "DELIVERED": "Доставлено",
+            "RETURNING": "Возвращается",
+            "RETURNED": "Возвращено",
+            "OWNER": "У владельца",
+        }.get(s or "", s or "")
+
+    items: List[CarMapItemSchema] = []
+    for car in cars:
+        renter_info = None
+        if car.current_renter_id:
+            renter = db.query(User).filter(User.id == car.current_renter_id).first()
+            if renter:
+                renter_info = {
+                    "first_name": renter.first_name,
+                    "last_name": renter.last_name,
+                    "selfie": renter.selfie_with_license_url,
+                }
+        items.append(CarMapItemSchema(
+            id=car.id,
+            name=car.name,
+            plate_number=car.plate_number,
+            status=car.status,
+            status_display=_status_display(car.status),
+            latitude=car.latitude,
+            longitude=car.longitude,
+            fuel_level=car.fuel_level,
+            course=car.course,
+            photos=car.photos or [],
+            current_renter=renter_info,
+        ))
+
+    return CarMapResponseSchema(cars=items, total_count=len(items))
+
+
+@admin_router.get("/cars/list", response_model=CarListResponseSchema)
+async def get_cars_list(
+    status: Optional[CarStatus] = None,
+    search_query: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> CarListResponseSchema:
+    """
+    Список автомобилей с фильтрами/поиском для боковой панели.
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+
+    total_count = db.query(Car).count()
+
+    query = db.query(Car)
+    if status is not None:
+        query = query.filter(Car.status == status.value)
+    if search_query:
+        like = f"%{search_query}%"
+        query = query.filter(or_(Car.plate_number.ilike(like), Car.name.ilike(like)))
+
+    filtered_cars = query.all()
+
+    def _status_display(s: Optional[str]) -> str:
+        return {
+            "FREE": "Свободно",
+            "IN_USE": "В аренде",
+            "MAINTENANCE": "На тех обслуживании",
+            "DELIVERING": "В доставке",
+            "DELIVERED": "Доставлено",
+            "RETURNING": "Возвращается",
+            "RETURNED": "Возвращено",
+            "OWNER": "У владельца",
+        }.get(s or "", s or "")
+
+    items: List[CarListItemSchema] = []
+    for car in filtered_cars:
+        owner_name = None
+        if car.owner_id:
+            owner = db.query(User).filter(User.id == car.owner_id).first()
+            if owner:
+                owner_name = f"{owner.first_name or ''} {owner.last_name or ''}".strip() or owner.phone_number
+        current_renter_name = None
+        if car.current_renter_id:
+            renter = db.query(User).filter(User.id == car.current_renter_id).first()
+            if renter:
+                current_renter_name = f"{renter.first_name or ''} {renter.last_name or ''}".strip() or renter.phone_number
+
+        items.append(CarListItemSchema(
+            id=car.id,
+            name=car.name,
+            plate_number=car.plate_number,
+            status=car.status,
+            status_display=_status_display(car.status),
+            latitude=car.latitude,
+            longitude=car.longitude,
+            fuel_level=car.fuel_level,
+            mileage=car.mileage,
+            auto_class=car.auto_class.value if car.auto_class else "",
+            body_type=car.body_type.value if car.body_type else "",
+            year=car.year,
+            owner_name=owner_name,
+            current_renter_name=current_renter_name,
+            photos=car.photos or [],
+        ))
+
+    return CarListResponseSchema(
+        cars=items,
+        total_count=total_count,
+        filtered_count=len(items),
+    )
+
+
+@admin_router.post("/cars/{car_id}/status")
+async def update_car_status(
+    car_id: int,
+    payload: CarStatusUpdateSchema,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Обновить статус автомобиля. Доступно только из админки.
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+
+    car = db.query(Car).filter(Car.id == car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+
+    car.status = payload.status.value
+    db.commit()
+
+    return {
+        "message": "Статус обновлён",
+        "car_id": car.id,
+        "status": car.status,
+        "reason": payload.reason,
+    }
+
+
+@admin_router.get("/cars/statistics", response_model=CarStatisticsSchema)
+async def get_cars_statistics(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> CarStatisticsSchema:
+    """
+    Статистика по автопарку: общее количество, по статусам, классам и типам кузова.
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+
+    total_cars = db.query(func.count(Car.id)).scalar() or 0
+
+    # By status
+    rows = db.query(Car.status, func.count(Car.id)).group_by(Car.status).all()
+    cars_by_status: Dict[str, int] = {row[0] or "UNKNOWN": int(row[1] or 0) for row in rows}
+
+    # By class
+    rows_class = db.query(Car.auto_class, func.count(Car.id)).group_by(Car.auto_class).all()
+    cars_by_class: Dict[str, int] = { (rc[0].value if rc[0] else "UNKNOWN"): int(rc[1] or 0) for rc in rows_class }
+
+    # By body type
+    rows_body = db.query(Car.body_type, func.count(Car.id)).group_by(Car.body_type).all()
+    cars_by_body_type: Dict[str, int] = { (rb[0].value if rb[0] else "UNKNOWN"): int(rb[1] or 0) for rb in rows_body }
+
+    active_rentals = cars_by_status.get("IN_USE", 0)
+    available_cars = cars_by_status.get("FREE", 0)
+    maintenance_cars = cars_by_status.get("MAINTENANCE", 0)
+
+    return CarStatisticsSchema(
+        total_cars=int(total_cars),
+        cars_by_status=cars_by_status,
+        cars_by_class=cars_by_class,
+        cars_by_body_type=cars_by_body_type,
+        active_rentals=int(active_rentals),
+        available_cars=int(available_cars),
+        maintenance_cars=int(maintenance_cars),
+    )

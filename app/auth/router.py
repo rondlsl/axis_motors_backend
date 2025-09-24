@@ -392,7 +392,6 @@ async def read_users_me(
     )
 
     try:
-        # Достаём заявку пользователя (если есть)
         user_application = db.query(Application).filter(Application.user_id == current_user.id).first()
 
         first_name = current_user.first_name if isinstance(current_user.first_name, str) else None

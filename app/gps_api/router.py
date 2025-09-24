@@ -62,7 +62,6 @@ def get_vehicle_info(
                 allowed_classes = [str(c).strip().upper() for c in current_user.auto_class if c]
             elif isinstance(current_user.auto_class, str):
                 raw = current_user.auto_class.strip()
-                # Удаляем фигурные скобки и разбиваем по запятым
                 if raw.startswith("{") and raw.endswith("}"):
                     raw = raw[1:-1]
                 allowed_classes = [part.strip().upper() for part in raw.split(",") if part.strip()]
@@ -76,7 +75,6 @@ def get_vehicle_info(
                     # Пропускаем некорректные значения
                     pass
 
-            # Если список разрешенных классов пуст, то показывать нечего
             if len(allowed_enum) == 0:
                 cars = []
             else:
