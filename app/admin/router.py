@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
 
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
+from app.auth.dependencies.save_documents import save_file
+import os
 from app.models.user_model import User, UserRole, AutoClass
 from app.models.guarantor_model import GuarantorRequest
 from app.models.application_model import Application
@@ -604,6 +606,7 @@ async def get_car_details(
 async def update_car(
     car_id: int,
     car_data: CarEditSchema,
+    photos: Optional[List[UploadFile]] = File(default=None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -622,6 +625,17 @@ async def update_car(
     for field, value in update_data.items():
         if hasattr(car, field):
             setattr(car, field, value)
+
+    # Если загружены фотографии, добавим их к car.photos
+    if photos:
+        saved_paths: List[str] = []
+        base_dir = os.path.join("uploads", "cars", str(car.id))
+        os.makedirs(base_dir, exist_ok=True)
+        for f in photos:
+            path = await save_file(f, user_id=car.id, UPLOAD_DIR=base_dir)
+            saved_paths.append(path.replace("\\", "/"))
+        existing = car.photos or []
+        car.photos = existing + saved_paths
 
     db.commit()
     db.refresh(car)
@@ -1053,8 +1067,6 @@ async def get_car_rental_history(
                 "last_name": delivery_mechanic.last_name or "",
                 "phone_number": delivery_mechanic.phone_number or "",
             }
-
-        # Механик осмотра в этом API больше не возвращается
 
         result.append({
             "id": rental.id,
