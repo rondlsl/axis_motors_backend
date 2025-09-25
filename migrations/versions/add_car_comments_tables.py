@@ -1,17 +1,16 @@
 """Add car comments and status history tables
 
 Revision ID: add_car_comments_tables
-Revises: b53e4eb893ec
+Revises: 3c445a622bb0
 Create Date: 2024-01-01 12:00:00.000000
 
 """
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = 'add_car_comments_tables'
-down_revision = 'b53e4eb893ec'
+down_revision = '3c445a622bb0'
 branch_labels = None
 depends_on = None
 
