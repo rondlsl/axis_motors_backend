@@ -1018,7 +1018,7 @@ async def update_car_status(
                     RentalStatus.DELIVERING_IN_PROGRESS
                 ])
             )
-            .order_by(RentalHistory.created_at.desc())
+            .order_by(RentalHistory.reservation_time.desc())
             .first()
         )
         
@@ -1065,7 +1065,7 @@ async def get_car_rental_history(
     rentals = (
         db.query(RentalHistory)
         .filter(RentalHistory.car_id == car_id)
-        .order_by(RentalHistory.created_at.desc())
+        .order_by(RentalHistory.reservation_time.desc())
         .all()
     )
 
@@ -1078,7 +1078,7 @@ async def get_car_rental_history(
             "rental_status": rental.rental_status.value,
             "start_time": rental.start_time.isoformat() if rental.start_time else None,
             "end_time": rental.end_time.isoformat() if rental.end_time else None,
-            "created_at": rental.created_at.isoformat(),
+            "reservation_time": rental.reservation_time.isoformat(),
             "total_price": rental.total_price,
             "delivery_mechanic_id": rental.delivery_mechanic_id
         })
