@@ -1082,3 +1082,7 @@ async def create_car_status_history(
         "new_status": history_data.new_status.value,
         "history_id": status_history.id
     }
+
+
+# Экспорт роутера
+router = admin_router
