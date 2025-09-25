@@ -1043,6 +1043,7 @@ async def get_car_rental_history(
 
     result = []
     for rental in rentals:
+        # Доставка: данные механика доставки (если есть)
         delivery_mechanic = getattr(rental, "delivery_mechanic", None)
         delivery_mechanic_info = None
         if delivery_mechanic:
@@ -1053,41 +1054,7 @@ async def get_car_rental_history(
                 "phone_number": delivery_mechanic.phone_number or "",
             }
 
-        inspection_mechanic_info = None
-        try:
-            for action in (rental.actions or []):
-                actor = getattr(action, "user", None)
-                if actor and getattr(actor, "role", None) and actor.role.name == "MECHANIC":
-                    inspection_mechanic_info = {
-                        "id": actor.id,
-                        "first_name": actor.first_name or "",
-                        "last_name": actor.last_name or "",
-                        "phone_number": actor.phone_number or "",
-                        "action_type": action.action_type.value,
-                        "action_time": action.timestamp.isoformat() if action.timestamp else None,
-                    }
-                    break
-        except Exception:
-            pass
-
-        # Разделяем фото: если автор аренды механик, то это фото осмотра механика
-        inspection_photos_before = []
-        inspection_photos_after = []
-        client_photos_before = []
-        client_photos_after = []
-
-        try:
-            renter_user = getattr(rental, "user", None)
-            renter_role = getattr(renter_user, "role", None)
-            if renter_role and renter_role.name == "MECHANIC":
-                inspection_photos_before = rental.photos_before or []
-                inspection_photos_after = rental.photos_after or []
-            else:
-                client_photos_before = rental.photos_before or []
-                client_photos_after = rental.photos_after or []
-        except Exception:
-            client_photos_before = rental.photos_before or []
-            client_photos_after = rental.photos_after or []
+        # Механик осмотра в этом API больше не возвращается
 
         result.append({
             "id": rental.id,
@@ -1098,14 +1065,11 @@ async def get_car_rental_history(
             "end_time": rental.end_time.isoformat() if rental.end_time else None,
             "reservation_time": rental.reservation_time.isoformat(),
             "total_price": rental.total_price,
-            "client_photos_before": client_photos_before,
-            "client_photos_after": client_photos_after,
-            "inspection_photos_before": inspection_photos_before,
-            "inspection_photos_after": inspection_photos_after,
+            "client_photos_before": rental.photos_before or [],
+            "client_photos_after": rental.photos_after or [],
             "delivery_photos_before": rental.delivery_photos_before or [],
             "delivery_photos_after": rental.delivery_photos_after or [],
             "delivery_mechanic": delivery_mechanic_info,
-            "inspection_mechanic": inspection_mechanic_info,
         })
 
     return result
