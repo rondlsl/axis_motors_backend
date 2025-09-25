@@ -476,34 +476,6 @@ async def get_cars_list(
     )
 
 
-@admin_router.post("/cars/{car_id}/status")
-async def update_car_status(
-    car_id: int,
-    payload: CarStatusUpdateSchema,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Обновить статус автомобиля. Доступно только из админки.
-    """
-    if current_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Недостаточно прав")
-
-    car = db.query(Car).filter(Car.id == car_id).first()
-    if not car:
-        raise HTTPException(status_code=404, detail="Автомобиль не найден")
-
-    car.status = payload.status.value
-    db.commit()
-
-    return {
-        "message": "Статус обновлён",
-        "car_id": car.id,
-        "status": car.status,
-        "reason": payload.reason,
-    }
-
-
 @admin_router.get("/cars/statistics", response_model=CarStatisticsSchema)
 async def get_cars_statistics(
     current_user: User = Depends(get_current_user),
