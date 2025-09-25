@@ -70,7 +70,7 @@ async def get_pending_applications(
             },
             "created_at": app.created_at.isoformat(),
             "updated_at": app.updated_at.isoformat(),
-            "financier_reason": app.financier_reason
+            "reason": app.reason
         })
     
     return {"applications": applications_data}
@@ -128,7 +128,7 @@ async def get_approved_applications(
             "approved_at": app.financier_approved_at.isoformat() if app.financier_approved_at else None,
             "created_at": app.created_at.isoformat(),
             "updated_at": app.updated_at.isoformat(),
-            "financier_reason": app.financier_reason
+            "reason": app.reason
         })
     
     return {"applications": applications_data}
@@ -185,7 +185,7 @@ async def get_rejected_applications(
             "rejected_at": app.financier_rejected_at.isoformat() if app.financier_rejected_at else None,
             "created_at": app.created_at.isoformat(),
             "updated_at": app.updated_at.isoformat(),
-            "financier_reason": app.financier_reason
+            "reason": app.reason
         })
     
     return {"applications": applications_data}
@@ -219,7 +219,8 @@ async def approve_application(
     # Обновляем пользователя
     user = application.user
     user.auto_class = [auto_class]  # Сохраняем как массив строк в users.auto_class
-    user.role = UserRole.USER  # Меняем роль на USER
+    # После одобрения финансистом – ждём МВД
+    user.role = UserRole.PENDINGTOSECOND
     
     # Если у пользователя есть гарант, обновляем его auto_class тоже
     from app.models.guarantor_model import Guarantor
@@ -262,6 +263,10 @@ async def approve_application(
 async def reject_application(
         application_id: int,
         reason: Optional[str] = Query(None, description="Причина отклонения"),
+        reason_type: Optional[str] = Query(
+            None,
+            description="Тип причины: 'financial' или 'documents'",
+        ),
         db: Session = Depends(get_db),
         current_financier: User = Depends(get_current_financier)
 ) -> Dict[str, Any]:
@@ -280,12 +285,16 @@ async def reject_application(
     application.financier_rejected_at = datetime.utcnow()
     application.financier_user_id = current_financier.id
     application.updated_at = datetime.utcnow()
-    application.financier_reason = reason
+    application.reason = reason
     
     # Обновляем пользователя
     user = application.user
     user.auto_class = None  # Убираем класс доступа из users.auto_class
-    user.role = UserRole.REJECTED  # Меняем роль на REJECTED
+    # Выставляем подробную роль-отказ в зависимости от типа
+    if reason_type == "documents":
+        user.role = UserRole.REJECTFIRSTDOC
+    else:
+        user.role = UserRole.REJECTFIRST
     
     # Если у пользователя есть гарант, нужно пересчитать его auto_class
     # (убрать классы, которые были получены только от этого клиента)
@@ -316,7 +325,12 @@ async def reject_application(
     # Уведомление пользователю
     try:
         title = "Заявка отклонена финансистом"
-        body = f"Причина: {reason}" if reason else "Заявка отклонена финансистом"
+        # Сообщение в зависимости от типа причины
+        if reason_type == "documents":
+            body = (f"Причина: {reason}. Пожалуйста, загрузите документы заново." if reason 
+                    else "Заявка отклонена: некорректные документы. Загрузите документы заново.")
+        else:
+            body = f"Причина: {reason}" if reason else "Заявка отклонена финансистом"
         await send_push_to_user_by_id(db, application.user.id, title, body)
     except Exception:
         pass
@@ -325,5 +339,6 @@ async def reject_application(
         "message": "Заявка отклонена",
         "application_id": application_id,
         "user_id": user.id,
-        "reason": application.financier_reason
+        "reason": application.reason,
+        "reason_type": reason_type
     }

@@ -16,6 +16,11 @@ class UserRole(enum.Enum):
     GARANT = "GARANT"
     FINANCIER = "financier"
     MVD = "mvd"
+    PENDINGTOFIRST = "pending_to_first"          # Загрузил документы, ждёт финансиста
+    PENDINGTOSECOND = "pending_to_second"        # Одобрен финансистом, ждёт МВД
+    REJECTFIRSTDOC = "reject_first_doc"          # Отказ финансиста: неверные документы
+    REJECTFIRST = "reject_first"                 # Отказ финансиста: финансовые причины
+    REJECTSECOND = "reject_second"               # Отказ МВД: полный блок
 
 
 class AutoClass(enum.Enum):

@@ -75,7 +75,7 @@ async def get_pending_applications(
             "financier_approved_at": app.financier_approved_at.isoformat() if app.financier_approved_at else None,
             "created_at": app.created_at.isoformat(),
             "updated_at": app.updated_at.isoformat(),
-            "mvd_reason": app.mvd_reason
+            "reason": app.reason
         })
     
     return {"applications": applications_data}
@@ -137,7 +137,7 @@ async def get_approved_applications(
             "mvd_approved_at": app.mvd_approved_at.isoformat() if app.mvd_approved_at else None,
             "created_at": app.created_at.isoformat(),
             "updated_at": app.updated_at.isoformat(),
-            "mvd_reason": app.mvd_reason
+            "reason": app.reason
         })
     
     return {"applications": applications_data}
@@ -199,7 +199,7 @@ async def get_rejected_applications(
             "mvd_rejected_at": app.mvd_rejected_at.isoformat() if app.mvd_rejected_at else None,
             "created_at": app.created_at.isoformat(),
             "updated_at": app.updated_at.isoformat(),
-            "mvd_reason": app.mvd_reason
+            "reason": app.reason
         })
     
     return {"applications": applications_data}
@@ -231,6 +231,11 @@ async def approve_application(
     application.mvd_approved_at = datetime.utcnow()
     application.mvd_user_id = current_mvd.id
     application.updated_at = datetime.utcnow()
+
+    # Переводим пользователя в полноценного USER
+    user = application.user
+    if user:
+        user.role = UserRole.USER
     
     db.commit()
     
@@ -268,7 +273,13 @@ async def reject_application(
     application.mvd_rejected_at = datetime.utcnow()
     application.mvd_user_id = current_mvd.id
     application.updated_at = datetime.utcnow()
-    application.mvd_reason = reason
+    application.reason = reason
+
+    # Блокируем доступ пользователя: роль REJECTSECOND, деактивируем
+    user = application.user
+    if user:
+        user.role = UserRole.REJECTSECOND
+        user.is_active = False
     
     db.commit()
     
@@ -284,5 +295,5 @@ async def reject_application(
         "message": "Заявка отклонена МВД",
         "application_id": application_id,
         "user_id": application.user.id,
-        "reason": application.mvd_reason
+        "reason": application.reason
     }

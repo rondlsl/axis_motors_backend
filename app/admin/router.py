@@ -75,7 +75,7 @@ async def get_pending_users(
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
     pending_users = db.query(User).filter(
-        User.role == UserRole.PENDING,
+        User.role.in_([UserRole.PENDING, UserRole.PENDINGTOFIRST]),
         User.is_active == True
     ).all()
     

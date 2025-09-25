@@ -97,6 +97,17 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.phone_number == phone_number, User.is_active == True).first()
 
     if not user:
+        # Блокируем регистрацию по номеру для пользователей с отказом МВД
+        blocked = db.query(User).filter(
+            User.phone_number == phone_number,
+            User.role == UserRole.REJECTSECOND
+        ).first()
+        if blocked:
+            raise HTTPException(status_code=403, detail=(
+                "Вынуждены отказать в регистрации. По результатам проверки ваших данных были выявлены несоответствия требованиям доступа к сервису. "
+                "Обращаем внимание, что на основании п. 4.4 Договора, Арендодатель вправе по своему усмотрению отказаться от заключения Договора с Клиентом. "
+                "С уважением, Команда ≪AZV Motors≫."
+            ))
         # Нет активного — создаём новый аккаунт
         if not request.first_name or not request.last_name:
             raise HTTPException(
@@ -203,6 +214,14 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
 
     if not user:
         raise HTTPException(status_code=401, detail="Invalid SMS code or code expired")
+
+    # Блокируем вход для пользователей, отклонённых МВД
+    if user.role == UserRole.REJECTSECOND:
+        raise HTTPException(status_code=403, detail=(
+            "Вынуждены отказать в регистрации. По результатам проверки ваших данных были выявлены несоответствия требованиям доступа к сервису. "
+            "Обращаем внимание, что на основании п. 4.4 Договора, Арендодатель вправе по своему усмотрению отказаться от заключения Договора с Клиентом. "
+            "С уважением, Команда ≪AZV Motors≫."
+        ))
 
     access_token = create_access_token(data={"sub": user.phone_number})
     refresh_token = create_refresh_token(data={"sub": user.phone_number})
@@ -403,6 +422,9 @@ async def read_users_me(
             "phone_number": current_user.phone_number,
             "first_name": first_name,
             "last_name": last_name,
+            "iin": current_user.iin,
+            "passport_number": current_user.passport_number,
+            "birth_date": current_user.birth_date.isoformat() if current_user.birth_date else None,
             "role": role,
             "wallet_balance": float(current_user.wallet_balance or 0.0),
             "current_rental": current_rental,
@@ -410,10 +432,8 @@ async def read_users_me(
             "locale": current_user.locale,
             "unread_message": unread_messages,
             "application": {
-                "financier_status": getattr(user_application.financier_status, "value", None) if user_application else None,
-                "financier_reason": getattr(user_application, "financier_reason", None) if user_application else None,
-                "mvd_status": getattr(user_application.mvd_status, "value", None) if user_application else None,
-                "mvd_reason": getattr(user_application, "mvd_reason", None) if user_application else None,
+                "role": role,
+                "reason": getattr(user_application, "reason", None) if user_application else None,
             },
             "documents": {
                 "documents_verified": current_user.documents_verified,
@@ -571,7 +591,8 @@ async def upload_documents(
         current_user.selfie_with_license_url = selfie_with_license_path
         current_user.selfie_url = selfie_path
 
-        current_user.role = UserRole.PENDING
+        # Стартовый этап после загрузки документов — ожидание финансиста
+        current_user.role = UserRole.PENDINGTOFIRST
         current_user.documents_verified = True
 
         # Создаем/обновляем заявку для проверки документов (idempotent)
