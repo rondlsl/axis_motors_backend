@@ -32,6 +32,71 @@ RentRouter = APIRouter(tags=["Rent"], prefix="/rent")
 OFFSET_HOURS = 5
 
 
+def validate_user_can_rent(current_user: User, db: Session) -> None:
+    """
+    Валидация прав пользователя на аренду автомобилей.
+    Проверяет роль и статус заявки пользователя.
+    """
+    # Владельцы могут арендовать свои машины всегда
+    if current_user.role == UserRole.ADMIN:
+        return  # Админы могут всё
+    
+    # Блокированные пользователи не могут арендовать
+    if current_user.role in [UserRole.REJECTSECOND]:
+        raise HTTPException(
+            status_code=403, 
+            detail="Доступ к аренде заблокирован. Обратитесь в поддержку."
+        )
+    
+    # Пользователи без документов не могут арендовать
+    if current_user.role == UserRole.CLIENT:
+        raise HTTPException(
+            status_code=403, 
+            detail="Для аренды необходимо загрузить и верифицировать документы"
+        )
+    
+    # Пользователи с неправильными документами не могут арендовать
+    if current_user.role == UserRole.REJECTFIRSTDOC:
+        raise HTTPException(
+            status_code=403, 
+            detail="Необходимо загрузить документы заново. Обратитесь к финансисту"
+        )
+    
+    # Пользователи с финансовыми проблемами не могут арендовать
+    if current_user.role == UserRole.REJECTFIRST:
+        raise HTTPException(
+            status_code=403, 
+            detail="Аренда недоступна по финансовым причинам. Обратитесь к гаранту"
+        )
+    
+    # Пользователи в процессе верификации не могут арендовать
+    if current_user.role in [UserRole.PENDINGTOFIRST, UserRole.PENDINGTOSECOND]:
+        raise HTTPException(
+            status_code=403, 
+            detail="Ваша заявка на рассмотрении. Дождитесь одобрения"
+        )
+    
+    # Для роли USER проверяем полную верификацию
+    if current_user.role == UserRole.USER:
+        if not bool(current_user.documents_verified):
+            raise HTTPException(
+                status_code=403, 
+                detail="Для аренды необходимо пройти верификацию документов"
+            )
+        
+        # Проверяем одобрение финансиста и МВД
+        application = (
+            db.query(Application)
+            .filter(Application.user_id == current_user.id)
+            .first()
+        )
+        if not application or application.financier_status != ApplicationStatus.APPROVED or application.mvd_status != ApplicationStatus.APPROVED:
+            raise HTTPException(
+                status_code=403, 
+                detail="Для аренды требуется одобрение финансиста и МВД"
+            )
+
+
 def apply_offset(dt: datetime) -> str | None:
     return (dt + timedelta(hours=OFFSET_HOURS)).isoformat() if dt else None
 
@@ -265,19 +330,7 @@ async def reserve_car(
 
     # Запреты по ролям/верификации для НЕ владельцев
     if car_meta.owner_id != current_user.id:
-        if current_user.role == UserRole.CLIENT:
-            raise HTTPException(status_code=403, detail="Для аренды необходимо пройти верификацию документов")
-        if current_user.role == UserRole.USER:
-            if not bool(current_user.documents_verified):
-                raise HTTPException(status_code=403, detail="Для аренды необходимо пройти верификацию документов")
-            # Требуем одобрения финансиста и МВД
-            application = (
-                db.query(Application)
-                .filter(Application.user_id == current_user.id)
-                .first()
-            )
-            if not application or application.financier_status != ApplicationStatus.APPROVED or application.mvd_status != ApplicationStatus.APPROVED:
-                raise HTTPException(status_code=403, detail="Для аренды требуется одобрение финансиста и МВД")
+        validate_user_can_rent(current_user, db)
 
     # 1) Проверяем, нет ли у пользователя уже активной аренды
     active_rental = db.query(RentalHistory).filter(
@@ -448,10 +501,7 @@ async def reserve_delivery(
     - Дополнительно списываем 10000₸ за услугу доставки, если арендатор не является владельцем.
     """
     # Запреты по ролям/верификации
-    if current_user.role == UserRole.CLIENT:
-        raise HTTPException(status_code=403, detail="Для оформления аренды с доставкой необходимо пройти верификацию документов")
-    if current_user.role == UserRole.USER and not bool(current_user.documents_verified):
-        raise HTTPException(status_code=403, detail="Для оформления аренды с доставкой необходимо пройти верификацию документов")
+    validate_user_can_rent(current_user, db)
 
     # 1) Проверяем, нет ли у пользователя активной аренды (RESERVED, IN_USE или DELIVERING)
     active_rental = db.query(RentalHistory).filter(
@@ -732,10 +782,7 @@ async def start_rental(
         current_user: User = Depends(get_current_user),
 ):
     # Запреты по ролям/верификации (на случай, если обошли резервацию)
-    if current_user.role == UserRole.CLIENT:
-        raise HTTPException(status_code=403, detail="Для начала аренды необходимо пройти верификацию документов")
-    if current_user.role == UserRole.USER and not bool(current_user.documents_verified):
-        raise HTTPException(status_code=403, detail="Для начала аренды необходимо пройти верификацию документов")
+    validate_user_can_rent(current_user, db)
 
     # Получаем активную аренду пользователя со статусом RESERVED
     rental = db.query(RentalHistory).filter(
@@ -1155,7 +1202,6 @@ async def complete_rental(
         print(f"Двигатель автомобиля {car.name} заблокирован после завершения аренды")
     except Exception as e:
         print(f"Ошибка блокировки двигателя: {e}")
-        # Не прерываем процесс завершения аренды из-за ошибки GPS
 
     # 13) Коммит и уведомление механиков
     db.commit()
@@ -1196,6 +1242,8 @@ async def create_advance_booking(
     """
     Создание бронирования заранее с указанием даты и времени
     """
+    # Проверяем права на аренду
+    validate_user_can_rent(current_user, db)
     # 1) Проверяем, нет ли у пользователя уже активной аренды
     active_rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,

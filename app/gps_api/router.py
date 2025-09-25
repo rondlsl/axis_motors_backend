@@ -14,6 +14,7 @@ from app.models.car_model import Car, CarAutoClass
 from app.models.history_model import RentalHistory, RentalStatus
 from app.models.rental_actions_model import ActionType, RentalAction
 from app.models.user_model import User, UserRole
+from app.models.application_model import Application, ApplicationStatus
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.get_active_rental import get_active_rental_car, get_active_rental
 from app.gps_api.utils.car_data import send_command_to_terminal, send_open, send_close, send_give_key, send_take_key, send_lock_engine, send_unlock_engine
@@ -24,6 +25,71 @@ Vehicle_Router = APIRouter(prefix="/vehicles", tags=["Vehicles"])
 AUTH_TOKEN = ""
 BASE_URL = "https://regions.glonasssoft.ru"
 started = False
+
+
+def validate_user_can_control_car(current_user: User, db: Session) -> None:
+    """
+    Валидация прав пользователя на управление автомобилем.
+    Проверяет роль и статус заявки пользователя.
+    """
+    # Админы и механики могут управлять автомобилями
+    if current_user.role in [UserRole.ADMIN, UserRole.MECHANIC]:
+        return
+    
+    # Блокированные пользователи не могут управлять
+    if current_user.role in [UserRole.REJECTSECOND]:
+        raise HTTPException(
+            status_code=403, 
+            detail="Доступ к управлению автомобилем заблокирован"
+        )
+    
+    # Пользователи без документов не могут управлять
+    if current_user.role == UserRole.CLIENT:
+        raise HTTPException(
+            status_code=403, 
+            detail="Для управления автомобилем необходимо загрузить документы"
+        )
+    
+    # Пользователи с неправильными документами не могут управлять
+    if current_user.role == UserRole.REJECTFIRSTDOC:
+        raise HTTPException(
+            status_code=403, 
+            detail="Необходимо загрузить документы заново"
+        )
+    
+    # Пользователи с финансовыми проблемами не могут управлять
+    if current_user.role == UserRole.REJECTFIRST:
+        raise HTTPException(
+            status_code=403, 
+            detail="Управление недоступно по финансовым причинам"
+        )
+    
+    # Пользователи в процессе верификации не могут управлять
+    if current_user.role in [UserRole.PENDINGTOFIRST, UserRole.PENDINGTOSECOND]:
+        raise HTTPException(
+            status_code=403, 
+            detail="Ваша заявка на рассмотрении"
+        )
+    
+    # Для роли USER проверяем полную верификацию
+    if current_user.role == UserRole.USER:
+        if not bool(current_user.documents_verified):
+            raise HTTPException(
+                status_code=403, 
+                detail="Для управления автомобилем необходимо пройти верификацию"
+            )
+        
+        # Проверяем одобрение финансиста и МВД
+        application = (
+            db.query(Application)
+            .filter(Application.user_id == current_user.id)
+            .first()
+        )
+        if not application or application.financier_status != ApplicationStatus.APPROVED or application.mvd_status != ApplicationStatus.APPROVED:
+            raise HTTPException(
+                status_code=403, 
+                detail="Для управления автомобилем требуется одобрение финансиста и МВД"
+            )
 
 
 @Vehicle_Router.on_event("startup")
@@ -242,6 +308,7 @@ async def open_vehicle(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
+    validate_user_can_control_car(current_user, db)
     global AUTH_TOKEN
     rental = get_active_rental(db, current_user.id)
     car = db.get(Car, rental.car_id)
@@ -272,6 +339,7 @@ async def close_vehicle(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
+    validate_user_can_control_car(current_user, db)
     global AUTH_TOKEN
     rental = get_active_rental(db, current_user.id)
     car = db.get(Car, rental.car_id)
@@ -300,6 +368,7 @@ async def give_key(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
+    validate_user_can_control_car(current_user, db)
     global AUTH_TOKEN
     rental = get_active_rental(db, current_user.id)
     car = db.get(Car, rental.car_id)
@@ -327,6 +396,7 @@ async def take_key(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
+    validate_user_can_control_car(current_user, db)
     global AUTH_TOKEN
     rental = get_active_rental(db, current_user.id)
     car = db.get(Car, rental.car_id)
@@ -354,6 +424,7 @@ async def lock_engine(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
+    validate_user_can_control_car(current_user, db)
     """Заблокировать двигатель автомобиля"""
     global AUTH_TOKEN
     rental = get_active_rental(db, current_user.id)
@@ -382,6 +453,7 @@ async def unlock_engine(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
+    validate_user_can_control_car(current_user, db)
     """Разблокировать двигатель автомобиля"""
     global AUTH_TOKEN
     rental = get_active_rental(db, current_user.id)
