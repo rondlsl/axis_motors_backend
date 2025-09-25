@@ -1070,6 +1070,25 @@ async def get_car_rental_history(
         except Exception:
             pass
 
+        # Разделяем фото: если автор аренды механик, то это фото осмотра механика
+        inspection_photos_before = []
+        inspection_photos_after = []
+        client_photos_before = []
+        client_photos_after = []
+
+        try:
+            renter_user = getattr(rental, "user", None)
+            renter_role = getattr(renter_user, "role", None)
+            if renter_role and renter_role.name == "MECHANIC":
+                inspection_photos_before = rental.photos_before or []
+                inspection_photos_after = rental.photos_after or []
+            else:
+                client_photos_before = rental.photos_before or []
+                client_photos_after = rental.photos_after or []
+        except Exception:
+            client_photos_before = rental.photos_before or []
+            client_photos_after = rental.photos_after or []
+
         result.append({
             "id": rental.id,
             "user_id": rental.user_id,
@@ -1079,10 +1098,10 @@ async def get_car_rental_history(
             "end_time": rental.end_time.isoformat() if rental.end_time else None,
             "reservation_time": rental.reservation_time.isoformat(),
             "total_price": rental.total_price,
-            "inspection_photos_before": rental.photos_before or [],
-            "inspection_photos_after": rental.photos_after or [],
-            "client_photos_before": rental.photos_before or [],
-            "client_photos_after": rental.photos_after or [],
+            "client_photos_before": client_photos_before,
+            "client_photos_after": client_photos_after,
+            "inspection_photos_before": inspection_photos_before,
+            "inspection_photos_after": inspection_photos_after,
             "delivery_photos_before": rental.delivery_photos_before or [],
             "delivery_photos_after": rental.delivery_photos_after or [],
             "delivery_mechanic": delivery_mechanic_info,
