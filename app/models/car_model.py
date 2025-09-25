@@ -81,6 +81,5 @@ class Car(Base):
     current_renter = relationship("User", foreign_keys=[current_renter_id], back_populates="active_rental")
     rental_history = relationship("RentalHistory", back_populates="car")
     
-    # Новые связи для комментариев и истории статусов
+    # Связь для комментариев
     comments = relationship("CarComment", back_populates="car", cascade="all, delete-orphan")
-    status_history = relationship("CarStatusHistory", back_populates="car", cascade="all, delete-orphan")

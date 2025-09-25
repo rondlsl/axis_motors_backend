@@ -20,17 +20,3 @@ class CarComment(Base):
     author = relationship("User", back_populates="car_comments")
 
 
-class CarStatusHistory(Base):
-    __tablename__ = "car_status_history"
-
-    id = Column(Integer, primary_key=True, index=True)
-    car_id = Column(Integer, ForeignKey("cars.id"), nullable=False)
-    old_status = Column(String, nullable=True)
-    new_status = Column(String, nullable=False)
-    changed_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    change_reason = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-    # Relationships
-    car = relationship("Car", back_populates="status_history")
-    changed_by = relationship("User", back_populates="car_status_changes")

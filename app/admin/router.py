@@ -8,7 +8,7 @@ from app.models.user_model import User, UserRole, AutoClass
 from app.models.guarantor_model import GuarantorRequest
 from app.models.application_model import Application
 from app.models.car_model import Car, CarBodyType, TransmissionType
-from app.models.car_comment_model import CarComment, CarStatusHistory
+from app.models.car_comment_model import CarComment
 from app.models.history_model import RentalHistory, RentalStatus
 from app.guarantor.sms_utils import send_user_rejection_with_guarantor_sms
 from app.guarantor.schemas import (
@@ -37,8 +37,6 @@ from app.admin.schemas import (
     CarCommentUpdateSchema,
     UserProfileSchema,
     CarAvailabilityTimerSchema,
-    CarStatusHistorySchema,
-    CarStatusHistoryCreateSchema,
     CarCurrentUserSchema,
 )
 
@@ -647,25 +645,11 @@ async def update_car(
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
-    # Сохраняем старый статус для истории
-    old_status = car.status
-
     # Обновляем поля
     update_data = car_data.dict(exclude_unset=True)
     for field, value in update_data.items():
         if hasattr(car, field):
             setattr(car, field, value)
-
-    # Если статус изменился, записываем в историю
-    if car_data.status and car_data.status.value != old_status:
-        status_history = CarStatusHistory(
-            car_id=car.id,
-            old_status=old_status,
-            new_status=car_data.status.value,
-            changed_by_id=current_user.id,
-            reason=getattr(car_data, 'reason', None)
-        )
-        db.add(status_history)
 
     db.commit()
     db.refresh(car)
@@ -994,60 +978,18 @@ async def get_car_availability_timer(
     )
 
 
-@admin_router.get("/cars/{car_id}/status-history", response_model=List[CarStatusHistorySchema])
-async def get_car_status_history(
+@admin_router.put("/cars/{car_id}/status")
+async def update_car_status(
     car_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-) -> List[CarStatusHistorySchema]:
-    """
-    Получить историю изменений статуса автомобиля
-    """
-    if current_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Недостаточно прав")
-
-    car = db.query(Car).filter(Car.id == car_id).first()
-    if not car:
-        raise HTTPException(status_code=404, detail="Автомобиль не найден")
-
-    history = (
-        db.query(CarStatusHistory)
-        .filter(CarStatusHistory.car_id == car_id)
-        .order_by(CarStatusHistory.created_at.desc())
-        .all()
-    )
-
-    result = []
-    for record in history:
-        changed_by_name = f"{record.changed_by.first_name or ''} {record.changed_by.last_name or ''}".strip()
-        if not changed_by_name:
-            changed_by_name = record.changed_by.phone_number
-
-        result.append(CarStatusHistorySchema(
-            id=record.id,
-            car_id=record.car_id,
-            old_status=record.old_status,
-            new_status=record.new_status,
-            changed_by_id=record.changed_by_id,
-            changed_by_name=changed_by_name,
-            change_reason=record.change_reason,
-            created_at=record.created_at.isoformat()
-        ))
-
-    return result
-
-
-@admin_router.post("/cars/{car_id}/status-history")
-async def create_car_status_history(
-    car_id: int,
-    history_data: CarStatusHistoryCreateSchema,
+    new_status: str,
+    reason: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    Создать запись истории изменения статуса автомобиля
+    Изменить статус автомобиля
     """
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     car = db.query(Car).filter(Car.id == car_id).first()
@@ -1056,29 +998,92 @@ async def create_car_status_history(
 
     # Сохраняем старый статус
     old_status = car.status
-
-    # Обновляем статус автомобиля
-    car.status = history_data.new_status.value
-
-    # Создаем запись в истории
-    status_history = CarStatusHistory(
-        car_id=car_id,
-        old_status=old_status,
-        new_status=history_data.new_status.value,
-        changed_by_id=current_user.id,
-        reason=history_data.reason
-    )
-
-    db.add(status_history)
+    
+    # Обновляем статус
+    car.status = new_status
     db.commit()
-    db.refresh(status_history)
+    db.refresh(car)
+
+    # Если это изменение связано с арендой, записываем в rental_history
+    if new_status in ["IN_USE", "DELIVERING", "DELIVERED", "RETURNING", "RETURNED"]:
+        # Находим активную аренду для этого автомобиля
+        active_rental = (
+            db.query(RentalHistory)
+            .filter(
+                RentalHistory.car_id == car_id,
+                RentalHistory.rental_status.in_([
+                    RentalStatus.RESERVED,
+                    RentalStatus.IN_USE,
+                    RentalStatus.DELIVERING,
+                    RentalStatus.DELIVERING_IN_PROGRESS
+                ])
+            )
+            .order_by(RentalHistory.created_at.desc())
+            .first()
+        )
+        
+        if active_rental:
+            # Обновляем статус аренды
+            status_mapping = {
+                "IN_USE": RentalStatus.IN_USE,
+                "DELIVERING": RentalStatus.DELIVERING,
+                "DELIVERED": RentalStatus.DELIVERING_IN_PROGRESS,
+                "RETURNING": RentalStatus.DELIVERING,
+                "RETURNED": RentalStatus.COMPLETED
+            }
+            
+            if new_status in status_mapping:
+                active_rental.rental_status = status_mapping[new_status]
+                db.commit()
 
     return {
         "message": "Статус автомобиля обновлен",
         "car_id": car_id,
         "old_status": old_status,
-        "new_status": history_data.new_status.value,
-        "history_id": status_history.id
+        "new_status": new_status,
+        "reason": reason
     }
+
+
+@admin_router.get("/cars/{car_id}/rental-history")
+async def get_car_rental_history(
+    car_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Получить историю аренды автомобиля (включая изменения статуса)
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+
+    car = db.query(Car).filter(Car.id == car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+
+    # Получаем историю аренды
+    rentals = (
+        db.query(RentalHistory)
+        .filter(RentalHistory.car_id == car_id)
+        .order_by(RentalHistory.created_at.desc())
+        .all()
+    )
+
+    result = []
+    for rental in rentals:
+        result.append({
+            "id": rental.id,
+            "user_id": rental.user_id,
+            "user_name": f"{rental.user.first_name or ''} {rental.user.last_name or ''}".strip() or rental.user.phone_number,
+            "rental_status": rental.rental_status.value,
+            "start_time": rental.start_time.isoformat() if rental.start_time else None,
+            "end_time": rental.end_time.isoformat() if rental.end_time else None,
+            "created_at": rental.created_at.isoformat(),
+            "total_price": rental.total_price,
+            "delivery_mechanic_id": rental.delivery_mechanic_id
+        })
+
+    return result
+
 
 router = admin_router

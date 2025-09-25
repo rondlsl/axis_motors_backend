@@ -212,28 +212,6 @@ class CarAvailabilityTimerSchema(BaseModel):
     availability_percentage: float
     statistics: Dict[str, Any]
 
-
-class CarStatusHistorySchema(BaseModel):
-    """Схема истории изменений статуса автомобиля"""
-    id: int
-    car_id: int
-    old_status: Optional[str] = None
-    new_status: str
-    changed_by_id: int
-    changed_by_name: str
-    change_reason: Optional[str] = None
-    created_at: str
-    
-    class Config:
-        from_attributes = True
-
-
-class CarStatusHistoryCreateSchema(BaseModel):
-    """Схема для создания записи истории статуса"""
-    new_status: CarStatus
-    reason: Optional[str] = None
-
-
 class CarCurrentUserSchema(BaseModel):
     """Схема информации о текущем пользователе автомобиля"""
     user_type: str  # "owner" или "renter"

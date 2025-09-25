@@ -4,4 +4,4 @@ from app.models.guarantor_model import GuarantorRequest, GuarantorRequestStatus,
 from app.models.history_model import RentalHistory, RentalStatus, RentalType, RentalReview
 from app.models.rental_actions_model import RentalAction, ActionType
 from app.models.application_model import Application, ApplicationStatus
-from app.models.car_comment_model import CarComment, CarStatusHistory
+from app.models.car_comment_model import CarComment
