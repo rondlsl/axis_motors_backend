@@ -433,7 +433,6 @@ async def read_users_me(
             "locale": current_user.locale,
             "unread_message": unread_messages,
             "application": {
-                "role": role,
                 "reason": getattr(user_application, "reason", None) if user_application else None,
             },
             "documents": {

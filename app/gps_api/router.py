@@ -16,7 +16,7 @@ from app.models.rental_actions_model import ActionType, RentalAction
 from app.models.user_model import User, UserRole
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.get_active_rental import get_active_rental_car, get_active_rental
-from app.gps_api.utils.car_data import send_command_to_terminal, send_open, send_close, send_give_key, send_take_key
+from app.gps_api.utils.car_data import send_command_to_terminal, send_open, send_close, send_give_key, send_take_key, send_lock_engine, send_unlock_engine
 from app.rent.utils.calculate_price import get_open_price
 
 Vehicle_Router = APIRouter(prefix="/vehicles", tags=["Vehicles"])
@@ -349,14 +349,60 @@ async def take_key(
     return cmd
 
 
-# @Vehicle_Router.post("/block")
-# async def block_engine(request: CommandRequest) -> Dict:
-#     return await send_command_to_terminal(request.vehicle_id, "*!1Y", AUTH_TOKEN)
-#
-#
-# @Vehicle_Router.post("/unblock")
-# async def unblock_engine(request: CommandRequest) -> Dict:
-#     return await send_command_to_terminal(request.vehicle_id, "*!1N", AUTH_TOKEN)
+@Vehicle_Router.post("/lock_engine", summary="Заблокировать двигатель")
+async def lock_engine(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    """Заблокировать двигатель автомобиля"""
+    global AUTH_TOKEN
+    rental = get_active_rental(db, current_user.id)
+    car = db.get(Car, rental.car_id)
+    
+    # Проверяем и обновляем токен если необходимо
+    if not AUTH_TOKEN:
+        try:
+            AUTH_TOKEN = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
+    
+    action = RentalAction(
+        rental_id=rental.id,
+        user_id=current_user.id,
+        action_type=ActionType.LOCK_ENGINE
+    )
+    db.add(action)
+    cmd = await send_lock_engine(car.gps_imei, AUTH_TOKEN)
+    db.commit()
+    return cmd
+
+
+@Vehicle_Router.post("/unlock_engine", summary="Разблокировать двигатель")
+async def unlock_engine(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    """Разблокировать двигатель автомобиля"""
+    global AUTH_TOKEN
+    rental = get_active_rental(db, current_user.id)
+    car = db.get(Car, rental.car_id)
+    
+    # Проверяем и обновляем токен если необходимо
+    if not AUTH_TOKEN:
+        try:
+            AUTH_TOKEN = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
+    
+    action = RentalAction(
+        rental_id=rental.id,
+        user_id=current_user.id,
+        action_type=ActionType.UNLOCK_ENGINE
+    )
+    db.add(action)
+    cmd = await send_unlock_engine(car.gps_imei, AUTH_TOKEN)
+    db.commit()
+    return cmd
 
 
 @Vehicle_Router.get("/rented", response_model=List[RentedCar], summary="Список машин в аренде")

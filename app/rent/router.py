@@ -1141,7 +1141,23 @@ async def complete_rental(
     current_user.wallet_balance -= amount_to_charge
     rental.already_payed = rental.total_price
 
-    # 12) Коммит и уведомление механиков
+    # 12) Автоматическая блокировка двигателя при завершении аренды
+    try:
+        from app.gps_api.utils.auth_api import get_auth_token
+        from app.gps_api.utils.car_data import send_lock_engine
+        
+        # Получаем токен для GPS API
+        from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
+        auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+        
+        # Блокируем двигатель
+        await send_lock_engine(car.gps_imei, auth_token)
+        print(f"Двигатель автомобиля {car.name} заблокирован после завершения аренды")
+    except Exception as e:
+        print(f"Ошибка блокировки двигателя: {e}")
+        # Не прерываем процесс завершения аренды из-за ошибки GPS
+
+    # 13) Коммит и уведомление механиков
     db.commit()
     try:
         await send_notification_to_all_mechanics_async(

@@ -11,6 +11,8 @@ class ActionType(enum.Enum):
     CLOSE_VEHICLE = "close_vehicle"
     GIVE_KEY = "give_key"
     TAKE_KEY = "take_key"
+    LOCK_ENGINE = "lock_engine"
+    UNLOCK_ENGINE = "unlock_engine"
 
 
 class RentalAction(Base):

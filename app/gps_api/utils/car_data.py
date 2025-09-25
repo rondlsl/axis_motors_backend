@@ -109,6 +109,28 @@ def get_commands_by_imei(imei: str) -> dict:
     })
 
 
+async def send_lock_engine(imei: str, token: str, retries: int = 1) -> dict:
+    """Отправляет команду блокировки двигателя"""
+    commands = get_commands_by_imei(imei)
+    command = commands.get("lock_engine")
+    if not command:
+        raise HTTPException(status_code=400, detail=f"Команда блокировки двигателя не найдена для IMEI {imei}")
+    
+    vehicle_id = get_vehicle_id_by_imei(imei)
+    return await send_command_to_terminal(vehicle_id, command, token, retries)
+
+
+async def send_unlock_engine(imei: str, token: str, retries: int = 1) -> dict:
+    """Отправляет команду разблокировки двигателя"""
+    commands = get_commands_by_imei(imei)
+    command = commands.get("unlock_engine")
+    if not command:
+        raise HTTPException(status_code=400, detail=f"Команда разблокировки двигателя не найдена для IMEI {imei}")
+    
+    vehicle_id = get_vehicle_id_by_imei(imei)
+    return await send_command_to_terminal(vehicle_id, command, token, retries)
+
+
 async def send_open(imei: str, token: str, retries: int = 1) -> dict:
     commands = get_commands_by_imei(imei)
     vehicle_id = get_vehicle_id_by_imei(imei)
