@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
 
@@ -6,6 +6,7 @@ from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.auth.dependencies.save_documents import save_file
 import os
+import json
 from app.models.user_model import User, UserRole, AutoClass
 from app.models.guarantor_model import GuarantorRequest
 from app.models.application_model import Application
@@ -605,7 +606,7 @@ async def get_car_details(
 @admin_router.put("/cars/{car_id}")
 async def update_car(
     car_id: int,
-    car_data: CarEditSchema,
+    car_data: Optional[str] = Form(default=None),
     photos: Optional[List[UploadFile]] = File(default=None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -620,8 +621,18 @@ async def update_car(
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
+    # Разбираем и валидируем car_data, если передано
+    update_data: Dict[str, Any] = {}
+    if car_data:
+        try:
+            parsed = json.loads(car_data)
+            if not isinstance(parsed, dict):
+                raise ValueError("car_data must be JSON object")
+            update_data = CarEditSchema(**parsed).model_dump(exclude_unset=True)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid car_data: {e}")
+
     # Обновляем поля
-    update_data = car_data.dict(exclude_unset=True)
     for field, value in update_data.items():
         if hasattr(car, field):
             setattr(car, field, value)
