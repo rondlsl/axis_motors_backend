@@ -93,21 +93,22 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Phone number must contain only digits.")
 
     sms_code = totp.now()
-    # Ищем только активного пользователя с заданным номером
+    # Сначала проверяем, есть ли заблокированный пользователь с таким номером (независимо от is_active)
+    blocked = db.query(User).filter(
+        User.phone_number == phone_number,
+        User.role == UserRole.REJECTSECOND
+    ).first()
+    if blocked:
+        raise HTTPException(status_code=403, detail=(
+            "Вынуждены отказать в регистрации. По результатам проверки ваших данных были выявлены несоответствия требованиям доступа к сервису. "
+            "Обращаем внимание, что на основании п. 4.4 Договора, Арендодатель вправе по своему усмотрению отказаться от заключения Договора с Клиентом. "
+            "С уважением, Команда ≪AZV Motors≫."
+        ))
+
+    # Ищем активного пользователя с заданным номером
     user = db.query(User).filter(User.phone_number == phone_number, User.is_active == True).first()
 
     if not user:
-        # Блокируем регистрацию по номеру для пользователей с отказом МВД
-        blocked = db.query(User).filter(
-            User.phone_number == phone_number,
-            User.role == UserRole.REJECTSECOND
-        ).first()
-        if blocked:
-            raise HTTPException(status_code=403, detail=(
-                "Вынуждены отказать в регистрации. По результатам проверки ваших данных были выявлены несоответствия требованиям доступа к сервису. "
-                "Обращаем внимание, что на основании п. 4.4 Договора, Арендодатель вправе по своему усмотрению отказаться от заключения Договора с Клиентом. "
-                "С уважением, Команда ≪AZV Motors≫."
-            ))
         # Нет активного — создаём новый аккаунт
         if not request.first_name or not request.last_name:
             raise HTTPException(
