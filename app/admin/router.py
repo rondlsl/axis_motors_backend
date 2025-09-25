@@ -702,15 +702,13 @@ async def get_car_comments(
 
     result = []
     for comment in comments:
-        author_name = f"{comment.author.first_name or ''} {comment.author.last_name or ''}".strip()
-        if not author_name:
-            author_name = comment.author.phone_number
-
         result.append(CarCommentSchema(
             id=comment.id,
             car_id=comment.car_id,
             author_id=comment.author_id,
-            author_name=author_name,
+            author_first_name=comment.author.first_name or "",
+            author_last_name=comment.author.last_name or "",
+            author_phone=comment.author.phone_number or "",
             author_role=comment.author.role.value,
             comment=comment.comment,
             created_at=comment.created_at.isoformat(),
@@ -1032,7 +1030,7 @@ async def get_car_status_history(
             new_status=record.new_status,
             changed_by_id=record.changed_by_id,
             changed_by_name=changed_by_name,
-            reason=record.reason,
+            change_reason=record.change_reason,
             created_at=record.created_at.isoformat()
         ))
 
@@ -1083,6 +1081,4 @@ async def create_car_status_history(
         "history_id": status_history.id
     }
 
-
-# Экспорт роутера
 router = admin_router

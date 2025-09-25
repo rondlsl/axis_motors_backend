@@ -28,7 +28,7 @@ class CarStatusHistory(Base):
     old_status = Column(String, nullable=True)
     new_status = Column(String, nullable=False)
     changed_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    reason = Column(Text, nullable=True)
+    change_reason = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     # Relationships

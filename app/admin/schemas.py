@@ -158,7 +158,9 @@ class CarCommentSchema(BaseModel):
     id: int
     car_id: int
     author_id: int
-    author_name: str
+    author_first_name: str
+    author_last_name: str
+    author_phone: str
     author_role: str
     comment: str
     created_at: str
@@ -219,7 +221,7 @@ class CarStatusHistorySchema(BaseModel):
     new_status: str
     changed_by_id: int
     changed_by_name: str
-    reason: Optional[str] = None
+    change_reason: Optional[str] = None
     created_at: str
     
     class Config:
