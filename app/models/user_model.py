@@ -82,3 +82,7 @@ class User(Base):
     
     # Application relationship
     application = relationship("Application", foreign_keys="[Application.user_id]", back_populates="user", uselist=False)
+    
+    # Новые связи для комментариев к автомобилям и истории статусов
+    car_comments = relationship("CarComment", back_populates="author", cascade="all, delete-orphan")
+    car_status_changes = relationship("CarStatusHistory", back_populates="changed_by", cascade="all, delete-orphan")

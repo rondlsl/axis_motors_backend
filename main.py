@@ -35,14 +35,13 @@ from app.models.car_model import Car, CarBodyType
 from app.models.user_model import User, UserRole
 from app.rent.router import RentRouter
 from app.rent.utils.billing import billing_job
-from app.rent.tasks import process_scheduled_bookings_task
 from app.push.router import router as PushRouter
 from app.mechanic_delivery.router import MechanicDeliveryRouter
 from app.owner.router import OwnerRouter
 from app.guarantor.router import guarantor_router
 from app.admin.router import admin_router
 from app.financier.router import FinancierRouter
-from app.mvd.router import MvdRouter
+# from app.mvd.router import MvdRouter  
 
 # === APP ===
 app = FastAPI(
@@ -281,8 +280,6 @@ def init_app(app: FastAPI):
 
         try:
             scheduler.add_job(check_vehicle_conditions, "interval", seconds=1)
-            # Запускаем задачу для обработки забронированных заранее автомобилей
-            asyncio.create_task(process_scheduled_bookings_task())
             scheduler.start()
         except Exception as e:
             logger.error(f"Ошибка запуска планировщика задач: {e}")
@@ -336,7 +333,7 @@ app.include_router(OwnerRouter)
 app.include_router(guarantor_router)
 app.include_router(admin_router)
 app.include_router(FinancierRouter)
-app.include_router(MvdRouter) 
+# app.include_router(MvdRouter) 
 
 
 @app.get("/")

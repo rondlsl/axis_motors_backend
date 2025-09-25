@@ -1,0 +1,36 @@
+from datetime import datetime
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean
+from sqlalchemy.orm import relationship
+from app.dependencies.database.database import Base
+
+
+class CarComment(Base):
+    __tablename__ = "car_comments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    car_id = Column(Integer, ForeignKey("cars.id"), nullable=False)
+    author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    comment = Column(Text, nullable=False)
+    is_internal = Column(Boolean, default=True, nullable=False)  # Комментарии видны только механикам и админам
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # Relationships
+    car = relationship("Car", back_populates="comments")
+    author = relationship("User", back_populates="car_comments")
+
+
+class CarStatusHistory(Base):
+    __tablename__ = "car_status_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    car_id = Column(Integer, ForeignKey("cars.id"), nullable=False)
+    old_status = Column(String, nullable=True)
+    new_status = Column(String, nullable=False)
+    changed_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    reason = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    car = relationship("Car", back_populates="status_history")
+    changed_by = relationship("User", back_populates="car_status_changes")
