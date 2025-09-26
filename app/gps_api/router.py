@@ -116,6 +116,9 @@ def get_vehicle_info(
         current_user: User = Depends(get_current_user)
 ) -> Dict[str, Any]:
     try:
+        if current_user.role == UserRole.REJECTFIRST:
+            return {"vehicles": []}
+        
         # Базовый фильтр: только свободные машины
         query = db.query(Car).filter(Car.status == "FREE")
 
@@ -187,6 +190,9 @@ def search_vehicles(
         current_user: User = Depends(get_current_user)
 ) -> Dict[str, Any]:
     try:
+        if current_user.role == UserRole.REJECTFIRST:
+            return {"vehicles": []}
+        
         # Ищем по имени или номеру и проверяем, что машина свободна по статусу
         cars = db.query(Car).filter(
             or_(
@@ -232,6 +238,9 @@ def get_frequently_used_vehicles(
         current_user: User = Depends(get_current_user)
 ) -> Dict[str, Any]:
     try:
+        if current_user.role == UserRole.REJECTFIRST:
+            return {"vehicles": []}
+        
         # Получаем ID машин и количество аренд для текущего пользователя
         rental_counts = (
             db.query(RentalHistory.car_id, func.count(RentalHistory.id).label("rental_count"))
