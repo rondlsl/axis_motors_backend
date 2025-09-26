@@ -1,7 +1,8 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Enum
 from sqlalchemy.orm import relationship
 from app.dependencies.database.database import Base
+from app.push.enums import NotificationStatus
 
 
 class Notification(Base):
@@ -18,5 +19,7 @@ class Notification(Base):
     sent_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     # Прочитано?
     is_read = Column(Boolean, default=False, nullable=False)
+    # Статус уведомления
+    status = Column(Enum(NotificationStatus), nullable=True)
 
     user = relationship("User", back_populates="notifications")

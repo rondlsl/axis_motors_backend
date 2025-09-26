@@ -31,8 +31,13 @@ async def billing_job():
     db = SessionLocal()
 
     # 3) Fire-and-forget push notifications
-    for user_id, title, body in push_notifications:
-        asyncio.create_task(send_push_to_user_by_id(db, user_id, title, body))
+    for notification in push_notifications:
+        if len(notification) == 4:  # (user_id, title, body, status)
+            user_id, title, body, status = notification
+            asyncio.create_task(send_push_to_user_by_id(db, user_id, title, body, status))
+        else:  # (user_id, title, body) - для обратной совместимости
+            user_id, title, body = notification
+            asyncio.create_task(send_push_to_user_by_id(db, user_id, title, body))
 
     # 4) Fire-and-forget Telegram alerts
     async def _send_telegram(text: str, chat_id: int):
@@ -126,7 +131,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                         user.id,
                         "Скоро начнётся платное ожидание",
                         f"Через {mins_left} мин бесплатного ожидания начнётся списание "
-                        f"{math.ceil(car.price_per_minute * 0.5)}₸/мин."
+                        f"{math.ceil(car.price_per_minute * 0.5)}₸/мин.",
+                        "paid_waiting_soon"
                     ))
                     flags["pre_waiting"] = True
 
@@ -155,7 +161,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                             push_notifications.append((
                                 user.id,
                                 "Низкий баланс",
-                                f"На балансе {int(user.wallet_balance)}₸ — осталось менее 1000₸."
+                                f"На балансе {int(user.wallet_balance)}₸ — осталось менее 1000₸.",
+                                "low_balance"
                             ))
                             flags["low_balance_1000"] = True
 
@@ -164,7 +171,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                             push_notifications.append((
                                 user.id,
                                 "Баланс исчерпан",
-                                "Ваш баланс 0₸ — завершите аренду, чтобы избежать штрафов."
+                                "Ваш баланс 0₸ — завершите аренду, чтобы избежать штрафов.",
+                                "balance_exhausted"
                             ))
                             flags["low_balance_zero"] = True
                             telegram_alerts.append(
@@ -176,7 +184,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                             push_notifications.append((
                                 user.id,
                                 "Началось платное ожидание",
-                                f"Списано за ожидание: {charge}₸ за {extra} мин."
+                                f"Списано за ожидание: {charge}₸ за {extra} мин.",
+                                "paid_waiting_started"
                             ))
                             flags["waiting"] = True
 
@@ -229,7 +238,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                             push_notifications.append((
                                 user.id,
                                 "Низкий баланс",
-                                f"На балансе {int(user.wallet_balance)}₸ — осталось менее 1000₸."
+                                f"На балансе {int(user.wallet_balance)}₸ — осталось менее 1000₸.",
+                                "low_balance"
                             ))
                             flags["low_balance_1000"] = True
 
@@ -238,7 +248,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                             push_notifications.append((
                                 user.id,
                                 "Баланс исчерпан",
-                                "Ваш баланс 0₸ — завершите аренду, чтобы избежать штрафов."
+                                "Ваш баланс 0₸ — завершите аренду, чтобы избежать штрафов.",
+                                "balance_exhausted"
                             ))
                             flags["low_balance_zero"] = True
                             telegram_alerts.append(
@@ -250,7 +261,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                             push_notifications.append((
                                 user.id,
                                 "Началось платное ожидание",
-                                f"Списано за ожидание: {charge}₸ за {extra} мин."
+                                f"Списано за ожидание: {charge}₸ за {extra} мин.",
+                                "paid_waiting_started"
                             ))
                             flags["waiting"] = True
 
@@ -281,7 +293,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                             push_notifications.append((
                                 user.id,
                                 "Низкий баланс",
-                                f"На балансе {int(user.wallet_balance)}₸ — осталось менее 1000₸."
+                                f"На балансе {int(user.wallet_balance)}₸ — осталось менее 1000₸.",
+                                "low_balance"
                             ))
                             flags["low_balance_1000"] = True
 
@@ -289,7 +302,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                             push_notifications.append((
                                 user.id,
                                 "Баланс исчерпан",
-                                "Ваш баланс 0₸ — завершите аренду."
+                                "Ваш баланс 0₸ — завершите аренду.",
+                                "balance_exhausted"
                             ))
                             flags["low_balance_zero"] = True
                             telegram_alerts.append(
@@ -306,7 +320,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                         push_notifications.append((
                             user.id,
                             "Скоро закончится базовый тариф",
-                            f"Через {math.ceil(remaining)} мин."
+                            f"Через {math.ceil(remaining)} мин.",
+                            "basic_tariff_ending_soon"
                         ))
                         flags["pre_overtime"] = True
 
@@ -354,7 +369,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                                 push_notifications.append((
                                     user.id,
                                     "Списания вне тарифта",
-                                    f"Списано сверхлимита: {charge}₸ за {extra} мин."
+                                    f"Списано сверхлимита: {charge}₸ за {extra} мин.",
+                                    "out_of_tariff_charges"
                                 ))
                                 flags["overtime"] = True
 
@@ -391,7 +407,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                             push_notifications.append((
                                 mechanic.id,
                                 "Штраф за задержку доставки",
-                                f"Списан штраф {penalty_fee}₸ за задержку доставки на {penalty_minutes:.1f} мин."
+                                f"Списан штраф {penalty_fee}₸ за задержку доставки на {penalty_minutes:.1f} мин.",
+                                "delivery_delay_penalty"
                             ))
                         
                         # Уведомляем в Telegram

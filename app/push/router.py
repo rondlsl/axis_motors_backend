@@ -8,8 +8,9 @@ from app.models.notification_model import Notification
 from app.models.user_model import User
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
-from app.push.schemas import PushPayload
+from app.push.schemas import PushPayload, NotificationListResponse
 from app.push.utils import send_push_notification_async
+from app.push.enums import NotificationStatus
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -33,7 +34,7 @@ async def send_push(payload: PushPayload):
     return {"success": success}
 
 
-@router.get("/", response_model=dict)
+@router.get("/", response_model=NotificationListResponse)
 async def list_notifications(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
@@ -55,7 +56,8 @@ async def list_notifications(
         "title": n.title,
         "body": n.body,
         "sent_at": n.sent_at.isoformat(),
-        "is_read": n.is_read
+        "is_read": n.is_read,
+        "status": n.status
     } for n in notifs]
 
     return {"unread_count": unread, "notifications": data}

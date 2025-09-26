@@ -127,7 +127,8 @@ async def accept_delivery(
             db,
             user.id,
             "Механик назначен",
-            "Механик принял ваш заказ доставки и готов начать."
+            "Механик принял ваш заказ доставки и готов начать.",
+            "mechanic_assigned"
         )
 
     return {
@@ -166,7 +167,8 @@ async def start_delivery(
             db,
             user.id,
             "Доставка начата",
-            "Механик приступил к доставке вашего автомобиля."
+            "Механик приступил к доставке вашего автомобиля.",
+            "delivery_started"
         )
 
     return {"message": "Доставка запущена", "rental_id": rental.id}
@@ -228,7 +230,8 @@ async def complete_delivery(
             db,
             user.id,
             "Машина доставлена",
-            f"Ваш автомобиль «{car.name}» ({car.plate_number}) готов к использованию."
+            f"Ваш автомобиль «{car.name}» ({car.plate_number}) готов к использованию.",
+            "car_delivered"
         )
 
     return {

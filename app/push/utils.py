@@ -59,7 +59,8 @@ async def send_push_notification_async(token: str, title: str, body: str):
 async def send_notification_to_all_mechanics_async(
         db_session: Session,
         title: str,
-        body: str
+        body: str,
+        status: str = None
 ) -> dict:
     """
     Sends notification to every active mechanic by user_id.
@@ -79,7 +80,7 @@ async def send_notification_to_all_mechanics_async(
         return {"success": 0, "failed": 0, "failed_ids": []}
 
     tasks = [
-        send_push_to_user_by_id(db_session, mech.id, title, body)
+        send_push_to_user_by_id(db_session, mech.id, title, body, status)
         for mech in mechanics
     ]
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -159,11 +160,20 @@ async def send_push_to_user_by_id(
         db_session: Session,
         user_id: int,
         title: str,
-        body: str
+        body: str,
+        status: str = None
 ) -> bool:
     # 1) Сохраняем уведомление в БД
     from app.models.notification_model import Notification
+    from app.push.enums import NotificationStatus
+    
     notif = Notification(user_id=user_id, title=title, body=body)
+    if status:
+        try:
+            notif.status = NotificationStatus(status)
+        except ValueError:
+            # Если статус не найден в enum, оставляем None
+            pass
     db_session.add(notif)
     db_session.commit()
 

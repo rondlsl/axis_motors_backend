@@ -620,7 +620,7 @@ async def reserve_delivery(
     # Уведомляем всех механиков
     notification_title = "Доставка: новый заказ"
     notification_body = f"Нужно доставить клиенту {car.name} ({car.plate_number})."
-    await send_notification_to_all_mechanics_async(db, notification_title, notification_body)
+    await send_notification_to_all_mechanics_async(db, notification_title, notification_body, "delivery_new_order")
 
     return {
         "message": "Заказ доставки оформлен успешно",
@@ -771,7 +771,7 @@ async def cancel_delivery(
             f"Доставка автомобиля {car.name} ({car.plate_number}) по заказу #{rental.id} "
             "была отменена."
         )
-        await send_push_to_user_by_id(db, mech_id, title, body)
+        await send_push_to_user_by_id(db, mech_id, title, body, "delivery_cancelled")
 
     return {"message": "Доставка отменена успешно"}
 
@@ -1209,7 +1209,8 @@ async def complete_rental(
         await send_notification_to_all_mechanics_async(
             db,
             "Новая машина для осмотра",
-            f"Аренда автомобиля {car.name} ({car.plate_number}) завершена. Требуется осмотр."
+            f"Аренда автомобиля {car.name} ({car.plate_number}) завершена. Требуется осмотр.",
+            "new_car_for_inspection"
         )
     except Exception as e:
         print(e)

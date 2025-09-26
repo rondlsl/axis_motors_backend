@@ -239,6 +239,13 @@ async def approve_application(
     
     db.commit()
     
+    try:
+        title = "Заявка одобрена МВД"
+        body = "Ваша заявка полностью одобрена! Теперь вы можете арендовать автомобили."
+        await send_push_to_user_by_id(db, application.user.id, title, body, "application_approved_mvd")
+    except Exception:
+        pass
+    
     return {
         "message": "Заявка одобрена МВД",
         "application_id": application_id,
@@ -287,7 +294,7 @@ async def reject_application(
     try:
         title = "Заявка отклонена МВД"
         body = f"Причина: {reason}" if reason else "Заявка отклонена МВД"
-        await send_push_to_user_by_id(db, application.user.id, title, body)
+        await send_push_to_user_by_id(db, application.user.id, title, body, "application_rejected_mvd")
     except Exception:
         pass
 

@@ -18,10 +18,10 @@ from app.dependencies.database.database import get_db
 from app.models.car_model import Car
 from app.models.history_model import RentalHistory, RentalStatus
 from app.models.user_model import UserRole, User
+from app.models.application_model import Application, ApplicationStatus
 from app.models.notification_model import Notification
 from app.rent.utils.calculate_price import get_open_price
 from app.owner.utils import calculate_month_availability_minutes, ALMATY_TZ
-from app.models.application_model import Application
 from app.core.config import logger
 import traceback
 
@@ -598,7 +598,15 @@ async def upload_documents(
         # Создаем/обновляем заявку для проверки документов (idempotent)
         existing_application = db.query(Application).filter(Application.user_id == current_user.id).first()
         if existing_application:
-            existing_application.updated_at = datetime.utcnow()
+            # Если пользователь был отклонен финансистом из-за документов, сбрасываем статус заявки
+            if existing_application.financier_status == ApplicationStatus.REJECTED:
+                existing_application.financier_status = ApplicationStatus.PENDING
+                existing_application.financier_rejected_at = None
+                existing_application.financier_user_id = None
+                existing_application.reason = None
+                existing_application.updated_at = datetime.utcnow()
+            else:
+                existing_application.updated_at = datetime.utcnow()
         else:
             application = Application(
                 user_id=current_user.id,
