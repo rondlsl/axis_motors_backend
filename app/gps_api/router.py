@@ -126,13 +126,15 @@ def get_vehicle_info(
         if current_user.role == UserRole.USER and bool(current_user.documents_verified):
             allowed_classes: list[str] = []
 
-            # Поле users.auto_class может прийти как массив ["A","B"] или строка вида "{A, B}"
+            # Поле users.auto_class может прийти как массив ["A","B"] или строка вида "{A, B}" или "{""A, B, C""}"
             if isinstance(current_user.auto_class, list):
                 allowed_classes = [str(c).strip().upper() for c in current_user.auto_class if c]
             elif isinstance(current_user.auto_class, str):
                 raw = current_user.auto_class.strip()
                 if raw.startswith("{") and raw.endswith("}"):
                     raw = raw[1:-1]
+                # Убираем все кавычки и обрабатываем строку
+                raw = raw.replace('"', '').replace("'", "")
                 allowed_classes = [part.strip().upper() for part in raw.split(",") if part.strip()]
 
             # Преобразуем в enum значения, игнорируя неизвестные элементы
