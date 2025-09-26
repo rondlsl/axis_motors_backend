@@ -23,6 +23,7 @@ from app.models.notification_model import Notification
 from app.rent.utils.calculate_price import get_open_price
 from app.owner.utils import calculate_month_availability_minutes, ALMATY_TZ
 from app.core.config import logger
+from app.models.guarantor_model import Guarantor
 import traceback
 
 Auth_router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -413,6 +414,26 @@ async def read_users_me(
 
     try:
         user_application = db.query(Application).filter(Application.user_id == current_user.id).first()
+        guarantors_query = (
+            db.query(Guarantor, User)
+            .join(User, User.id == Guarantor.guarantor_id)
+            .filter(
+                Guarantor.client_id == current_user.id,
+                Guarantor.is_active == True
+            )
+            .all()
+        )
+        
+        guarantors = []
+        for guarantor_relation, guarantor_user in guarantors_query:
+            guarantors.append({
+                "id": guarantor_user.id,
+                "first_name": guarantor_user.first_name,
+                "last_name": guarantor_user.last_name,
+                "phone_number": guarantor_user.phone_number
+            })
+        
+        guarantors_count = len(guarantors)
 
         first_name = current_user.first_name if isinstance(current_user.first_name, str) else None
         last_name = current_user.last_name if isinstance(current_user.last_name, str) else None
@@ -432,6 +453,9 @@ async def read_users_me(
             "owned_cars": owned_cars,
             "locale": current_user.locale,
             "unread_message": unread_messages,
+            "guarantors_count": guarantors_count,
+            "guarantors": guarantors,
+            "auto_class": current_user.auto_class or [],
             "application": {
                 "reason": getattr(user_application, "reason", None) if user_application else None,
             },

@@ -211,7 +211,7 @@ def init_app(app: FastAPI):
                     id=2,
                     name="MB CLA45s",
                     gps_id="800212421",
-                    gps_imei="866011056074131",
+                    gps_imei="869132074567851",
                     engine_volume=2.0,
                     year=2019,
                     drive_type=3,
