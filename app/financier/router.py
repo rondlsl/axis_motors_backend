@@ -8,7 +8,7 @@ from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole
 from app.models.application_model import Application, ApplicationStatus
-from app.push.utils import send_push_to_user_by_id
+from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
 
 FinancierRouter = APIRouter(prefix="/financier", tags=["Financier"])
 
@@ -252,9 +252,13 @@ async def approve_application(
     db.commit()
     
     try:
-        title = "Заявка одобрена"
-        body = f"Ваши заявка на регистрацию уже одобрена, осталось немного подождать, и вам будут доступны автомобили. Класс допуска: {auto_class}"
-        await send_push_to_user_by_id(db, application.user.id, title, body, "application_approved_financier")
+        await send_localized_notification_to_user(
+            db, 
+            application.user.id, 
+            "financier_approve", 
+            "application_approved_financier",
+            auto_class=auto_class
+        )
     except Exception:
         pass
     
@@ -331,13 +335,13 @@ async def reject_application(
 
     # Уведомление пользователю
     try:
-        title = "Заявка отклонена"
-        # Сообщение в зависимости от типа причины
-        if reason_type == "documents":
-            body = "Ваши документы нечитабельны, пожалуйста, прикрепите их снова."
-        else:
-            body = "К сожалению, в ходе проверки ваших данных мы не смогли одобрить вашу заявку. Но вы можете воспользоваться услугой «Гарант», пригласив человека, который, в случае необходимости, сможет понести за вас материальную ответственность."
-        await send_push_to_user_by_id(db, application.user.id, title, body, "application_rejected_financier")
+        translation_key = "financier_reject_documents" if reason_type == "documents" else "financier_reject_financial"
+        await send_localized_notification_to_user(
+            db, 
+            application.user.id, 
+            translation_key, 
+            "application_rejected_financier"
+        )
     except Exception:
         pass
     

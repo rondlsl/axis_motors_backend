@@ -14,7 +14,7 @@ from app.models.promo_codes_model import PromoCode, UserPromoCode, UserPromoStat
 from app.models.user_model import User, UserRole
 from app.models.application_model import Application, ApplicationStatus
 from app.models.car_model import Car
-from app.push.utils import send_notification_to_all_mechanics_async, send_push_to_user_by_id
+from app.push.utils import send_notification_to_all_mechanics_async, send_push_to_user_by_id, send_localized_notification_to_user, send_localized_notification_to_all_mechanics
 from app.rent.exceptions import InsufficientBalanceException
 from app.rent.utils.calculate_price import calculate_total_price, get_open_price
 from app.gps_api.utils.route_data import get_gps_route_data
@@ -618,9 +618,13 @@ async def reserve_delivery(
     db.commit()
 
     # Уведомляем всех механиков
-    notification_title = "Доставка: новый заказ"
-    notification_body = f"Нужно доставить клиенту {car.name} ({car.plate_number})."
-    await send_notification_to_all_mechanics_async(db, notification_title, notification_body, "delivery_new_order")
+    await send_localized_notification_to_all_mechanics(
+        db, 
+        "delivery_new_order", 
+        "delivery_new_order",
+        car_name=car.name,
+        plate_number=car.plate_number
+    )
 
     return {
         "message": "Заказ доставки оформлен успешно",
@@ -766,12 +770,15 @@ async def cancel_delivery(
 
     # Уведомляем механика, если был назначен
     if mech_id:
-        title = "Доставка отменена"
-        body = (
-            f"Доставка автомобиля {car.name} ({car.plate_number}) по заказу #{rental.id} "
-            "была отменена."
+        await send_localized_notification_to_user(
+            db, 
+            mech_id, 
+            "delivery_cancelled", 
+            "delivery_cancelled",
+            car_name=car.name,
+            plate_number=car.plate_number,
+            rental_id=rental.id
         )
-        await send_push_to_user_by_id(db, mech_id, title, body, "delivery_cancelled")
 
     return {"message": "Доставка отменена успешно"}
 

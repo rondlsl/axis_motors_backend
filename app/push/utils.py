@@ -1,7 +1,8 @@
 import firebase_admin
 from firebase_admin import messaging, credentials
 import asyncio
-
+from app.models.user_model import User
+from app.translations.notifications import get_notification_text
 from sqlalchemy.orm import Session
 
 cred = credentials.Certificate("app/push/firebase-service-account.json")
@@ -193,3 +194,90 @@ async def send_push_to_user_by_id(
         title=title,
         body=body
     )
+
+
+async def send_localized_notification_to_user(
+        db_session: Session,
+        user_id: int,
+        translation_key: str,
+        status: str = None,
+        **kwargs
+) -> bool:
+    """
+    Отправить локализованное уведомление пользователю
+    
+    Args:
+        db_session: Сессия базы данных
+        user_id: ID пользователя
+        translation_key: Ключ перевода (например, 'financier_approve')
+        status: Статус уведомления
+        **kwargs: Параметры для форматирования перевода
+        
+    Returns:
+        bool: Успешность отправки
+    """
+    
+    user = db_session.query(User).filter(User.id == user_id).first()
+    if not user:
+        return False
+    
+    title, body = get_notification_text(user.locale, translation_key, **kwargs)
+    
+    return await send_push_to_user_by_id(db_session, user_id, title, body, status)
+
+
+async def send_localized_notification_to_all_mechanics(
+        db_session: Session,
+        translation_key: str,
+        status: str = None,
+        **kwargs
+) -> dict:
+    """
+    Отправить локализованное уведомление всем механикам
+    
+    Args:
+        db_session: Сессия базы данных
+        translation_key: Ключ перевода
+        status: Статус уведомления
+        **kwargs: Параметры для форматирования перевода
+        
+    Returns:
+        dict: Результат отправки
+    """
+    from app.models.user_model import User, UserRole
+    
+    # Получаем всех активных механиков
+    mechanics = (
+        db_session.query(User)
+        .filter(
+            User.role == UserRole.MECHANIC,
+            User.is_active == True,
+            User.fcm_token.isnot(None)
+        )
+        .all()
+    )
+    
+    if not mechanics:
+        return {"success": 0, "failed": 0, "failed_ids": []}
+    
+    # Отправляем локализованные уведомления каждому механику
+    tasks = []
+    for mech in mechanics:
+        task = send_localized_notification_to_user(
+            db_session, 
+            mech.id, 
+            translation_key, 
+            status, 
+            **kwargs
+        )
+        tasks.append(task)
+    
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    success = sum(1 for r in results if r is True)
+    failed_ids = [
+        mech.id for mech, r in zip(mechanics, results)
+        if r is not True
+    ]
+    
+    return {"success": success, "failed": len(failed_ids), "failed_ids": failed_ids}

@@ -15,7 +15,7 @@ from app.models.history_model import RentalStatus, RentalHistory
 from app.models.car_model import Car
 from app.models.rental_actions_model import ActionType, RentalAction
 from app.models.user_model import User
-from app.push.utils import send_push_to_user_by_id
+from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
 
 MechanicDeliveryRouter = APIRouter(
     tags=["Mechanic Delivery"],
@@ -123,11 +123,10 @@ async def accept_delivery(
     # Уведомляем пользователя
     user = db.query(User).filter(User.id == rental.user_id).first()
     if user and user.fcm_token:
-        await send_push_to_user_by_id(
+        await send_localized_notification_to_user(
             db,
             user.id,
-            "Механик назначен",
-            "Механик принял ваш заказ доставки и готов начать.",
+            "mechanic_assigned",
             "mechanic_assigned"
         )
 
@@ -163,11 +162,10 @@ async def start_delivery(
 
     user = db.query(User).filter(User.id == rental.user_id).first()
     if user and user.fcm_token:
-        await send_push_to_user_by_id(
+        await send_localized_notification_to_user(
             db,
             user.id,
-            "Доставка начата",
-            "Механик приступил к доставке вашего автомобиля.",
+            "delivery_started",
             "delivery_started"
         )
 
@@ -226,11 +224,10 @@ async def complete_delivery(
 
     user = db.query(User).filter(User.id == rental.user_id).first()
     if user and user.fcm_token:
-        await send_push_to_user_by_id(
+        await send_localized_notification_to_user(
             db,
             user.id,
-            "Машина доставлена",
-            f"Ваш автомобиль «{car.name}» ({car.plate_number}) готов к использованию.",
+            "delivery_completed",
             "car_delivered"
         )
 

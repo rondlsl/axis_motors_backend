@@ -4,12 +4,13 @@ from datetime import datetime
 
 import httpx
 from sqlalchemy import or_
+from sqlalchemy.orm import Session
 
 from app.dependencies.database.database import SessionLocal
 from app.models.car_model import Car
 from app.models.history_model import RentalHistory, RentalStatus, RentalType
 from app.models.user_model import User, UserRole
-from app.push.utils import send_push_to_user_by_id
+from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
 from app.core.config import TELEGRAM_BOT_TOKEN
 
 # Кэш флагов уведомлений: rental_id -> flags
@@ -32,7 +33,10 @@ async def billing_job():
 
     # 3) Fire-and-forget push notifications
     for notification in push_notifications:
-        if len(notification) == 4:  # (user_id, title, body, status)
+        if len(notification) == 5:  # (user_id, translation_key, status, **kwargs)
+            user_id, translation_key, status, kwargs = notification
+            asyncio.create_task(send_localized_notification_to_user(db, user_id, translation_key, status, **kwargs))
+        elif len(notification) == 4:  # (user_id, title, body, status) - для обратной совместимости
             user_id, title, body, status = notification
             asyncio.create_task(send_push_to_user_by_id(db, user_id, title, body, status))
         else:  # (user_id, title, body) - для обратной совместимости
@@ -51,8 +55,61 @@ async def billing_job():
         for chat_id in (965048905, 5941825713):
             asyncio.create_task(_send_telegram(text, chat_id))
 
-    # 5) Yield back to event loop
+    await send_localized_billing_notifications(db)
+    
+    # 6) Yield back to event loop
     await asyncio.sleep(0)
+
+
+async def send_localized_billing_notifications(db: Session):
+    """
+    Отправляет локализованные уведомления о биллинге всем пользователям
+    """
+    try:
+        # Находим пользователей с низким балансом
+        users_low_balance = (
+            db.query(User)
+            .filter(
+                User.wallet_balance <= 1000,
+                User.wallet_balance > 0,
+                User.fcm_token.isnot(None),
+                User.is_active == True
+            )
+            .all()
+        )
+        
+        # Находим пользователей с нулевым балансом
+        users_zero_balance = (
+            db.query(User)
+            .filter(
+                User.wallet_balance <= 0,
+                User.fcm_token.isnot(None),
+                User.is_active == True
+            )
+            .all()
+        )
+        
+        # Отправляем уведомления о низком балансе
+        for user in users_low_balance:
+            await send_localized_notification_to_user(
+                db, 
+                user.id, 
+                "low_balance", 
+                "low_balance",
+                balance=int(user.wallet_balance)
+            )
+        
+        # Отправляем уведомления о нулевом балансе
+        for user in users_zero_balance:
+            await send_localized_notification_to_user(
+                db, 
+                user.id, 
+                "balance_exhausted", 
+                "balance_exhausted"
+            )
+                        
+    except Exception as e:
+        print(f"[Billing notifications error]: {e}")
 
 
 def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
@@ -129,10 +186,12 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                     mins_left = math.ceil(15 - waited)
                     push_notifications.append((
                         user.id,
-                        "Скоро начнётся платное ожидание",
-                        f"Через {mins_left} мин бесплатного ожидания начнётся списание "
-                        f"{math.ceil(car.price_per_minute * 0.5)}₸/мин.",
-                        "paid_waiting_soon"
+                        "pre_waiting_alert",
+                        "paid_waiting_soon",
+                        {
+                            "mins_left": mins_left,
+                            "price": math.ceil(car.price_per_minute * 0.5)
+                        }
                     ))
                     flags["pre_waiting"] = True
 
@@ -156,24 +215,12 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                         user.wallet_balance -= charge
                         db.commit()
 
-                        # Low balance ≤1000
+                        # Low balance ≤1000 - уведомления отправляются через локализованную функцию
                         if 0 < user.wallet_balance <= 1000 and not flags["low_balance_1000"] and user.fcm_token:
-                            push_notifications.append((
-                                user.id,
-                                "Низкий баланс",
-                                f"На балансе {int(user.wallet_balance)}₸ — осталось менее 1000₸.",
-                                "low_balance"
-                            ))
                             flags["low_balance_1000"] = True
 
-                        # Balance zero
+                        # Balance zero - уведомления отправляются через локализованную функцию
                         if user.wallet_balance <= 0 and not flags["low_balance_zero"] and user.fcm_token:
-                            push_notifications.append((
-                                user.id,
-                                "Баланс исчерпан",
-                                "Ваш баланс 0₸ — завершите аренду, чтобы избежать штрафов.",
-                                "balance_exhausted"
-                            ))
                             flags["low_balance_zero"] = True
                             telegram_alerts.append(
                                 f"🔔 У клиента (тел.: {user.phone_number}) на авто ID {car.id} баланс исчерпан."
@@ -183,9 +230,12 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                         if not flags["waiting"] and user.fcm_token:
                             push_notifications.append((
                                 user.id,
-                                "Началось платное ожидание",
-                                f"Списано за ожидание: {charge}₸ за {extra} мин.",
-                                "paid_waiting_started"
+                                "waiting_started",
+                                "paid_waiting_started",
+                                {
+                                    "charge": charge,
+                                    "extra": extra
+                                }
                             ))
                             flags["waiting"] = True
 
@@ -208,9 +258,12 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                     mins_left = math.ceil(15 - waited)
                     push_notifications.append((
                         user.id,
-                        "Скоро начнётся платное ожидание",
-                        f"Через {mins_left} мин бесплатного ожидания начнётся списание "
-                        f"{math.ceil(car.price_per_minute * 0.5)}₸/мин."
+                        "pre_waiting_alert",
+                        "paid_waiting_soon",
+                        {
+                            "mins_left": mins_left,
+                            "price": math.ceil(car.price_per_minute * 0.5)
+                        }
                     ))
                     flags["pre_waiting"] = True
 
@@ -233,24 +286,12 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                         user.wallet_balance -= charge
                         db.commit()
 
-                        # Low balance ≤1000
+                        # Low balance ≤1000 - уведомления отправляются через локализованную функцию
                         if 0 < user.wallet_balance <= 1000 and not flags["low_balance_1000"] and user.fcm_token:
-                            push_notifications.append((
-                                user.id,
-                                "Низкий баланс",
-                                f"На балансе {int(user.wallet_balance)}₸ — осталось менее 1000₸.",
-                                "low_balance"
-                            ))
                             flags["low_balance_1000"] = True
 
-                        # Balance zero
+                        # Balance zero - уведомления отправляются через локализованную функцию
                         if user.wallet_balance <= 0 and not flags["low_balance_zero"] and user.fcm_token:
-                            push_notifications.append((
-                                user.id,
-                                "Баланс исчерпан",
-                                "Ваш баланс 0₸ — завершите аренду, чтобы избежать штрафов.",
-                                "balance_exhausted"
-                            ))
                             flags["low_balance_zero"] = True
                             telegram_alerts.append(
                                 f"🔔 У клиента (тел.: {user.phone_number}) на авто ID {car.id} баланс исчерпан."
@@ -260,9 +301,12 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                         if not flags["waiting"] and user.fcm_token:
                             push_notifications.append((
                                 user.id,
-                                "Началось платное ожидание",
-                                f"Списано за ожидание: {charge}₸ за {extra} мин.",
-                                "paid_waiting_started"
+                                "waiting_started",
+                                "paid_waiting_started",
+                                {
+                                    "charge": charge,
+                                    "extra": extra
+                                }
                             ))
                             flags["waiting"] = True
 
@@ -290,21 +334,9 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                         db.commit()
 
                         if 0 < user.wallet_balance <= 1000 and not flags["low_balance_1000"] and user.fcm_token:
-                            push_notifications.append((
-                                user.id,
-                                "Низкий баланс",
-                                f"На балансе {int(user.wallet_balance)}₸ — осталось менее 1000₸.",
-                                "low_balance"
-                            ))
                             flags["low_balance_1000"] = True
 
                         if user.wallet_balance <= 0 and not flags["low_balance_zero"] and user.fcm_token:
-                            push_notifications.append((
-                                user.id,
-                                "Баланс исчерпан",
-                                "Ваш баланс 0₸ — завершите аренду.",
-                                "balance_exhausted"
-                            ))
                             flags["low_balance_zero"] = True
                             telegram_alerts.append(
                                 f"🔔 У клиента (тел.: {user.phone_number}) на авто ID {car.id} баланс исчерпан."
@@ -319,9 +351,11 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                     if 0 < remaining <= 10 and not flags["pre_overtime"] and user.fcm_token:
                         push_notifications.append((
                             user.id,
-                            "Скоро закончится базовый тариф",
-                            f"Через {math.ceil(remaining)} мин.",
-                            "basic_tariff_ending_soon"
+                            "pre_overtime_alert",
+                            "basic_tariff_ending_soon",
+                            {
+                                "remaining": math.ceil(remaining)
+                            }
                         ))
                         flags["pre_overtime"] = True
 
@@ -347,19 +381,9 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                             db.commit()
 
                             if 0 < user.wallet_balance <= 1000 and not flags["low_balance_1000"] and user.fcm_token:
-                                push_notifications.append((
-                                    user.id,
-                                    "Низкий баланс",
-                                    f"На балансе {int(user.wallet_balance)}₸ — осталось менее 1000₸."
-                                ))
                                 flags["low_balance_1000"] = True
 
                             if user.wallet_balance <= 0 and not flags["low_balance_zero"] and user.fcm_token:
-                                push_notifications.append((
-                                    user.id,
-                                    "Баланс исчерпан",
-                                    "Ваш баланс 0₸ — завершите аренду."
-                                ))
                                 flags["low_balance_zero"] = True
                                 telegram_alerts.append(
                                     f"🔔 У клиента (тел.: {user.phone_number}) на авто ID {car.id} баланс исчерпан."
@@ -368,9 +392,12 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                             if not flags["overtime"] and user.fcm_token:
                                 push_notifications.append((
                                     user.id,
-                                    "Списания вне тарифта",
-                                    f"Списано сверхлимита: {charge}₸ за {extra} мин.",
-                                    "out_of_tariff_charges"
+                                    "overtime_charges",
+                                    "out_of_tariff_charges",
+                                    {
+                                        "charge": charge,
+                                        "extra": extra
+                                    }
                                 ))
                                 flags["overtime"] = True
 
@@ -402,15 +429,17 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                         mechanic.wallet_balance -= penalty_fee
                         rental.delivery_penalty_fee = penalty_fee
                         
-                        # Уведомляем механика
-                        if mechanic.fcm_token:
-                            push_notifications.append((
-                                mechanic.id,
-                                "Штраф за задержку доставки",
-                                f"Списан штраф {penalty_fee}₸ за задержку доставки на {penalty_minutes:.1f} мин.",
-                                "delivery_delay_penalty"
-                            ))
-                        
+                        # Уведомляем механика о штрафе (будет отправлено через локализованную функцию)
+                        push_notifications.append((
+                            mechanic.id,
+                            "delivery_delay_penalty",
+                            "delivery_delay_penalty",
+                            {
+                                "penalty_fee": penalty_fee,
+                                "penalty_minutes": f"{penalty_minutes:.1f}"
+                            }
+                        ))
+                                        
                         # Уведомляем в Telegram
                         telegram_alerts.append(
                             f"⚠️ Механик {mechanic.phone_number} получил штраф {penalty_fee}₸ "

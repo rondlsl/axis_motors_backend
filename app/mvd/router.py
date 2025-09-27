@@ -8,7 +8,7 @@ from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole
 from app.models.application_model import Application, ApplicationStatus
-from app.push.utils import send_push_to_user_by_id
+from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
 
 MvdRouter = APIRouter(prefix="/mvd", tags=["MVD"])
 
@@ -240,9 +240,12 @@ async def approve_application(
     db.commit()
     
     try:
-        title = "Заявка одобрена"
-        body = "Поздравляем! Автомобили доступны к аренде. Какое из авто вы выберите первым?"
-        await send_push_to_user_by_id(db, application.user.id, title, body, "application_approved_mvd")
+        await send_localized_notification_to_user(
+            db, 
+            application.user.id, 
+            "mvd_approve", 
+            "application_approved_mvd"
+        )
     except Exception:
         pass
     
@@ -292,9 +295,12 @@ async def reject_application(
     
     # Пуш пользователю
     try:
-        title = "Заявка отклонена"
-        body = "Вынуждены отказать в регистрации. По результатам проверки ваших данных были выявлены несоответствия требованиям доступа к сервису. Обращаем внимание, что на основании п. 6.3.4 Договора, Арендодатель вправе по своему усмотрению отказаться от заключения Договора с Клиентом. С уважением, Команда «AZV Motors»."
-        await send_push_to_user_by_id(db, application.user.id, title, body, "application_rejected_mvd")
+        await send_localized_notification_to_user(
+            db, 
+            application.user.id, 
+            "mvd_reject", 
+            "application_rejected_mvd"
+        )
     except Exception:
         pass
 
