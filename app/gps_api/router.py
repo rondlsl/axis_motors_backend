@@ -88,7 +88,7 @@ def validate_user_can_control_car(current_user: User, db: Session) -> None:
         if not application or application.financier_status != ApplicationStatus.APPROVED or application.mvd_status != ApplicationStatus.APPROVED:
             raise HTTPException(
                 status_code=403, 
-                detail="Для управления автомобилем требуется одобрение финансиста и МВД"
+                detail="Для управления автомобилем требуется одобрение заявки"
             )
 
 

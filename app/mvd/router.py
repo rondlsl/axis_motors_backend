@@ -221,10 +221,10 @@ async def approve_application(
         raise HTTPException(status_code=404, detail="Заявка не найдена")
     
     if application.mvd_status != ApplicationStatus.PENDING:
-        raise HTTPException(status_code=400, detail="Заявка уже обработана МВД")
+        raise HTTPException(status_code=400, detail="Заявка уже обработана")
     
     if application.financier_status != ApplicationStatus.APPROVED:
-        raise HTTPException(status_code=400, detail="Заявка не одобрена финансистом")
+        raise HTTPException(status_code=400, detail="Заявка не одобрена")
     
     # Обновляем заявку
     application.mvd_status = ApplicationStatus.APPROVED
@@ -240,14 +240,14 @@ async def approve_application(
     db.commit()
     
     try:
-        title = "Заявка одобрена МВД"
-        body = "Ваша заявка полностью одобрена! Теперь вы можете арендовать автомобили."
+        title = "Заявка одобрена"
+        body = "Поздравляем! Автомобили доступны к аренде. Какое из авто вы выберите первым?"
         await send_push_to_user_by_id(db, application.user.id, title, body, "application_approved_mvd")
     except Exception:
         pass
     
     return {
-        "message": "Заявка одобрена МВД",
+        "message": "Заявка одобрена",
         "application_id": application_id,
         "user_id": application.user.id
     }
@@ -270,10 +270,10 @@ async def reject_application(
         raise HTTPException(status_code=404, detail="Заявка не найдена")
     
     if application.mvd_status != ApplicationStatus.PENDING:
-        raise HTTPException(status_code=400, detail="Заявка уже обработана МВД")
+        raise HTTPException(status_code=400, detail="Заявка уже обработана")
     
     if application.financier_status != ApplicationStatus.APPROVED:
-        raise HTTPException(status_code=400, detail="Заявка не одобрена финансистом")
+        raise HTTPException(status_code=400, detail="Заявка не одобрена")
     
     # Обновляем заявку
     application.mvd_status = ApplicationStatus.REJECTED
@@ -292,14 +292,14 @@ async def reject_application(
     
     # Пуш пользователю
     try:
-        title = "Заявка отклонена МВД"
-        body = f"Причина: {reason}" if reason else "Заявка отклонена МВД"
+        title = "Заявка отклонена"
+        body = "Вынуждены отказать в регистрации. По результатам проверки ваших данных были выявлены несоответствия требованиям доступа к сервису. Обращаем внимание, что на основании п. 6.3.4 Договора, Арендодатель вправе по своему усмотрению отказаться от заключения Договора с Клиентом. С уважением, Команда «AZV Motors»."
         await send_push_to_user_by_id(db, application.user.id, title, body, "application_rejected_mvd")
     except Exception:
         pass
 
     return {
-        "message": "Заявка отклонена МВД",
+        "message": "Заявка отклонена",
         "application_id": application_id,
         "user_id": application.user.id,
         "reason": application.reason

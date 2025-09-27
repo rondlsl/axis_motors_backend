@@ -59,7 +59,7 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
     if current_user.role == UserRole.REJECTFIRSTDOC:
         raise HTTPException(
             status_code=403, 
-            detail="Необходимо загрузить документы заново. Обратитесь к финансисту"
+            detail="Необходимо загрузить документы заново"
         )
     
     # Пользователи с финансовыми проблемами не могут арендовать
@@ -93,7 +93,7 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
         if not application or application.financier_status != ApplicationStatus.APPROVED or application.mvd_status != ApplicationStatus.APPROVED:
             raise HTTPException(
                 status_code=403, 
-                detail="Для аренды требуется одобрение финансиста и МВД"
+                detail="Для аренды требуется одобрение заявки"
             )
 
 

@@ -252,8 +252,8 @@ async def approve_application(
     db.commit()
     
     try:
-        title = "Заявка одобрена финансистом"
-        body = f"Ваша заявка одобрена. Класс доступа: {auto_class}. Ожидайте проверки МВД."
+        title = "Заявка одобрена"
+        body = f"Ваши заявка на регистрацию уже одобрена, осталось немного подождать, и вам будут доступны автомобили. Класс допуска: {auto_class}"
         await send_push_to_user_by_id(db, application.user.id, title, body, "application_approved_financier")
     except Exception:
         pass
@@ -331,13 +331,12 @@ async def reject_application(
 
     # Уведомление пользователю
     try:
-        title = "Заявка отклонена финансистом"
+        title = "Заявка отклонена"
         # Сообщение в зависимости от типа причины
         if reason_type == "documents":
-            body = (f"Причина: {reason}. Пожалуйста, загрузите документы заново." if reason 
-                    else "Заявка отклонена: некорректные документы. Загрузите документы заново.")
+            body = "Ваши документы нечитабельны, пожалуйста, прикрепите их снова."
         else:
-            body = f"Причина: {reason}" if reason else "Заявка отклонена финансистом"
+            body = "К сожалению, в ходе проверки ваших данных мы не смогли одобрить вашу заявку. Но вы можете воспользоваться услугой «Гарант», пригласив человека, который, в случае необходимости, сможет понести за вас материальную ответственность."
         await send_push_to_user_by_id(db, application.user.id, title, body, "application_rejected_financier")
     except Exception:
         pass
