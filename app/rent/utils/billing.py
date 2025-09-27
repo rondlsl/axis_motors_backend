@@ -33,15 +33,14 @@ async def billing_job():
 
     # 3) Fire-and-forget push notifications
     for notification in push_notifications:
-        if len(notification) == 5:  # (user_id, translation_key, status, **kwargs)
+        if len(notification) == 4:  # (user_id, translation_key, status, kwargs)
             user_id, translation_key, status, kwargs = notification
             asyncio.create_task(send_localized_notification_to_user(db, user_id, translation_key, status, **kwargs))
-        elif len(notification) == 4:  # (user_id, title, body, status) - для обратной совместимости
-            user_id, title, body, status = notification
-            asyncio.create_task(send_push_to_user_by_id(db, user_id, title, body, status))
-        else:  # (user_id, title, body) - для обратной совместимости
+        elif len(notification) == 3:  # (user_id, title, body) - для обратной совместимости
             user_id, title, body = notification
             asyncio.create_task(send_push_to_user_by_id(db, user_id, title, body))
+        else:  # Неожиданный формат
+            print(f"Unexpected notification format: {notification}")
 
     # 4) Fire-and-forget Telegram alerts
     async def _send_telegram(text: str, chat_id: int):

@@ -1213,11 +1213,12 @@ async def complete_rental(
     # 13) Коммит и уведомление механиков
     db.commit()
     try:
-        await send_notification_to_all_mechanics_async(
+        await send_localized_notification_to_all_mechanics(
             db,
-            "Новая машина для осмотра",
-            f"Аренда автомобиля {car.name} ({car.plate_number}) завершена. Требуется осмотр.",
-            "new_car_for_inspection"
+            "new_car_for_inspection",
+            "new_car_for_inspection",
+            car_name=car.name,
+            plate_number=car.plate_number
         )
     except Exception as e:
         print(e)

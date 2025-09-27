@@ -59,7 +59,11 @@ NOTIFICATIONS_TRANSLATIONS = {
         "pre_overtime_alert_body": "Через {remaining} мин.",
         
         "overtime_charges_title": "Списания вне тарифта",
-        "overtime_charges_body": "Списано сверхлимита: {charge}₸ за {extra} мин."
+        "overtime_charges_body": "Списано сверхлимита: {charge}₸ за {extra} мин.",
+        
+        # Новая машина для осмотра
+        "new_car_for_inspection_title": "Новая машина для осмотра",
+        "new_car_for_inspection_body": "Аренда автомобиля {car_name} ({plate_number}) завершена. Требуется осмотр."
     },
     
     "en": {
@@ -122,7 +126,11 @@ NOTIFICATIONS_TRANSLATIONS = {
         "pre_overtime_alert_body": "In {remaining} min.",
         
         "overtime_charges_title": "Overtime Charges",
-        "overtime_charges_body": "Overtime charged: {charge}₸ for {extra} min."
+        "overtime_charges_body": "Overtime charged: {charge}₸ for {extra} min.",
+        
+        # New car for inspection
+        "new_car_for_inspection_title": "New Car for Inspection",
+        "new_car_for_inspection_body": "Rental of car {car_name} ({plate_number}) completed. Inspection required."
     },
     
     "kz": {
@@ -186,6 +194,10 @@ NOTIFICATIONS_TRANSLATIONS = {
         
         "overtime_charges_title": "Шектен тыс алымдар",
         "overtime_charges_body": "Шектен тыс алынды: {extra} мин үшін {charge}₸.",
+        
+        # Жаңа автомобильді тексеру
+        "new_car_for_inspection_title": "Жаңа автомобильді тексеру",
+        "new_car_for_inspection_body": "{car_name} ({plate_number}) автомобилінің жалға алуы аяқталды. Тексеру қажет."
     }
 }
 

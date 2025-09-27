@@ -72,7 +72,8 @@ async def list_notifications(
                 "balance_exhausted": "balance_exhausted",
                 "delivery_delay_penalty": "delivery_delay_penalty",
                 "paid_waiting_soon": "pre_waiting_alert",
-                "paid_waiting_started": "waiting_started"
+                "paid_waiting_started": "waiting_started",
+                "new_car_for_inspection": "new_car_for_inspection"
             }
             
             translation_key = status_to_key.get(n.status.value)
@@ -109,15 +110,40 @@ async def list_notifications(
                     "status": n.status
                 })
         else:
-            # Если нет статуса, используем оригинальный текст (старые уведомления)
-            data.append({
-                "id": n.id,
-                "title": n.title,
-                "body": n.body,
-                "sent_at": n.sent_at.isoformat(),
-                "is_read": n.is_read,
-                "status": n.status
-            })
+            # Если нет статуса, но title и body выглядят как ключи локализации, применяем локализацию
+            if n.title in ["overtime_charges", "pre_overtime_alert"] and n.body in ["out_of_tariff_charges", "basic_tariff_ending_soon"]:
+                try:
+                    # Определяем ключ локализации по title
+                    translation_key = n.title
+                    title, body = get_notification_text(current_user.locale or "ru", translation_key)
+                    data.append({
+                        "id": n.id,
+                        "title": title,
+                        "body": body,
+                        "sent_at": n.sent_at.isoformat(),
+                        "is_read": n.is_read,
+                        "status": n.status
+                    })
+                except Exception:
+                    # Если ошибка в локализации, используем оригинальный текст
+                    data.append({
+                        "id": n.id,
+                        "title": n.title,
+                        "body": n.body,
+                        "sent_at": n.sent_at.isoformat(),
+                        "is_read": n.is_read,
+                        "status": n.status
+                    })
+            else:
+                # Если нет статуса и это не ключи локализации, используем оригинальный текст (старые уведомления)
+                data.append({
+                    "id": n.id,
+                    "title": n.title,
+                    "body": n.body,
+                    "sent_at": n.sent_at.isoformat(),
+                    "is_read": n.is_read,
+                    "status": n.status
+                })
 
     return {"unread_count": unread, "notifications": data}
 
