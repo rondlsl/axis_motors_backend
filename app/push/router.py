@@ -51,125 +51,14 @@ async def list_notifications(
     )
     unread = sum(1 for n in notifs if not n.is_read)
 
-    data = []
-    for n in notifs:
-        # Если есть статус, применяем локализацию
-        if n.status:
-            # Маппинг статусов на ключи переводов
-            status_to_key = {
-                "out_of_tariff_charges": "overtime_charges",
-                "basic_tariff_ending_soon": "pre_overtime_alert",
-                "application_approved_financier": "financier_approve",
-                "application_approved_mvd": "mvd_approve",
-                "application_rejected_financier": "financier_reject_financial",
-                "application_rejected_mvd": "mvd_reject",
-                "mechanic_assigned": "mechanic_assigned",
-                "delivery_started": "delivery_started",
-                "car_delivered": "delivery_completed",
-                "delivery_cancelled": "delivery_cancelled",
-                "delivery_new_order": "delivery_new_order",
-                "low_balance": "low_balance",
-                "balance_exhausted": "balance_exhausted",
-                "delivery_delay_penalty": "delivery_delay_penalty",
-                "paid_waiting_soon": "pre_waiting_alert",
-                "paid_waiting_started": "waiting_started",
-                "new_car_for_inspection": "new_car_for_inspection"
-            }
-            
-            translation_key = status_to_key.get(n.status.value)
-            if translation_key:
-                try:
-                    # Определяем параметры на основе статуса
-                    kwargs = {}
-                    if n.status.value == "application_approved_financier":
-                        # Пытаемся извлечь auto_class из оригинального текста
-                        if "{auto_class}" in n.body:
-                            # Если есть плейсхолдер, используем значение по умолчанию
-                            kwargs = {"auto_class": "A, B, C"}
-                    elif n.status.value == "out_of_tariff_charges":
-                        kwargs = {"charge": "0", "extra": "0"}
-                    elif n.status.value == "basic_tariff_ending_soon":
-                        kwargs = {"remaining": "0"}
-                    
-                    # Получаем локализованный текст с параметрами
-                    title, body = get_notification_text(current_user.locale or "ru", translation_key, **kwargs)
-                    data.append({
-                        "id": n.id,
-                        "title": title,
-                        "body": body,
-                        "sent_at": n.sent_at.isoformat(),
-                        "is_read": n.is_read,
-                        "status": n.status
-                    })
-                except Exception:
-                    # Если ошибка в локализации, используем оригинальный текст
-                    data.append({
-                        "id": n.id,
-                        "title": n.title,
-                        "body": n.body,
-                        "sent_at": n.sent_at.isoformat(),
-                        "is_read": n.is_read,
-                        "status": n.status
-                    })
-            else:
-                # Если нет маппинга, используем оригинальный текст
-                data.append({
-                    "id": n.id,
-                    "title": n.title,
-                    "body": n.body,
-                    "sent_at": n.sent_at.isoformat(),
-                    "is_read": n.is_read,
-                    "status": n.status
-                })
-        else:
-            # Если нет статуса, но title и body выглядят как ключи локализации, применяем локализацию
-            if n.title in ["overtime_charges", "pre_overtime_alert"] and n.body in ["out_of_tariff_charges", "basic_tariff_ending_soon"]:
-                try:
-                    translation_key = n.title
-                    
-                    if n.body == "out_of_tariff_charges":
-                        status_enum = "out_of_tariff_charges"
-                    elif n.body == "basic_tariff_ending_soon":
-                        status_enum = "basic_tariff_ending_soon"
-                    else:
-                        status_enum = None
-                    
-                    if translation_key == "overtime_charges":
-                        kwargs = {"charge": "0", "extra": "0"}
-                    elif translation_key == "pre_overtime_alert":
-                        kwargs = {"remaining": "0"}
-                    else:
-                        kwargs = {}
-                    
-                    title, body = get_notification_text(current_user.locale or "ru", translation_key, **kwargs)
-                    data.append({
-                        "id": n.id,
-                        "title": title,
-                        "body": body,
-                        "sent_at": n.sent_at.isoformat(),
-                        "is_read": n.is_read,
-                        "status": status_enum
-                    })
-                except Exception:
-                    # Если ошибка в локализации, используем оригинальный текст
-                    data.append({
-                        "id": n.id,
-                        "title": n.title,
-                        "body": n.body,
-                        "sent_at": n.sent_at.isoformat(),
-                        "is_read": n.is_read,
-                        "status": n.status
-                    })
-            else:
-                # Если нет статуса и это не ключи локализации, используем оригинальный текст (старые уведомления)
-                data.append({
-                    "id": n.id,
-                    "title": n.title,
-                    "body": n.body,
-                    "sent_at": n.sent_at.isoformat(),
-                    "is_read": n.is_read,
-                    "status": n.status
-                })
+    data = [{
+        "id": n.id,
+        "title": n.title,
+        "body": n.body,
+        "sent_at": n.sent_at.isoformat(),
+        "is_read": n.is_read,
+        "status": n.status
+    } for n in notifs]
 
     return {"unread_count": unread, "notifications": data}
 
