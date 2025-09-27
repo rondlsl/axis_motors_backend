@@ -53,62 +53,8 @@ async def billing_job():
     for text in telegram_alerts:
         for chat_id in (965048905, 5941825713):
             asyncio.create_task(_send_telegram(text, chat_id))
-
-    await send_localized_billing_notifications(db)
-    
     # 6) Yield back to event loop
     await asyncio.sleep(0)
-
-
-async def send_localized_billing_notifications(db: Session):
-    """
-    Отправляет локализованные уведомления о биллинге всем пользователям
-    """
-    try:
-        # Находим пользователей с низким балансом
-        users_low_balance = (
-            db.query(User)
-            .filter(
-                User.wallet_balance <= 1000,
-                User.wallet_balance > 0,
-                User.fcm_token.isnot(None),
-                User.is_active == True
-            )
-            .all()
-        )
-        
-        # Находим пользователей с нулевым балансом
-        users_zero_balance = (
-            db.query(User)
-            .filter(
-                User.wallet_balance <= 0,
-                User.fcm_token.isnot(None),
-                User.is_active == True
-            )
-            .all()
-        )
-        
-        # Отправляем уведомления о низком балансе
-        for user in users_low_balance:
-            await send_localized_notification_to_user(
-                db, 
-                user.id, 
-                "low_balance", 
-                "low_balance",
-                balance=int(user.wallet_balance)
-            )
-        
-        # Отправляем уведомления о нулевом балансе
-        for user in users_zero_balance:
-            await send_localized_notification_to_user(
-                db, 
-                user.id, 
-                "balance_exhausted", 
-                "balance_exhausted"
-            )
-                        
-    except Exception as e:
-        print(f"[Billing notifications error]: {e}")
 
 
 def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
@@ -217,10 +163,23 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                         # Low balance ≤1000 - уведомления отправляются через локализованную функцию
                         if 0 < user.wallet_balance <= 1000 and not flags["low_balance_1000"] and user.fcm_token:
                             flags["low_balance_1000"] = True
+                            push_notifications.append((
+                                user.id,
+                                "low_balance",
+                                "low_balance",
+                                {
+                                    "balance": int(user.wallet_balance)
+                                }
+                            ))
 
                         # Balance zero - уведомления отправляются через локализованную функцию
                         if user.wallet_balance <= 0 and not flags["low_balance_zero"] and user.fcm_token:
                             flags["low_balance_zero"] = True
+                            push_notifications.append((
+                                user.id,
+                                "balance_exhausted",
+                                "balance_exhausted"
+                            ))
                             telegram_alerts.append(
                                 f"🔔 У клиента (тел.: {user.phone_number}) на авто ID {car.id} баланс исчерпан."
                             )
@@ -288,10 +247,23 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                         # Low balance ≤1000 - уведомления отправляются через локализованную функцию
                         if 0 < user.wallet_balance <= 1000 and not flags["low_balance_1000"] and user.fcm_token:
                             flags["low_balance_1000"] = True
+                            push_notifications.append((
+                                user.id,
+                                "low_balance",
+                                "low_balance",
+                                {
+                                    "balance": int(user.wallet_balance)
+                                }
+                            ))
 
                         # Balance zero - уведомления отправляются через локализованную функцию
                         if user.wallet_balance <= 0 and not flags["low_balance_zero"] and user.fcm_token:
                             flags["low_balance_zero"] = True
+                            push_notifications.append((
+                                user.id,
+                                "balance_exhausted",
+                                "balance_exhausted"
+                            ))
                             telegram_alerts.append(
                                 f"🔔 У клиента (тел.: {user.phone_number}) на авто ID {car.id} баланс исчерпан."
                             )
