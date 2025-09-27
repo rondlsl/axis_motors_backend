@@ -133,8 +133,8 @@ def get_vehicle_info(
                 raw = current_user.auto_class.strip()
                 if raw.startswith("{") and raw.endswith("}"):
                     raw = raw[1:-1]
-                # Убираем все кавычки и обрабатываем строку
-                raw = raw.replace('"', '').replace("'", "")
+                # Убираем все кавычки (включая двойные) и обрабатываем строку
+                raw = raw.replace('""', '').replace('"', '').replace("'", "")
                 allowed_classes = [part.strip().upper() for part in raw.split(",") if part.strip()]
 
             # Преобразуем в enum значения, игнорируя неизвестные элементы
