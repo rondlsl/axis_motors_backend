@@ -218,7 +218,12 @@ async def approve_application(
     
     # Обновляем пользователя
     user = application.user
-    user.auto_class = [auto_class]  # Сохраняем как массив строк в users.auto_class
+    raw_auto_class = auto_class.strip()
+    if raw_auto_class.startswith("{") and raw_auto_class.endswith("}"):
+        raw_auto_class = raw_auto_class[1:-1]
+    raw_auto_class = raw_auto_class.replace('"', '').replace("'", "")
+    auto_classes = [cls.strip() for cls in raw_auto_class.split(",") if cls.strip()]
+    user.auto_class = auto_classes  # Сохраняем как массив строк в users.auto_class
     # После одобрения финансистом – ждём МВД
     user.role = UserRole.PENDINGTOSECOND
     
@@ -231,10 +236,12 @@ async def approve_application(
     for relation in guarantor_relations:
         guarantor_user = db.query(User).filter(User.id == relation.guarantor_id).first()
         if guarantor_user:
-            # Добавляем класс к существующим классам гаранта
+            # Добавляем классы к существующим классам гаранта
             existing_classes = guarantor_user.auto_class or []
-            if auto_class not in existing_classes:
-                guarantor_user.auto_class = existing_classes + [auto_class]
+            for cls in auto_classes:
+                if cls not in existing_classes:
+                    existing_classes.append(cls)
+            guarantor_user.auto_class = existing_classes
     
     # Если пользователь является гарантом, обновляем auto_class всех его клиентов
     client_relations = db.query(Guarantor).filter(
@@ -244,10 +251,12 @@ async def approve_application(
     for relation in client_relations:
         client_user = db.query(User).filter(User.id == relation.client_id).first()
         if client_user:
-            # Добавляем класс к существующим классам клиента
+            # Добавляем классы к существующим классам клиента
             existing_classes = client_user.auto_class or []
-            if auto_class not in existing_classes:
-                client_user.auto_class = existing_classes + [auto_class]
+            for cls in auto_classes:
+                if cls not in existing_classes:
+                    existing_classes.append(cls)
+            client_user.auto_class = existing_classes
     
     db.commit()
     
