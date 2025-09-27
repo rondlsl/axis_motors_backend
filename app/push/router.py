@@ -3,7 +3,7 @@ from typing import List
 from fastapi import APIRouter, Depends, status, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-
+from app.translations.notifications import get_notification_text
 from app.models.notification_model import Notification
 from app.models.user_model import User
 from app.dependencies.database.database import get_db
@@ -42,7 +42,7 @@ async def list_notifications(
     """
     Возвращает все уведомления текущего юзера,
     плюс количество непрочитанных.
-    """
+    """    
     notifs: List[Notification] = (
         db.query(Notification)
         .filter(Notification.user_id == current_user.id)
@@ -51,14 +51,73 @@ async def list_notifications(
     )
     unread = sum(1 for n in notifs if not n.is_read)
 
-    data = [{
-        "id": n.id,
-        "title": n.title,
-        "body": n.body,
-        "sent_at": n.sent_at.isoformat(),
-        "is_read": n.is_read,
-        "status": n.status
-    } for n in notifs]
+    data = []
+    for n in notifs:
+        # Если есть статус, применяем локализацию
+        if n.status:
+            # Маппинг статусов на ключи переводов
+            status_to_key = {
+                "out_of_tariff_charges": "overtime_charges",
+                "basic_tariff_ending_soon": "pre_overtime_alert",
+                "application_approved_financier": "financier_approve",
+                "application_approved_mvd": "mvd_approve",
+                "application_rejected_financier": "financier_reject_financial",
+                "application_rejected_mvd": "mvd_reject",
+                "mechanic_assigned": "mechanic_assigned",
+                "delivery_started": "delivery_started",
+                "car_delivered": "delivery_completed",
+                "delivery_cancelled": "delivery_cancelled",
+                "delivery_new_order": "delivery_new_order",
+                "low_balance": "low_balance",
+                "balance_exhausted": "balance_exhausted",
+                "delivery_delay_penalty": "delivery_delay_penalty",
+                "paid_waiting_soon": "pre_waiting_alert",
+                "paid_waiting_started": "waiting_started"
+            }
+            
+            translation_key = status_to_key.get(n.status.value)
+            if translation_key:
+                try:
+                    # Получаем локализованный текст
+                    title, body = get_notification_text(current_user.locale or "ru", translation_key)
+                    data.append({
+                        "id": n.id,
+                        "title": title,
+                        "body": body,
+                        "sent_at": n.sent_at.isoformat(),
+                        "is_read": n.is_read,
+                        "status": n.status
+                    })
+                except Exception:
+                    # Если ошибка в локализации, используем оригинальный текст
+                    data.append({
+                        "id": n.id,
+                        "title": n.title,
+                        "body": n.body,
+                        "sent_at": n.sent_at.isoformat(),
+                        "is_read": n.is_read,
+                        "status": n.status
+                    })
+            else:
+                # Если нет маппинга, используем оригинальный текст
+                data.append({
+                    "id": n.id,
+                    "title": n.title,
+                    "body": n.body,
+                    "sent_at": n.sent_at.isoformat(),
+                    "is_read": n.is_read,
+                    "status": n.status
+                })
+        else:
+            # Если нет статуса, используем оригинальный текст (старые уведомления)
+            data.append({
+                "id": n.id,
+                "title": n.title,
+                "body": n.body,
+                "sent_at": n.sent_at.isoformat(),
+                "is_read": n.is_read,
+                "status": n.status
+            })
 
     return {"unread_count": unread, "notifications": data}
 
