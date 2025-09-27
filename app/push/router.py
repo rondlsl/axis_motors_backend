@@ -79,8 +79,20 @@ async def list_notifications(
             translation_key = status_to_key.get(n.status.value)
             if translation_key:
                 try:
-                    # Получаем локализованный текст
-                    title, body = get_notification_text(current_user.locale or "ru", translation_key)
+                    # Определяем параметры на основе статуса
+                    kwargs = {}
+                    if n.status.value == "application_approved_financier":
+                        # Пытаемся извлечь auto_class из оригинального текста
+                        if "{auto_class}" in n.body:
+                            # Если есть плейсхолдер, используем значение по умолчанию
+                            kwargs = {"auto_class": "A, B, C"}
+                    elif n.status.value == "out_of_tariff_charges":
+                        kwargs = {"charge": "0", "extra": "0"}
+                    elif n.status.value == "basic_tariff_ending_soon":
+                        kwargs = {"remaining": "0"}
+                    
+                    # Получаем локализованный текст с параметрами
+                    title, body = get_notification_text(current_user.locale or "ru", translation_key, **kwargs)
                     data.append({
                         "id": n.id,
                         "title": title,
@@ -113,16 +125,30 @@ async def list_notifications(
             # Если нет статуса, но title и body выглядят как ключи локализации, применяем локализацию
             if n.title in ["overtime_charges", "pre_overtime_alert"] and n.body in ["out_of_tariff_charges", "basic_tariff_ending_soon"]:
                 try:
-                    # Определяем ключ локализации по title
                     translation_key = n.title
-                    title, body = get_notification_text(current_user.locale or "ru", translation_key)
+                    
+                    if n.body == "out_of_tariff_charges":
+                        status_enum = "out_of_tariff_charges"
+                    elif n.body == "basic_tariff_ending_soon":
+                        status_enum = "basic_tariff_ending_soon"
+                    else:
+                        status_enum = None
+                    
+                    if translation_key == "overtime_charges":
+                        kwargs = {"charge": "0", "extra": "0"}
+                    elif translation_key == "pre_overtime_alert":
+                        kwargs = {"remaining": "0"}
+                    else:
+                        kwargs = {}
+                    
+                    title, body = get_notification_text(current_user.locale or "ru", translation_key, **kwargs)
                     data.append({
                         "id": n.id,
                         "title": title,
                         "body": body,
                         "sent_at": n.sent_at.isoformat(),
                         "is_read": n.is_read,
-                        "status": n.status
+                        "status": status_enum
                     })
                 except Exception:
                     # Если ошибка в локализации, используем оригинальный текст

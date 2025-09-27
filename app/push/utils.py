@@ -221,7 +221,7 @@ async def send_localized_notification_to_user(
     if not user:
         return False
     
-    title, body = get_notification_text(user.locale, translation_key, **kwargs)
+    title, body = get_notification_text(user.locale or "ru", translation_key, **kwargs)
     
     return await send_push_to_user_by_id(db_session, user_id, title, body, status)
 
