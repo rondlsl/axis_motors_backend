@@ -13,7 +13,7 @@ from app.gps_api.utils.car_data import send_command_to_terminal, send_open, send
 from app.gps_api.utils.auth_api import get_auth_token
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.models.history_model import RentalStatus, RentalHistory, RentalReview
-from app.models.car_model import Car
+from app.models.car_model import Car, CarStatus
 from app.models.rental_actions_model import ActionType, RentalAction
 from app.models.user_model import User
 from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
@@ -224,7 +224,7 @@ async def complete_delivery(
 
     rental.end_time = delivery_end_time
     rental.rental_status = RentalStatus.RESERVED
-    car.status = "RESERVED"
+    car.status = CarStatus.RESERVED
     rental.delivery_mechanic_id = None
 
     # Сохраняем отзыв механика доставки (если есть)

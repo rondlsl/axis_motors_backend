@@ -4,6 +4,7 @@
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from app.models.history_model import RentalHistory, RentalStatus
+from app.models.car_model import CarStatus
 from app.models.car_model import Car
 
 
@@ -30,7 +31,7 @@ def process_scheduled_bookings(db: Session) -> dict:
         # Обновляем статус автомобиля
         car = db.query(Car).get(booking.car_id)
         if car:
-            car.status = "RESERVED"
+            car.status = CarStatus.RESERVED
         
         activated_count += 1
     
@@ -48,7 +49,7 @@ def process_scheduled_bookings(db: Session) -> dict:
         # Освобождаем автомобиль
         car = db.query(Car).get(booking.car_id)
         if car:
-            car.status = "FREE"
+            car.status = CarStatus.FREE
             car.current_renter_id = None
         
         cancelled_count += 1
@@ -69,7 +70,7 @@ def process_scheduled_bookings(db: Session) -> dict:
         # Освобождаем автомобиль
         car = db.query(Car).get(booking.car_id)
         if car:
-            car.status = "FREE"
+            car.status = CarStatus.FREE
             car.current_renter_id = None
         
         completed_count += 1
