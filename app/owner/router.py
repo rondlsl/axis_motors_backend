@@ -521,13 +521,17 @@ async def get_trip_details(
     # Фотографии
     # Фильтруем selfie фотографии из фотографий механика
     # Фото механика есть только для поездок с доставкой
-    mechanic_photos = trip.delivery_photos_after or []
-    filtered_mechanic_photos = [photo for photo in mechanic_photos if '/selfie/' not in photo]
+    mechanic_delivery_photos = trip.delivery_photos_after or []
+    filtered_mechanic_delivery_photos = [photo for photo in mechanic_delivery_photos if '/selfie/' not in photo]
+    
+    # Фото механика при осмотре
+    mechanic_inspection_photos = trip.mechanic_photos_after or []
+    filtered_mechanic_inspection_photos = [photo for photo in mechanic_inspection_photos if '/selfie/' not in photo]
     
     photos = TripPhotos(
         client_before=PhotoGroup(photos=trip.photos_before or []),
         client_after=PhotoGroup(photos=trip.photos_after or []),
-        mechanic_after=PhotoGroup(photos=filtered_mechanic_photos)
+        mechanic_after=PhotoGroup(photos=filtered_mechanic_delivery_photos + filtered_mechanic_inspection_photos)
     )
 
     # Маршрут с GPS данными
@@ -561,6 +565,30 @@ async def get_trip_details(
         route_data=route_data
     )
 
+    # Информация об осмотре механика
+    mechanic_inspection = None
+    if trip.mechanic_inspector_id:
+        # Получаем информацию о механике-инспекторе
+        mechanic = db.query(User).filter(User.id == trip.mechanic_inspector_id).first()
+        mechanic_info = None
+        if mechanic:
+            mechanic_info = {
+                "id": mechanic.id,
+                "first_name": mechanic.first_name or "",
+                "last_name": mechanic.last_name or "",
+                "phone_number": mechanic.phone_number or ""
+            }
+        
+        mechanic_inspection = {
+            "mechanic": mechanic_info,
+            "start_time": apply_offset(trip.mechanic_inspection_start_time),
+            "end_time": apply_offset(trip.mechanic_inspection_end_time),
+            "status": trip.mechanic_inspection_status,
+            "comment": trip.mechanic_inspection_comment,
+            "photos_before": trip.mechanic_photos_before or [],
+            "photos_after": trip.mechanic_photos_after or []
+        }
+
     return TripDetailResponse(
         id=trip.id,
         vehicle_id=vehicle_id,
@@ -572,6 +600,7 @@ async def get_trip_details(
         start_time=apply_offset(trip.start_time),
         end_time=apply_offset(trip.end_time),
         photos=photos,
-        route_map=route_map
+        route_map=route_map,
+        mechanic_inspection=mechanic_inspection
     )
 

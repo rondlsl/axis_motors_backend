@@ -67,7 +67,12 @@ async def _handle_photos(
     validate_photos(car_photos, "car_photos")
     validate_photos(interior_photos, "interior_photos")
 
-    base_dir = f"uploads/rents/{rental_id}/{when}"
+    # Определяем базовую папку в зависимости от типа загрузки
+    if when.startswith("mechanic_"):
+        base_dir = f"uploads/rents/{rental_id}/mechanic/{when.replace('mechanic_', '')}"
+    else:
+        base_dir = f"uploads/rents/{rental_id}/{when}"
+    
     urls: List[str] = []
 
     # сохраняем селфи

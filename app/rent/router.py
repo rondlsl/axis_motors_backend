@@ -128,9 +128,12 @@ def get_trip_history(
             "date": apply_offset(rental.end_time),
             "car_name": car.name,
             "final_total_price": rental.total_price,
-            # Фото механика: до/после
-            "mechanic_photos_before": rental.photos_before or [],
-            "mechanic_photos_after": rental.photos_after or [],
+            # Фото клиента: до/после
+            "client_photos_before": rental.photos_before or [],
+            "client_photos_after": rental.photos_after or [],
+            # Фото механика при осмотре: до/после
+            "mechanic_photos_before": rental.mechanic_photos_before or [],
+            "mechanic_photos_after": rental.mechanic_photos_after or [],
             # GPS координаты маршрута
             "start_latitude": rental.start_latitude,
             "start_longitude": rental.start_longitude,

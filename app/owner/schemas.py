@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 from datetime import datetime
 
@@ -107,6 +107,7 @@ class TripDetailResponse(BaseModel):
     end_time: Optional[str] = Field(None, description="Время окончания поездки", example="2024-01-15T16:30:00")
     photos: TripPhotos = Field(..., description="Фотографии поездки")
     route_map: RouteMapData = Field(..., description="Данные маршрута для карты")
+    mechanic_inspection: Optional[Dict[str, Any]] = Field(None, description="Информация об осмотре механика")
     
     class Config:
         from_attributes = True

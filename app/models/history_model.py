@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, ForeignKey, Enum, Float, DateTime, ARRAY, String
+from sqlalchemy import Column, Integer, ForeignKey, Enum, Float, DateTime, ARRAY, String, Text
 from sqlalchemy.orm import relationship
 
 from app.dependencies.database.database import Base
@@ -85,8 +85,22 @@ class RentalHistory(Base):
     delivery_photos_before = Column(ARRAY(String), nullable=True)
     delivery_photos_after = Column(ARRAY(String), nullable=True)
 
+    # Поля для хранения фотографий механика при осмотре
+    mechanic_photos_before = Column(ARRAY(String), nullable=True)
+    mechanic_photos_after = Column(ARRAY(String), nullable=True)
+    
+    # Поля для осмотра механиком
+    mechanic_inspector_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    mechanic_inspection_start_time = Column(DateTime, nullable=True)
+    mechanic_inspection_end_time = Column(DateTime, nullable=True)
+    mechanic_inspection_status = Column(String, nullable=True, default="PENDING")
+    mechanic_inspection_comment = Column(Text, nullable=True)
+
     # Явно задаём связь для механика доставки:
     delivery_mechanic = relationship("User", foreign_keys=[delivery_mechanic_id])
+    
+    # Связь для механика-инспектора:
+    mechanic_inspector = relationship("User", foreign_keys=[mechanic_inspector_id])
 
     review = relationship("RentalReview", back_populates="rental", uselist=False)
 

@@ -1095,6 +1095,19 @@ async def get_car_rental_history(
                 "phone_number": delivery_mechanic.phone_number or "",
             }
 
+        # Осмотр: данные механика-инспектора (если есть)
+        inspection_mechanic = None
+        inspection_mechanic_info = None
+        if rental.mechanic_inspector_id:
+            inspection_mechanic = db.query(User).filter(User.id == rental.mechanic_inspector_id).first()
+            if inspection_mechanic:
+                inspection_mechanic_info = {
+                    "id": inspection_mechanic.id,
+                    "first_name": inspection_mechanic.first_name or "",
+                    "last_name": inspection_mechanic.last_name or "",
+                    "phone_number": inspection_mechanic.phone_number or "",
+                }
+
         result.append({
             "id": rental.id,
             "user_id": rental.user_id,
@@ -1109,6 +1122,13 @@ async def get_car_rental_history(
             "delivery_photos_before": rental.delivery_photos_before or [],
             "delivery_photos_after": rental.delivery_photos_after or [],
             "delivery_mechanic": delivery_mechanic_info,
+            "mechanic_photos_before": rental.mechanic_photos_before or [],
+            "mechanic_photos_after": rental.mechanic_photos_after or [],
+            "inspection_mechanic": inspection_mechanic_info,
+            "inspection_start_time": rental.mechanic_inspection_start_time.isoformat() if rental.mechanic_inspection_start_time else None,
+            "inspection_end_time": rental.mechanic_inspection_end_time.isoformat() if rental.mechanic_inspection_end_time else None,
+            "inspection_status": rental.mechanic_inspection_status,
+            "inspection_comment": rental.mechanic_inspection_comment,
         })
 
     return result

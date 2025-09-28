@@ -411,6 +411,12 @@ async def check_car(
     # Обновляем автомобиль: закрепляем проверяющего механика и меняем статус на SERVICE
     car.current_renter_id = current_mechanic.id
     car.status = "SERVICE"
+    
+    # Устанавливаем время начала осмотра механиком
+    rental.mechanic_inspector_id = current_mechanic.id
+    rental.mechanic_inspection_start_time = datetime.utcnow()
+    rental.mechanic_inspection_status = "PENDING"
+    
     db.commit()
     return {
         "message": "Проверка автомобиля начата успешно",
@@ -524,8 +530,8 @@ async def upload_photos_before(
         raise HTTPException(status_code=404, detail="Нет активной проверки (IN_USE)")
 
     try:
-        urls = await _handle_photos(selfie, car_photos, interior_photos, rental.id, "before")
-        rental.photos_before = urls
+        urls = await _handle_photos(selfie, car_photos, interior_photos, rental.id, "mechanic_before")
+        rental.mechanic_photos_before = urls
         db.commit()
         return {"message": "Фотографии до проверки загружены", "photo_count": len(urls)}
     except HTTPException:
@@ -557,8 +563,8 @@ async def upload_photos_after(
         raise HTTPException(status_code=404, detail="Нет активной проверки (IN_USE)")
 
     try:
-        urls = await _handle_photos(selfie, car_photos, interior_photos, rental.id, "after")
-        rental.photos_after = urls
+        urls = await _handle_photos(selfie, car_photos, interior_photos, rental.id, "mechanic_after")
+        rental.mechanic_photos_after = urls
         db.commit()
         return {"message": "Фотографии после проверки загружены", "photo_count": len(urls)}
     except HTTPException:
@@ -602,6 +608,13 @@ async def complete_rental(
     rental.end_time = now
     rental.end_latitude = car.latitude
     rental.end_longitude = car.longitude
+    
+    # Устанавливаем время окончания осмотра механиком
+    rental.mechanic_inspection_end_time = now
+    rental.mechanic_inspection_status = "COMPLETED"
+    if review_input and review_input.comment:
+        rental.mechanic_inspection_comment = review_input.comment
+    
     # Для механика всё бесплатно
     rental.total_price = 0
     rental.already_payed = 0
@@ -626,3 +639,50 @@ async def complete_rental(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Ошибка при завершении проверки: {str(e)}")
+
+
+@MechanicRouter.get("/inspection-history")
+def get_inspection_history(
+        db: Session = Depends(get_db),
+        current_mechanic: Any = Depends(get_current_mechanic)
+) -> Dict[str, Any]:
+    """
+    Возвращает историю осмотров, проведенных текущим механиком.
+    """
+    try:
+        # Получаем все осмотры, проведенные этим механиком
+        inspections = (
+            db.query(RentalHistory)
+            .filter(
+                RentalHistory.mechanic_inspector_id == current_mechanic.id,
+                RentalHistory.mechanic_inspection_status.isnot(None)
+            )
+            .order_by(RentalHistory.mechanic_inspection_start_time.desc())
+            .all()
+        )
+        
+        inspections_data = []
+        for inspection in inspections:
+            car = db.query(Car).filter(Car.id == inspection.car_id).first()
+            if not car:
+                continue
+                
+            inspections_data.append({
+                "id": inspection.id,
+                "car_id": car.id,
+                "car_name": car.name,
+                "plate_number": car.plate_number,
+                "inspection_start_time": inspection.mechanic_inspection_start_time.isoformat() if inspection.mechanic_inspection_start_time else None,
+                "inspection_end_time": inspection.mechanic_inspection_end_time.isoformat() if inspection.mechanic_inspection_end_time else None,
+                "inspection_status": inspection.mechanic_inspection_status,
+                "inspection_comment": inspection.mechanic_inspection_comment,
+                "mechanic_photos_before": inspection.mechanic_photos_before or [],
+                "mechanic_photos_after": inspection.mechanic_photos_after or [],
+                "rental_status": inspection.rental_status.value,
+                "total_duration_minutes": int((inspection.mechanic_inspection_end_time - inspection.mechanic_inspection_start_time).total_seconds() / 60) if inspection.mechanic_inspection_start_time and inspection.mechanic_inspection_end_time else None
+            })
+        
+        return {"inspections": inspections_data}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка при получении истории осмотров: {str(e)}")
