@@ -11,6 +11,7 @@ from app.mechanic.utils import isoformat_or_none, _handle_photos, add_review_if_
 from app.models.history_model import RentalType, RentalStatus, RentalHistory, RentalReview
 from app.models.car_model import Car
 from app.models.user_model import User
+from app.models.car_comment_model import CarComment
 from app.rent.utils.calculate_price import get_open_price
 
 MechanicRouter = APIRouter(tags=["Mechanic"], prefix="/mechanic")
@@ -124,34 +125,100 @@ def get_pending_vehicles(
         current_mechanic: Any = Depends(get_current_mechanic)
 ) -> Dict[str, Any]:
     """
-    Возвращает список машин со статусом PENDING.
+    Возвращает список машин со статусом PENDING с информацией о последнем клиенте,
+    который водил автомобиль, включая его комментарии и оценку.
     """
     try:
         cars = db.query(Car).filter(Car.status == "PENDING").all()
-        vehicles_data = [{
-            "id": car.id,
-            "name": car.name,
-            "plate_number": car.plate_number,
-            "latitude": car.latitude,
-            "longitude": car.longitude,
-            "course": car.course,
-            "fuel_level": car.fuel_level,
-            "price_per_minute": car.price_per_minute,
-            "price_per_hour": car.price_per_hour,
-            "price_per_day": car.price_per_day,
-            "engine_volume": car.engine_volume,
-            "year": car.year,
-            "drive_type": car.drive_type,
-            "transmission_type": car.transmission_type,
-            "body_type": car.body_type,
-            "auto_class": car.auto_class,
-            "photos": car.photos,
-            "owner_id": car.owner_id,
-            "current_renter_id": car.current_renter_id,
-            "status": car.status,
-            "open_price": get_open_price(car),
-            "owned_car": False  # для механика это не имеет значения
-        } for car in cars]
+        vehicles_data = []
+        
+        for car in cars:
+            # Находим последнюю завершенную аренду этого автомобиля
+            last_rental = (
+                db.query(RentalHistory)
+                .filter(
+                    RentalHistory.car_id == car.id,
+                    RentalHistory.rental_status.in_([
+                        RentalStatus.COMPLETED,
+                        RentalStatus.CANCELLED
+                    ])
+                )
+                .order_by(RentalHistory.end_time.desc())
+                .first()
+            )
+            
+            # Получаем информацию о последнем клиенте
+            last_client_info = None
+            if last_rental and last_rental.user_id:
+                last_client = db.query(User).filter(User.id == last_rental.user_id).first()
+                if last_client:
+                    # Получаем оценку клиента за эту аренду
+                    client_review = (
+                        db.query(RentalReview)
+                        .filter(RentalReview.rental_id == last_rental.id)
+                        .first()
+                    )
+                    
+                    # Получаем комментарии клиента к этому автомобилю
+                    client_comments = (
+                        db.query(CarComment)
+                        .filter(
+                            CarComment.car_id == car.id,
+                            CarComment.author_id == last_client.id,
+                            CarComment.is_internal == False  # Публичные комментарии клиента
+                        )
+                        .order_by(CarComment.created_at.desc())
+                        .all()
+                    )
+                    
+                    last_client_info = {
+                        "id": last_client.id,
+                        "first_name": last_client.first_name,
+                        "last_name": last_client.last_name,
+                        "phone_number": last_client.phone_number,
+                        "rental_id": last_rental.id,
+                        "rental_start": last_rental.start_time.isoformat() if last_rental.start_time else None,
+                        "rental_end": last_rental.end_time.isoformat() if last_rental.end_time else None,
+                        "rental_status": last_rental.rental_status.value if last_rental.rental_status else None,
+                        "rating": client_review.rating if client_review else None,
+                        "comments": [
+                            {
+                                "id": comment.id,
+                                "comment": comment.comment,
+                                "created_at": comment.created_at.isoformat()
+                            }
+                            for comment in client_comments
+                        ]
+                    }
+            
+            vehicle_data = {
+                "id": car.id,
+                "name": car.name,
+                "plate_number": car.plate_number,
+                "latitude": car.latitude,
+                "longitude": car.longitude,
+                "course": car.course,
+                "fuel_level": car.fuel_level,
+                "price_per_minute": car.price_per_minute,
+                "price_per_hour": car.price_per_hour,
+                "price_per_day": car.price_per_day,
+                "engine_volume": car.engine_volume,
+                "year": car.year,
+                "drive_type": car.drive_type,
+                "transmission_type": car.transmission_type,
+                "body_type": car.body_type,
+                "auto_class": car.auto_class,
+                "photos": car.photos,
+                "owner_id": car.owner_id,
+                "current_renter_id": car.current_renter_id,
+                "status": car.status,
+                "open_price": get_open_price(car),
+                "owned_car": False,  # для механика это не имеет значения
+                "last_client": last_client_info  # Информация о последнем клиенте
+            }
+            
+            vehicles_data.append(vehicle_data)
+        
         return {"vehicles": vehicles_data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка при получении данных об автомобилях: {str(e)}")
