@@ -11,7 +11,6 @@ from app.mechanic.utils import isoformat_or_none, _handle_photos, add_review_if_
 from app.models.history_model import RentalType, RentalStatus, RentalHistory, RentalReview
 from app.models.car_model import Car
 from app.models.user_model import User
-from app.models.car_comment_model import CarComment
 from app.rent.utils.calculate_price import get_open_price
 
 MechanicRouter = APIRouter(tags=["Mechanic"], prefix="/mechanic")
@@ -152,23 +151,11 @@ def get_pending_vehicles(
             if last_rental and last_rental.user_id:
                 last_client = db.query(User).filter(User.id == last_rental.user_id).first()
                 if last_client:
-                    # Получаем оценку клиента за эту аренду
+                    # Получаем оценку и комментарий клиента за эту аренду
                     client_review = (
                         db.query(RentalReview)
                         .filter(RentalReview.rental_id == last_rental.id)
                         .first()
-                    )
-                    
-                    # Получаем комментарии клиента к этому автомобилю
-                    client_comments = (
-                        db.query(CarComment)
-                        .filter(
-                            CarComment.car_id == car.id,
-                            CarComment.author_id == last_client.id,
-                            CarComment.is_internal == False  # Публичные комментарии клиента
-                        )
-                        .order_by(CarComment.created_at.desc())
-                        .all()
                     )
                     
                     last_client_info = {
@@ -181,14 +168,7 @@ def get_pending_vehicles(
                         "rental_end": last_rental.end_time.isoformat() if last_rental.end_time else None,
                         "rental_status": last_rental.rental_status.value if last_rental.rental_status else None,
                         "rating": client_review.rating if client_review else None,
-                        "comments": [
-                            {
-                                "id": comment.id,
-                                "comment": comment.comment,
-                                "created_at": comment.created_at.isoformat()
-                            }
-                            for comment in client_comments
-                        ]
+                        "comment": client_review.comment if client_review else None
                     }
             
             vehicle_data = {
