@@ -2,7 +2,8 @@ from fastapi import APIRouter, HTTPException, Depends, File, UploadFile
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+from pydantic import BaseModel, Field, constr
 
 from app.auth.dependencies.get_current_user import get_current_mechanic
 from app.auth.dependencies.save_documents import validate_photos, save_file
@@ -11,11 +12,17 @@ from app.gps_api.router import AUTH_TOKEN
 from app.gps_api.utils.car_data import send_command_to_terminal, send_open, send_close, send_give_key, send_take_key
 from app.gps_api.utils.auth_api import get_auth_token
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
-from app.models.history_model import RentalStatus, RentalHistory
+from app.models.history_model import RentalStatus, RentalHistory, RentalReview
 from app.models.car_model import Car
 from app.models.rental_actions_model import ActionType, RentalAction
 from app.models.user_model import User
 from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
+
+class DeliveryReviewInput(BaseModel):
+    """Схема для отзыва механика доставки"""
+    rating: int = Field(..., ge=1, le=5, description="Рейтинг от 1 до 5")
+    comment: Optional[constr(max_length=255)] = Field(None, description="Комментарий к доставке (до 255 символов)")
+
 
 MechanicDeliveryRouter = APIRouter(
     tags=["Mechanic Delivery"],
@@ -174,6 +181,7 @@ async def start_delivery(
 
 @MechanicDeliveryRouter.post("/complete-delivery")
 async def complete_delivery(
+        review_input: Optional[DeliveryReviewInput] = None,
         db: Session = Depends(get_db),
         current_mechanic: User = Depends(get_current_mechanic)
 ) -> Dict[str, Any]:
@@ -218,6 +226,24 @@ async def complete_delivery(
     rental.rental_status = RentalStatus.RESERVED
     car.status = "RESERVED"
     rental.delivery_mechanic_id = None
+
+    # Сохраняем отзыв механика доставки (если есть)
+    if review_input:
+        # Ищем существующий отзыв для этой аренды
+        existing_review = db.query(RentalReview).filter(RentalReview.rental_id == rental.id).first()
+        
+        if existing_review:
+            # Обновляем существующий отзыв, добавляя данные механика доставки
+            existing_review.delivery_mechanic_rating = review_input.rating
+            existing_review.delivery_mechanic_comment = review_input.comment
+        else:
+            # Создаем новый отзыв только с данными механика доставки
+            review = RentalReview(
+                rental_id=rental.id,
+                delivery_mechanic_rating=review_input.rating,
+                delivery_mechanic_comment=review_input.comment
+            )
+            db.add(review)
 
     db.commit()
     db.refresh(rental)

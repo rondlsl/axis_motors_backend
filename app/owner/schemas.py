@@ -56,7 +56,6 @@ class TripPhotos(BaseModel):
     """Фотографии поездки"""
     client_before: PhotoGroup = Field(..., description="Фото от клиента до поездки")
     client_after: PhotoGroup = Field(..., description="Фото от клиента после поездки")
-    mechanic_after: PhotoGroup = Field(..., description="Фото от механика после осмотра")
 
 
 class GPSCoordinate(BaseModel):
@@ -107,6 +106,7 @@ class TripDetailResponse(BaseModel):
     end_time: Optional[str] = Field(None, description="Время окончания поездки", example="2024-01-15T16:30:00")
     photos: TripPhotos = Field(..., description="Фотографии поездки")
     route_map: RouteMapData = Field(..., description="Данные маршрута для карты")
+    mechanic_delivery: Optional[Dict[str, Any]] = Field(None, description="Информация о доставке механика")
     mechanic_inspection: Optional[Dict[str, Any]] = Field(None, description="Информация об осмотре механика")
     
     class Config:

@@ -123,9 +123,13 @@ class RentalReview(Base):
     rating = Column(Integer, nullable=True)  # от 1 до 5
     comment = Column(String(255), nullable=True)
     
-    # Отзыв от механика
+    # Отзыв от механика осмотра
     mechanic_rating = Column(Integer, nullable=True)  # от 1 до 5
     mechanic_comment = Column(String(255), nullable=True)
+    
+    # Отзыв от механика доставки
+    delivery_mechanic_rating = Column(Integer, nullable=True)  # от 1 до 5
+    delivery_mechanic_comment = Column(String(255), nullable=True)
 
     # Через rental -> user / car
     @property

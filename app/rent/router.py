@@ -146,7 +146,9 @@ def get_trip_history(
             "client_rating": review.rating if review else None,
             "client_comment": review.comment if review else None,
             "mechanic_rating": review.mechanic_rating if review else None,
-            "mechanic_comment": review.mechanic_comment if review else None
+            "mechanic_comment": review.mechanic_comment if review else None,
+            "delivery_mechanic_rating": review.delivery_mechanic_rating if review else None,
+            "delivery_mechanic_comment": review.delivery_mechanic_comment if review else None
         })
 
     return {"trip_history": result}

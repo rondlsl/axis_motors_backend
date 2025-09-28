@@ -1137,6 +1137,8 @@ async def get_car_rental_history(
             "client_comment": review.comment if review else None,
             "mechanic_rating": review.mechanic_rating if review else None,
             "mechanic_comment": review.mechanic_comment if review else None,
+            "delivery_mechanic_rating": review.delivery_mechanic_rating if review else None,
+            "delivery_mechanic_comment": review.delivery_mechanic_comment if review else None,
         })
 
     return result

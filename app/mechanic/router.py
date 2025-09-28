@@ -170,9 +170,12 @@ def get_pending_vehicles(
                         # Отзыв клиента
                         "client_rating": client_review.rating if client_review else None,
                         "client_comment": client_review.comment if client_review else None,
-                        # Отзыв механика
+                        # Отзыв механика осмотра
                         "mechanic_rating": client_review.mechanic_rating if client_review else None,
-                        "mechanic_comment": client_review.mechanic_comment if client_review else None
+                        "mechanic_comment": client_review.mechanic_comment if client_review else None,
+                        # Отзыв механика доставки
+                        "delivery_mechanic_rating": client_review.delivery_mechanic_rating if client_review else None,
+                        "delivery_mechanic_comment": client_review.delivery_mechanic_comment if client_review else None
                     }
             
             vehicle_data = {

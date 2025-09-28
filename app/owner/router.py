@@ -519,15 +519,9 @@ async def get_trip_details(
     earnings = calculate_owner_earnings(trip)
 
     # Фотографии
-    # Фильтруем selfie фотографии из фотографий механика при доставке
-    # Фото механика при осмотре показываются отдельно в mechanic_inspection
-    mechanic_delivery_photos = trip.delivery_photos_after or []
-    filtered_mechanic_delivery_photos = [photo for photo in mechanic_delivery_photos if '/selfie/' not in photo]
-    
     photos = TripPhotos(
         client_before=PhotoGroup(photos=trip.photos_before or []),
-        client_after=PhotoGroup(photos=trip.photos_after or []),
-        mechanic_after=PhotoGroup(photos=filtered_mechanic_delivery_photos)  # Только фото доставки
+        client_after=PhotoGroup(photos=trip.photos_after or [])
     )
 
     # Маршрут с GPS данными
@@ -563,6 +557,31 @@ async def get_trip_details(
 
     # Получаем отзыв для этой аренды
     review = db.query(RentalReview).filter(RentalReview.rental_id == trip.id).first()
+    
+    # Информация о доставке механика
+    mechanic_delivery = None
+    if trip.delivery_mechanic_id:
+        # Получаем информацию о механике доставки
+        delivery_mechanic = db.query(User).filter(User.id == trip.delivery_mechanic_id).first()
+        delivery_mechanic_info = None
+        if delivery_mechanic:
+            delivery_mechanic_info = {
+                "id": delivery_mechanic.id,
+                "first_name": delivery_mechanic.first_name or "",
+                "last_name": delivery_mechanic.last_name or "",
+                "phone_number": delivery_mechanic.phone_number or ""
+            }
+        
+        mechanic_delivery = {
+            "mechanic": delivery_mechanic_info,
+            "start_time": apply_offset(trip.delivery_start_time),
+            "end_time": apply_offset(trip.delivery_end_time),
+            "photos_before": trip.delivery_photos_before or [],
+            "photos_after": trip.delivery_photos_after or [],
+            # Отзыв механика доставки
+            "delivery_rating": review.delivery_mechanic_rating if review else None,
+            "delivery_comment": review.delivery_mechanic_comment if review else None
+        }
     
     # Информация об осмотре механика
     mechanic_inspection = None
@@ -605,6 +624,7 @@ async def get_trip_details(
         end_time=apply_offset(trip.end_time),
         photos=photos,
         route_map=route_map,
+        mechanic_delivery=mechanic_delivery,
         mechanic_inspection=mechanic_inspection
     )
 
