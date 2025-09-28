@@ -167,8 +167,12 @@ def get_pending_vehicles(
                         "rental_start": last_rental.start_time.isoformat() if last_rental.start_time else None,
                         "rental_end": last_rental.end_time.isoformat() if last_rental.end_time else None,
                         "rental_status": last_rental.rental_status.value if last_rental.rental_status else None,
-                        "rating": client_review.rating if client_review else None,
-                        "comment": client_review.comment if client_review else None
+                        # Отзыв клиента
+                        "client_rating": client_review.rating if client_review else None,
+                        "client_comment": client_review.comment if client_review else None,
+                        # Отзыв механика
+                        "mechanic_rating": client_review.mechanic_rating if client_review else None,
+                        "mechanic_comment": client_review.mechanic_comment if client_review else None
                     }
             
             vehicle_data = {

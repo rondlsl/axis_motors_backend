@@ -11,7 +11,7 @@ from app.models.guarantor_model import GuarantorRequest
 from app.models.application_model import Application
 from app.models.car_model import Car, CarBodyType, TransmissionType
 from app.models.car_comment_model import CarComment
-from app.models.history_model import RentalHistory, RentalStatus
+from app.models.history_model import RentalHistory, RentalStatus, RentalReview
 from app.guarantor.sms_utils import send_user_rejection_with_guarantor_sms
 from app.guarantor.schemas import (
     GuarantorRequestAdminSchema, 
@@ -1084,6 +1084,9 @@ async def get_car_rental_history(
 
     result = []
     for rental in rentals:
+        # Получаем отзыв для этой аренды
+        review = db.query(RentalReview).filter(RentalReview.rental_id == rental.id).first()
+        
         # Доставка: данные механика доставки (если есть)
         delivery_mechanic = getattr(rental, "delivery_mechanic", None)
         delivery_mechanic_info = None
@@ -1129,6 +1132,11 @@ async def get_car_rental_history(
             "inspection_end_time": rental.mechanic_inspection_end_time.isoformat() if rental.mechanic_inspection_end_time else None,
             "inspection_status": rental.mechanic_inspection_status,
             "inspection_comment": rental.mechanic_inspection_comment,
+            # Отзывы
+            "client_rating": review.rating if review else None,
+            "client_comment": review.comment if review else None,
+            "mechanic_rating": review.mechanic_rating if review else None,
+            "mechanic_comment": review.mechanic_comment if review else None,
         })
 
     return result

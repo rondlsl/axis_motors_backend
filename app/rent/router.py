@@ -122,6 +122,9 @@ def get_trip_history(
 
     result = []
     for rental, car in histories:
+        # Получаем отзыв для этой аренды
+        review = db.query(RentalReview).filter(RentalReview.rental_id == rental.id).first()
+        
         result.append({
             "history_id": rental.id,
             # Сдвиг +5 ч
@@ -138,7 +141,12 @@ def get_trip_history(
             "start_latitude": rental.start_latitude,
             "start_longitude": rental.start_longitude,
             "end_latitude": rental.end_latitude,
-            "end_longitude": rental.end_longitude
+            "end_longitude": rental.end_longitude,
+            # Отзывы
+            "client_rating": review.rating if review else None,
+            "client_comment": review.comment if review else None,
+            "mechanic_rating": review.mechanic_rating if review else None,
+            "mechanic_comment": review.mechanic_comment if review else None
         })
 
     return {"trip_history": result}
@@ -1139,12 +1147,21 @@ async def complete_rental(
 
     # 5) Сохранить отзыв (если есть)
     if review_input:
-        review = RentalReview(
-            rental_id=rental.id,
-            rating=review_input.rating,
-            comment=review_input.comment
-        )
-        db.add(review)
+        # Ищем существующий отзыв для этой аренды
+        existing_review = db.query(RentalReview).filter(RentalReview.rental_id == rental.id).first()
+        
+        if existing_review:
+            # Обновляем существующий отзыв, добавляя данные клиента
+            existing_review.rating = review_input.rating
+            existing_review.comment = review_input.comment
+        else:
+            # Создаем новый отзыв только с данными клиента
+            review = RentalReview(
+                rental_id=rental.id,
+                rating=review_input.rating,
+                comment=review_input.comment
+            )
+            db.add(review)
 
     # 6) Рассчитать фактическую длительность в минутах
     total_seconds = (now - rental.start_time).total_seconds()

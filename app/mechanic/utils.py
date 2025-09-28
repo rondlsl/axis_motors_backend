@@ -1,10 +1,13 @@
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
 
 from fastapi import UploadFile, HTTPException
 from sqlalchemy.orm import Session
 
 from app.models.history_model import RentalReview
+
+if TYPE_CHECKING:
+    from app.rent.router import RentalReviewInput
 
 
 def isoformat_or_none(dt: Optional[datetime]) -> Optional[str]:
@@ -43,12 +46,21 @@ async def process_upload_photos(
 
 def add_review_if_exists(db: Session, rental_id: int, review_input: Optional["RentalReviewInput"]):
     if review_input:
-        review = RentalReview(
-            rental_id=rental_id,
-            rating=review_input.rating,
-            comment=review_input.comment
-        )
-        db.add(review)
+        # Ищем существующий отзыв для этой аренды
+        existing_review = db.query(RentalReview).filter(RentalReview.rental_id == rental_id).first()
+        
+        if existing_review:
+            # Обновляем существующий отзыв, добавляя данные механика
+            existing_review.mechanic_rating = review_input.rating
+            existing_review.mechanic_comment = review_input.comment
+        else:
+            # Создаем новый отзыв только с данными механика
+            review = RentalReview(
+                rental_id=rental_id,
+                mechanic_rating=review_input.rating,
+                mechanic_comment=review_input.comment
+            )
+            db.add(review)
 
 
 # Импортируем функцию для сохранения файлов (аналогичная логике из RentRouter)

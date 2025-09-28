@@ -116,11 +116,16 @@ class RentalReview(Base):
 
     id = Column(Integer, primary_key=True, index=True)
 
-    rental_id = Column(Integer, ForeignKey("rental_history.id"), nullable=False, unique=True)
+    rental_id = Column(Integer, ForeignKey("rental_history.id"), nullable=False)
     rental = relationship("RentalHistory", back_populates="review")
 
-    rating = Column(Integer, nullable=False)  # от 1 до 5
+    # Отзыв от клиента
+    rating = Column(Integer, nullable=True)  # от 1 до 5
     comment = Column(String(255), nullable=True)
+    
+    # Отзыв от механика
+    mechanic_rating = Column(Integer, nullable=True)  # от 1 до 5
+    mechanic_comment = Column(String(255), nullable=True)
 
     # Через rental -> user / car
     @property

@@ -8,7 +8,7 @@ from app.auth.dependencies.get_current_user import get_current_user
 from app.dependencies.database.database import get_db
 from app.models.user_model import User, UserRole
 from app.models.car_model import Car
-from app.models.history_model import RentalHistory, RentalStatus, RentalType
+from app.models.history_model import RentalHistory, RentalStatus, RentalType, RentalReview
 from app.owner.schemas import (
     MyAutosResponse, CarOwnerResponse, TripsForMonthResponse,
     TripResponse, MonthEarnings, TripDetailResponse, TripPhotos,
@@ -561,6 +561,9 @@ async def get_trip_details(
         route_data=route_data
     )
 
+    # Получаем отзыв для этой аренды
+    review = db.query(RentalReview).filter(RentalReview.rental_id == trip.id).first()
+    
     # Информация об осмотре механика
     mechanic_inspection = None
     if trip.mechanic_inspector_id:
@@ -582,7 +585,12 @@ async def get_trip_details(
             "status": trip.mechanic_inspection_status,
             "comment": trip.mechanic_inspection_comment,
             "photos_before": trip.mechanic_photos_before or [],
-            "photos_after": trip.mechanic_photos_after or []
+            "photos_after": trip.mechanic_photos_after or [],
+            # Отзывы
+            "client_rating": review.rating if review else None,
+            "client_comment": review.comment if review else None,
+            "mechanic_rating": review.mechanic_rating if review else None,
+            "mechanic_comment": review.mechanic_comment if review else None
         }
 
     return TripDetailResponse(
