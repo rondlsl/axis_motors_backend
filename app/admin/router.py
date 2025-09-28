@@ -9,7 +9,7 @@ import os
 from app.models.user_model import User, UserRole, AutoClass
 from app.models.guarantor_model import GuarantorRequest
 from app.models.application_model import Application
-from app.models.car_model import Car, CarBodyType, TransmissionType
+from app.models.car_model import Car, CarStatus, CarBodyType, TransmissionType
 from app.models.car_comment_model import CarComment
 from app.models.history_model import RentalHistory, RentalStatus, RentalReview
 from app.guarantor.sms_utils import send_user_rejection_with_guarantor_sms
@@ -357,6 +357,9 @@ async def get_cars_map(
 
     if status is not None:
         base_query = base_query.filter(Car.status == status.value)
+    else:
+        # По умолчанию исключаем занятые и забронированные машины
+        base_query = base_query.filter(Car.status.notin_([CarStatus.OCCUPIED, CarStatus.SCHEDULED]))
 
     if search_query:
         like = f"%{search_query}%"
@@ -367,13 +370,18 @@ async def get_cars_map(
     def _status_display(s: Optional[str]) -> str:
         return {
             "FREE": "Свободно",
+            "PENDING": "Ожидает механика",
             "IN_USE": "В аренде",
             "MAINTENANCE": "На тех обслуживании",
             "DELIVERING": "В доставке",
             "DELIVERED": "Доставлено",
             "RETURNING": "Возвращается",
             "RETURNED": "Возвращено",
+            "SERVICE": "На обслуживании",
+            "RESERVED": "Зарезервирована",
+            "SCHEDULED": "Забронирована заранее",
             "OWNER": "У владельца",
+            "OCCUPIED": "Занята",
         }.get(s or "", s or "")
 
     items: List[CarMapItemSchema] = []
@@ -422,6 +430,9 @@ async def get_cars_list(
     query = db.query(Car)
     if status is not None:
         query = query.filter(Car.status == status.value)
+    else:
+        # По умолчанию исключаем занятые и забронированные машины
+        query = query.filter(Car.status.notin_([CarStatus.OCCUPIED, CarStatus.SCHEDULED]))
     if search_query:
         like = f"%{search_query}%"
         query = query.filter(or_(Car.plate_number.ilike(like), Car.name.ilike(like)))
@@ -431,13 +442,18 @@ async def get_cars_list(
     def _status_display(s: Optional[str]) -> str:
         return {
             "FREE": "Свободно",
+            "PENDING": "Ожидает механика",
             "IN_USE": "В аренде",
             "MAINTENANCE": "На тех обслуживании",
             "DELIVERING": "В доставке",
             "DELIVERED": "Доставлено",
             "RETURNING": "Возвращается",
             "RETURNED": "Возвращено",
+            "SERVICE": "На обслуживании",
+            "RESERVED": "Зарезервирована",
+            "SCHEDULED": "Забронирована заранее",
             "OWNER": "У владельца",
+            "OCCUPIED": "Занята",
         }.get(s or "", s or "")
 
     items: List[CarListItemSchema] = []
@@ -568,20 +584,21 @@ async def get_car_details(
         body_type_display=car.body_type.value if car.body_type else "Не указан",
         transmission_type=car.transmission_type.value if car.transmission_type else None,
         transmission_type_display=car.transmission_type.value if car.transmission_type else None,
-        status=car.status or "FREE",
+        status=car.status or CarStatus.FREE,
         status_display={
             "FREE": "Свободно",
+            "PENDING": "Ожидает механика",
             "IN_USE": "В аренде",
             "MAINTENANCE": "На тех обслуживании",
             "DELIVERING": "В доставке",
             "DELIVERED": "Доставлено",
             "RETURNING": "Возвращается",
             "RETURNED": "Возвращено",
-            "OWNER": "У владельца",
-            "PENDING": "Ожидает проверки",
-            "RESERVED": "Зарезервировано",
-            "SCHEDULED": "Запланировано",
             "SERVICE": "На обслуживании",
+            "RESERVED": "Зарезервирована",
+            "SCHEDULED": "Забронирована заранее",
+            "OWNER": "У владельца",
+            "OCCUPIED": "Занята",
         }.get(car.status or "FREE", car.status or "Свободно"),
         photos=car.photos or [],
         description=car.description,
@@ -895,7 +912,7 @@ async def get_car_current_user(
 
     result = CarCurrentUserSchema(user_type="none", user_info=None, rental_info=None)
 
-    if car.status == "OWNER" and car.owner_id:
+    if car.status == CarStatus.OWNER and car.owner_id:
         # Автомобиль у владельца
         owner = db.query(User).filter(User.id == car.owner_id).first()
         if owner:

@@ -13,7 +13,7 @@ from app.models.history_model import RentalType, RentalStatus, RentalHistory, Re
 from app.models.promo_codes_model import PromoCode, UserPromoCode, UserPromoStatus
 from app.models.user_model import User, UserRole
 from app.models.application_model import Application, ApplicationStatus
-from app.models.car_model import Car
+from app.models.car_model import Car, CarStatus
 from app.push.utils import send_notification_to_all_mechanics_async, send_push_to_user_by_id, send_localized_notification_to_user, send_localized_notification_to_all_mechanics
 from app.rent.exceptions import InsufficientBalanceException
 from app.rent.utils.calculate_price import calculate_total_price, get_open_price
@@ -114,7 +114,7 @@ def get_trip_history(
         .filter(
             RentalHistory.user_id == current_user.id,
             RentalHistory.rental_status == RentalStatus.COMPLETED,
-            Car.status == "FREE"
+            Car.status == CarStatus.FREE
         )
         .order_by(RentalHistory.end_time.desc())
         .all()
@@ -362,7 +362,7 @@ async def reserve_car(
     # 2) Выбираем машину только если она доступна (status == "FREE")
     car = db.query(Car).filter(
         Car.id == car_id,
-        Car.status == "FREE"
+        Car.status == CarStatus.FREE
     ).first()
     if not car:
         raise HTTPException(status_code=404, detail="Car not found or not available")
@@ -426,7 +426,7 @@ async def reserve_car(
 
         # Обновляем статус машины
         car.current_renter_id = current_user.id
-        car.status = "OWNER"
+        car.status = CarStatus.FREE  # Возвращаем машину в свободное состояние
         db.commit()
 
         return {
@@ -488,7 +488,7 @@ async def reserve_car(
 
     # Обновляем машину: устанавливаем текущего арендатора и меняем статус на RESERVED
     car.current_renter_id = current_user.id
-    car.status = "RESERVED"
+    car.status = CarStatus.RESERVED
     db.commit()
 
     return {
@@ -534,7 +534,7 @@ async def reserve_delivery(
     # 2) Выбираем машину только если она доступна (status == "FREE")
     car = db.query(Car).filter(
         Car.id == car_id,
-        Car.status == "FREE"
+        Car.status == CarStatus.FREE
     ).first()
     if not car:
         raise HTTPException(status_code=404, detail="Машина не найдена или не доступна")
@@ -627,7 +627,7 @@ async def reserve_delivery(
 
     # Обновляем статус машины
     car.current_renter_id = current_user.id
-    car.status = "DELIVERING"
+    car.status = CarStatus.DELIVERING
     db.commit()
 
     # Уведомляем всех механиков
@@ -683,7 +683,7 @@ async def cancel_reservation(
         rental.end_latitude = car.latitude
         rental.end_longitude = car.longitude
         car.current_renter_id = None
-        car.status = "FREE"
+        car.status = CarStatus.FREE
         db.commit()
         return {
             "message": "Аренда отменена (owner rental)",
@@ -715,7 +715,7 @@ async def cancel_reservation(
 
         # Освобождаем машину и возвращаем статус "FREE"
         car.current_renter_id = None
-        car.status = "FREE"
+        car.status = CarStatus.FREE
 
         try:
             db.commit()
@@ -776,7 +776,7 @@ async def cancel_delivery(
 
     # Освобождаем машину
     car.current_renter_id = None
-    car.status = "FREE"
+    car.status = CarStatus.FREE
 
     db.commit()
     db.refresh(rental)
@@ -854,7 +854,7 @@ async def start_rental(
             rental.already_payed = total_cost
 
         # Обновляем машину: меняем статус на IN_USE
-        car.status = "IN_USE"
+        car.status = CarStatus.IN_USE
 
         db.commit()
 
@@ -1145,7 +1145,7 @@ async def complete_rental(
 
     # Освободить машину
     car.current_renter_id = None
-    car.status = "PENDING"
+    car.status = CarStatus.PENDING
 
     # 5) Сохранить отзыв (если есть)
     if review_input:
@@ -1301,7 +1301,7 @@ async def create_advance_booking(
     # 3) Выбираем машину только если она доступна
     car = db.query(Car).filter(
         Car.id == booking_request.car_id,
-        Car.status == "FREE"
+        Car.status == CarStatus.FREE
     ).first()
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден или не доступен")
@@ -1382,7 +1382,7 @@ async def create_advance_booking(
 
     # 8) Обновляем машину: устанавливаем текущего арендатора и меняем статус
     car.current_renter_id = current_user.id
-    car.status = "SCHEDULED"
+    car.status = CarStatus.SCHEDULED  # Для запланированных аренд машина получает статус SCHEDULED
     db.commit()
 
     return BookingResponse(
@@ -1488,7 +1488,7 @@ async def cancel_booking(
     
     # 5) Освобождаем автомобиль
     car.current_renter_id = None
-    car.status = "FREE"
+    car.status = CarStatus.FREE
     
     db.commit()
 
@@ -1522,7 +1522,7 @@ async def get_available_cars_for_booking(
 
     # 2) Находим доступные автомобили
     available_cars = db.query(Car).filter(
-        Car.status == "FREE",
+        Car.status == CarStatus.FREE,
         ~Car.id.in_(conflicting_rentals)
     ).all()
 

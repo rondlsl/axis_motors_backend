@@ -9,7 +9,7 @@ from app.auth.dependencies.get_current_user import get_current_mechanic
 from app.dependencies.database.database import get_db
 from app.mechanic.utils import isoformat_or_none, _handle_photos, add_review_if_exists
 from app.models.history_model import RentalType, RentalStatus, RentalHistory, RentalReview
-from app.models.car_model import Car
+from app.models.car_model import Car, CarStatus
 from app.models.user_model import User
 from app.rent.utils.calculate_price import get_open_price
 
@@ -79,7 +79,7 @@ def get_all_vehicles_plain(
                     car_dict["rental_id"] = active.id
 
             # если машина в использовании — добавляем детали арендатора
-            if car.status.lower() == "in_use" and car.current_renter_id:
+            if car.status == CarStatus.IN_USE and car.current_renter_id:
                 renter: Optional[User] = db.query(User).get(car.current_renter_id)
                 if renter:
                     last_rent = (
@@ -128,7 +128,7 @@ def get_pending_vehicles(
     который водил автомобиль, включая его комментарии и оценку.
     """
     try:
-        cars = db.query(Car).filter(Car.status == "PENDING").all()
+        cars = db.query(Car).filter(Car.status == CarStatus.PENDING).all()
         vehicles_data = []
         
         for car in cars:
@@ -227,7 +227,7 @@ def get_in_use_vehicles(
           - rent_selfie_url         (селфи, снятое перед арендой - из photos_before)
     """
     try:
-        cars = db.query(Car).filter(Car.status == "IN_USE").all()
+        cars = db.query(Car).filter(Car.status == CarStatus.IN_USE).all()
         vehicles_data: list[dict[str, Any]] = []
 
         for car in cars:
@@ -323,7 +323,7 @@ def search_vehicles(
                 Car.name.ilike(f"%{query}%"),
                 Car.plate_number.ilike(f"%{query}%")
             ),
-            Car.status.in_(["IN_USE", "PENDING"])
+            Car.status.in_([CarStatus.IN_USE, CarStatus.PENDING])
         ).all()
 
         vehicles_data = []
@@ -352,7 +352,7 @@ def search_vehicles(
                 "open_price": get_open_price(car),
                 "owned_car": False
             }
-            if car.status == "IN_USE" and car.current_renter_id:
+            if car.status == CarStatus.IN_USE and car.current_renter_id:
                 current_renter = db.query(User).filter(User.id == car.current_renter_id).first()
                 if current_renter:
                     car_data["current_renter_details"] = {
@@ -397,7 +397,7 @@ async def check_car(
             detail="У вас уже есть активная проверка автомобиля. Завершите её, прежде чем начать новую."
         )
     # Выбираем автомобиль только если его статус PENDING
-    car = db.query(Car).filter(Car.id == car_id, Car.status == "PENDING").first()
+    car = db.query(Car).filter(Car.id == car_id, Car.status == CarStatus.PENDING).first()
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден или недоступен для проверки")
     
@@ -412,7 +412,7 @@ async def check_car(
     
     # Обновляем автомобиль: закрепляем проверяющего механика и меняем статус на SERVICE
     car.current_renter_id = current_mechanic.id
-    car.status = "SERVICE"
+    car.status = CarStatus.SERVICE
     
     # Устанавливаем время начала осмотра механиком в существующую запись
     rental.mechanic_inspector_id = current_mechanic.id
@@ -449,7 +449,7 @@ async def start_rental(
     # Обновляем статус осмотра на IN_USE
     rental.mechanic_inspection_status = "IN_USE"
     # Для механика переводим автомобиль в состояние IN_USE
-    car.status = "IN_USE"
+    car.status = CarStatus.IN_USE
     db.commit()
     return {"message": "Проверка автомобиля запущена", "rental_id": rental.id}
 
@@ -484,7 +484,7 @@ async def cancel_reservation(
         rental.mechanic_inspection_status = "CANCELLED"
         rental.mechanic_inspection_end_time = now
         car.current_renter_id = None
-        car.status = "PENDING"  # Возвращаем статус автомобиля в PENDING
+        car.status = CarStatus.PENDING  # Возвращаем статус автомобиля в PENDING
 
         # Пытаемся зафиксировать все изменения одним commit
         db.commit()
@@ -606,7 +606,7 @@ async def complete_rental(
     # Освобождаем автомобиль
     car.current_renter_id = None
     # При успешном завершении проверки автомобиль снова становится доступным (FREE)
-    car.status = "FREE"
+    car.status = CarStatus.FREE
     add_review_if_exists(db, rental.id, review_input)
     try:
         db.commit()

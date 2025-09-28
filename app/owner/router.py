@@ -7,7 +7,7 @@ from typing import List, Optional, Dict, Any
 from app.auth.dependencies.get_current_user import get_current_user
 from app.dependencies.database.database import get_db
 from app.models.user_model import User, UserRole
-from app.models.car_model import Car
+from app.models.car_model import Car, CarStatus
 from app.models.history_model import RentalHistory, RentalStatus, RentalType, RentalReview
 from app.owner.schemas import (
     MyAutosResponse, CarOwnerResponse, TripsForMonthResponse,
@@ -329,7 +329,7 @@ def get_trips_by_month(
             raise HTTPException(status_code=400, detail="Месяц должен быть от 1 до 12")
 
         # Получаем поездки за указанный месяц, исключая поездки механиков
-        # Показываем только после проверки механика (Car.status == "FREE")
+        # Показываем только после проверки механика (Car.status == CarStatus.FREE)
         trips = (
             db.query(RentalHistory)
             .join(User, RentalHistory.user_id == User.id)
@@ -337,7 +337,7 @@ def get_trips_by_month(
             .filter(
                 RentalHistory.car_id == vehicle_id,
                 RentalHistory.rental_status == RentalStatus.COMPLETED,
-                Car.status == "FREE",  # Только после проверки механика
+                Car.status == CarStatus.FREE,  # Только после проверки механика
                 extract('year', RentalHistory.end_time) == target_year,
                 extract('month', RentalHistory.end_time) == target_month,
                 User.role != UserRole.MECHANIC  # Исключаем поездки механиков
@@ -382,7 +382,7 @@ def get_trips_by_month(
             .filter(
                 RentalHistory.car_id == vehicle_id,
                 RentalHistory.rental_status == RentalStatus.COMPLETED,
-                Car.status == "FREE",  # Только после проверки механика
+                Car.status == CarStatus.FREE,  # Только после проверки механика
                 RentalHistory.total_price.isnot(None),
                 User.role != UserRole.MECHANIC  # Исключаем поездки механиков
             )
@@ -500,7 +500,7 @@ async def get_trip_details(
         RentalHistory.id == trip_id,
         RentalHistory.car_id == vehicle_id,
         RentalHistory.rental_status == RentalStatus.COMPLETED,
-        Car.status == "FREE"  # Только после проверки механика
+        Car.status == CarStatus.FREE  # Только после проверки механика
     ).first()
 
     if not trip:

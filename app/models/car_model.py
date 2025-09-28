@@ -31,6 +31,18 @@ class TransmissionType(str, Enum):
     SEMI_AUTOMATIC = "semi_automatic"  # Полуавтоматическая
 
 
+class CarStatus(str, Enum):
+    FREE = "FREE"  # Свободна
+    PENDING = "PENDING"  # Ожидает механика
+    IN_USE = "IN_USE"  # В использовании
+    DELIVERING = "DELIVERING"  # Доставляется
+    SERVICE = "SERVICE"  # На обслуживании
+    RESERVED = "RESERVED"  # Зарезервирована
+    SCHEDULED = "SCHEDULED"  # Забронирована заранее
+    OWNER = "OWNER"  # У владельца
+    OCCUPIED = "OCCUPIED"  # Занята (не отображается)
+
+
 class Car(Base):
     __tablename__ = "cars"
 
@@ -75,7 +87,7 @@ class Car(Base):
     owner_id = Column(Integer, ForeignKey("users.id"))
     current_renter_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
-    status = Column(String, default="FREE", nullable=True)
+    status = Column(SAEnum(CarStatus), default=CarStatus.FREE, nullable=True)
 
     owner = relationship("User", foreign_keys=[owner_id], back_populates="owned_cars")
     current_renter = relationship("User", foreign_keys=[current_renter_id], back_populates="active_rental")

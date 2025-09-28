@@ -10,7 +10,7 @@ from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD, RENTED_C
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.gps_api.schemas import RentedCar
-from app.models.car_model import Car, CarAutoClass
+from app.models.car_model import Car, CarAutoClass, CarStatus
 from app.models.history_model import RentalHistory, RentalStatus
 from app.models.rental_actions_model import ActionType, RentalAction
 from app.models.user_model import User, UserRole
@@ -119,13 +119,13 @@ def get_vehicle_info(
         if current_user.role == UserRole.REJECTFIRST:
             return {"vehicles": []}
         
-        # Базовый фильтр: только свободные машины для обычных пользователей
+        # Базовый фильтр: исключаем занятые машины для всех
         if current_user.role == UserRole.MECHANIC:
-            # Механики видят все автомобили
-            query = db.query(Car)
+            # Механики видят все автомобили кроме занятых
+            query = db.query(Car).filter(Car.status != CarStatus.OCCUPIED)
         else:
-            # Обычные пользователи видят только свободные машины
-            query = db.query(Car).filter(Car.status == "FREE")
+            # Обычные пользователи видят только свободные машины (исключаем занятые и забронированные)
+            query = db.query(Car).filter(Car.status == CarStatus.FREE)
 
         # Фильтрация по классам авто для роли USER при верифицированных документах
         # Механики видят все автомобили без ограничений по классам
@@ -203,12 +203,13 @@ def search_vehicles(
         
         # Ищем по имени или номеру
         if current_user.role == UserRole.MECHANIC:
-            # Механики могут искать по всем статусам
+            # Механики могут искать по всем статусам кроме занятых
             cars = db.query(Car).filter(
                 or_(
                     Car.name.ilike(f"%{query}%"),
                     Car.plate_number.ilike(f"%{query}%")
-                )
+                ),
+                Car.status != CarStatus.OCCUPIED
             ).all()
         else:
             # Обычные пользователи ищут только среди свободных машин
@@ -217,7 +218,7 @@ def search_vehicles(
                     Car.name.ilike(f"%{query}%"),
                     Car.plate_number.ilike(f"%{query}%")
                 ),
-                Car.status == "FREE"
+                Car.status == CarStatus.FREE
             ).all()
 
         vehicles_data = [{
@@ -278,7 +279,7 @@ def get_frequently_used_vehicles(
             db.query(Car)
             .filter(
                 Car.id.in_(car_ids),
-                Car.status == "FREE"
+                Car.status == CarStatus.FREE
             )
             .all()
         )
