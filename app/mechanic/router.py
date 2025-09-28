@@ -393,26 +393,21 @@ async def check_car(
     car = db.query(Car).filter(Car.id == car_id, Car.status == "PENDING").first()
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден или недоступен для проверки")
-    # Создаём запись проверки (аренды) – всё бесплатно
-    rental = RentalHistory(
-        user_id=current_mechanic.id,
-        car_id=car.id,
-        rental_type=RentalType.MINUTES,  # тип аренды может быть любым, платежей нет
-        duration=None,
-        rental_status=RentalStatus.RESERVED,
-        start_latitude=car.latitude,
-        start_longitude=car.longitude,
-        total_price=0,
-        reservation_time=datetime.utcnow()
-    )
-    db.add(rental)
-    db.commit()
-    db.refresh(rental)
+    
+    # Находим существующую запись аренды клиента для этого автомобиля
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.car_id == car.id,
+        RentalHistory.rental_status == RentalStatus.COMPLETED
+    ).order_by(RentalHistory.end_time.desc()).first()
+    
+    if not rental:
+        raise HTTPException(status_code=404, detail="Не найдена завершенная аренда для этого автомобиля")
+    
     # Обновляем автомобиль: закрепляем проверяющего механика и меняем статус на SERVICE
     car.current_renter_id = current_mechanic.id
     car.status = "SERVICE"
     
-    # Устанавливаем время начала осмотра механиком
+    # Устанавливаем время начала осмотра механиком в существующую запись
     rental.mechanic_inspector_id = current_mechanic.id
     rental.mechanic_inspection_start_time = datetime.utcnow()
     rental.mechanic_inspection_status = "PENDING"
@@ -421,7 +416,7 @@ async def check_car(
     return {
         "message": "Проверка автомобиля начата успешно",
         "rental_id": rental.id,
-        "reservation_time": isoformat_or_none(rental.reservation_time)
+        "inspection_start_time": rental.mechanic_inspection_start_time.isoformat()
     }
 
 
@@ -431,12 +426,12 @@ async def start_rental(
         current_mechanic: Any = Depends(get_current_mechanic)
 ) -> Dict[str, Any]:
     """
-    Старт проверки автомобиля (смена статуса аренды с RESERVED на IN USE).
+    Старт проверки автомобиля (обновление статуса осмотра с PENDING на IN_USE).
     Всё бесплатно – списания не производится.
     """
     rental = db.query(RentalHistory).filter(
-        RentalHistory.user_id == current_mechanic.id,
-        RentalHistory.rental_status == RentalStatus.RESERVED
+        RentalHistory.mechanic_inspector_id == current_mechanic.id,
+        RentalHistory.mechanic_inspection_status == "PENDING"
     ).first()
     if not rental:
         raise HTTPException(status_code=404, detail="Нет активной проверки для старта")
@@ -444,12 +439,9 @@ async def start_rental(
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
-    rental.fuel_before = car.fuel_level
-    rental.mileage_before = car.mileage
-
-    rental.start_time = datetime.utcnow()
-    rental.rental_status = RentalStatus.IN_USE
-    # Для механика переводим автомобиль в состояние IN USE (или оставляем SERVICE, если требуется)
+    # Обновляем статус осмотра на IN_USE
+    rental.mechanic_inspection_status = "IN_USE"
+    # Для механика переводим автомобиль в состояние IN_USE
     car.status = "IN_USE"
     db.commit()
     return {"message": "Проверка автомобиля запущена", "rental_id": rental.id}
@@ -468,11 +460,11 @@ async def cancel_reservation(
     try:
         # Блокируем запись аренды для обновления, чтобы избежать гонок при конкурентных запросах.
         rental = db.query(RentalHistory).filter(
-            RentalHistory.user_id == current_mechanic.id,
-            RentalHistory.rental_status == RentalStatus.RESERVED
+            RentalHistory.mechanic_inspector_id == current_mechanic.id,
+            RentalHistory.mechanic_inspection_status == "PENDING"
         ).with_for_update().first()
         if not rental:
-            raise HTTPException(status_code=400, detail="Нет активной брони для отмены")
+            raise HTTPException(status_code=400, detail="Нет активной проверки для отмены")
 
         # Получаем автомобиль и блокируем его запись
         car = db.query(Car).filter(Car.id == rental.car_id).with_for_update().first()
@@ -480,22 +472,17 @@ async def cancel_reservation(
             raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
         now = datetime.utcnow()
-        # Если время старта ещё не установлено, устанавливаем его, но не коммитим отдельно
-        if not rental.start_time:
-            rental.start_time = rental.reservation_time or now
 
-        # Обновляем статус аренды и автомобиля, а также вычисляем итоговую стоимость
-        rental.rental_status = RentalStatus.COMPLETED
-        rental.end_time = now
-        rental.total_price = 0
-        rental.already_payed = 0
+        # Обновляем статус осмотра и автомобиля
+        rental.mechanic_inspection_status = "CANCELLED"
+        rental.mechanic_inspection_end_time = now
         car.current_renter_id = None
         car.status = "PENDING"  # Возвращаем статус автомобиля в PENDING
 
         # Пытаемся зафиксировать все изменения одним commit
         db.commit()
 
-        minutes_used = int((now - rental.start_time).total_seconds() / 60)
+        minutes_used = int((now - rental.mechanic_inspection_start_time).total_seconds() / 60) if rental.mechanic_inspection_start_time else 0
         return {
             "message": "Проверка автомобиля отменена",
             "minutes_used": minutes_used
@@ -523,8 +510,8 @@ async def upload_photos_before(
     - interior_photos: 1–10 фото салона.
     """
     rental = db.query(RentalHistory).filter(
-        RentalHistory.user_id == current_mechanic.id,
-        RentalHistory.rental_status == RentalStatus.IN_USE
+        RentalHistory.mechanic_inspector_id == current_mechanic.id,
+        RentalHistory.mechanic_inspection_status == "IN_USE"
     ).first()
     if not rental:
         raise HTTPException(status_code=404, detail="Нет активной проверки (IN_USE)")
@@ -556,8 +543,8 @@ async def upload_photos_after(
     - interior_photos: 1–10 фото салона.
     """
     rental = db.query(RentalHistory).filter(
-        RentalHistory.user_id == current_mechanic.id,
-        RentalHistory.rental_status == RentalStatus.IN_USE
+        RentalHistory.mechanic_inspector_id == current_mechanic.id,
+        RentalHistory.mechanic_inspection_status == "IN_USE"
     ).first()
     if not rental:
         raise HTTPException(status_code=404, detail="Нет активной проверки (IN_USE)")
@@ -592,8 +579,8 @@ async def complete_rental(
     Снимается текущая проверка, статус аренды меняется на COMPLETED, а статус автомобиля – на FREE.
     """
     rental = db.query(RentalHistory).filter(
-        RentalHistory.user_id == current_mechanic.id,
-        RentalHistory.rental_status == RentalStatus.IN_USE
+        RentalHistory.mechanic_inspector_id == current_mechanic.id,
+        RentalHistory.mechanic_inspection_status == "IN_USE"
     ).first()
     if not rental:
         raise HTTPException(status_code=404, detail="Нет активной проверки для завершения")
@@ -601,13 +588,7 @@ async def complete_rental(
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
-    rental.fuel_after = car.fuel_level
-    rental.mileage_after = car.mileage
-
     now = datetime.utcnow()
-    rental.end_time = now
-    rental.end_latitude = car.latitude
-    rental.end_longitude = car.longitude
     
     # Устанавливаем время окончания осмотра механиком
     rental.mechanic_inspection_end_time = now
@@ -615,10 +596,7 @@ async def complete_rental(
     if review_input and review_input.comment:
         rental.mechanic_inspection_comment = review_input.comment
     
-    # Для механика всё бесплатно
-    rental.total_price = 0
-    rental.already_payed = 0
-    rental.rental_status = RentalStatus.COMPLETED
+    # Освобождаем автомобиль
     car.current_renter_id = None
     # При успешном завершении проверки автомобиль снова становится доступным (FREE)
     car.status = "FREE"
