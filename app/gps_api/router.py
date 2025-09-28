@@ -119,10 +119,16 @@ def get_vehicle_info(
         if current_user.role == UserRole.REJECTFIRST:
             return {"vehicles": []}
         
-        # Базовый фильтр: только свободные машины
-        query = db.query(Car).filter(Car.status == "FREE")
+        # Базовый фильтр: только свободные машины для обычных пользователей
+        if current_user.role == UserRole.MECHANIC:
+            # Механики видят все автомобили
+            query = db.query(Car)
+        else:
+            # Обычные пользователи видят только свободные машины
+            query = db.query(Car).filter(Car.status == "FREE")
 
         # Фильтрация по классам авто для роли USER при верифицированных документах
+        # Механики видят все автомобили без ограничений по классам
         if current_user.role == UserRole.USER and bool(current_user.documents_verified):
             allowed_classes: list[str] = []
 
@@ -151,7 +157,7 @@ def get_vehicle_info(
             else:
                 cars = query.filter(Car.auto_class.in_(allowed_enum)).all()
         else:
-            # Для CLIENT и прочих ролей — без ограничений по классу (только FREE)
+            # Для CLIENT, MECHANIC и прочих ролей — без ограничений по классу
             cars = query.all()
 
         vehicles_data = [{
@@ -195,14 +201,24 @@ def search_vehicles(
         if current_user.role == UserRole.REJECTFIRST:
             return {"vehicles": []}
         
-        # Ищем по имени или номеру и проверяем, что машина свободна по статусу
-        cars = db.query(Car).filter(
-            or_(
-                Car.name.ilike(f"%{query}%"),
-                Car.plate_number.ilike(f"%{query}%")
-            ),
-            Car.status == "FREE"
-        ).all()
+        # Ищем по имени или номеру
+        if current_user.role == UserRole.MECHANIC:
+            # Механики могут искать по всем статусам
+            cars = db.query(Car).filter(
+                or_(
+                    Car.name.ilike(f"%{query}%"),
+                    Car.plate_number.ilike(f"%{query}%")
+                )
+            ).all()
+        else:
+            # Обычные пользователи ищут только среди свободных машин
+            cars = db.query(Car).filter(
+                or_(
+                    Car.name.ilike(f"%{query}%"),
+                    Car.plate_number.ilike(f"%{query}%")
+                ),
+                Car.status == "FREE"
+            ).all()
 
         vehicles_data = [{
             "id": car.id,
