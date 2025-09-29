@@ -16,6 +16,8 @@ from app.models.application_model import Application, ApplicationStatus
 from app.models.car_model import Car, CarStatus
 from app.push.utils import send_notification_to_all_mechanics_async, send_push_to_user_by_id, send_localized_notification_to_user, send_localized_notification_to_all_mechanics
 from app.rent.exceptions import InsufficientBalanceException
+from app.wallet.utils import record_wallet_transaction
+from app.models.wallet_transaction_model import WalletTransactionType
 from app.rent.utils.calculate_price import calculate_total_price, get_open_price
 from app.gps_api.utils.route_data import get_gps_route_data
 from app.owner.schemas import RouteData, RouteMapData
@@ -276,6 +278,12 @@ def add_money(amount: int,
         bonus = int(amount * (float(up.promo.discount_percent) / 100))
         promo_applied = True
 
+        # фиксируем баланс до депозита, чтобы корректно отразить 2 транзакции подряд
+        before = float(current_user.wallet_balance or 0)
+        # депозит
+        record_wallet_transaction(db, user=current_user, amount=amount, ttype=WalletTransactionType.DEPOSIT, description="Пополнение кошелька", balance_before_override=before)
+        # бонус
+        record_wallet_transaction(db, user=current_user, amount=bonus, ttype=WalletTransactionType.PROMO_BONUS, description=f"Бонус по промокоду {up.promo.code if up and up.promo else ''}", balance_before_override=before + amount)
         # начисляем основную сумму + бонус
         current_user.wallet_balance += amount + bonus
 
@@ -285,6 +293,7 @@ def add_money(amount: int,
 
     else:
         # обычное пополнение
+        record_wallet_transaction(db, user=current_user, amount=amount, ttype=WalletTransactionType.DEPOSIT, description="Пополнение кошелька")
         current_user.wallet_balance += amount
 
     db.commit()
@@ -559,6 +568,8 @@ async def reserve_delivery(
         # ### Проверяем и списываем у владельца 5к
         if current_user.wallet_balance < delivery_fee:
             raise InsufficientBalanceException(required_amount=delivery_fee)
+        # запись транзакции доставки (у владельца 5000)
+        record_wallet_transaction(db, user=current_user, amount=-delivery_fee, ttype=WalletTransactionType.DELIVERY_FEE, description="Оплата доставки")
         current_user.wallet_balance -= delivery_fee
 
         db.commit()
@@ -598,6 +609,7 @@ async def reserve_delivery(
             total_price = base_price + two_hours_fee + delivery_fee
 
         # Если не владелец, сразу списываем доставку
+        record_wallet_transaction(db, user=current_user, amount=-delivery_fee, ttype=WalletTransactionType.DELIVERY_FEE, description="Оплата доставки")
         current_user.wallet_balance -= delivery_fee
         db.commit()
 
@@ -705,6 +717,8 @@ async def cancel_reservation(
                     detail=f"Недостаточно средств для отмены аренды с комиссией: {fee} тг"
                 )
 
+            # комиссия за ожидание при отмене
+            record_wallet_transaction(db, user=current_user, amount=-fee, ttype=WalletTransactionType.RENT_WAITING_FEE, description="Комиссия за ожидание при отмене")
             current_user.wallet_balance -= fee
 
         # Завершаем аренду
@@ -850,6 +864,8 @@ async def start_rental(
                     status_code=402,
                     detail=f"Нужно минимум {total_cost} ₸ для старта. Пополните кошелёк!"
                 )
+            # списание предоплаты (база + открытие/доставка, если включено)
+            record_wallet_transaction(db, user=current_user, amount=-total_cost, ttype=WalletTransactionType.RENT_BASE_CHARGE, description="Предоплата за аренду")
             current_user.wallet_balance -= total_cost
             rental.already_payed = total_cost
 
@@ -1214,6 +1230,9 @@ async def complete_rental(
     amount_to_charge = rental.total_price - previous_paid
 
     # Баланс может уходить в минус — это допустимо
+    # финальное списание за аренду
+    if amount_to_charge != 0:
+        record_wallet_transaction(db, user=current_user, amount=-amount_to_charge, ttype=WalletTransactionType.RENT_BASE_CHARGE, description="Завершение аренды: финальное списание")
     current_user.wallet_balance -= amount_to_charge
     rental.already_payed = rental.total_price
 
@@ -1258,11 +1277,6 @@ async def complete_rental(
             "comment": review.comment
         } if review_input else None
     }
-
-
-# ============================================================================
-# НОВЫЕ ENDPOINTS ДЛЯ БРОНИРОВАНИЯ ЗАРАНЕЕ
-# ============================================================================
 
 @RentRouter.post("/advance-booking", response_model=BookingResponse)
 async def create_advance_booking(
@@ -1480,6 +1494,7 @@ async def cancel_booking(
     if rental.already_payed and rental.already_payed > 0:
         # Возвращаем предоплату
         refund_amount = rental.already_payed
+        record_wallet_transaction(db, user=current_user, amount=refund_amount, ttype=WalletTransactionType.REFUND, description="Возврат предоплаты при отмене бронирования")
         current_user.wallet_balance += refund_amount
         rental.already_payed = 0
 

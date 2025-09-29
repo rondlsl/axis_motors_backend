@@ -17,6 +17,8 @@ from app.models.car_model import Car, CarStatus
 from app.models.rental_actions_model import ActionType, RentalAction
 from app.models.user_model import User
 from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
+from app.wallet.utils import record_wallet_transaction
+from app.models.wallet_transaction_model import WalletTransactionType
 
 class DeliveryReviewInput(BaseModel):
     """Схема для отзыва механика доставки"""
@@ -219,6 +221,7 @@ async def complete_delivery(
             # Списываем штраф с механика
             mechanic = db.query(User).filter(User.id == rental.delivery_mechanic_id).first()
             if mechanic:
+                record_wallet_transaction(db, user=mechanic, amount=-penalty_fee, ttype=WalletTransactionType.DELIVERY_PENALTY, description=f"Штраф за задержку доставки {penalty_minutes:.1f} мин", related_rental=rental)
                 mechanic.wallet_balance -= penalty_fee
                 print(f"Штраф за задержку доставки: {penalty_fee}₸ с механика {mechanic.phone_number}")
 

@@ -10,6 +10,8 @@ from app.dependencies.database.database import SessionLocal
 from app.models.car_model import Car
 from app.models.history_model import RentalHistory, RentalStatus, RentalType
 from app.models.user_model import User, UserRole
+from app.wallet.utils import record_wallet_transaction
+from app.models.wallet_transaction_model import WalletTransactionType
 from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
 from app.core.config import TELEGRAM_BOT_TOKEN
 
@@ -157,6 +159,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                                 (rental.distance_fee or 0)
                         )
                         rental.already_payed = (rental.already_payed or 0) + charge
+                        record_wallet_transaction(db, user=user, amount=-charge, ttype=WalletTransactionType.RENT_WAITING_FEE, description=f"Платное ожидание {extra} мин", related_rental=rental)
                         user.wallet_balance -= charge
                         db.commit()
 
@@ -241,6 +244,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                                 (rental.overtime_fee or 0) +
                                 (rental.distance_fee or 0)
                         )
+                        record_wallet_transaction(db, user=user, amount=-charge, ttype=WalletTransactionType.RENT_WAITING_FEE, description=f"Платное ожидание {extra} мин", related_rental=rental)
                         user.wallet_balance -= charge
                         db.commit()
 
@@ -301,6 +305,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                                 (rental.distance_fee or 0)
                         )
                         rental.already_payed = (rental.already_payed or 0) + charge
+                        record_wallet_transaction(db, user=user, amount=-charge, ttype=WalletTransactionType.RENT_MINUTE_CHARGE, description="Поминутное списание", related_rental=rental)
                         user.wallet_balance -= charge
                         db.commit()
 
@@ -348,6 +353,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                                     (rental.distance_fee or 0)
                             )
                             rental.already_payed = (rental.already_payed or 0) + charge
+                            record_wallet_transaction(db, user=user, amount=-charge, ttype=WalletTransactionType.RENT_OVERTIME_FEE, description=f"Сверхтариф {extra} мин", related_rental=rental)
                             user.wallet_balance -= charge
                             db.commit()
 
@@ -397,6 +403,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                     mechanic = db.query(User).filter(User.id == rental.delivery_mechanic_id).first()
                     if mechanic:
                         # Списываем штраф с механика
+                        record_wallet_transaction(db, user=mechanic, amount=-penalty_fee, ttype=WalletTransactionType.DELIVERY_PENALTY, description=f"Штраф за задержку доставки {penalty_minutes:.1f} мин", related_rental=rental)
                         mechanic.wallet_balance -= penalty_fee
                         rental.delivery_penalty_fee = penalty_fee
                         
