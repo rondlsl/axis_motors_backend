@@ -210,6 +210,40 @@ def get_my_transactions_statement(
     return WalletStatementOut(months=ordered)
 
 
+@WalletRouter.get("/transactions/export")
+def export_my_transactions_legacy_path(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    date_from: Optional[datetime] = Query(None),
+    date_to: Optional[datetime] = Query(None),
+    year: Optional[int] = Query(None),
+    month: Optional[int] = Query(None),
+    day: Optional[int] = Query(None),
+):
+    q = db.query(WalletTransaction).filter(WalletTransaction.user_id == current_user.id)
+    q = _apply_date_filters(q, date_from=date_from, date_to=date_to, year=year, month=month, day=day)
+    items = q.order_by(WalletTransaction.created_at.desc()).all()
+
+    def _iter_csv():
+        yield "id,created_at,type,amount,balance_before,balance_after,related_rental_id,description\n"
+        for t in items:
+            row = [
+                str(t.id),
+                t.created_at.isoformat(),
+                t.transaction_type.value,
+                str(float(t.amount)),
+                str(float(t.balance_before)),
+                str(float(t.balance_after)),
+                str(t.related_rental_id or ""),
+                (t.description or "").replace(",", " ")
+            ]
+            yield ",".join(row) + "\n"
+
+    filename = f"wallet_transactions_user_{current_user.id}.csv"
+    headers = {"Content-Disposition": f"attachment; filename={filename}"}
+    return StreamingResponse(_iter_csv(), media_type="text/csv", headers=headers)
+
+
 @WalletRouter.get("/transactions/{transaction_id}", response_model=WalletTransactionOut)
 def get_transaction_detail(
     transaction_id: int,
@@ -348,7 +382,7 @@ def get_users_balances(
     }
 
 
-@WalletRouter.get("/transactions/export")
+@WalletRouter.get("/transactions/export.csv")
 def export_my_transactions_csv(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
