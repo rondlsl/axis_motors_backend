@@ -427,21 +427,23 @@ async def check_car(
     }
 
 
-@MechanicRouter.post("/start")
+@MechanicRouter.post("/start/{car_id}")
 async def start_rental(
+        car_id: int,
         db: Session = Depends(get_db),
         current_mechanic: Any = Depends(get_current_mechanic)
 ) -> Dict[str, Any]:
     """
-    Старт проверки автомобиля (обновление статуса осмотра с PENDING на IN_USE).
+    Старт проверки автомобиля по ID авто (обновление статуса осмотра с PENDING на IN_USE).
     Всё бесплатно – списания не производится.
     """
     rental = db.query(RentalHistory).filter(
         RentalHistory.mechanic_inspector_id == current_mechanic.id,
-        RentalHistory.mechanic_inspection_status == "PENDING"
+        RentalHistory.mechanic_inspection_status == "PENDING",
+        RentalHistory.car_id == car_id,
     ).first()
     if not rental:
-        raise HTTPException(status_code=404, detail="Нет активной проверки для старта")
+        raise HTTPException(status_code=404, detail="Нет активной проверки для старта по данному автомобилю")
     car = db.query(Car).filter(Car.id == rental.car_id).first()
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
