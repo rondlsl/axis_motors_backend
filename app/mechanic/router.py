@@ -8,6 +8,7 @@ from typing import List, Dict, Any, Optional
 from app.auth.dependencies.get_current_user import get_current_mechanic
 from app.dependencies.database.database import get_db
 from app.mechanic.utils import isoformat_or_none, _handle_photos, add_review_if_exists
+from app.auth.dependencies.save_documents import validate_photos, save_file
 from app.models.history_model import RentalType, RentalStatus, RentalHistory, RentalReview
 from app.models.car_model import Car, CarStatus
 from app.models.user_model import User
@@ -522,6 +523,10 @@ async def upload_photos_before(
     if not rental:
         raise HTTPException(status_code=404, detail="Нет активной проверки")
 
+    # Валидация типов
+    validate_photos([selfie], 'selfie')
+    validate_photos(car_photos, 'car_photos')
+
     try:
         urls: List[str] = list(rental.mechanic_photos_before or [])
         # selfie
@@ -561,6 +566,9 @@ async def upload_photos_before_interior(
     if not has_exterior:
         raise HTTPException(status_code=400, detail="Сначала загрузите внешние фото")
 
+    # Валидация типов
+    validate_photos(interior_photos, 'interior_photos')
+
     try:
         urls: List[str] = list(existing)
         for p in interior_photos:
@@ -592,6 +600,10 @@ async def upload_photos_after(
     ).first()
     if not rental:
         raise HTTPException(status_code=404, detail="Нет активной проверки")
+
+    # Валидация типов
+    validate_photos([selfie], 'selfie')
+    validate_photos(interior_photos, 'interior_photos')
 
     try:
         urls: List[str] = list(rental.mechanic_photos_after or [])
@@ -641,6 +653,9 @@ async def upload_photos_after_car(
                 raise HTTPException(status_code=400, detail="Перед внешними фото закройте двери")
     except Exception:
         pass
+
+    # Валидация типов
+    validate_photos(car_photos, 'car_photos')
 
     try:
         urls: List[str] = list(existing_after)

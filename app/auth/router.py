@@ -39,7 +39,7 @@ class UpdateNameRequest(BaseModel):
     last_name: Optional[str] = None
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "first_name": "Иван",
                 "last_name": "Иванов"
@@ -53,7 +53,7 @@ class UpdateNameResponse(BaseModel):
     last_name: Optional[str]
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "message": "Profile updated",
                 "first_name": "Иван",
