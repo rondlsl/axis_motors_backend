@@ -881,15 +881,15 @@ async def start_rental(
 async def upload_photos_before(
         selfie: UploadFile = File(...),
         car_photos: list[UploadFile] = File(...),
-        interior_photos: list[UploadFile] = File(...),
         db: Session = Depends(get_db),
         current_user=Depends(get_current_user)
 ):
     """
-    Загружает фотографии до начала аренды:
-    - selfie: фото пользователя с машиной;
-    - car_photos: внешние фото машины (1-10);
-    - interior_photos: фото салона машины (1-10).
+    До начала аренды (часть 1):
+    - selfie: фото пользователя с машиной
+    - car_photos: внешние фото машины (1-10)
+
+    Interior загружается отдельным запросом /upload-photos-before-interior
     """
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,
@@ -900,40 +900,67 @@ async def upload_photos_before(
 
     validate_photos([selfie], 'selfie')
     validate_photos(car_photos, 'car_photos')
-    validate_photos(interior_photos, 'interior_photos')
 
     try:
-        urls = []
+        urls = list(rental.photos_before or [])
         # save selfie
         urls.append(await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/before/selfie/"))
         # save exterior
         for p in car_photos:
             urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/car/"))
-        # save interior
-        for p in interior_photos:
-            urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/interior/"))
 
         rental.photos_before = urls
         db.commit()
-        return {"message": "Photos before rental uploaded", "photo_count": len(urls)}
+        return {"message": "Photos before (selfie+car) uploaded", "photo_count": len(urls)}
     except Exception:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Error uploading photos before")
+        raise HTTPException(status_code=500, detail="Error uploading before photos (selfie+car)")
 
 
-@RentRouter.post("/upload-photos-after")
-async def upload_photos_after(
-        selfie: UploadFile = File(...),
-        car_photos: list[UploadFile] = File(...),
+@RentRouter.post("/upload-photos-before-interior")
+async def upload_photos_before_interior(
         interior_photos: list[UploadFile] = File(...),
         db: Session = Depends(get_db),
         current_user=Depends(get_current_user)
 ):
     """
-    Фотографии после завершения аренды:
-    - selfie: фото пользователя;
-    - car_photos: внешние фото (1-10);
-    - interior_photos: фото салона (1-10).
+    До начала аренды (часть 2):
+    - interior_photos: фото салона (1-10)
+    """
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.user_id == current_user.id,
+        RentalHistory.rental_status == RentalStatus.IN_USE
+    ).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="No active rental in IN_USE status found")
+
+    validate_photos(interior_photos, 'interior_photos')
+
+    try:
+        urls = list(rental.photos_before or [])
+        for p in interior_photos:
+            urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/interior/"))
+        rental.photos_before = urls
+        db.commit()
+        return {"message": "Photos before (interior) uploaded", "photo_count": len(interior_photos)}
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Error uploading before interior photos")
+
+
+@RentRouter.post("/upload-photos-after")
+async def upload_photos_after(
+        selfie: UploadFile = File(...),
+        interior_photos: list[UploadFile] = File(...),
+        db: Session = Depends(get_db),
+        current_user=Depends(get_current_user)
+):
+    """
+    После завершения аренды (часть 1):
+    - selfie: фото пользователя
+    - interior_photos: фото салона (1-10)
+
+    Внешние фото отправляются отдельным запросом /upload-photos-after-car
     """
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,
@@ -943,34 +970,61 @@ async def upload_photos_after(
         raise HTTPException(status_code=404, detail="No active rental in IN_USE status found")
 
     validate_photos([selfie], 'selfie')
-    validate_photos(car_photos, 'car_photos')
     validate_photos(interior_photos, 'interior_photos')
 
     try:
-        urls = []
+        urls = list(rental.photos_after or [])
         urls.append(await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/after/selfie/"))
-        for p in car_photos:
-            urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/car/"))
         for p in interior_photos:
             urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/interior/"))
 
         rental.photos_after = urls
         db.commit()
-        return {"message": "Photos after rental uploaded", "photo_count": len(urls)}
+        return {"message": "Photos after (selfie+interior) uploaded", "photo_count": len(interior_photos) + 1}
     except Exception:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Error uploading photos after")
+        raise HTTPException(status_code=500, detail="Error uploading after photos (selfie+interior)")
+
+
+@RentRouter.post("/upload-photos-after-car")
+async def upload_photos_after_car(
+        car_photos: list[UploadFile] = File(...),
+        db: Session = Depends(get_db),
+        current_user=Depends(get_current_user)
+):
+    """
+    После завершения аренды (часть 2):
+    - car_photos: внешние фото (1-10)
+    """
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.user_id == current_user.id,
+        RentalHistory.rental_status == RentalStatus.IN_USE
+    ).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="No active rental in IN_USE status found")
+
+    validate_photos(car_photos, 'car_photos')
+
+    try:
+        urls = list(rental.photos_after or [])
+        for p in car_photos:
+            urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/car/"))
+        rental.photos_after = urls
+        db.commit()
+        return {"message": "Photos after (car) uploaded", "photo_count": len(car_photos)}
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Error uploading after car photos")
 
 
 # Owner endpoints (без селфи)
 @RentRouter.post("/upload-photos-before-owner")
 async def upload_photos_before_owner(
         car_photos: list[UploadFile] = File(...),
-        interior_photos: list[UploadFile] = File(...),
         db: Session = Depends(get_db),
         current_user=Depends(get_current_user)
 ):
-    """Фотографии до аренды для владельца (1-10 внешних, 1-10 салона)."""
+    """До аренды для владельца (часть 1): только внешние фото (1-10)."""
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,
         RentalHistory.rental_status == RentalStatus.IN_USE
@@ -981,31 +1035,88 @@ async def upload_photos_before_owner(
     if car.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your car")
     validate_photos(car_photos, 'car_photos')
-    validate_photos(interior_photos, 'interior_photos')
 
     try:
-        urls = []
+        urls = list(rental.photos_before or [])
         for p in car_photos:
             urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/car/"))
-        for p in interior_photos:
-            urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/interior/"))
 
         rental.photos_before = urls
         db.commit()
-        return {"message": "Owner photos before uploaded", "photo_count": len(urls)}
+        return {"message": "Owner photos before (car) uploaded", "photo_count": len(car_photos)}
     except Exception:
         db.rollback()
         raise HTTPException(status_code=500, detail="Error uploading owner photos before")
 
 
-@RentRouter.post("/upload-photos-after-owner")
-async def upload_photos_after_owner(
-        car_photos: list[UploadFile] = File(...),
+@RentRouter.post("/upload-photos-before-owner-interior")
+async def upload_photos_before_owner_interior(
         interior_photos: list[UploadFile] = File(...),
         db: Session = Depends(get_db),
         current_user=Depends(get_current_user)
 ):
-    """Фотографии после аренды для владельца (1-10 внешних, 1-10 салона)."""
+    """До аренды для владельца (часть 2): только салон (1-10)."""
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.user_id == current_user.id,
+        RentalHistory.rental_status == RentalStatus.IN_USE
+    ).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="No active rental in IN_USE status found")
+    car = db.query(Car).get(rental.car_id)
+    if car.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your car")
+    validate_photos(interior_photos, 'interior_photos')
+
+    try:
+        urls = list(rental.photos_before or [])
+        for p in interior_photos:
+            urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/interior/"))
+
+        rental.photos_before = urls
+        db.commit()
+        return {"message": "Owner photos before (interior) uploaded", "photo_count": len(interior_photos)}
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Error uploading owner photos before (interior)")
+
+
+@RentRouter.post("/upload-photos-after-owner")
+async def upload_photos_after_owner(
+        interior_photos: list[UploadFile] = File(...),
+        db: Session = Depends(get_db),
+        current_user=Depends(get_current_user)
+):
+    """После аренды для владельца (часть 1): только салон (1-10)."""
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.user_id == current_user.id,
+        RentalHistory.rental_status == RentalStatus.IN_USE
+    ).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="No active rental in IN_USE status found")
+    car = db.query(Car).get(rental.car_id)
+    if car.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your car")
+    validate_photos(interior_photos, 'interior_photos')
+
+    try:
+        urls = list(rental.photos_after or [])
+        for p in interior_photos:
+            urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/interior/"))
+        rental.photos_after = urls
+        db.commit()
+        return {"message": "Owner photos after (interior) uploaded", "photo_count": len(interior_photos)}
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Error uploading owner photos after (interior)")
+
+
+@RentRouter.post("/upload-photos-after-owner-car")
+async def upload_photos_after_owner_car(
+        car_photos: list[UploadFile] = File(...),
+        db: Session = Depends(get_db),
+        current_user=Depends(get_current_user)
+):
+    """После аренды для владельца (часть 2): только внешние фото (1-10)."""
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,
         RentalHistory.rental_status == RentalStatus.IN_USE
@@ -1016,21 +1127,17 @@ async def upload_photos_after_owner(
     if car.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your car")
     validate_photos(car_photos, 'car_photos')
-    validate_photos(interior_photos, 'interior_photos')
 
     try:
-        urls = []
+        urls = list(rental.photos_after or [])
         for p in car_photos:
             urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/car/"))
-        for p in interior_photos:
-            urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/interior/"))
-
         rental.photos_after = urls
         db.commit()
-        return {"message": "Owner photos after uploaded", "photo_count": len(urls)}
+        return {"message": "Owner photos after (car) uploaded", "photo_count": len(car_photos)}
     except Exception:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Error uploading owner photos after")
+        raise HTTPException(status_code=500, detail="Error uploading owner photos after (car)")
 
 
 class RentalReviewInput(BaseModel):

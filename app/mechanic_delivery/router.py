@@ -444,12 +444,11 @@ async def take_key_delivery(
 async def upload_delivery_photos_before(
         selfie: UploadFile = File(...),
         car_photos: List[UploadFile] = File(...),
-        interior_photos: List[UploadFile] = File(...),
         db: Session = Depends(get_db),
         current_mechanic: User = Depends(get_current_mechanic)
 ) -> Dict[str, Any]:
     """
-    Загрузка фото перед доставкой — доступно только в статусе DELIVERING_IN_PROGRESS.
+    Перед доставкой (часть 1): selfie + внешние фото.
     """
     rental = db.query(RentalHistory).filter(
         RentalHistory.delivery_mechanic_id == current_mechanic.id,
@@ -460,18 +459,15 @@ async def upload_delivery_photos_before(
 
     validate_photos([selfie], "selfie")
     validate_photos(car_photos, "car_photos")
-    validate_photos(interior_photos, "interior_photos")
 
     try:
-        urls: List[str] = []
+        urls: List[str] = list(rental.delivery_photos_before or [])
         urls.append(await save_file(selfie, rental.id, f"uploads/delivery/{rental.id}/before/selfie/"))
         for p in car_photos:
             urls.append(await save_file(p, rental.id, f"uploads/delivery/{rental.id}/before/car/"))
-        for p in interior_photos:
-            urls.append(await save_file(p, rental.id, f"uploads/delivery/{rental.id}/before/interior/"))
         rental.delivery_photos_before = urls
         db.commit()
-        return {"message": "Фотографии перед доставкой загружены", "photo_count": len(urls)}
+        return {"message": "Фотографии перед доставкой (selfie+car) загружены", "photo_count": len(urls)}
     except HTTPException:
         raise
     except Exception as e:
@@ -479,16 +475,47 @@ async def upload_delivery_photos_before(
         raise HTTPException(500, f"Ошибка при загрузке фото перед доставкой: {e}")
 
 
-@MechanicDeliveryRouter.post("/upload-delivery-photos-after")
-async def upload_delivery_photos_after(
-        selfie: UploadFile = File(...),
-        car_photos: List[UploadFile] = File(...),
+@MechanicDeliveryRouter.post("/upload-delivery-photos-before-interior")
+async def upload_delivery_photos_before_interior(
         interior_photos: List[UploadFile] = File(...),
         db: Session = Depends(get_db),
         current_mechanic: User = Depends(get_current_mechanic)
 ) -> Dict[str, Any]:
     """
-    Загрузка фото после доставки — доступно только в статусе DELIVERING_IN_PROGRESS.
+    Перед доставкой (часть 2): только салон.
+    """
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.delivery_mechanic_id == current_mechanic.id,
+        RentalHistory.rental_status == RentalStatus.DELIVERING_IN_PROGRESS
+    ).first()
+    if not rental:
+        raise HTTPException(404, "Нет активной доставки для загрузки фотографий")
+
+    validate_photos(interior_photos, "interior_photos")
+
+    try:
+        urls: List[str] = list(rental.delivery_photos_before or [])
+        for p in interior_photos:
+            urls.append(await save_file(p, rental.id, f"uploads/delivery/{rental.id}/before/interior/"))
+        rental.delivery_photos_before = urls
+        db.commit()
+        return {"message": "Фотографии салона перед доставкой загружены", "photo_count": len(interior_photos)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(500, f"Ошибка при загрузке фото салона перед доставкой: {e}")
+
+
+@MechanicDeliveryRouter.post("/upload-delivery-photos-after")
+async def upload_delivery_photos_after(
+        selfie: UploadFile = File(...),
+        interior_photos: List[UploadFile] = File(...),
+        db: Session = Depends(get_db),
+        current_mechanic: User = Depends(get_current_mechanic)
+) -> Dict[str, Any]:
+    """
+    После доставки (часть 1): selfie + салон.
     """
     rental = db.query(RentalHistory).filter(
         RentalHistory.delivery_mechanic_id == current_mechanic.id,
@@ -498,21 +525,49 @@ async def upload_delivery_photos_after(
         raise HTTPException(404, "Нет активной доставки для загрузки фотографий")
 
     validate_photos([selfie], "selfie")
-    validate_photos(car_photos, "car_photos")
     validate_photos(interior_photos, "interior_photos")
 
     try:
-        urls: List[str] = []
+        urls: List[str] = list(rental.delivery_photos_after or [])
         urls.append(await save_file(selfie, rental.id, f"uploads/delivery/{rental.id}/after/selfie/"))
-        for p in car_photos:
-            urls.append(await save_file(p, rental.id, f"uploads/delivery/{rental.id}/after/car/"))
         for p in interior_photos:
             urls.append(await save_file(p, rental.id, f"uploads/delivery/{rental.id}/after/interior/"))
         rental.delivery_photos_after = urls
         db.commit()
-        return {"message": "Фотографии после доставки загружены", "photo_count": len(urls)}
+        return {"message": "Фотографии после доставки (selfie+interior) загружены", "photo_count": len(urls)}
     except HTTPException:
         raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(500, f"Ошибка при загрузке фото после доставки: {e}")
+        raise HTTPException(500, f"Ошибка при загрузке фото после доставки (selfie+interior): {e}")
+
+@MechanicDeliveryRouter.post("/upload-delivery-photos-after-car")
+async def upload_delivery_photos_after_car(
+        car_photos: List[UploadFile] = File(...),
+        db: Session = Depends(get_db),
+        current_mechanic: User = Depends(get_current_mechanic)
+) -> Dict[str, Any]:
+    """
+    После доставки (часть 2): только внешние фото.
+    """
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.delivery_mechanic_id == current_mechanic.id,
+        RentalHistory.rental_status == RentalStatus.DELIVERING_IN_PROGRESS
+    ).first()
+    if not rental:
+        raise HTTPException(404, "Нет активной доставки для загрузки фотографий")
+
+    validate_photos(car_photos, "car_photos")
+
+    try:
+        urls: List[str] = list(rental.delivery_photos_after or [])
+        for p in car_photos:
+            urls.append(await save_file(p, rental.id, f"uploads/delivery/{rental.id}/after/car/"))
+        rental.delivery_photos_after = urls
+        db.commit()
+        return {"message": "Внешние фото после доставки загружены", "photo_count": len(car_photos)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(500, f"Ошибка при загрузке внешних фото после доставки: {e}")
