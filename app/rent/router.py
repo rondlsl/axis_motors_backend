@@ -934,6 +934,12 @@ async def upload_photos_before_interior(
     if not rental:
         raise HTTPException(status_code=404, detail="No active rental in IN_USE status found")
 
+    # Требуем, чтобы перед салоном были загружены внешние фото
+    existing = rental.photos_before or []
+    has_exterior = any(('/before/car/' in p) or ('\\before\\car\\' in p) for p in existing)
+    if not has_exterior:
+        raise HTTPException(status_code=400, detail="Сначала загрузите внешние фото")
+
     validate_photos(interior_photos, 'interior_photos')
 
     try:
@@ -1003,6 +1009,24 @@ async def upload_photos_after_car(
     if not rental:
         raise HTTPException(status_code=404, detail="No active rental in IN_USE status found")
 
+    # Требуем, чтобы перед внешними фото были загружены салонные (after)
+    existing_after = rental.photos_after or []
+    has_interior_after = any(('/after/interior/' in p) or ('\\after\\interior\\' in p) for p in existing_after)
+    if not has_interior_after:
+        raise HTTPException(status_code=400, detail="Сначала загрузите фото салона")
+
+    # Проверяем закрытие дверей перед внешней съёмкой
+    car = db.query(Car).get(rental.car_id)
+    try:
+        vehicle_status = await check_vehicle_status_for_completion(car.gps_imei)
+        if vehicle_status.get("errors"):
+            doors_errors = [e for e in vehicle_status["errors"] if "двер" in e.lower() or "door" in e.lower()]
+            if doors_errors:
+                raise HTTPException(status_code=400, detail="Перед внешними фото закройте двери")
+    except Exception:
+        # Если мониторинг недоступен — не блокируем, чтобы не ломать флоу
+        pass
+
     validate_photos(car_photos, 'car_photos')
 
     try:
@@ -1065,6 +1089,11 @@ async def upload_photos_before_owner_interior(
     car = db.query(Car).get(rental.car_id)
     if car.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your car")
+    # Требуем сначала внешние фото
+    existing = rental.photos_before or []
+    has_exterior = any(('/before/car/' in p) or ('\\before\\car\\' in p) for p in existing)
+    if not has_exterior:
+        raise HTTPException(status_code=400, detail="Сначала загрузите внешние фото")
     validate_photos(interior_photos, 'interior_photos')
 
     try:
@@ -1126,6 +1155,11 @@ async def upload_photos_after_owner_car(
     car = db.query(Car).get(rental.car_id)
     if car.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your car")
+    # Требуем сначала салонные фото
+    existing_after = rental.photos_after or []
+    has_interior_after = any(('/after/interior/' in p) or ('\\after\\interior\\' in p) for p in existing_after)
+    if not has_interior_after:
+        raise HTTPException(status_code=400, detail="Сначала загрузите фото салона")
     validate_photos(car_photos, 'car_photos')
 
     try:

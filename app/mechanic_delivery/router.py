@@ -491,6 +491,12 @@ async def upload_delivery_photos_before_interior(
     if not rental:
         raise HTTPException(404, "Нет активной доставки для загрузки фотографий")
 
+    # Требуем сначала внешние фото
+    existing = rental.delivery_photos_before or []
+    has_exterior = any(('/before/car/' in p) or ('\\before\\car\\' in p) for p in existing)
+    if not has_exterior:
+        raise HTTPException(status_code=400, detail="Сначала загрузите внешние фото")
+
     validate_photos(interior_photos, "interior_photos")
 
     try:
@@ -556,6 +562,24 @@ async def upload_delivery_photos_after_car(
     ).first()
     if not rental:
         raise HTTPException(404, "Нет активной доставки для загрузки фотографий")
+
+    # Требуем сначала салонные фото
+    existing_after = rental.delivery_photos_after or []
+    has_interior_after = any(('/after/interior/' in p) or ('\\after\\interior\\' in p) for p in existing_after)
+    if not has_interior_after:
+        raise HTTPException(status_code=400, detail="Сначала загрузите фото салона")
+
+    # Проверяем закрытие дверей перед внешней съёмкой
+    car = db.query(Car).get(rental.car_id)
+    try:
+        from app.rent.router import check_vehicle_status_for_completion
+        vehicle_status = await check_vehicle_status_for_completion(car.gps_imei)
+        if vehicle_status.get("errors"):
+            doors_errors = [e for e in vehicle_status["errors"] if "двер" in e.lower() or "door" in e.lower()]
+            if doors_errors:
+                raise HTTPException(status_code=400, detail="Перед внешними фото закройте двери")
+    except Exception:
+        pass
 
     validate_photos(car_photos, "car_photos")
 
