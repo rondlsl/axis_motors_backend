@@ -37,7 +37,14 @@ class WalletTransaction(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     amount = Column(Numeric(10, 2), nullable=False)
-    transaction_type = Column(Enum(WalletTransactionType), nullable=False)
+    transaction_type = Column(
+        Enum(
+            WalletTransactionType,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+            name="wallet_transaction_type",
+        ),
+        nullable=False,
+    )
     description = Column(String, nullable=True)
     balance_before = Column(Numeric(10, 2), nullable=False)
     balance_after = Column(Numeric(10, 2), nullable=False)
