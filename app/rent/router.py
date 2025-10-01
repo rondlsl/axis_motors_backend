@@ -995,6 +995,7 @@ async def upload_photos_after(
     - Забирается ключ
     
     Внешние фото отправляются отдельным запросом /upload-photos-after-car
+    После загрузки внешних фото аренда автоматически завершается
     """
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,
@@ -1056,6 +1057,12 @@ async def upload_photos_after_car(
     """
     После завершения аренды (часть 2):
     - car_photos: внешние фото (1-10)
+    
+    После успешной загрузки:
+    - Аренда автоматически завершается
+    - Статус аренды меняется на COMPLETED
+    - Машина освобождается (статус PENDING)
+    - Деньги перестают списываться
     """
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,
@@ -1089,8 +1096,27 @@ async def upload_photos_after_car(
         for p in car_photos:
             urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/car/"))
         rental.photos_after = urls
+        
+        # Автоматически завершаем аренду после загрузки фото кузова
+        now = datetime.utcnow()
+        rental.end_time = now
+        rental.end_latitude = car.latitude
+        rental.end_longitude = car.longitude
+        rental.fuel_after = car.fuel_level
+        rental.mileage_after = car.mileage
+        rental.rental_status = RentalStatus.COMPLETED
+
+        # Освободить машину
+        car.current_renter_id = None
+        car.status = CarStatus.PENDING
+        
         db.commit()
-        return {"message": "Photos after (car) uploaded", "photo_count": len(car_photos)}
+        
+        return {
+            "message": "Photos after (car) uploaded and rental completed automatically", 
+            "photo_count": len(car_photos),
+            "rental_completed": True
+        }
     except Exception:
         db.rollback()
         raise HTTPException(status_code=500, detail="Error uploading after car photos")
@@ -1360,7 +1386,19 @@ async def complete_rental(
     )
 
     if not rental:
-        raise HTTPException(status_code=404, detail="No active rental found")
+        # Проверяем, не завершена ли аренда автоматически
+        completed_rental = db.query(RentalHistory).filter(
+            RentalHistory.user_id == current_user.id,
+            RentalHistory.rental_status == RentalStatus.COMPLETED
+        ).order_by(RentalHistory.end_time.desc()).first()
+        
+        if completed_rental:
+            raise HTTPException(
+                status_code=400, 
+                detail="Аренда уже завершена автоматически после загрузки фото кузова"
+            )
+        else:
+            raise HTTPException(status_code=404, detail="No active rental found")
 
     # 2) Загрузить машину
     car = db.query(Car).get(rental.car_id)
