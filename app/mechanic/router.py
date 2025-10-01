@@ -174,41 +174,44 @@ def get_all_vehicles_plain(
                                 }
                             }
             
-            # Добавляем информацию о последнем клиенте (для PENDING статуса)
-            if car.status == CarStatus.PENDING or car.status == CarStatus.SERVICE:
-                last_completed_rental = (
-                    db.query(RentalHistory)
-                    .filter(
-                        RentalHistory.car_id == car.id,
-                        RentalHistory.rental_status == RentalStatus.COMPLETED
-                    )
-                    .order_by(RentalHistory.end_time.desc())
+            # Добавляем информацию о последнем клиенте (для всех статусов)
+            # Ищем последнюю завершенную аренду от обычного клиента (не механика)
+            from app.models.user_model import UserRole
+            last_completed_rental = (
+                db.query(RentalHistory)
+                .join(User, RentalHistory.user_id == User.id)
+                .filter(
+                    RentalHistory.car_id == car.id,
+                    RentalHistory.rental_status == RentalStatus.COMPLETED,
+                    User.role != UserRole.MECHANIC  # Исключаем аренды от механиков
+                )
+                .order_by(RentalHistory.end_time.desc())
+                .first()
+            )
+            
+            if last_completed_rental:
+                # Получаем отзыв клиента
+                from app.models.history_model import RentalReview
+                client_review = (
+                    db.query(RentalReview)
+                    .filter(RentalReview.rental_id == last_completed_rental.id)
                     .first()
                 )
                 
-                if last_completed_rental:
-                    # Получаем отзыв клиента
-                    from app.models.history_model import RentalReview
-                    client_review = (
-                        db.query(RentalReview)
-                        .filter(RentalReview.rental_id == last_completed_rental.id)
-                        .first()
-                    )
+                if client_review:
+                    # Получаем фото после аренды (салон и кузов)
+                    after_photos = last_completed_rental.photos_after or []
+                    interior_photos = [p for p in after_photos if ("/after/interior/" in p) or ("\\after\\interior\\" in p)]
+                    exterior_photos = [p for p in after_photos if ("/after/car/" in p) or ("\\after\\car\\" in p)]
                     
-                    if client_review:
-                        # Получаем фото после аренды (салон и кузов)
-                        after_photos = last_completed_rental.photos_after or []
-                        interior_photos = [p for p in after_photos if ("/after/interior/" in p) or ("\\after\\interior\\" in p)]
-                        exterior_photos = [p for p in after_photos if ("/after/car/" in p) or ("\\after\\car\\" in p)]
-                        
-                        car_dict["last_client_review"] = {
-                            "rating": client_review.rating,
-                            "comment": client_review.comment,
-                            "photos_after": {
-                                "interior": interior_photos,
-                                "exterior": exterior_photos
-                            }
+                    car_dict["last_client_review"] = {
+                        "rating": client_review.rating,
+                        "comment": client_review.comment,
+                        "photos_after": {
+                            "interior": interior_photos,
+                            "exterior": exterior_photos
                         }
+                    }
 
             vehicles_data.append(car_dict)
 
