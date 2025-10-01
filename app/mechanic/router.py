@@ -33,34 +33,31 @@ def get_all_vehicles_plain(
         vehicles_data: List[Dict[str, Any]] = []
 
         for car in cars:
-            # Проверяем статус загрузки фотографий для текущего пользователя
+            # Проверяем статус загрузки фотографий для текущего механика
             photo_before_selfie_uploaded = False
             photo_before_car_uploaded = False
             photo_before_interior_uploaded = False
             
-            # Ищем активную аренду для текущего пользователя
-            active_rental = db.query(RentalHistory).filter(
-                RentalHistory.user_id == current_mechanic.id,
-                RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
+            # Ищем аренду где текущий механик является инспектором для этой машины
+            mechanic_rental = db.query(RentalHistory).filter(
+                RentalHistory.car_id == car.id,
+                RentalHistory.mechanic_inspector_id == current_mechanic.id,
+                RentalHistory.mechanic_inspection_status.in_(["PENDING", "IN_USE", "SERVICE"])
             ).first()
             
-            # Проверяем, что активная аренда относится к текущей машине
-            if active_rental and active_rental.car_id != car.id:
-                active_rental = None
-            
-            if active_rental and active_rental.photos_before:
-                # Проверяем наличие разных типов фотографий
-                photos_before = active_rental.photos_before
+            if mechanic_rental and mechanic_rental.mechanic_photos_before:
+                # Проверяем наличие разных типов фотографий механика
+                photos_before = mechanic_rental.mechanic_photos_before
                 photo_before_selfie_uploaded = any(
-                    ("/before/selfie/" in photo) or ("\\before\\selfie\\" in photo) 
+                    ("/mechanic/before/selfie/" in photo) or ("\\mechanic\\before\\selfie\\" in photo) 
                     for photo in photos_before
                 )
                 photo_before_car_uploaded = any(
-                    ("/before/car/" in photo) or ("\\before\\car\\" in photo) 
+                    ("/mechanic/before/car/" in photo) or ("\\mechanic\\before\\car\\" in photo) 
                     for photo in photos_before
                 )
                 photo_before_interior_uploaded = any(
-                    ("/before/interior/" in photo) or ("\\before\\interior\\" in photo) 
+                    ("/mechanic/before/interior/" in photo) or ("\\mechanic\\before\\interior\\" in photo) 
                     for photo in photos_before
                 )
 
