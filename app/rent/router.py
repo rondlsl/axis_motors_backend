@@ -915,10 +915,10 @@ async def upload_photos_before(
     """
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,
-        RentalHistory.rental_status == RentalStatus.IN_USE
+        RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
     ).first()
     if not rental:
-        raise HTTPException(status_code=404, detail="No active rental in IN_USE status found")
+        raise HTTPException(status_code=404, detail="No active rental found")
 
     validate_photos([selfie], 'selfie')
     validate_photos(car_photos, 'car_photos')
@@ -951,10 +951,10 @@ async def upload_photos_before_interior(
     """
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,
-        RentalHistory.rental_status == RentalStatus.IN_USE
+        RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
     ).first()
     if not rental:
-        raise HTTPException(status_code=404, detail="No active rental in IN_USE status found")
+        raise HTTPException(status_code=404, detail="No active rental found")
 
     # Требуем, чтобы перед салоном были загружены внешние фото
     existing = rental.photos_before or []
@@ -1106,10 +1106,10 @@ async def upload_photos_before_owner(
     """До аренды для владельца (часть 1): только внешние фото (1-10)."""
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,
-        RentalHistory.rental_status == RentalStatus.IN_USE
+        RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
     ).first()
     if not rental:
-        raise HTTPException(status_code=404, detail="No active rental in IN_USE status found")
+        raise HTTPException(status_code=404, detail="No active rental found")
     car = db.query(Car).get(rental.car_id)
     if car.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your car")
@@ -1137,10 +1137,10 @@ async def upload_photos_before_owner_interior(
     """До аренды для владельца (часть 2): только салон (1-10)."""
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,
-        RentalHistory.rental_status == RentalStatus.IN_USE
+        RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
     ).first()
     if not rental:
-        raise HTTPException(status_code=404, detail="No active rental in IN_USE status found")
+        raise HTTPException(status_code=404, detail="No active rental found")
     car = db.query(Car).get(rental.car_id)
     if car.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your car")
