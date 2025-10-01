@@ -38,6 +38,9 @@ def get_all_vehicles_plain(
             photo_before_selfie_uploaded = False
             photo_before_car_uploaded = False
             photo_before_interior_uploaded = False
+            photo_after_selfie_uploaded = False
+            photo_after_car_uploaded = False
+            photo_after_interior_uploaded = False
             
             # Ищем аренду где текущий механик является инспектором для этой машины
             mechanic_rental = db.query(RentalHistory).filter(
@@ -60,6 +63,22 @@ def get_all_vehicles_plain(
                 photo_before_interior_uploaded = any(
                     ("/mechanic/before/interior/" in photo) or ("\\mechanic\\before\\interior\\" in photo) 
                     for photo in photos_before
+                )
+            
+            # Проверяем фото после осмотра механиком
+            if mechanic_rental and mechanic_rental.mechanic_photos_after:
+                photos_after = mechanic_rental.mechanic_photos_after
+                photo_after_selfie_uploaded = any(
+                    ("/mechanic/after/selfie/" in photo) or ("\\mechanic\\after\\selfie\\" in photo) 
+                    for photo in photos_after
+                )
+                photo_after_car_uploaded = any(
+                    ("/mechanic/after/car/" in photo) or ("\\mechanic\\after\\car\\" in photo) 
+                    for photo in photos_after
+                )
+                photo_after_interior_uploaded = any(
+                    ("/mechanic/after/interior/" in photo) or ("\\mechanic\\after\\interior\\" in photo) 
+                    for photo in photos_after
                 )
 
             # по умолчанию нет активной аренды
@@ -90,6 +109,9 @@ def get_all_vehicles_plain(
                 "photo_before_selfie_uploaded": photo_before_selfie_uploaded,
                 "photo_before_car_uploaded": photo_before_car_uploaded,
                 "photo_before_interior_uploaded": photo_before_interior_uploaded,
+                "photo_after_selfie_uploaded": photo_after_selfie_uploaded,
+                "photo_after_car_uploaded": photo_after_car_uploaded,
+                "photo_after_interior_uploaded": photo_after_interior_uploaded,
                 "current_renter_details": None,
                 "rental_id": None,
                 "last_client_review": None,
