@@ -813,17 +813,19 @@ async def cancel_delivery(
     return {"message": "Доставка отменена успешно"}
 
 
-@RentRouter.post("/start")
+@RentRouter.post("/start/{car_id}")
 async def start_rental(
+        car_id: int,
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user),
 ):
     # Запреты по ролям/верификации (на случай, если обошли резервацию)
     validate_user_can_rent(current_user, db)
 
-    # Получаем активную аренду пользователя со статусом RESERVED
+    # Получаем активную аренду пользователя по ID авто со статусом RESERVED
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,
+        RentalHistory.car_id == car_id,
         RentalHistory.rental_status == RentalStatus.RESERVED
     ).first()
 
@@ -1374,6 +1376,23 @@ async def complete_rental(
     if vehicle_status.get("errors"):
         error_message = "Нельзя завершить аренду:\n" + "\n".join(vehicle_status["errors"])
         raise HTTPException(status_code=400, detail=error_message)
+
+    after_photos = rental.photos_after or []
+    has_after_selfie = any(("/after/selfie/" in p) or ("\\after\\selfie\\" in p) for p in after_photos)
+    has_after_interior = any(("/after/interior/" in p) or ("\\after\\interior\\" in p) for p in after_photos)
+    has_after_exterior = any(("/after/car/" in p) or ("\\after\\car\\" in p) for p in after_photos)
+    if not (has_after_selfie and has_after_interior and has_after_exterior):
+        missing_after = []
+        if not has_after_selfie:
+            missing_after.append("селфи")
+        if not has_after_interior:
+            missing_after.append("салон")
+        if not has_after_exterior:
+            missing_after.append("внешний вид")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Для завершения аренды загрузите фото: {', '.join(missing_after)}"
+        )
 
     # 4) Завершить аренду: время, координаты, состояние
     now = datetime.utcnow()

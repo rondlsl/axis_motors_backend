@@ -164,6 +164,20 @@ async def start_delivery(
     if not car:
         raise HTTPException(404, "Автомобиль не найден")
 
+    before_photos = rental.delivery_photos_before or []
+    has_selfie_before = any(("/before/selfie/" in p) or ("\\before\\selfie\\" in p) for p in before_photos)
+    has_exterior_before = any(("/before/car/" in p) or ("\\before\\car\\" in p) for p in before_photos)
+    has_interior_before = any(("/before/interior/" in p) or ("\\before\\interior\\" in p) for p in before_photos)
+    if not (has_selfie_before and has_exterior_before and has_interior_before):
+        missing = []
+        if not has_selfie_before:
+            missing.append("селфи")
+        if not has_exterior_before:
+            missing.append("внешний вид")
+        if not has_interior_before:
+            missing.append("салон")
+        raise HTTPException(status_code=400, detail=f"Перед стартом доставки загрузите фото: {', '.join(missing)}")
+
     rental.rental_status = RentalStatus.DELIVERING_IN_PROGRESS
     rental.delivery_start_time = datetime.utcnow()  # Записываем время начала доставки
     db.commit()
@@ -201,6 +215,20 @@ async def complete_delivery(
     car = db.query(Car).filter(Car.id == rental.car_id).first()
     if not car:
         raise HTTPException(404, "Автомобиль не найден")
+
+    after_photos = rental.delivery_photos_after or []
+    has_after_selfie = any(("/after/selfie/" in p) or ("\\after\\selfie\\" in p) for p in after_photos)
+    has_after_interior = any(("/after/interior/" in p) or ("\\after\\interior\\" in p) for p in after_photos)
+    has_after_exterior = any(("/after/car/" in p) or ("\\after\\car\\" in p) for p in after_photos)
+    if not (has_after_selfie and has_after_interior and has_after_exterior):
+        missing = []
+        if not has_after_selfie:
+            missing.append("селфи")
+        if not has_after_interior:
+            missing.append("салон")
+        if not has_after_exterior:
+            missing.append("внешний вид")
+        raise HTTPException(status_code=400, detail=f"Для завершения доставки загрузите фото: {', '.join(missing)}")
 
     rental.fuel_after = car.fuel_level
     rental.mileage_after = car.mileage

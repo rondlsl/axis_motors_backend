@@ -61,9 +61,6 @@ def get_all_vehicles_plain(
                 "current_renter_details": None,
                 "rental_id": None,
                 "last_client_review": None,
-                "photo_before_selfie_uploaded": False,
-                "photo_before_car_uploaded": False,
-                "photo_before_interior_uploaded": False,
             }
 
             # ищем последнюю активную аренду (IN_USE или DELIVERING)
@@ -116,20 +113,26 @@ def get_all_vehicles_plain(
                         "rent_selfie_url": rent_selfie_url,
                     }
                     
-                    # Проверяем загруженные фото ДО осмотра/аренды
-                    if last_rent:
-                        # Для механика проверяем mechanic_photos_before
-                        if last_rent.mechanic_inspector_id == renter.id and last_rent.mechanic_photos_before:
-                            photos = last_rent.mechanic_photos_before
-                            car_dict["photo_before_selfie_uploaded"] = any(('/mechanic/before/selfie/' in p) or ('\\mechanic\\before\\selfie\\' in p) for p in photos)
-                            car_dict["photo_before_car_uploaded"] = any(('/mechanic/before/car/' in p) or ('\\mechanic\\before\\car\\' in p) for p in photos)
-                            car_dict["photo_before_interior_uploaded"] = any(('/mechanic/before/interior/' in p) or ('\\mechanic\\before\\interior\\' in p) for p in photos)
-                        # Для обычного пользователя проверяем photos_before
-                        elif last_rent.photos_before:
-                            photos = last_rent.photos_before
-                            car_dict["photo_before_selfie_uploaded"] = any(('/before/selfie/' in p) or ('\\before\\selfie\\' in p) for p in photos)
-                            car_dict["photo_before_car_uploaded"] = any(('/before/car/' in p) or ('\\before\\car\\' in p) for p in photos)
-                            car_dict["photo_before_interior_uploaded"] = any(('/before/interior/' in p) or ('\\before\\interior\\' in p) for p in photos)
+                    # Для механика в IN_USE прикладываем фото клиента ПОСЛЕ (interior/exterior) и последний отзыв клиента
+                    if last_rent and current_mechanic and car.status == CarStatus.IN_USE:
+                        after_photos = last_rent.photos_after or []
+                        if after_photos:
+                            car_dict["last_client_after_photos"] = {
+                                "interior": [p for p in after_photos if ("/after/interior/" in p) or ("\\after\\interior\\" in p)],
+                                "exterior": [p for p in after_photos if ("/after/car/" in p) or ("\\after\\car\\" in p)],
+                            }
+                        # Последний отзыв клиента по этой аренде
+                        review = (
+                            db.query(RentalReview)
+                            .filter(RentalReview.rental_id == last_rent.id)
+                            .order_by(RentalReview.id.desc())
+                            .first()
+                        )
+                        if review and (review.rating or review.comment):
+                            car_dict["last_client_review"] = {
+                                "rating": review.rating,
+                                "comment": review.comment,
+                            }
             
             # Добавляем информацию о последнем клиенте (для PENDING статуса)
             if car.status == CarStatus.PENDING or car.status == CarStatus.SERVICE:
@@ -606,6 +609,21 @@ async def start_rental(
     if not rental:
         raise HTTPException(status_code=404, detail="Нет активной проверки для старта по данному автомобилю")
 
+    # Перед стартом требуем фото: селфи, внешний вид, салон
+    before_photos = rental.mechanic_photos_before or []
+    has_selfie = any(("/mechanic/before/selfie/" in p) or ("\\mechanic\\before\\selfie\\" in p) for p in before_photos)
+    has_exterior = any(("/mechanic/before/car/" in p) or ("\\mechanic\\before\\car\\" in p) for p in before_photos)
+    has_interior = any(("/mechanic/before/interior/" in p) or ("\\mechanic\\before\\interior\\" in p) for p in before_photos)
+    if not (has_selfie and has_exterior and has_interior):
+        missing = []
+        if not has_selfie:
+            missing.append("селфи")
+        if not has_exterior:
+            missing.append("внешний вид")
+        if not has_interior:
+            missing.append("салон")
+        raise HTTPException(status_code=400, detail=f"Перед стартом проверки загрузите фото: {', '.join(missing)}")
+
     # Обновляем статус осмотра на IN_USE
     rental.mechanic_inspection_status = "IN_USE"
     # Для механика переводим автомобиль в состояние IN_USE
@@ -879,6 +897,20 @@ async def complete_rental(
     car = db.query(Car).filter(Car.id == rental.car_id).first()
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
+
+    after_photos = rental.mechanic_photos_after or []
+    has_after_selfie = any(("/mechanic/after/selfie/" in p) or ("\\mechanic\\after\\selfie\\" in p) for p in after_photos)
+    has_after_interior = any(("/mechanic/after/interior/" in p) or ("\\mechanic\\after\\interior\\" in p) for p in after_photos)
+    has_after_exterior = any(("/mechanic/after/car/" in p) or ("\\mechanic\\after\\car\\" in p) for p in after_photos)
+    if not (has_after_selfie and has_after_interior and has_after_exterior):
+        missing = []
+        if not has_after_selfie:
+            missing.append("селфи")
+        if not has_after_interior:
+            missing.append("салон")
+        if not has_after_exterior:
+            missing.append("внешний вид")
+        raise HTTPException(status_code=400, detail=f"Для завершения проверки загрузите фото: {', '.join(missing)}")
 
     now = datetime.utcnow()
     
