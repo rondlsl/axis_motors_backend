@@ -124,13 +124,19 @@ def get_vehicle_info(
             # Механики видят все автомобили кроме занятых
             query = db.query(Car).filter(Car.status != CarStatus.OCCUPIED)
         else:
-            # Обычные пользователи видят свободные машины и машины, которые они забронировали
-            query = db.query(Car).filter(
-                or_(
-                    Car.status == CarStatus.FREE,
-                    and_(Car.status == CarStatus.RESERVED, Car.current_renter_id == current_user.id)
-                )
-            )
+            # Обычные пользователи видят только машину, которую они забронировали или арендуют
+            # Сначала ищем активную аренду пользователя
+            active_rental = db.query(RentalHistory).filter(
+                RentalHistory.user_id == current_user.id,
+                RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
+            ).first()
+            
+            if active_rental:
+                # Если есть активная аренда, показываем только эту машину
+                query = db.query(Car).filter(Car.id == active_rental.car_id)
+            else:
+                # Если нет активной аренды, показываем все свободные машины
+                query = db.query(Car).filter(Car.status == CarStatus.FREE)
 
         # Фильтрация по классам авто для роли USER при верифицированных документах
         # Механики видят все автомобили без ограничений по классам
@@ -253,17 +259,31 @@ def search_vehicles(
                 Car.status != CarStatus.OCCUPIED
             ).all()
         else:
-            # Обычные пользователи ищут среди свободных машин и забронированных ими
-            cars = db.query(Car).filter(
-                or_(
-                    Car.name.ilike(f"%{query}%"),
-                    Car.plate_number.ilike(f"%{query}%")
-                ),
-                or_(
-                    Car.status == CarStatus.FREE,
-                    and_(Car.status == CarStatus.RESERVED, Car.current_renter_id == current_user.id)
-                )
-            ).all()
+            # Обычные пользователи ищут только среди машины, которую они забронировали или арендуют
+            # Сначала ищем активную аренду пользователя
+            active_rental = db.query(RentalHistory).filter(
+                RentalHistory.user_id == current_user.id,
+                RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
+            ).first()
+            
+            if active_rental:
+                # Если есть активная аренда, ищем только эту машину
+                cars = db.query(Car).filter(
+                    Car.id == active_rental.car_id,
+                    or_(
+                        Car.name.ilike(f"%{query}%"),
+                        Car.plate_number.ilike(f"%{query}%")
+                    )
+                ).all()
+            else:
+                # Если нет активной аренды, ищем среди свободных машин
+                cars = db.query(Car).filter(
+                    or_(
+                        Car.name.ilike(f"%{query}%"),
+                        Car.plate_number.ilike(f"%{query}%")
+                    ),
+                    Car.status == CarStatus.FREE
+                ).all()
 
         vehicles_data = []
         for car in cars:
@@ -340,41 +360,51 @@ def get_frequently_used_vehicles(
         if current_user.role == UserRole.REJECTFIRST:
             return {"vehicles": []}
         
-        # Получаем ID машин и количество аренд для текущего пользователя
-        rental_counts = (
-            db.query(RentalHistory.car_id, func.count(RentalHistory.id).label("rental_count"))
-            .filter(RentalHistory.user_id == current_user.id)
-            .group_by(RentalHistory.car_id)
-            .order_by(func.count(RentalHistory.id).desc())
-            .all()
-        )
-
-        if not rental_counts:
-            raise HTTPException(status_code=404, detail="Вы ещё не арендовали ни одной машины")
-
-        car_ids = [r.car_id for r in rental_counts]
-
-        # Загружаем только свободные машины, проверяя статус
-        cars = (
-            db.query(Car)
-            .filter(
-                Car.id.in_(car_ids),
-                or_(
-                    Car.status == CarStatus.FREE,
-                    and_(Car.status == CarStatus.RESERVED, Car.current_renter_id == current_user.id)
-                )
+        # Сначала проверяем, есть ли активная аренда
+        active_rental = db.query(RentalHistory).filter(
+            RentalHistory.user_id == current_user.id,
+            RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
+        ).first()
+        
+        if active_rental:
+            # Если есть активная аренда, показываем только эту машину
+            cars = db.query(Car).filter(Car.id == active_rental.car_id).all()
+        else:
+            # Если нет активной аренды, показываем часто используемые машины
+            rental_counts = (
+                db.query(RentalHistory.car_id, func.count(RentalHistory.id).label("rental_count"))
+                .filter(RentalHistory.user_id == current_user.id)
+                .group_by(RentalHistory.car_id)
+                .order_by(func.count(RentalHistory.id).desc())
+                .all()
             )
-            .all()
-        )
+
+            if not rental_counts:
+                raise HTTPException(status_code=404, detail="Вы ещё не арендовали ни одной машины")
+
+            car_ids = [r.car_id for r in rental_counts]
+
+            # Загружаем только свободные машины
+            cars = (
+                db.query(Car)
+                .filter(
+                    Car.id.in_(car_ids),
+                    Car.status == CarStatus.FREE
+                )
+                .all()
+            )
 
         if not cars:
-            raise HTTPException(status_code=404, detail="Все часто используемые вами машины сейчас заняты")
-
-        car_dict = {car.id: car for car in cars}
+            if active_rental:
+                raise HTTPException(status_code=404, detail="Машина не найдена")
+            else:
+                raise HTTPException(status_code=404, detail="Все часто используемые вами машины сейчас заняты")
 
         vehicles_data = []
-        for r in rental_counts:
-            car = car_dict.get(r.car_id)
+        
+        if active_rental:
+            # Если есть активная аренда, обрабатываем только эту машину
+            car = cars[0]  # Должна быть только одна машина
             if car:
                 # Проверяем статус загрузки фотографий для текущего пользователя
                 photo_before_selfie_uploaded = False
@@ -423,7 +453,7 @@ def get_frequently_used_vehicles(
                     "auto_class": car.auto_class,
                     "photos": car.photos,
                     "owner_id": car.owner_id,
-                    "rental_count": r.rental_count,
+                    "current_renter_id": car.current_renter_id,
                     "status": car.status,
                     "open_price": get_open_price(car),
                     "owned_car": True if car.owner_id == current_user.id else False,
@@ -431,6 +461,45 @@ def get_frequently_used_vehicles(
                     "photo_before_car_uploaded": photo_before_car_uploaded,
                     "photo_before_interior_uploaded": photo_before_interior_uploaded
                 })
+        else:
+            # Если нет активной аренды, обрабатываем часто используемые машины
+            car_dict = {car.id: car for car in cars}
+            
+            for r in rental_counts:
+                car = car_dict.get(r.car_id)
+                if car:
+                    # Проверяем статус загрузки фотографий для текущего пользователя
+                    photo_before_selfie_uploaded = False
+                    photo_before_car_uploaded = False
+                    photo_before_interior_uploaded = False
+                    
+                    vehicles_data.append({
+                        "id": car.id,
+                        "name": car.name,
+                        "plate_number": car.plate_number,
+                        "latitude": car.latitude,
+                        "longitude": car.longitude,
+                        "course": car.course,
+                        "fuel_level": car.fuel_level,
+                        "price_per_minute": car.price_per_minute,
+                        "price_per_hour": car.price_per_hour,
+                        "price_per_day": car.price_per_day,
+                        "engine_volume": car.engine_volume,
+                        "year": car.year,
+                        "drive_type": car.drive_type,
+                        "transmission_type": car.transmission_type,
+                        "body_type": car.body_type,
+                        "auto_class": car.auto_class,
+                        "photos": car.photos,
+                        "owner_id": car.owner_id,
+                        "current_renter_id": car.current_renter_id,
+                        "status": car.status.value,
+                        "open_price": get_open_price(car),
+                        "owned_car": car.owner_id == current_user.id,
+                        "photo_before_selfie_uploaded": photo_before_selfie_uploaded,
+                        "photo_before_car_uploaded": photo_before_car_uploaded,
+                        "photo_before_interior_uploaded": photo_before_interior_uploaded
+                    })
 
         if not vehicles_data:
             raise HTTPException(status_code=404, detail="Нет свободных машин из тех, что вы часто арендовали")
