@@ -838,6 +838,23 @@ async def start_rental(
     if not car:
         raise HTTPException(status_code=404, detail="Car not found")
 
+    existing_before = rental.photos_before or []
+    has_selfie_before = any(("/before/selfie/" in p) or ("\\before\\selfie\\" in p) for p in existing_before)
+    has_exterior_before = any(("/before/car/" in p) or ("\\before\\car\\" in p) for p in existing_before)
+    has_interior_before = any(("/before/interior/" in p) or ("\\before\\interior\\" in p) for p in existing_before)
+    if not (has_selfie_before and has_exterior_before and has_interior_before):
+        missing = []
+        if not has_selfie_before:
+            missing.append("селфи")
+        if not has_exterior_before:
+            missing.append("внешний вид")
+        if not has_interior_before:
+            missing.append("салон")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Перед стартом аренды загрузите фото: {', '.join(missing)}"
+        )
+
     rental.fuel_before = car.fuel_level
     rental.mileage_before = car.mileage
 
