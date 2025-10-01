@@ -840,22 +840,41 @@ async def start_rental(
     if not car:
         raise HTTPException(status_code=404, detail="Car not found")
 
+    # Проверяем, является ли пользователь владельцем автомобиля
+    is_owner = car.owner_id == current_user.id
+    
     existing_before = rental.photos_before or []
     has_selfie_before = any(("/before/selfie/" in p) or ("\\before\\selfie\\" in p) for p in existing_before)
     has_exterior_before = any(("/before/car/" in p) or ("\\before\\car\\" in p) for p in existing_before)
     has_interior_before = any(("/before/interior/" in p) or ("\\before\\interior\\" in p) for p in existing_before)
-    if not (has_selfie_before and has_exterior_before and has_interior_before):
-        missing = []
-        if not has_selfie_before:
-            missing.append("селфи")
-        if not has_exterior_before:
-            missing.append("внешний вид")
-        if not has_interior_before:
-            missing.append("салон")
-        raise HTTPException(
-            status_code=400,
-            detail=f"Перед стартом аренды загрузите фото: {', '.join(missing)}"
-        )
+    
+    # Для владельца автомобиля пропускаем проверку селфи
+    if is_owner:
+        # Владелец должен загрузить только внешний вид и салон
+        if not (has_exterior_before and has_interior_before):
+            missing = []
+            if not has_exterior_before:
+                missing.append("внешний вид")
+            if not has_interior_before:
+                missing.append("салон")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Перед стартом аренды загрузите фото: {', '.join(missing)}"
+            )
+    else:
+        # Для обычных пользователей требуем все фото: селфи, внешний вид, салон
+        if not (has_selfie_before and has_exterior_before and has_interior_before):
+            missing = []
+            if not has_selfie_before:
+                missing.append("селфи")
+            if not has_exterior_before:
+                missing.append("внешний вид")
+            if not has_interior_before:
+                missing.append("салон")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Перед стартом аренды загрузите фото: {', '.join(missing)}"
+            )
 
     rental.fuel_before = car.fuel_level
     rental.mileage_before = car.mileage
@@ -1071,14 +1090,35 @@ async def upload_photos_after_car(
     if not rental:
         raise HTTPException(status_code=404, detail="No active rental in IN_USE status found")
 
+    # Получаем машину для проверки владельца
+    car = db.query(Car).get(rental.car_id)
+    is_owner = car.owner_id == current_user.id if car else False
+    
     # Требуем, чтобы перед внешними фото были загружены салонные (after)
     existing_after = rental.photos_after or []
     has_interior_after = any(('/after/interior/' in p) or ('\\after\\interior\\' in p) for p in existing_after)
-    if not has_interior_after:
-        raise HTTPException(status_code=400, detail="Сначала загрузите фото салона")
+    
+    # Для владельца автомобиля проверяем наличие фото салона (без селфи)
+    # Для обычных пользователей проверяем наличие селфи + салона
+    if is_owner:
+        # Владелец должен загрузить только салон (через /upload-photos-after-owner)
+        if not has_interior_after:
+            raise HTTPException(status_code=400, detail="Сначала загрузите фото салона")
+    else:
+        # Обычный пользователь должен загрузить селфи + салон (через /upload-photos-after)
+        has_selfie_after = any(('/after/selfie/' in p) or ('\\after\\selfie\\' in p) for p in existing_after)
+        if not (has_selfie_after and has_interior_after):
+            missing = []
+            if not has_selfie_after:
+                missing.append("селфи")
+            if not has_interior_after:
+                missing.append("салон")
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Сначала загрузите фото: {', '.join(missing)}"
+            )
 
     # Проверяем закрытие дверей перед внешней съёмкой
-    car = db.query(Car).get(rental.car_id)
     try:
         vehicle_status = await check_vehicle_status_for_completion(car.gps_imei)
         if vehicle_status.get("errors"):
