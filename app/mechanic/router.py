@@ -591,11 +591,30 @@ async def check_car(
             status_code=400,
             detail="У вас уже есть активная проверка автомобиля. Завершите её, прежде чем начать новую."
         )
-    # Выбираем автомобиль только если его статус PENDING
-    car = db.query(Car).filter(Car.id == car_id, Car.status == CarStatus.PENDING).first()
+    # Выбираем автомобиль если его статус PENDING или SERVICE
+    car = db.query(Car).filter(Car.id == car_id, Car.status.in_([CarStatus.PENDING, CarStatus.SERVICE])).first()
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден или недоступен для проверки")
     
+    # Если автомобиль уже в статусе SERVICE, ищем существующую проверку механика
+    if car.status == CarStatus.SERVICE:
+        rental = db.query(RentalHistory).filter(
+            RentalHistory.car_id == car.id,
+            RentalHistory.mechanic_inspector_id == current_mechanic.id,
+            RentalHistory.mechanic_inspection_status.in_(["PENDING", "IN_USE", "SERVICE"])
+        ).first()
+        
+        if rental:
+            # Проверка уже существует, возвращаем информацию о ней
+            return {
+                "message": "Проверка автомобиля уже инициирована",
+                "rental_id": rental.id,
+                "inspection_start_time": rental.mechanic_inspection_start_time.isoformat() if rental.mechanic_inspection_start_time else None
+            }
+        else:
+            raise HTTPException(status_code=403, detail="Этот автомобиль уже закреплен за другим механиком")
+    
+    # Если автомобиль в статусе PENDING, создаем новую проверку
     # Находим существующую запись аренды клиента для этого автомобиля
     rental = db.query(RentalHistory).filter(
         RentalHistory.car_id == car.id,
