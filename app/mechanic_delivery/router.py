@@ -327,6 +327,26 @@ def current_delivery(
         from datetime import datetime
         delivery_duration_minutes = int((datetime.utcnow() - rental.delivery_start_time).total_seconds() / 60)
 
+    # Проверяем флаги загрузки фото механика
+    photo_before_selfie_uploaded = False
+    photo_before_car_uploaded = False
+    photo_before_interior_uploaded = False
+    
+    if rental.mechanic_photos_before:
+        photos_before = rental.mechanic_photos_before
+        photo_before_selfie_uploaded = any(
+            ("/mechanic/before/selfie/" in photo) or ("\\mechanic\\before\\selfie\\" in photo) 
+            for photo in photos_before
+        )
+        photo_before_car_uploaded = any(
+            ("/mechanic/before/car/" in photo) or ("\\mechanic\\before\\car\\" in photo) 
+            for photo in photos_before
+        )
+        photo_before_interior_uploaded = any(
+            ("/mechanic/before/interior/" in photo) or ("\\mechanic\\before\\interior\\" in photo) 
+            for photo in photos_before
+        )
+
     return {
         "rental_id": rental.id,
         "car_id": car.id,
@@ -350,7 +370,10 @@ def current_delivery(
         "delivery_start_time": rental.delivery_start_time.isoformat() if rental.delivery_start_time else None,
         "delivery_duration_minutes": delivery_duration_minutes,
         "delivery_penalty_fee": rental.delivery_penalty_fee or 0,
-        "status": rental.rental_status.value
+        "status": rental.rental_status.value,
+        "photo_before_selfie_uploaded": photo_before_selfie_uploaded,
+        "photo_before_car_uploaded": photo_before_car_uploaded,
+        "photo_before_interior_uploaded": photo_before_interior_uploaded
     }
 
 
