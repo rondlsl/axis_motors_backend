@@ -160,30 +160,63 @@ def get_vehicle_info(
             # Для CLIENT, MECHANIC и прочих ролей — без ограничений по классу
             cars = query.all()
 
-        vehicles_data = [{
-            "id": car.id,
-            "name": car.name,
-            "plate_number": car.plate_number,
-            "latitude": car.latitude,
-            "longitude": car.longitude,
-            "course": car.course,
-            "fuel_level": car.fuel_level,
-            "price_per_minute": car.price_per_minute,
-            "price_per_hour": car.price_per_hour,
-            "price_per_day": car.price_per_day,
-            "engine_volume": car.engine_volume,
-            "year": car.year,
-            "drive_type": car.drive_type,
-            "transmission_type": car.transmission_type,
-            "body_type": car.body_type,
-            "auto_class": car.auto_class,
-            "photos": car.photos,
-            "owner_id": car.owner_id,
-            "current_renter_id": car.current_renter_id,
-            "status": car.status,
-            "open_price": get_open_price(car),
-            "owned_car": True if car.owner_id == current_user.id else False
-        } for car in cars]
+        vehicles_data = []
+        for car in cars:
+            # Проверяем статус загрузки фотографий для текущего пользователя
+            photo_before_selfie_uploaded = False
+            photo_before_car_uploaded = False
+            photo_before_interior_uploaded = False
+            
+            # Ищем активную аренду для этой машины и текущего пользователя
+            active_rental = db.query(RentalHistory).filter(
+                RentalHistory.user_id == current_user.id,
+                RentalHistory.car_id == car.id,
+                RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
+            ).first()
+            
+            if active_rental and active_rental.photos_before:
+                # Проверяем наличие разных типов фотографий
+                photos_before = active_rental.photos_before
+                photo_before_selfie_uploaded = any(
+                    ("/before/selfie/" in photo) or ("\\before\\selfie\\" in photo) 
+                    for photo in photos_before
+                )
+                photo_before_car_uploaded = any(
+                    ("/before/car/" in photo) or ("\\before\\car\\" in photo) 
+                    for photo in photos_before
+                )
+                photo_before_interior_uploaded = any(
+                    ("/before/interior/" in photo) or ("\\before\\interior\\" in photo) 
+                    for photo in photos_before
+                )
+            
+            vehicles_data.append({
+                "id": car.id,
+                "name": car.name,
+                "plate_number": car.plate_number,
+                "latitude": car.latitude,
+                "longitude": car.longitude,
+                "course": car.course,
+                "fuel_level": car.fuel_level,
+                "price_per_minute": car.price_per_minute,
+                "price_per_hour": car.price_per_hour,
+                "price_per_day": car.price_per_day,
+                "engine_volume": car.engine_volume,
+                "year": car.year,
+                "drive_type": car.drive_type,
+                "transmission_type": car.transmission_type,
+                "body_type": car.body_type,
+                "auto_class": car.auto_class,
+                "photos": car.photos,
+                "owner_id": car.owner_id,
+                "current_renter_id": car.current_renter_id,
+                "status": car.status,
+                "open_price": get_open_price(car),
+                "owned_car": True if car.owner_id == current_user.id else False,
+                "photo_before_selfie_uploaded": photo_before_selfie_uploaded,
+                "photo_before_car_uploaded": photo_before_car_uploaded,
+                "photo_before_interior_uploaded": photo_before_interior_uploaded
+            })
 
         return {"vehicles": vehicles_data}
 
@@ -221,30 +254,63 @@ def search_vehicles(
                 Car.status == CarStatus.FREE
             ).all()
 
-        vehicles_data = [{
-            "id": car.id,
-            "name": car.name,
-            "plate_number": car.plate_number,
-            "latitude": car.latitude,
-            "longitude": car.longitude,
-            "course": car.course,
-            "fuel_level": car.fuel_level,
-            "price_per_minute": car.price_per_minute,
-            "price_per_hour": car.price_per_hour,
-            "price_per_day": car.price_per_day,
-            "engine_volume": car.engine_volume,
-            "year": car.year,
-            "drive_type": car.drive_type,
-            "transmission_type": car.transmission_type,
-            "body_type": car.body_type,
-            "auto_class": car.auto_class,
-            "photos": car.photos,
-            "owner_id": car.owner_id,
-            "current_renter_id": car.current_renter_id,
-            "status": car.status,
-            "open_price": get_open_price(car),
-            "owned_car": True if car.owner_id == current_user.id else False
-        } for car in cars]
+        vehicles_data = []
+        for car in cars:
+            # Проверяем статус загрузки фотографий для текущего пользователя
+            photo_before_selfie_uploaded = False
+            photo_before_car_uploaded = False
+            photo_before_interior_uploaded = False
+            
+            # Ищем активную аренду для этой машины и текущего пользователя
+            active_rental = db.query(RentalHistory).filter(
+                RentalHistory.user_id == current_user.id,
+                RentalHistory.car_id == car.id,
+                RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
+            ).first()
+            
+            if active_rental and active_rental.photos_before:
+                # Проверяем наличие разных типов фотографий
+                photos_before = active_rental.photos_before
+                photo_before_selfie_uploaded = any(
+                    ("/before/selfie/" in photo) or ("\\before\\selfie\\" in photo) 
+                    for photo in photos_before
+                )
+                photo_before_car_uploaded = any(
+                    ("/before/car/" in photo) or ("\\before\\car\\" in photo) 
+                    for photo in photos_before
+                )
+                photo_before_interior_uploaded = any(
+                    ("/before/interior/" in photo) or ("\\before\\interior\\" in photo) 
+                    for photo in photos_before
+                )
+            
+            vehicles_data.append({
+                "id": car.id,
+                "name": car.name,
+                "plate_number": car.plate_number,
+                "latitude": car.latitude,
+                "longitude": car.longitude,
+                "course": car.course,
+                "fuel_level": car.fuel_level,
+                "price_per_minute": car.price_per_minute,
+                "price_per_hour": car.price_per_hour,
+                "price_per_day": car.price_per_day,
+                "engine_volume": car.engine_volume,
+                "year": car.year,
+                "drive_type": car.drive_type,
+                "transmission_type": car.transmission_type,
+                "body_type": car.body_type,
+                "auto_class": car.auto_class,
+                "photos": car.photos,
+                "owner_id": car.owner_id,
+                "current_renter_id": car.current_renter_id,
+                "status": car.status,
+                "open_price": get_open_price(car),
+                "owned_car": True if car.owner_id == current_user.id else False,
+                "photo_before_selfie_uploaded": photo_before_selfie_uploaded,
+                "photo_before_car_uploaded": photo_before_car_uploaded,
+                "photo_before_interior_uploaded": photo_before_interior_uploaded
+            })
 
         return {"vehicles": vehicles_data}
     except Exception as e:
@@ -293,6 +359,34 @@ def get_frequently_used_vehicles(
         for r in rental_counts:
             car = car_dict.get(r.car_id)
             if car:
+                # Проверяем статус загрузки фотографий для текущего пользователя
+                photo_before_selfie_uploaded = False
+                photo_before_car_uploaded = False
+                photo_before_interior_uploaded = False
+                
+                # Ищем активную аренду для этой машины и текущего пользователя
+                active_rental = db.query(RentalHistory).filter(
+                    RentalHistory.user_id == current_user.id,
+                    RentalHistory.car_id == car.id,
+                    RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
+                ).first()
+                
+                if active_rental and active_rental.photos_before:
+                    # Проверяем наличие разных типов фотографий
+                    photos_before = active_rental.photos_before
+                    photo_before_selfie_uploaded = any(
+                        ("/before/selfie/" in photo) or ("\\before\\selfie\\" in photo) 
+                        for photo in photos_before
+                    )
+                    photo_before_car_uploaded = any(
+                        ("/before/car/" in photo) or ("\\before\\car\\" in photo) 
+                        for photo in photos_before
+                    )
+                    photo_before_interior_uploaded = any(
+                        ("/before/interior/" in photo) or ("\\before\\interior\\" in photo) 
+                        for photo in photos_before
+                    )
+                
                 vehicles_data.append({
                     "id": car.id,
                     "name": car.name,
@@ -315,7 +409,10 @@ def get_frequently_used_vehicles(
                     "rental_count": r.rental_count,
                     "status": car.status,
                     "open_price": get_open_price(car),
-                    "owned_car": True if car.owner_id == current_user.id else False
+                    "owned_car": True if car.owner_id == current_user.id else False,
+                    "photo_before_selfie_uploaded": photo_before_selfie_uploaded,
+                    "photo_before_car_uploaded": photo_before_car_uploaded,
+                    "photo_before_interior_uploaded": photo_before_interior_uploaded
                 })
 
         if not vehicles_data:
