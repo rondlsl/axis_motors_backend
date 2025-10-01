@@ -503,7 +503,7 @@ async def upload_delivery_photos_before(
     """
     rental = db.query(RentalHistory).filter(
         RentalHistory.delivery_mechanic_id == current_mechanic.id,
-        RentalHistory.rental_status == RentalStatus.DELIVERING_IN_PROGRESS
+        RentalHistory.rental_status.in_([RentalStatus.DELIVERY_RESERVED, RentalStatus.DELIVERING_IN_PROGRESS])
     ).first()
     if not rental:
         raise HTTPException(404, "Нет активной доставки для загрузки фотографий")
@@ -537,7 +537,7 @@ async def upload_delivery_photos_before_interior(
     """
     rental = db.query(RentalHistory).filter(
         RentalHistory.delivery_mechanic_id == current_mechanic.id,
-        RentalHistory.rental_status == RentalStatus.DELIVERING_IN_PROGRESS
+        RentalHistory.rental_status.in_([RentalStatus.DELIVERY_RESERVED, RentalStatus.DELIVERING_IN_PROGRESS])
     ).first()
     if not rental:
         raise HTTPException(404, "Нет активной доставки для загрузки фотографий")
