@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
-from sqlalchemy import or_, func
+from sqlalchemy import or_, and_, func
 from sqlalchemy.orm import Session
 from typing import Dict, Any, List
 import asyncio
@@ -124,8 +124,13 @@ def get_vehicle_info(
             # Механики видят все автомобили кроме занятых
             query = db.query(Car).filter(Car.status != CarStatus.OCCUPIED)
         else:
-            # Обычные пользователи видят только свободные машины (исключаем занятые и забронированные)
-            query = db.query(Car).filter(Car.status == CarStatus.FREE)
+            # Обычные пользователи видят свободные машины и машины, которые они забронировали
+            query = db.query(Car).filter(
+                or_(
+                    Car.status == CarStatus.FREE,
+                    and_(Car.status == CarStatus.RESERVED, Car.current_renter_id == current_user.id)
+                )
+            )
 
         # Фильтрация по классам авто для роли USER при верифицированных документах
         # Механики видят все автомобили без ограничений по классам
@@ -248,13 +253,16 @@ def search_vehicles(
                 Car.status != CarStatus.OCCUPIED
             ).all()
         else:
-            # Обычные пользователи ищут только среди свободных машин
+            # Обычные пользователи ищут среди свободных машин и забронированных ими
             cars = db.query(Car).filter(
                 or_(
                     Car.name.ilike(f"%{query}%"),
                     Car.plate_number.ilike(f"%{query}%")
                 ),
-                Car.status == CarStatus.FREE
+                or_(
+                    Car.status == CarStatus.FREE,
+                    and_(Car.status == CarStatus.RESERVED, Car.current_renter_id == current_user.id)
+                )
             ).all()
 
         vehicles_data = []
@@ -351,7 +359,10 @@ def get_frequently_used_vehicles(
             db.query(Car)
             .filter(
                 Car.id.in_(car_ids),
-                Car.status == CarStatus.FREE
+                or_(
+                    Car.status == CarStatus.FREE,
+                    and_(Car.status == CarStatus.RESERVED, Car.current_renter_id == current_user.id)
+                )
             )
             .all()
         )
