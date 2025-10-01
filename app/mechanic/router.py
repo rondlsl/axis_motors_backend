@@ -59,7 +59,11 @@ def get_all_vehicles_plain(
                 "open_price": get_open_price(car),
                 "owned_car": False,
                 "current_renter_details": None,
-                "rental_id": None,  # поле всегда есть
+                "rental_id": None,
+                "last_client_review": None,
+                "photo_before_selfie_uploaded": False,
+                "photo_before_car_uploaded": False,
+                "photo_before_interior_uploaded": False,
             }
 
             # ищем последнюю активную аренду (IN_USE или DELIVERING)
@@ -104,12 +108,55 @@ def get_all_vehicles_plain(
                         )
 
                     car_dict["current_renter_details"] = {
+                        "id": renter.id,
                         "first_name": renter.first_name,
                         "last_name": renter.last_name,
                         "phone_number": renter.phone_number,
                         "selfie_url": renter.selfie_with_license_url,
                         "rent_selfie_url": rent_selfie_url,
                     }
+                    
+                    # Проверяем загруженные фото ДО осмотра/аренды
+                    if last_rent:
+                        # Для механика проверяем mechanic_photos_before
+                        if last_rent.mechanic_inspector_id == renter.id and last_rent.mechanic_photos_before:
+                            photos = last_rent.mechanic_photos_before
+                            car_dict["photo_before_selfie_uploaded"] = any(('/mechanic/before/selfie/' in p) or ('\\mechanic\\before\\selfie\\' in p) for p in photos)
+                            car_dict["photo_before_car_uploaded"] = any(('/mechanic/before/car/' in p) or ('\\mechanic\\before\\car\\' in p) for p in photos)
+                            car_dict["photo_before_interior_uploaded"] = any(('/mechanic/before/interior/' in p) or ('\\mechanic\\before\\interior\\' in p) for p in photos)
+                        # Для обычного пользователя проверяем photos_before
+                        elif last_rent.photos_before:
+                            photos = last_rent.photos_before
+                            car_dict["photo_before_selfie_uploaded"] = any(('/before/selfie/' in p) or ('\\before\\selfie\\' in p) for p in photos)
+                            car_dict["photo_before_car_uploaded"] = any(('/before/car/' in p) or ('\\before\\car\\' in p) for p in photos)
+                            car_dict["photo_before_interior_uploaded"] = any(('/before/interior/' in p) or ('\\before\\interior\\' in p) for p in photos)
+            
+            # Добавляем информацию о последнем клиенте (для PENDING статуса)
+            if car.status == CarStatus.PENDING or car.status == CarStatus.SERVICE:
+                last_completed_rental = (
+                    db.query(RentalHistory)
+                    .filter(
+                        RentalHistory.car_id == car.id,
+                        RentalHistory.rental_status == RentalStatus.COMPLETED
+                    )
+                    .order_by(RentalHistory.end_time.desc())
+                    .first()
+                )
+                
+                if last_completed_rental:
+                    # Получаем отзыв клиента
+                    from app.models.history_model import RentalReview
+                    client_review = (
+                        db.query(RentalReview)
+                        .filter(RentalReview.rental_id == last_completed_rental.id)
+                        .first()
+                    )
+                    
+                    if client_review:
+                        car_dict["last_client_review"] = {
+                            "rating": client_review.rating,
+                            "comment": client_review.comment
+                        }
 
             vehicles_data.append(car_dict)
 
@@ -311,6 +358,95 @@ def get_in_use_vehicles(
         )
 
 
+@MechanicRouter.get("/get_service_vehicles")
+def get_service_vehicles(
+        db: Session = Depends(get_db),
+        current_mechanic: Any = Depends(get_current_mechanic)
+) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Список машин со статусом SERVICE, закрепленных за текущим механиком.
+    Эти машины готовы к началу осмотра через endpoint /mechanic/start/{car_id}.
+    """
+    try:
+        # Получаем только машины в статусе SERVICE, закрепленные за текущим механиком
+        cars = db.query(Car).filter(
+            Car.status == CarStatus.SERVICE,
+            Car.current_renter_id == current_mechanic.id
+        ).all()
+        
+        vehicles_data: list[dict[str, Any]] = []
+
+        for car in cars:
+            # Находим последнюю завершенную аренду для получения информации о клиенте
+            last_rental = (
+                db.query(RentalHistory)
+                .filter(
+                    RentalHistory.car_id == car.id,
+                    RentalHistory.rental_status == RentalStatus.COMPLETED
+                )
+                .order_by(RentalHistory.end_time.desc())
+                .first()
+            )
+            
+            last_client_info = None
+            if last_rental and last_rental.user_id:
+                last_client = db.query(User).filter(User.id == last_rental.user_id).first()
+                if last_client:
+                    # Получаем оценку и комментарий клиента
+                    from app.models.history_model import RentalReview
+                    client_review = (
+                        db.query(RentalReview)
+                        .filter(RentalReview.rental_id == last_rental.id)
+                        .first()
+                    )
+                    
+                    last_client_info = {
+                        "id": last_client.id,
+                        "first_name": last_client.first_name,
+                        "last_name": last_client.last_name,
+                        "phone_number": last_client.phone_number,
+                        "rental_id": last_rental.id,
+                        "client_rating": client_review.rating if client_review else None,
+                        "client_comment": client_review.comment if client_review else None
+                    }
+            
+            car_data = {
+                "id": car.id,
+                "name": car.name,
+                "plate_number": car.plate_number,
+                "latitude": car.latitude,
+                "longitude": car.longitude,
+                "course": car.course,
+                "fuel_level": car.fuel_level,
+                "price_per_minute": car.price_per_minute,
+                "price_per_hour": car.price_per_hour,
+                "price_per_day": car.price_per_day,
+                "engine_volume": car.engine_volume,
+                "year": car.year,
+                "drive_type": car.drive_type,
+                "transmission_type": car.transmission_type,
+                "body_type": car.body_type,
+                "auto_class": car.auto_class,
+                "photos": car.photos,
+                "owner_id": car.owner_id,
+                "current_renter_id": car.current_renter_id,
+                "status": car.status,
+                "open_price": get_open_price(car),
+                "owned_car": False,
+                "last_client": last_client_info
+            }
+
+            vehicles_data.append(car_data)
+
+        return {"vehicles": vehicles_data}
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка при получении машин со статусом SERVICE: {e}",
+        )
+
+
 @MechanicRouter.get("/search")
 def search_vehicles(
         query: str = Query(..., description="Поисковый запрос по названию авто или номеру"),
@@ -318,7 +454,7 @@ def search_vehicles(
         current_mechanic: Any = Depends(get_current_mechanic)
 ) -> Dict[str, Any]:
     """
-    Ищет автомобили по имени или номеру, но возвращает только машины со статусом IN_USE или PENDING.
+    Ищет автомобили по имени или номеру, но возвращает только машины со статусом IN_USE, PENDING или SERVICE.
     Для автомобилей со статусом IN_USE дополнительно возвращаются данные текущего арендатора (first_name, last_name, phone_number, URL селфи).
     """
     try:
@@ -327,7 +463,7 @@ def search_vehicles(
                 Car.name.ilike(f"%{query}%"),
                 Car.plate_number.ilike(f"%{query}%")
             ),
-            Car.status.in_([CarStatus.IN_USE, CarStatus.PENDING])
+            Car.status.in_([CarStatus.IN_USE, CarStatus.PENDING, CarStatus.SERVICE])
         ).all()
 
         vehicles_data = []
@@ -439,18 +575,36 @@ async def start_rental(
 ) -> Dict[str, Any]:
     """
     Старт проверки автомобиля по ID авто (обновление статуса осмотра с PENDING на IN_USE).
+    Работает для машин со статусом SERVICE, закрепленных за текущим механиком.
     Всё бесплатно – списания не производится.
     """
+    # Сначала проверяем, что машина существует и находится в статусе SERVICE
+    car = db.query(Car).filter(Car.id == car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    # Проверяем, что машина в статусе SERVICE и закреплена за текущим механиком
+    if car.status != CarStatus.SERVICE:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Автомобиль должен быть в статусе SERVICE. Текущий статус: {car.status}"
+        )
+    
+    if car.current_renter_id != current_mechanic.id:
+        raise HTTPException(
+            status_code=403, 
+            detail="Этот автомобиль не закреплен за вами"
+        )
+    
+    # Ищем активную проверку для этого автомобиля
     rental = db.query(RentalHistory).filter(
         RentalHistory.mechanic_inspector_id == current_mechanic.id,
         RentalHistory.mechanic_inspection_status == "PENDING",
         RentalHistory.car_id == car_id,
     ).first()
+    
     if not rental:
         raise HTTPException(status_code=404, detail="Нет активной проверки для старта по данному автомобилю")
-    car = db.query(Car).filter(Car.id == rental.car_id).first()
-    if not car:
-        raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
     # Обновляем статус осмотра на IN_USE
     rental.mechanic_inspection_status = "IN_USE"
@@ -590,6 +744,12 @@ async def upload_photos_after(
 ) -> Dict[str, Any]:
     """
     После осмотра (часть 1): selfie + салон.
+    
+    После успешной загрузки:
+    - Проверяется статус авто (заглушен ли двигатель, закрыты ли окна/двери и т.д.)
+    - Блокируются замки
+    - Блокируется двигатель
+    - Забирается ключ
     """
     rental = db.query(RentalHistory).filter(
         RentalHistory.mechanic_inspector_id == current_mechanic.id,
@@ -597,6 +757,21 @@ async def upload_photos_after(
     ).first()
     if not rental:
         raise HTTPException(status_code=404, detail="Нет активной проверки (IN_USE)")
+    
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    # Проверяем состояние автомобиля перед блокировкой
+    from app.rent.router import check_vehicle_status_for_completion
+    vehicle_status = await check_vehicle_status_for_completion(car.gps_imei)
+    
+    if "error" in vehicle_status:
+        raise HTTPException(status_code=400, detail=vehicle_status["error"])
+    
+    if vehicle_status.get("errors"):
+        error_message = "Перед завершением осмотра:\n" + "\n".join(vehicle_status["errors"])
+        raise HTTPException(status_code=400, detail=error_message)
 
     try:
         validate_photos([selfie], "selfie")

@@ -968,7 +968,13 @@ async def upload_photos_after(
     После завершения аренды (часть 1):
     - selfie: фото пользователя
     - interior_photos: фото салона (1-10)
-
+    
+    После успешной загрузки:
+    - Проверяется статус авто (заглушен ли двигатель, закрыты ли окна/двери и т.д.)
+    - Блокируются замки
+    - Блокируется двигатель
+    - Забирается ключ
+    
     Внешние фото отправляются отдельным запросом /upload-photos-after-car
     """
     rental = db.query(RentalHistory).filter(
@@ -980,8 +986,24 @@ async def upload_photos_after(
 
     validate_photos([selfie], 'selfie')
     validate_photos(interior_photos, 'interior_photos')
+    
+    # Получаем автомобиль
+    car = db.query(Car).get(rental.car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Car not found")
+
+    # Проверяем состояние автомобиля перед блокировкой
+    vehicle_status = await check_vehicle_status_for_completion(car.gps_imei)
+    
+    if "error" in vehicle_status:
+        raise HTTPException(status_code=400, detail=vehicle_status["error"])
+    
+    if vehicle_status.get("errors"):
+        error_message = "Перед завершением аренды:\n" + "\n".join(vehicle_status["errors"])
+        raise HTTPException(status_code=400, detail=error_message)
 
     try:
+        # Сохраняем фотографии
         urls = list(rental.photos_after or [])
         urls.append(await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/after/selfie/"))
         for p in interior_photos:
@@ -1129,7 +1151,15 @@ async def upload_photos_after_owner(
         db: Session = Depends(get_db),
         current_user=Depends(get_current_user)
 ):
-    """После аренды для владельца (часть 1): только салон (1-10)."""
+    """
+    После аренды для владельца (часть 1): только салон (1-10).
+    
+    После успешной загрузки:
+    - Проверяется статус авто (заглушен ли двигатель, закрыты ли окна/двери и т.д.)
+    - Блокируются замки
+    - Блокируется двигатель  
+    - Забирается ключ
+    """
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,
         RentalHistory.rental_status == RentalStatus.IN_USE
@@ -1139,9 +1169,21 @@ async def upload_photos_after_owner(
     car = db.query(Car).get(rental.car_id)
     if car.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your car")
+    
     validate_photos(interior_photos, 'interior_photos')
+    
+    # Проверяем состояние автомобиля перед блокировкой
+    vehicle_status = await check_vehicle_status_for_completion(car.gps_imei)
+    
+    if "error" in vehicle_status:
+        raise HTTPException(status_code=400, detail=vehicle_status["error"])
+    
+    if vehicle_status.get("errors"):
+        error_message = "Перед завершением аренды:\n" + "\n".join(vehicle_status["errors"])
+        raise HTTPException(status_code=400, detail=error_message)
 
     try:
+        # Сохраняем фотографии
         urls = list(rental.photos_after or [])
         for p in interior_photos:
             urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/interior/"))
