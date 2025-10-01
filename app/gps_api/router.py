@@ -167,12 +167,15 @@ def get_vehicle_info(
             photo_before_car_uploaded = False
             photo_before_interior_uploaded = False
             
-            # Ищем активную аренду для этой машины и текущего пользователя
+            # Ищем активную аренду для текущего пользователя
             active_rental = db.query(RentalHistory).filter(
                 RentalHistory.user_id == current_user.id,
-                RentalHistory.car_id == car.id,
                 RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
             ).first()
+            
+            # Проверяем, что активная аренда относится к текущей машине
+            if active_rental and active_rental.car_id != car.id:
+                active_rental = None
             
             if active_rental and active_rental.photos_before:
                 # Проверяем наличие разных типов фотографий
@@ -261,12 +264,15 @@ def search_vehicles(
             photo_before_car_uploaded = False
             photo_before_interior_uploaded = False
             
-            # Ищем активную аренду для этой машины и текущего пользователя
+            # Ищем активную аренду для текущего пользователя
             active_rental = db.query(RentalHistory).filter(
                 RentalHistory.user_id == current_user.id,
-                RentalHistory.car_id == car.id,
                 RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
             ).first()
+            
+            # Проверяем, что активная аренда относится к текущей машине
+            if active_rental and active_rental.car_id != car.id:
+                active_rental = None
             
             if active_rental and active_rental.photos_before:
                 # Проверяем наличие разных типов фотографий
