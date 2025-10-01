@@ -33,6 +33,37 @@ def get_all_vehicles_plain(
         vehicles_data: List[Dict[str, Any]] = []
 
         for car in cars:
+            # Проверяем статус загрузки фотографий для текущего пользователя
+            photo_before_selfie_uploaded = False
+            photo_before_car_uploaded = False
+            photo_before_interior_uploaded = False
+            
+            # Ищем активную аренду для текущего пользователя
+            active_rental = db.query(RentalHistory).filter(
+                RentalHistory.user_id == current_mechanic.id,
+                RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
+            ).first()
+            
+            # Проверяем, что активная аренда относится к текущей машине
+            if active_rental and active_rental.car_id != car.id:
+                active_rental = None
+            
+            if active_rental and active_rental.photos_before:
+                # Проверяем наличие разных типов фотографий
+                photos_before = active_rental.photos_before
+                photo_before_selfie_uploaded = any(
+                    ("/before/selfie/" in photo) or ("\\before\\selfie\\" in photo) 
+                    for photo in photos_before
+                )
+                photo_before_car_uploaded = any(
+                    ("/before/car/" in photo) or ("\\before\\car\\" in photo) 
+                    for photo in photos_before
+                )
+                photo_before_interior_uploaded = any(
+                    ("/before/interior/" in photo) or ("\\before\\interior\\" in photo) 
+                    for photo in photos_before
+                )
+
             # по умолчанию нет активной аренды
             car_dict: Dict[str, Any] = {
                 "id": car.id,
@@ -58,6 +89,9 @@ def get_all_vehicles_plain(
                 "status": car.status,
                 "open_price": get_open_price(car),
                 "owned_car": False,
+                "photo_before_selfie_uploaded": photo_before_selfie_uploaded,
+                "photo_before_car_uploaded": photo_before_car_uploaded,
+                "photo_before_interior_uploaded": photo_before_interior_uploaded,
                 "current_renter_details": None,
                 "rental_id": None,
                 "last_client_review": None,
@@ -129,9 +163,18 @@ def get_all_vehicles_plain(
                             .first()
                         )
                         if review and (review.rating or review.comment):
+                            # Получаем фото после аренды (салон и кузов)
+                            after_photos = last_rent.photos_after or []
+                            interior_photos = [p for p in after_photos if ("/after/interior/" in p) or ("\\after\\interior\\" in p)]
+                            exterior_photos = [p for p in after_photos if ("/after/car/" in p) or ("\\after\\car\\" in p)]
+                            
                             car_dict["last_client_review"] = {
                                 "rating": review.rating,
                                 "comment": review.comment,
+                                "photos_after": {
+                                    "interior": interior_photos,
+                                    "exterior": exterior_photos
+                                }
                             }
             
             # Добавляем информацию о последнем клиенте (для PENDING статуса)
@@ -156,9 +199,18 @@ def get_all_vehicles_plain(
                     )
                     
                     if client_review:
+                        # Получаем фото после аренды (салон и кузов)
+                        after_photos = last_completed_rental.photos_after or []
+                        interior_photos = [p for p in after_photos if ("/after/interior/" in p) or ("\\after\\interior\\" in p)]
+                        exterior_photos = [p for p in after_photos if ("/after/car/" in p) or ("\\after\\car\\" in p)]
+                        
                         car_dict["last_client_review"] = {
                             "rating": client_review.rating,
-                            "comment": client_review.comment
+                            "comment": client_review.comment,
+                            "photos_after": {
+                                "interior": interior_photos,
+                                "exterior": exterior_photos
+                            }
                         }
 
             vehicles_data.append(car_dict)
