@@ -54,9 +54,12 @@ def add_review_if_exists(db: Session, rental_id: int, review_input: Optional["Re
             existing_review.mechanic_rating = review_input.rating
             existing_review.mechanic_comment = review_input.comment
         else:
-            # Создаем новый отзыв только с данными механика
+            # Создаем новый отзыв с данными механика
+            # Если поле rating имеет ограничение NOT NULL, устанавливаем значение по умолчанию
             review = RentalReview(
                 rental_id=rental_id,
+                rating=0,  # Значение по умолчанию для клиентского рейтинга
+                comment=None,  # Клиентский комментарий пока отсутствует
                 mechanic_rating=review_input.rating,
                 mechanic_comment=review_input.comment
             )
