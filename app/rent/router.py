@@ -1455,22 +1455,41 @@ async def complete_rental(
         error_message = "Нельзя завершить аренду:\n" + "\n".join(vehicle_status["errors"])
         raise HTTPException(status_code=400, detail=error_message)
 
+    # Проверяем, является ли пользователь владельцем автомобиля
+    is_owner = car.owner_id == current_user.id
+    
     after_photos = rental.photos_after or []
     has_after_selfie = any(("/after/selfie/" in p) or ("\\after\\selfie\\" in p) for p in after_photos)
     has_after_interior = any(("/after/interior/" in p) or ("\\after\\interior\\" in p) for p in after_photos)
     has_after_exterior = any(("/after/car/" in p) or ("\\after\\car\\" in p) for p in after_photos)
-    if not (has_after_selfie and has_after_interior and has_after_exterior):
-        missing_after = []
-        if not has_after_selfie:
-            missing_after.append("селфи")
-        if not has_after_interior:
-            missing_after.append("салон")
-        if not has_after_exterior:
-            missing_after.append("внешний вид")
-        raise HTTPException(
-            status_code=400,
-            detail=f"Для завершения аренды загрузите фото: {', '.join(missing_after)}"
-        )
+    
+    # Для владельца автомобиля пропускаем проверку селфи
+    if is_owner:
+        # Владелец должен загрузить только салон и внешний вид
+        if not (has_after_interior and has_after_exterior):
+            missing_after = []
+            if not has_after_interior:
+                missing_after.append("салон")
+            if not has_after_exterior:
+                missing_after.append("внешний вид")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Для завершения аренды загрузите фото: {', '.join(missing_after)}"
+            )
+    else:
+        # Для обычных пользователей требуем все фото: селфи, салон, внешний вид
+        if not (has_after_selfie and has_after_interior and has_after_exterior):
+            missing_after = []
+            if not has_after_selfie:
+                missing_after.append("селфи")
+            if not has_after_interior:
+                missing_after.append("салон")
+            if not has_after_exterior:
+                missing_after.append("внешний вид")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Для завершения аренды загрузите фото: {', '.join(missing_after)}"
+            )
 
     # 4) Завершить аренду: время, координаты, состояние
     now = datetime.utcnow()
