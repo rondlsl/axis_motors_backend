@@ -744,10 +744,10 @@ async def upload_photos_before(
     """
     rental = db.query(RentalHistory).filter(
         RentalHistory.mechanic_inspector_id == current_mechanic.id,
-        RentalHistory.mechanic_inspection_status == "IN_USE"
+        RentalHistory.mechanic_inspection_status.in_(["PENDING", "IN_USE", "SERVICE"])
     ).first()
     if not rental:
-        raise HTTPException(status_code=404, detail="Нет активной проверки (IN_USE)")
+        raise HTTPException(status_code=404, detail="Нет активной проверки (PENDING, IN_USE или SERVICE)")
 
     try:
         # сохраняем только selfie + car
@@ -778,10 +778,10 @@ async def upload_photos_before_interior(
     """
     rental = db.query(RentalHistory).filter(
         RentalHistory.mechanic_inspector_id == current_mechanic.id,
-        RentalHistory.mechanic_inspection_status == "IN_USE"
+        RentalHistory.mechanic_inspection_status.in_(["PENDING", "IN_USE", "SERVICE"])
     ).first()
     if not rental:
-        raise HTTPException(status_code=404, detail="Нет активной проверки (IN_USE)")
+        raise HTTPException(status_code=404, detail="Нет активной проверки (PENDING, IN_USE или SERVICE)")
 
     # Требуем сначала внешние фото
     existing = rental.mechanic_photos_before or []
@@ -823,10 +823,10 @@ async def upload_photos_after(
     """
     rental = db.query(RentalHistory).filter(
         RentalHistory.mechanic_inspector_id == current_mechanic.id,
-        RentalHistory.mechanic_inspection_status == "IN_USE"
+        RentalHistory.mechanic_inspection_status.in_(["PENDING", "IN_USE", "SERVICE"])
     ).first()
     if not rental:
-        raise HTTPException(status_code=404, detail="Нет активной проверки (IN_USE)")
+        raise HTTPException(status_code=404, detail="Нет активной проверки (PENDING, IN_USE или SERVICE)")
     
     car = db.query(Car).filter(Car.id == rental.car_id).first()
     if not car:
@@ -882,10 +882,10 @@ async def upload_photos_after_car(
     """
     rental = db.query(RentalHistory).filter(
         RentalHistory.mechanic_inspector_id == current_mechanic.id,
-        RentalHistory.mechanic_inspection_status == "IN_USE"
+        RentalHistory.mechanic_inspection_status.in_(["PENDING", "IN_USE", "SERVICE"])
     ).first()
     if not rental:
-        raise HTTPException(status_code=404, detail="Нет активной проверки (IN_USE)")
+        raise HTTPException(status_code=404, detail="Нет активной проверки (PENDING, IN_USE или SERVICE)")
 
     # Требуем сначала салонные фото
     existing_after = rental.mechanic_photos_after or []
@@ -942,7 +942,7 @@ async def complete_rental(
     """
     rental = db.query(RentalHistory).filter(
         RentalHistory.mechanic_inspector_id == current_mechanic.id,
-        RentalHistory.mechanic_inspection_status == "IN_USE"
+        RentalHistory.mechanic_inspection_status.in_(["PENDING", "IN_USE", "SERVICE"])
     ).first()
     if not rental:
         raise HTTPException(status_code=404, detail="Нет активной проверки для завершения")
