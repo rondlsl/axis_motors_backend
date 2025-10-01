@@ -20,6 +20,9 @@ from app.wallet.utils import record_wallet_transaction
 from app.models.wallet_transaction_model import WalletTransactionType
 from app.rent.utils.calculate_price import calculate_total_price, get_open_price
 from app.gps_api.utils.route_data import get_gps_route_data
+from app.gps_api.utils.auth_api import get_auth_token
+from app.gps_api.utils.car_data import auto_lock_vehicle_after_rental
+from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.owner.schemas import RouteData, RouteMapData
 from app.rent.schemas import (
     AdvanceBookingRequest, 
@@ -986,6 +989,17 @@ async def upload_photos_after(
 
         rental.photos_after = urls
         db.commit()
+        
+        # Автоматическая блокировка после успешной загрузки фото
+        try:
+            car = db.query(Car).get(rental.car_id)
+            if car and car.gps_imei:
+                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                lock_result = await auto_lock_vehicle_after_rental(car.gps_imei, auth_token)
+                print(f"Автоматическая блокировка после загрузки фото: {lock_result}")
+        except Exception as e:
+            print(f"Ошибка автоматической блокировки после загрузки фото: {e}")
+        
         return {"message": "Photos after (selfie+interior) uploaded", "photo_count": len(interior_photos) + 1}
     except Exception:
         db.rollback()
@@ -1133,6 +1147,17 @@ async def upload_photos_after_owner(
             urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/interior/"))
         rental.photos_after = urls
         db.commit()
+        
+        # Автоматическая блокировка после успешной загрузки фото владельцем
+        try:
+            car = db.query(Car).get(rental.car_id)
+            if car and car.gps_imei:
+                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                lock_result = await auto_lock_vehicle_after_rental(car.gps_imei, auth_token)
+                print(f"Автоматическая блокировка после загрузки фото владельцем: {lock_result}")
+        except Exception as e:
+            print(f"Ошибка автоматической блокировки после загрузки фото владельцем: {e}")
+        
         return {"message": "Owner photos after (interior) uploaded", "photo_count": len(interior_photos)}
     except Exception:
         db.rollback()

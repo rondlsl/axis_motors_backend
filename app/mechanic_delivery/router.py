@@ -9,7 +9,7 @@ from app.auth.dependencies.get_current_user import get_current_mechanic
 from app.auth.dependencies.save_documents import validate_photos, save_file
 from app.dependencies.database.database import get_db
 from app.gps_api.router import AUTH_TOKEN
-from app.gps_api.utils.car_data import send_command_to_terminal, send_open, send_close, send_give_key, send_take_key
+from app.gps_api.utils.car_data import send_command_to_terminal, send_open, send_close, send_give_key, send_take_key, auto_lock_vehicle_after_rental
 from app.gps_api.utils.auth_api import get_auth_token
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.models.history_model import RentalStatus, RentalHistory, RentalReview
@@ -540,6 +540,17 @@ async def upload_delivery_photos_after(
             urls.append(await save_file(p, rental.id, f"uploads/delivery/{rental.id}/after/interior/"))
         rental.delivery_photos_after = urls
         db.commit()
+        
+        # Автоматическая блокировка после успешной загрузки фото доставки
+        try:
+            car = db.query(Car).get(rental.car_id)
+            if car and car.gps_imei:
+                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                lock_result = await auto_lock_vehicle_after_rental(car.gps_imei, auth_token)
+                print(f"Автоматическая блокировка после загрузки фото доставки: {lock_result}")
+        except Exception as e:
+            print(f"Ошибка автоматической блокировки после загрузки фото доставки: {e}")
+        
         return {"message": "Фотографии после доставки (selfie+interior) загружены", "photo_count": len(urls)}
     except HTTPException:
         raise

@@ -13,6 +13,9 @@ from app.models.history_model import RentalType, RentalStatus, RentalHistory, Re
 from app.models.car_model import Car, CarStatus
 from app.models.user_model import User
 from app.rent.utils.calculate_price import get_open_price
+from app.gps_api.utils.auth_api import get_auth_token
+from app.gps_api.utils.car_data import auto_lock_vehicle_after_rental
+from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 
 MechanicRouter = APIRouter(tags=["Mechanic"], prefix="/mechanic")
 
@@ -604,6 +607,17 @@ async def upload_photos_after(
             urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/mechanic/after/interior/"))
         rental.mechanic_photos_after = urls
         db.commit()
+        
+        # Автоматическая блокировка после успешной загрузки фото механиком
+        try:
+            car = db.query(Car).get(rental.car_id)
+            if car and car.gps_imei:
+                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                lock_result = await auto_lock_vehicle_after_rental(car.gps_imei, auth_token)
+                print(f"Автоматическая блокировка после загрузки фото механиком: {lock_result}")
+        except Exception as e:
+            print(f"Ошибка автоматической блокировки после загрузки фото механиком: {e}")
+        
         return {"message": "Фотографии после проверки (selfie+interior) загружены", "photo_count": len(urls)}
     except HTTPException:
         raise

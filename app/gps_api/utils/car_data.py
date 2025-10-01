@@ -165,3 +165,51 @@ async def send_unlock_engine(imei: str, token: str, retries: int = 1) -> dict:
     commands = get_commands_by_imei(imei)
     vehicle_id = get_vehicle_id_by_imei(imei)
     return await send_command_to_terminal(vehicle_id, commands["unlock_engine"], token, retries)
+
+
+async def auto_lock_vehicle_after_rental(imei: str, token: str) -> dict:
+    """
+    Автоматически блокирует замки, двигатель и забирает ключ после завершения аренды.
+    Вызывается после успешной загрузки фото салона/сэлфи.
+    """
+    results = {
+        "close_doors": None,
+        "lock_engine": None,
+        "take_key": None,
+        "errors": []
+    }
+    
+    try:
+        # 1. Закрыть замки
+        try:
+            results["close_doors"] = await send_close(imei, token)
+            logger.info(f"Замки автомобиля {imei} заблокированы")
+        except Exception as e:
+            error_msg = f"Ошибка блокировки замков: {e}"
+            results["errors"].append(error_msg)
+            logger.error(error_msg)
+        
+        # 2. Заблокировать двигатель
+        try:
+            results["lock_engine"] = await send_lock_engine(imei, token)
+            logger.info(f"Двигатель автомобиля {imei} заблокирован")
+        except Exception as e:
+            error_msg = f"Ошибка блокировки двигателя: {e}"
+            results["errors"].append(error_msg)
+            logger.error(error_msg)
+        
+        # 3. Забрать ключ
+        try:
+            results["take_key"] = await send_take_key(imei, token)
+            logger.info(f"Ключ автомобиля {imei} забран")
+        except Exception as e:
+            error_msg = f"Ошибка забора ключа: {e}"
+            results["errors"].append(error_msg)
+            logger.error(error_msg)
+            
+    except Exception as e:
+        error_msg = f"Общая ошибка автоматической блокировки: {e}"
+        results["errors"].append(error_msg)
+        logger.error(error_msg)
+    
+    return results
