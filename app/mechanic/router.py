@@ -29,6 +29,7 @@ def get_all_vehicles_plain(
         current_mechanic: Any = Depends(get_current_mechanic),
 ) -> Dict[str, Any]:
     try:
+        from app.models.user_model import UserRole
         cars: List[Car] = db.query(Car).all()
         vehicles_data: List[Dict[str, Any]] = []
 
@@ -145,7 +146,7 @@ def get_all_vehicles_plain(
                     }
                     
                     # Для механика в IN_USE прикладываем фото клиента ПОСЛЕ (interior/exterior) и последний отзыв клиента
-                    if last_rent and current_mechanic and car.status == CarStatus.IN_USE:
+                    if last_rent and current_mechanic:
                         after_photos = last_rent.photos_after or []
                         if after_photos:
                             car_dict["last_client_after_photos"] = {
@@ -176,7 +177,6 @@ def get_all_vehicles_plain(
             
             # Добавляем информацию о последнем клиенте (для всех статусов)
             # Ищем последнюю завершенную аренду от обычного клиента (не механика)
-            from app.models.user_model import UserRole
             last_completed_rental = (
                 db.query(RentalHistory)
                 .join(User, RentalHistory.user_id == User.id)
@@ -191,7 +191,6 @@ def get_all_vehicles_plain(
             
             if last_completed_rental:
                 # Получаем отзыв клиента
-                from app.models.history_model import RentalReview
                 client_review = (
                     db.query(RentalReview)
                     .filter(RentalReview.rental_id == last_completed_rental.id)
@@ -448,7 +447,6 @@ def get_service_vehicles(
                 last_client = db.query(User).filter(User.id == last_rental.user_id).first()
                 if last_client:
                     # Получаем оценку и комментарий клиента
-                    from app.models.history_model import RentalReview
                     client_review = (
                         db.query(RentalReview)
                         .filter(RentalReview.rental_id == last_rental.id)

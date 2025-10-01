@@ -177,6 +177,9 @@ def get_vehicle_info(
             photo_before_selfie_uploaded = False
             photo_before_car_uploaded = False
             photo_before_interior_uploaded = False
+            photo_after_selfie_uploaded = False
+            photo_after_car_uploaded = False
+            photo_after_interior_uploaded = False
             
             # Ищем активную аренду для текущего пользователя
             active_rental = db.query(RentalHistory).filter(
@@ -204,6 +207,22 @@ def get_vehicle_info(
                     for photo in photos_before
                 )
             
+            # Проверяем фото после осмотра
+            if active_rental and active_rental.photos_after:
+                photos_after = active_rental.photos_after
+                photo_after_selfie_uploaded = any(
+                    ("/after/selfie/" in photo) or ("\\after\\selfie\\" in photo) 
+                    for photo in photos_after
+                )
+                photo_after_car_uploaded = any(
+                    ("/after/car/" in photo) or ("\\after\\car\\" in photo) 
+                    for photo in photos_after
+                )
+                photo_after_interior_uploaded = any(
+                    ("/after/interior/" in photo) or ("\\after\\interior\\" in photo) 
+                    for photo in photos_after
+                )
+            
             vehicles_data.append({
                 "id": car.id,
                 "name": car.name,
@@ -229,7 +248,10 @@ def get_vehicle_info(
                 "owned_car": True if car.owner_id == current_user.id else False,
                 "photo_before_selfie_uploaded": photo_before_selfie_uploaded,
                 "photo_before_car_uploaded": photo_before_car_uploaded,
-                "photo_before_interior_uploaded": photo_before_interior_uploaded
+                "photo_before_interior_uploaded": photo_before_interior_uploaded,
+                "photo_after_selfie_uploaded": photo_after_selfie_uploaded,
+                "photo_after_car_uploaded": photo_after_car_uploaded,
+                "photo_after_interior_uploaded": photo_after_interior_uploaded
             })
 
         return {"vehicles": vehicles_data}
@@ -291,6 +313,9 @@ def search_vehicles(
             photo_before_selfie_uploaded = False
             photo_before_car_uploaded = False
             photo_before_interior_uploaded = False
+            photo_after_selfie_uploaded = False
+            photo_after_car_uploaded = False
+            photo_after_interior_uploaded = False
             
             # Ищем активную аренду для текущего пользователя
             active_rental = db.query(RentalHistory).filter(
@@ -318,6 +343,22 @@ def search_vehicles(
                     for photo in photos_before
                 )
             
+            # Проверяем фото после осмотра
+            if active_rental and active_rental.photos_after:
+                photos_after = active_rental.photos_after
+                photo_after_selfie_uploaded = any(
+                    ("/after/selfie/" in photo) or ("\\after\\selfie\\" in photo) 
+                    for photo in photos_after
+                )
+                photo_after_car_uploaded = any(
+                    ("/after/car/" in photo) or ("\\after\\car\\" in photo) 
+                    for photo in photos_after
+                )
+                photo_after_interior_uploaded = any(
+                    ("/after/interior/" in photo) or ("\\after\\interior\\" in photo) 
+                    for photo in photos_after
+                )
+            
             vehicles_data.append({
                 "id": car.id,
                 "name": car.name,
@@ -343,7 +384,10 @@ def search_vehicles(
                 "owned_car": True if car.owner_id == current_user.id else False,
                 "photo_before_selfie_uploaded": photo_before_selfie_uploaded,
                 "photo_before_car_uploaded": photo_before_car_uploaded,
-                "photo_before_interior_uploaded": photo_before_interior_uploaded
+                "photo_before_interior_uploaded": photo_before_interior_uploaded,
+                "photo_after_selfie_uploaded": photo_after_selfie_uploaded,
+                "photo_after_car_uploaded": photo_after_car_uploaded,
+                "photo_after_interior_uploaded": photo_after_interior_uploaded
             })
 
         return {"vehicles": vehicles_data}
@@ -410,6 +454,9 @@ def get_frequently_used_vehicles(
                 photo_before_selfie_uploaded = False
                 photo_before_car_uploaded = False
                 photo_before_interior_uploaded = False
+                photo_after_selfie_uploaded = False
+                photo_after_car_uploaded = False
+                photo_after_interior_uploaded = False
                 
                 # Ищем активную аренду для этой машины и текущего пользователя
                 active_rental = db.query(RentalHistory).filter(
@@ -472,6 +519,9 @@ def get_frequently_used_vehicles(
                     photo_before_selfie_uploaded = False
                     photo_before_car_uploaded = False
                     photo_before_interior_uploaded = False
+                    photo_after_selfie_uploaded = False
+                    photo_after_car_uploaded = False
+                    photo_after_interior_uploaded = False
                     
                     vehicles_data.append({
                         "id": car.id,
