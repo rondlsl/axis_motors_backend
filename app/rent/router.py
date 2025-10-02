@@ -1136,26 +1136,12 @@ async def upload_photos_after_car(
         for p in car_photos:
             urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/car/"))
         rental.photos_after = urls
-        
-        # Автоматически завершаем аренду после загрузки фото кузова
-        now = datetime.utcnow()
-        rental.end_time = now
-        rental.end_latitude = car.latitude
-        rental.end_longitude = car.longitude
-        rental.fuel_after = car.fuel_level
-        rental.mileage_after = car.mileage
-        rental.rental_status = RentalStatus.COMPLETED
-
-        # Освободить машину
-        car.current_renter_id = None
-        car.status = CarStatus.PENDING
-        
         db.commit()
         
         return {
-            "message": "Photos after (car) uploaded and rental completed automatically", 
+            "message": "Photos after (car) uploaded successfully", 
             "photo_count": len(car_photos),
-            "rental_completed": True
+            "rental_completed": False
         }
     except Exception:
         db.rollback()
