@@ -966,21 +966,30 @@ async def upload_photos_before(
         # сохраняем селфи во временный файл
         selfie_tmp_path = _write_upload_to_temp(selfie)
 
-        # строим путь к фото из профиля (оно хранится в виде относительного пути в uploads/..)
-        profile_doc_path = user.id_card_front_url
-        candidate_paths = []
-        if profile_doc_path:
-            # как сохранено
-            candidate_paths.append(Path(profile_doc_path))
-            # как относительный в uploads
-            candidate_paths.append(Path("uploads") / Path(profile_doc_path).name)
-        resolved_doc = next((p for p in candidate_paths if p.exists()), None)
+        # Пытаемся разрешить путь к документу пользователя
+        profile_doc_path = user.id_card_front_url.strip()
+        candidates = []
+        # 1) как есть (вдруг абсолютный)
+        candidates.append(Path(profile_doc_path))
+        # 2) если начинается с /uploads — относительный к корню приложения
+        if profile_doc_path.startswith("/uploads/"):
+            candidates.append(Path(".") / profile_doc_path.lstrip("/"))
+        if profile_doc_path.startswith("uploads/"):
+            candidates.append(Path(profile_doc_path))
+            candidates.append(Path(".") / profile_doc_path)
+        candidates.append(Path("uploads") / Path(profile_doc_path).name)
+
+        resolved_doc = next((p for p in candidates if p and p.exists()), None)
         if not resolved_doc:
             raise HTTPException(status_code=400, detail="Файл документа из профиля не найден для сверки личности")
 
-        # импорт внутри функции, чтобы не тянуть deepface при любом старте
-        from app.services.face_verify import verify_faces
-        is_same, details = await run_in_threadpool(verify_faces, selfie_tmp_path, str(resolved_doc))
+        try:
+            # импорт внутри, чтобы не грузить TF при каждом импорте модуля
+            from app.services.face_verify import verify_faces
+            is_same, details = await run_in_threadpool(verify_faces, selfie_tmp_path, str(resolved_doc))
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Ошибка проверки селфи: {str(e)}")
+
         if not is_same:
             raise HTTPException(status_code=400, detail="Личность не подтверждена по селфи. Убедитесь, что на фото именно вы, и попробуйте снова.")
 
@@ -995,9 +1004,12 @@ async def upload_photos_before(
         rental.photos_before = urls
         db.commit()
         return {"message": "Photos before (selfie+car) uploaded", "photo_count": len(urls)}
-    except Exception:
+    except HTTPException:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Error uploading before photos (selfie+car)")
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Ошибка загрузки фото до аренды: {str(e)}")
 
 
 @RentRouter.post("/upload-photos-before-interior")
