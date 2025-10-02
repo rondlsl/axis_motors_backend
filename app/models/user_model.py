@@ -16,6 +16,7 @@ class UserRole(enum.Enum):
     GARANT = "GARANT"
     FINANCIER = "financier"
     MVD = "mvd"
+    SUPPORT = "SUPPORT"                         # Служба поддержки
     PENDINGTOFIRST = "PENDINGTOFIRST"          # Загрузил документы, ждёт финансиста
     PENDINGTOSECOND = "PENDINGTOSECOND"        # Одобрен финансистом, ждёт МВД
     REJECTFIRSTDOC = "REJECTFIRSTDOC"          # Отказ финансиста: неверные документы

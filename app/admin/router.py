@@ -19,7 +19,7 @@ from app.guarantor.schemas import (
     AdminRejectGuarantorSchema
 )
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy import or_, func
 
 # New imports for admin car endpoints
