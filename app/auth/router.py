@@ -281,6 +281,7 @@ async def read_users_me(
     # Получаем активную аренду и автомобиль
     # Для механиков ищем по mechanic_inspector_id, для обычных пользователей - по user_id
     if current_user.role == UserRole.MECHANIC:
+        # Сначала ищем активный осмотр
         rental_with_car = (
             db.query(RentalHistory, Car)
             .join(Car, Car.id == RentalHistory.car_id)
@@ -294,6 +295,21 @@ async def read_users_me(
             )
             .first()
         )
+        
+        # Если нет активного осмотра, ищем активную доставку
+        if not rental_with_car:
+            rental_with_car = (
+                db.query(RentalHistory, Car)
+                .join(Car, Car.id == RentalHistory.car_id)
+                .filter(
+                    RentalHistory.delivery_mechanic_id == current_user.id,
+                    RentalHistory.rental_status.in_([
+                        RentalStatus.DELIVERING,
+                        RentalStatus.DELIVERING_IN_PROGRESS
+                    ])
+                )
+                .first()
+            )
     else:
         rental_with_car = (
             db.query(RentalHistory, Car)
@@ -317,14 +333,27 @@ async def read_users_me(
 
         # Для механиков используем mechanic_inspection_status, для обычных пользователей - rental_status
         if current_user.role == UserRole.MECHANIC:
-            rental_details = {
-                "reservation_time": rental.mechanic_inspection_start_time.isoformat() if rental.mechanic_inspection_start_time else None,
-                "start_time": rental.mechanic_inspection_start_time.isoformat() if rental.mechanic_inspection_start_time else None,
-                "rental_type": rental.rental_type.value if rental.rental_type else "minutes",
-                "duration": rental.duration,
-                "already_payed": 0,  # Для механиков всегда 0
-                "status": rental.mechanic_inspection_status
-            }
+            # Проверяем, это осмотр или доставка
+            if rental.mechanic_inspector_id == current_user.id:
+                # Это осмотр
+                rental_details = {
+                    "reservation_time": rental.mechanic_inspection_start_time.isoformat() if rental.mechanic_inspection_start_time else None,
+                    "start_time": rental.mechanic_inspection_start_time.isoformat() if rental.mechanic_inspection_start_time else None,
+                    "rental_type": rental.rental_type.value if rental.rental_type else "minutes",
+                    "duration": rental.duration,
+                    "already_payed": 0,  # Для механиков всегда 0
+                    "status": rental.mechanic_inspection_status
+                }
+            else:
+                # Это доставка
+                rental_details = {
+                    "reservation_time": rental.delivery_start_time.isoformat() if rental.delivery_start_time else None,
+                    "start_time": rental.delivery_start_time.isoformat() if rental.delivery_start_time else None,
+                    "rental_type": rental.rental_type.value if rental.rental_type else "minutes",
+                    "duration": rental.duration,
+                    "already_payed": 0,  # Для механиков всегда 0
+                    "status": rental.rental_status.value
+                }
         else:
             rental_details = {
                 "reservation_time": rental.reservation_time.isoformat() if rental.reservation_time else None,
@@ -392,6 +421,34 @@ async def read_users_me(
             "description": car.description,
             "current_renter_id": car.current_renter_id,
         }
+        
+        # Для механиков добавляем поля статуса загрузки фотографий
+        if current_user.role == UserRole.MECHANIC:
+            # Проверяем есть ли фотографии ДО осмотра/доставки
+            car_details["photo_before_selfie_uploaded"] = bool(rental.photo_before_selfie)
+            car_details["photo_before_car_uploaded"] = bool(rental.photo_before_car)
+            car_details["photo_before_interior_uploaded"] = bool(rental.photo_before_interior)
+            
+            # Проверяем есть ли фотографии ПОСЛЕ осмотра/доставки
+            car_details["photo_after_selfie_uploaded"] = bool(rental.photo_after_selfie)
+            car_details["photo_after_car_uploaded"] = bool(rental.photo_after_car)
+            car_details["photo_after_interior_uploaded"] = bool(rental.photo_after_interior)
+            
+            # Добавляем rental_id для механиков
+            car_details["rental_id"] = rental.id
+            
+            # Добавляем last_client_review для механиков (только для осмотров, не для доставок)
+            if rental.last_client_review and rental.mechanic_inspector_id == current_user.id:
+                car_details["last_client_review"] = {
+                    "rating": rental.last_client_review.rating,
+                    "comment": rental.last_client_review.comment or "",
+                    "photos_after": {
+                        "interior": rental.last_client_review.photos_after_interior or [],
+                        "exterior": rental.last_client_review.photos_after_car or []
+                    }
+                }
+            else:
+                car_details["last_client_review"] = None
         
         # Для механиков добавляем current_renter_details
         if current_user.role == UserRole.MECHANIC and car.current_renter_id:
