@@ -52,6 +52,9 @@ RentRouter = APIRouter(tags=["Rent"], prefix="/rent")
 
 OFFSET_HOURS = 5
 
+# Цена за литр бензина (тг)
+FUEL_PRICE_PER_LITER = 450
+
 
 def validate_user_can_rent(current_user: User, db: Session) -> None:
     """
@@ -145,6 +148,14 @@ def get_trip_history(
     for rental, car in histories:
         # Получаем отзыв для этой аренды
         review = db.query(RentalReview).filter(RentalReview.rental_id == rental.id).first()
+        # Расчёт топливного сбора для отображения
+        fuel_fee_display = 0
+        if rental.fuel_before is not None and rental.fuel_after is not None:
+            fuel_consumed = rental.fuel_before - rental.fuel_after
+            if fuel_consumed > 0:
+                is_owner = car.owner_id == rental.user_id
+                if is_owner or rental.rental_type in (RentalType.HOURS, RentalType.DAYS):
+                    fuel_fee_display = int(fuel_consumed * FUEL_PRICE_PER_LITER)
         
         result.append({
             "history_id": rental.id,
@@ -152,6 +163,17 @@ def get_trip_history(
             "date": apply_offset(rental.end_time),
             "car_name": car.name,
             "final_total_price": rental.total_price,
+            # Детализация
+            "base_price": rental.base_price or 0,
+            "open_fee": rental.open_fee or 0,
+            "delivery_fee": rental.delivery_fee or 0,
+            "fuel_fee": fuel_fee_display,
+            "waiting_fee": rental.waiting_fee or 0,
+            "overtime_fee": rental.overtime_fee or 0,
+            "distance_fee": rental.distance_fee or 0,
+            # Топливо уровни
+            "fuel_before": rental.fuel_before,
+            "fuel_after": rental.fuel_after,
             # Фото клиента: до/после
             "client_photos_before": rental.photos_before or [],
             "client_photos_after": rental.photos_after or [],
@@ -212,6 +234,15 @@ async def get_trip_history_detail(
         "base_price": rental.base_price,
         "open_fee": rental.open_fee,
         "delivery_fee": rental.delivery_fee,
+        # Топливо: суммы и уровни
+        "fuel_fee": (lambda: (
+            (int((rental.fuel_before - rental.fuel_after) * FUEL_PRICE_PER_LITER)
+             if rental.fuel_before is not None and rental.fuel_after is not None and
+                ((car.owner_id == rental.user_id) or (rental.rental_type in (RentalType.HOURS, RentalType.DAYS))) and
+                (rental.fuel_before - rental.fuel_after) > 0 else 0)
+        ))(),
+        "fuel_before": rental.fuel_before,
+        "fuel_after": rental.fuel_after,
         "waiting_fee": rental.waiting_fee,
         "overtime_fee": rental.overtime_fee,
         "distance_fee": rental.distance_fee,
@@ -1564,8 +1595,15 @@ async def complete_rental(
     rental.waiting_fee = rental.waiting_fee or 0
     rental.distance_fee = rental.distance_fee or 0
 
-    # 10) Если арендатор — владелец, обнуляем все сборы
+    # 10) Рассчитать топливный сбор (включать только при необходимости)
+    fuel_fee = 0
+    if rental.fuel_before is not None and rental.fuel_after is not None:
+        fuel_consumed = rental.fuel_before - rental.fuel_after
+        if fuel_consumed > 0:
+            fuel_fee = int(fuel_consumed * FUEL_PRICE_PER_LITER)
+
     if car.owner_id == current_user.id:
+        # Владелец платит только за топливо
         rental.base_price = 0
         rental.open_fee = 0
         rental.delivery_fee = 0
@@ -1573,20 +1611,43 @@ async def complete_rental(
         rental.overtime_fee = 0
         rental.distance_fee = 0
 
-    # 11) Итоговая сумма и списание
-    rental.total_price = (
-            rental.base_price + rental.open_fee + rental.delivery_fee +
-            rental.waiting_fee + rental.overtime_fee + rental.distance_fee
-    )
-    previous_paid = rental.already_payed or 0
-    amount_to_charge = rental.total_price - previous_paid
+        rental.total_price = fuel_fee
+        previous_paid = rental.already_payed or 0
+        amount_to_charge = rental.total_price - previous_paid
 
-    # Баланс может уходить в минус — это допустимо
-    # финальное списание за аренду
-    if amount_to_charge != 0:
-        record_wallet_transaction(db, user=current_user, amount=-amount_to_charge, ttype=WalletTransactionType.RENT_BASE_CHARGE, description="Завершение аренды: финальное списание")
-    current_user.wallet_balance -= amount_to_charge
-    rental.already_payed = rental.total_price
+        if amount_to_charge != 0:
+            record_wallet_transaction(
+                db,
+                user=current_user,
+                amount=-amount_to_charge,
+                ttype=WalletTransactionType.RENT_FUEL_FEE,
+                description="Оплата топлива"
+            )
+            current_user.wallet_balance -= amount_to_charge
+            rental.already_payed = (rental.already_payed or 0) + amount_to_charge
+    else:
+        # Клиент: топливо учитываем только для часового и суточного тарифов
+        if rental.rental_type in (RentalType.HOURS, RentalType.DAYS) and fuel_fee > 0:
+            rental.base_price = (rental.base_price or 0) + fuel_fee
+
+        # Итоговая сумма и списание
+        rental.total_price = (
+                (rental.base_price or 0) + rental.open_fee + rental.delivery_fee +
+                rental.waiting_fee + rental.overtime_fee + rental.distance_fee
+        )
+        previous_paid = rental.already_payed or 0
+        amount_to_charge = rental.total_price - previous_paid
+
+        if amount_to_charge != 0:
+            record_wallet_transaction(
+                db,
+                user=current_user,
+                amount=-amount_to_charge,
+                ttype=WalletTransactionType.RENT_BASE_CHARGE,
+                description="Завершение аренды: финальное списание"
+            )
+        current_user.wallet_balance -= amount_to_charge
+        rental.already_payed = rental.total_price
 
     # 12) Автоматическая блокировка двигателя при завершении аренды
     try:

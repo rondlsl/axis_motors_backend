@@ -20,6 +20,7 @@ class WalletTransactionType(enum.Enum):
     RENT_OVERTIME_FEE = "rent_overtime_fee"
     RENT_DISTANCE_FEE = "rent_distance_fee"
     RENT_BASE_CHARGE = "rent_base_charge"
+    RENT_FUEL_FEE = "rent_fuel_fee"
     DELIVERY_FEE = "delivery_fee"
 
     # Механик доставки: штрафы
