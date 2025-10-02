@@ -6,7 +6,7 @@ from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.auth.dependencies.save_documents import save_file
 import os
-from app.models.user_model import User, UserRole, AutoClass
+from app.models.user_model import User, UserRole
 from app.models.guarantor_model import GuarantorRequest
 from app.models.application_model import Application
 from app.models.car_model import Car, CarStatus, CarBodyType, TransmissionType
@@ -237,7 +237,7 @@ async def get_car_current_user(
             .filter(
                 RentalHistory.car_id == car.id,
                 RentalHistory.user_id == (renter.id if renter else None),
-                RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE, RentalStatus.DELIVERING, RentalStatus.DELIVERED, RentalStatus.RETURNING])
+                RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE, RentalStatus.DELIVERING, RentalStatus.DELIVERING_IN_PROGRESS])
             )
             .order_by(RentalHistory.reservation_time.desc())
             .first()
@@ -850,11 +850,11 @@ async def get_all_cars_for_admin(
         status_display = {
             "FREE": "Свободно",
             "IN_USE": "В аренде", 
-            "MAINTENANCE": "На тех обслуживании",
+            "SERVICE": "На тех обслуживании",
             "DELIVERING": "Доставляется",
-            "DELIVERED": "Доставлено",
-            "RETURNING": "Возвращается",
-            "RETURNED": "Возвращено",
+            "DELIVERING_IN_PROGRESS": "Доставлено",
+            "DELIVERING": "В доставке",
+            "COMPLETED": "Завершено",
             "OWNER": "У владельца"
         }.get(car.status, car.status)
         
@@ -918,11 +918,11 @@ async def get_cars_map(
             "FREE": "Свободно",
             "PENDING": "Ожидает механика",
             "IN_USE": "В аренде",
-            "MAINTENANCE": "На тех обслуживании",
+            "SERVICE": "На тех обслуживании",
             "DELIVERING": "В доставке",
-            "DELIVERED": "Доставлено",
-            "RETURNING": "Возвращается",
-            "RETURNED": "Возвращено",
+            "DELIVERING_IN_PROGRESS": "Доставлено",
+            "DELIVERING": "В доставке",
+            "COMPLETED": "Завершено",
             "SERVICE": "На обслуживании",
             "RESERVED": "Зарезервирована",
             "SCHEDULED": "Забронирована заранее",
@@ -990,11 +990,11 @@ async def get_cars_list(
             "FREE": "Свободно",
             "PENDING": "Ожидает механика",
             "IN_USE": "В аренде",
-            "MAINTENANCE": "На тех обслуживании",
+            "SERVICE": "На тех обслуживании",
             "DELIVERING": "В доставке",
-            "DELIVERED": "Доставлено",
-            "RETURNING": "Возвращается",
-            "RETURNED": "Возвращено",
+            "DELIVERING_IN_PROGRESS": "Доставлено",
+            "DELIVERING": "В доставке",
+            "COMPLETED": "Завершено",
             "SERVICE": "На обслуживании",
             "RESERVED": "Зарезервирована",
             "SCHEDULED": "Забронирована заранее",
@@ -1067,7 +1067,7 @@ async def get_cars_statistics(
 
     active_rentals = cars_by_status.get("IN_USE", 0)
     available_cars = cars_by_status.get("FREE", 0)
-    maintenance_cars = cars_by_status.get("MAINTENANCE", 0)
+    service_cars = cars_by_status.get("SERVICE", 0)
 
     return CarStatisticsSchema(
         total_cars=int(total_cars),
@@ -1076,7 +1076,7 @@ async def get_cars_statistics(
         cars_by_body_type=cars_by_body_type,
         active_rentals=int(active_rentals),
         available_cars=int(available_cars),
-        maintenance_cars=int(maintenance_cars),
+        service_cars=int(service_cars),
     )
 
 def _get_drive_type_display(drive_type: Optional[int]) -> Optional[str]:
@@ -1577,7 +1577,7 @@ async def update_car_status(
     db.refresh(car)
 
     # Если это изменение связано с арендой, записываем в rental_history
-    if new_status in ["IN_USE", "DELIVERING", "DELIVERED", "RETURNING", "RETURNED"]:
+    if new_status in ["IN_USE", "DELIVERING", "DELIVERING_IN_PROGRESS", "COMPLETED"]:
         # Находим активную аренду для этого автомобиля
         active_rental = (
             db.query(RentalHistory)
@@ -1599,9 +1599,9 @@ async def update_car_status(
             status_mapping = {
                 "IN_USE": RentalStatus.IN_USE,
                 "DELIVERING": RentalStatus.DELIVERING,
-                "DELIVERED": RentalStatus.DELIVERING_IN_PROGRESS,
-                "RETURNING": RentalStatus.DELIVERING,
-                "RETURNED": RentalStatus.COMPLETED
+                "DELIVERING_IN_PROGRESS": RentalStatus.DELIVERING_IN_PROGRESS,
+                "DELIVERING": RentalStatus.DELIVERING,
+                "COMPLETED": RentalStatus.COMPLETED
             }
             
             if new_status in status_mapping:

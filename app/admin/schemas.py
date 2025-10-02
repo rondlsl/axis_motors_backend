@@ -7,12 +7,11 @@ class CarStatus(str, Enum):
     """Статусы автомобилей для админ-панели"""
     FREE = "FREE"  # Свободные
     IN_USE = "IN_USE"  # В аренде
-    MAINTENANCE = "MAINTENANCE"  # У механика/на ремонте
+    SERVICE = "SERVICE"  # У механика/на ремонте
     DELIVERING = "DELIVERING"  # В доставке
     OWNER = "OWNER"  # У владельца
-    RETURNING = "RETURNING"  # Возвращается
-    DELIVERED = "DELIVERED"  # Доставлено
-    RETURNED = "RETURNED"  # Возвращено
+    DELIVERING_IN_PROGRESS = "DELIVERING_IN_PROGRESS"  # Доставлено
+    COMPLETED = "COMPLETED"  # Завершено
 
 
 class CarFilterSchema(BaseModel):
@@ -97,7 +96,7 @@ class CarStatisticsSchema(BaseModel):
     cars_by_body_type: Dict[str, int]
     active_rentals: int
     available_cars: int
-    maintenance_cars: int
+    service_cars: int
 
 
 class CarDetailSchema(BaseModel):
