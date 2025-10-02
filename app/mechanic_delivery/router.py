@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, constr
 
 from app.auth.dependencies.get_current_user import get_current_mechanic
 from app.auth.dependencies.save_documents import validate_photos, save_file
+from app.services.face_verify import verify_user_upload_against_profile
 from app.dependencies.database.database import get_db
 from app.gps_api.router import AUTH_TOKEN
 from app.gps_api.utils.car_data import send_command_to_terminal, send_open, send_close, send_give_key, send_take_key, auto_lock_vehicle_after_rental
@@ -509,6 +510,10 @@ async def upload_delivery_photos_before(
         raise HTTPException(404, "Нет активной доставки для загрузки фотографий")
 
     validate_photos([selfie], "selfie")
+    # сверяем селфи механика доставки
+    is_same, msg = verify_user_upload_against_profile(current_mechanic, selfie)
+    if not is_same:
+        raise HTTPException(status_code=400, detail=msg)
     validate_photos(car_photos, "car_photos")
 
     try:
@@ -582,6 +587,10 @@ async def upload_delivery_photos_after(
         raise HTTPException(404, "Нет активной доставки для загрузки фотографий")
 
     validate_photos([selfie], "selfie")
+    # сверяем селфи механика доставки
+    is_same, msg = verify_user_upload_against_profile(current_mechanic, selfie)
+    if not is_same:
+        raise HTTPException(status_code=400, detail=msg)
     validate_photos(interior_photos, "interior_photos")
 
     try:

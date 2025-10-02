@@ -35,6 +35,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 import shutil
 from fastapi.concurrency import run_in_threadpool
+from app.services.face_verify import verify_user_upload_against_profile
 
 def _write_upload_to_temp(upload: UploadFile) -> str:
     tmp = NamedTemporaryFile(delete=False, suffix=Path(upload.filename or 'upload').suffix)
@@ -958,40 +959,10 @@ async def upload_photos_before(
     validate_photos(car_photos, 'car_photos')
 
     try:
-        # 1) Сравниваем селфи с фото документа пользователя (id_card_front_url)
-        user: User = db.query(User).filter(User.id == current_user.id).first()
-        if not user or not user.id_card_front_url:
-            raise HTTPException(status_code=400, detail="В профиле отсутствует фото документа для проверки личности")
-
-        # сохраняем селфи во временный файл
-        selfie_tmp_path = _write_upload_to_temp(selfie)
-
-        # Пытаемся разрешить путь к документу пользователя
-        profile_doc_path = user.id_card_front_url.strip()
-        candidates = []
-        # 1) как есть (вдруг абсолютный)
-        candidates.append(Path(profile_doc_path))
-        # 2) если начинается с /uploads — относительный к корню приложения
-        if profile_doc_path.startswith("/uploads/"):
-            candidates.append(Path(".") / profile_doc_path.lstrip("/"))
-        if profile_doc_path.startswith("uploads/"):
-            candidates.append(Path(profile_doc_path))
-            candidates.append(Path(".") / profile_doc_path)
-        candidates.append(Path("uploads") / Path(profile_doc_path).name)
-
-        resolved_doc = next((p for p in candidates if p and p.exists()), None)
-        if not resolved_doc:
-            raise HTTPException(status_code=400, detail="Файл документа из профиля не найден для сверки личности")
-
-        try:
-            # импорт внутри, чтобы не грузить TF при каждом импорте модуля
-            from app.services.face_verify import verify_faces
-            is_same, details = await run_in_threadpool(verify_faces, selfie_tmp_path, str(resolved_doc))
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Ошибка проверки селфи: {str(e)}")
-
+        # 1) Сверяем селфи клиента с документом из профиля
+        is_same, msg = await run_in_threadpool(verify_user_upload_against_profile, current_user, selfie)
         if not is_same:
-            raise HTTPException(status_code=400, detail="Личность не подтверждена по селфи. Убедитесь, что на фото именно вы, и попробуйте снова.")
+            raise HTTPException(status_code=400, detail=msg)
 
         # 2) Если верификация успешна — сохраняем фото
         urls = list(rental.photos_before or [])

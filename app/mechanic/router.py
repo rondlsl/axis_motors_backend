@@ -9,6 +9,7 @@ from app.auth.dependencies.get_current_user import get_current_mechanic
 from app.dependencies.database.database import get_db
 from app.mechanic.utils import isoformat_or_none, _handle_photos, add_review_if_exists
 from app.auth.dependencies.save_documents import validate_photos, save_file
+from app.services.face_verify import verify_user_upload_against_profile
 from app.models.history_model import RentalType, RentalStatus, RentalHistory, RentalReview
 from app.models.car_model import Car, CarStatus
 from app.models.user_model import User
@@ -789,8 +790,12 @@ async def upload_photos_before(
         raise HTTPException(status_code=404, detail="Нет активной проверки (PENDING, IN_USE или SERVICE)")
 
     try:
-        # сохраняем только selfie + car
+        # сверяем селфи механика с его документом
         validate_photos([selfie], "selfie")
+        is_same, msg = verify_user_upload_against_profile(current_mechanic, selfie)
+        if not is_same:
+            raise HTTPException(status_code=400, detail=msg)
+        # сохраняем только selfie + car
         validate_photos(car_photos, "car_photos")
         urls = list(rental.mechanic_photos_before or [])
         urls.append(await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/mechanic/before/selfie/"))
@@ -884,6 +889,10 @@ async def upload_photos_after(
 
     try:
         validate_photos([selfie], "selfie")
+        # сверяем селфи механика после осмотра
+        is_same, msg = verify_user_upload_against_profile(current_mechanic, selfie)
+        if not is_same:
+            raise HTTPException(status_code=400, detail=msg)
         validate_photos(interior_photos, "interior_photos")
         urls = list(rental.mechanic_photos_after or [])
         urls.append(await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/mechanic/after/selfie/"))
