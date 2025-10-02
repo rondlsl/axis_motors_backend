@@ -213,7 +213,7 @@ async def get_car_current_user(
 
     # Определяем пользователя в контексте авто
     is_owner_ctx = car.status == CarStatus.OWNER.value and car.owner_id is not None
-    is_rented_ctx = car.current_renter_id is not None and car.status in [CarStatus.IN_USE.value, CarStatus.DELIVERING.value, CarStatus.DELIVERED.value, CarStatus.RETURNING.value]
+    is_rented_ctx = car.current_renter_id is not None and car.status in [CarStatus.IN_USE.value, CarStatus.DELIVERING.value, CarStatus.RESERVED.value, CarStatus.SCHEDULED.value]
 
     if is_owner_ctx:
         owner = db.query(User).filter(User.id == car.owner_id).first()
@@ -298,7 +298,7 @@ async def get_car_availability_timer(
     period_to_dt = now
 
     # Если машина свободна — считаем доступные секунды с момента period_from_dt, иначе 0
-    is_free_like = car.status in [CarStatus.FREE.value, CarStatus.PENDING.value, CarStatus.RETURNED.value]
+    is_free_like = car.status in [CarStatus.FREE.value, CarStatus.PENDING.value, CarStatus.SERVICE.value]
     total_available_seconds = int((period_to_dt - period_from_dt).total_seconds()) if is_free_like and period_to_dt > period_from_dt else 0
 
     # Доступные минуты/секунды (для секундомера)
@@ -374,7 +374,7 @@ async def get_car_history_summary(
         .first()
     )
     period_from_dt = last_completed.end_time if last_completed and last_completed.end_time else now
-    is_free_like = car.status in [CarStatus.FREE.value, CarStatus.PENDING.value, CarStatus.RETURNED.value]
+    is_free_like = car.status in [CarStatus.FREE.value, CarStatus.PENDING.value, CarStatus.SERVICE.value]
     total_available_seconds = int((now - period_from_dt).total_seconds()) if is_free_like and now > period_from_dt else 0
 
     return {
@@ -1135,12 +1135,8 @@ async def get_car_details(
             "FREE": "Свободно",
             "PENDING": "Ожидает механика",
             "IN_USE": "В аренде",
-            "MAINTENANCE": "На тех обслуживании",
-            "DELIVERING": "В доставке",
-            "DELIVERED": "Доставлено",
-            "RETURNING": "Возвращается",
-            "RETURNED": "Возвращено",
             "SERVICE": "На обслуживании",
+            "DELIVERING": "В доставке",
             "RESERVED": "Зарезервирована",
             "SCHEDULED": "Забронирована заранее",
             "OWNER": "У владельца",
