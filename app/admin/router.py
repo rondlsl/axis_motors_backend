@@ -63,6 +63,170 @@ class UserListItemSchema(BaseModel):
     class Config:
         from_attributes = True
 
+class EmployeeCreateSchema(BaseModel):
+    phone_number: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    role: UserRole
+    documents_verified: Optional[bool] = False
+    is_active: Optional[bool] = True
+    wallet_balance: Optional[float] = 0
+    iin: Optional[str] = None
+    passport_number: Optional[str] = None
+    drivers_license_expiry: Optional[datetime] = None
+    id_card_expiry: Optional[datetime] = None
+    selfie_with_license_url: Optional[str] = None
+    selfie_url: Optional[str] = None
+    drivers_license_url: Optional[str] = None
+    id_card_front_url: Optional[str] = None
+    id_card_back_url: Optional[str] = None
+
+
+class EmployeeListItemSchema(BaseModel):
+    id: int
+    phone_number: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    role: str
+    documents_verified: bool
+    is_active: bool
+
+
+class UpdateEmployeeRoleSchema(BaseModel):
+    role: UserRole
+
+
+def _is_staff_role(role: UserRole) -> bool:
+    return role in [UserRole.ADMIN, UserRole.MECHANIC, UserRole.FINANCIER, UserRole.MVD]
+
+
+@admin_router.post("/employees", response_model=EmployeeListItemSchema)
+async def create_employee(
+    data: EmployeeCreateSchema,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Создать сотрудника с указанными параметрами (только для ADMIN)."""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+
+    if not _is_staff_role(data.role):
+        raise HTTPException(status_code=400, detail="Роль должна быть одной из: ADMIN, MECHANIC, FINANCIER, MVD")
+
+    existing = db.query(User).filter(User.phone_number == data.phone_number, User.is_active == True).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Пользователь с таким номером уже существует и активен")
+
+    user = User(
+        phone_number=data.phone_number,
+        first_name=data.first_name,
+        last_name=data.last_name,
+        role=data.role,
+        documents_verified=bool(data.documents_verified),
+        is_active=bool(data.is_active),
+        wallet_balance=data.wallet_balance or 0,
+        iin=data.iin,
+        passport_number=data.passport_number,
+        drivers_license_expiry=data.drivers_license_expiry,
+        id_card_expiry=data.id_card_expiry,
+        selfie_with_license_url=data.selfie_with_license_url,
+        selfie_url=data.selfie_url,
+        drivers_license_url=data.drivers_license_url,
+        id_card_front_url=data.id_card_front_url,
+        id_card_back_url=data.id_card_back_url,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    return EmployeeListItemSchema(
+        id=user.id,
+        phone_number=user.phone_number,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        role=user.role.value,
+        documents_verified=user.documents_verified,
+        is_active=user.is_active,
+    )
+
+
+@admin_router.get("/employees", response_model=List[EmployeeListItemSchema])
+async def list_employees(
+    role: Optional[UserRole] = None,
+    q: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Список сотрудников. Фильтры: роль и поиск по имени/фамилии/телефону."""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+
+    query = db.query(User).filter(User.is_active == True)
+
+    # Только роли сотрудников
+    query = query.filter(User.role.in_([UserRole.ADMIN, UserRole.MECHANIC, UserRole.FINANCIER, UserRole.MVD]))
+
+    if role is not None:
+        if not _is_staff_role(role):
+            raise HTTPException(status_code=400, detail="Можно отфильтровать только по ролям сотрудников")
+        query = query.filter(User.role == role)
+
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            or_(
+                User.first_name.ilike(like),
+                User.last_name.ilike(like),
+                User.phone_number.ilike(like),
+            )
+        )
+
+    users = query.order_by(User.id.desc()).all()
+
+    return [
+        EmployeeListItemSchema(
+            id=u.id,
+            phone_number=u.phone_number,
+            first_name=u.first_name,
+            last_name=u.last_name,
+            role=u.role.value,
+            documents_verified=u.documents_verified,
+            is_active=u.is_active,
+        )
+        for u in users
+    ]
+
+
+@admin_router.patch("/employees/{user_id}/role", response_model=EmployeeListItemSchema)
+async def update_employee_role(
+    user_id: int,
+    data: UpdateEmployeeRoleSchema,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Изменить роль сотрудника (только для ADMIN)."""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    user.role = data.role
+    db.commit()
+    db.refresh(user)
+
+    return EmployeeListItemSchema(
+        id=user.id,
+        phone_number=user.phone_number,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        role=user.role.value,
+        documents_verified=user.documents_verified,
+        is_active=user.is_active,
+    )
+
+
 
 @admin_router.get("/pending-users", response_model=List[UserListItemSchema])
 async def get_pending_users(

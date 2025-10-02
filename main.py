@@ -273,6 +273,44 @@ def init_app(app: FastAPI):
             else:
                 print("ℹ️ Механик уже существует")
 
+            # Seed Financier user
+            financier_phone = "77777777771"
+            financier = db.query(User).filter(User.phone_number == financier_phone).first()
+            if not financier:
+                financier = User(
+                    phone_number=financier_phone,
+                    first_name="Financier",
+                    last_name="Financier",
+                    role=UserRole.FINANCIER,
+                    documents_verified=True,
+                    is_active=True,
+                )
+                db.add(financier)
+                db.commit()
+                db.refresh(financier)
+                print("✅ Финансист успешно добавлен")
+            else:
+                print("ℹ️ Финансист уже существует")
+
+            # Seed MVD user
+            mvd_phone = "77777777772"
+            mvd_user = db.query(User).filter(User.phone_number == mvd_phone).first()
+            if not mvd_user:
+                mvd_user = User(
+                    phone_number=mvd_phone,
+                    first_name="MVD",
+                    last_name="MVD",
+                    role=UserRole.MVD,
+                    documents_verified=True,
+                    is_active=True,
+                )
+                db.add(mvd_user)
+                db.commit()
+                db.refresh(mvd_user)
+                print("✅ Пользователь МВД успешно добавлен")
+            else:
+                print("ℹ️ Пользователь МВД уже существует")
+
         except Exception as e:
             print(e)
             logger.error(f"Ошибка в стартап-инициализации: {e}")
