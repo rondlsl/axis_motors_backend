@@ -424,27 +424,37 @@ async def read_users_me(
         
         # Для механиков добавляем поля статуса загрузки фотографий
         if current_user.role == UserRole.MECHANIC:
-            # Проверяем есть ли фотографии ДО осмотра/доставки
-            car_details["photo_before_selfie_uploaded"] = bool(rental.photo_before_selfie)
-            car_details["photo_before_car_uploaded"] = bool(rental.photo_before_car)
-            car_details["photo_before_interior_uploaded"] = bool(rental.photo_before_interior)
-            
-            # Проверяем есть ли фотографии ПОСЛЕ осмотра/доставки
-            car_details["photo_after_selfie_uploaded"] = bool(rental.photo_after_selfie)
-            car_details["photo_after_car_uploaded"] = bool(rental.photo_after_car)
-            car_details["photo_after_interior_uploaded"] = bool(rental.photo_after_interior)
+            # Проверяем, это осмотр или доставка
+            if rental.mechanic_inspector_id == current_user.id:
+                # Это осмотр - используем mechanic_photos_before/after
+                car_details["photo_before_selfie_uploaded"] = bool(rental.mechanic_photos_before and len(rental.mechanic_photos_before) > 0)
+                car_details["photo_before_car_uploaded"] = bool(rental.mechanic_photos_before and len(rental.mechanic_photos_before) > 1)
+                car_details["photo_before_interior_uploaded"] = bool(rental.mechanic_photos_before and len(rental.mechanic_photos_before) > 2)
+                
+                car_details["photo_after_selfie_uploaded"] = bool(rental.mechanic_photos_after and len(rental.mechanic_photos_after) > 0)
+                car_details["photo_after_car_uploaded"] = bool(rental.mechanic_photos_after and len(rental.mechanic_photos_after) > 1)
+                car_details["photo_after_interior_uploaded"] = bool(rental.mechanic_photos_after and len(rental.mechanic_photos_after) > 2)
+            else:
+                # Это доставка - используем delivery_photos_before/after
+                car_details["photo_before_selfie_uploaded"] = bool(rental.delivery_photos_before and len(rental.delivery_photos_before) > 0)
+                car_details["photo_before_car_uploaded"] = bool(rental.delivery_photos_before and len(rental.delivery_photos_before) > 1)
+                car_details["photo_before_interior_uploaded"] = bool(rental.delivery_photos_before and len(rental.delivery_photos_before) > 2)
+                
+                car_details["photo_after_selfie_uploaded"] = bool(rental.delivery_photos_after and len(rental.delivery_photos_after) > 0)
+                car_details["photo_after_car_uploaded"] = bool(rental.delivery_photos_after and len(rental.delivery_photos_after) > 1)
+                car_details["photo_after_interior_uploaded"] = bool(rental.delivery_photos_after and len(rental.delivery_photos_after) > 2)
             
             # Добавляем rental_id для механиков
             car_details["rental_id"] = rental.id
             
-            # Добавляем last_client_review для механиков (только для осмотров, не для доставок)
-            if rental.last_client_review and rental.mechanic_inspector_id == current_user.id:
+            # Добавляем last_client_review для механиков
+            if rental.review:
                 car_details["last_client_review"] = {
-                    "rating": rental.last_client_review.rating,
-                    "comment": rental.last_client_review.comment or "",
+                    "rating": rental.review.rating or 0,
+                    "comment": rental.review.comment or "",
                     "photos_after": {
-                        "interior": rental.last_client_review.photos_after_interior or [],
-                        "exterior": rental.last_client_review.photos_after_car or []
+                        "interior": [],  # Пока пустой массив, так как структура не определена
+                        "exterior": []
                     }
                 }
             else:
