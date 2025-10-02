@@ -279,36 +279,67 @@ async def read_users_me(
         current_user: User = Depends(get_current_user)
 ):
     # Получаем активную аренду и автомобиль
-    rental_with_car = (
-        db.query(RentalHistory, Car)
-        .join(Car, Car.id == RentalHistory.car_id)
-        .filter(
-            RentalHistory.user_id == current_user.id,
-            RentalHistory.rental_status.in_([
-                RentalStatus.RESERVED,
-                RentalStatus.IN_USE,
-                RentalStatus.DELIVERING,
-                RentalStatus.DELIVERY_RESERVED,
-                RentalStatus.DELIVERING_IN_PROGRESS
-            ])
+    # Для механиков ищем по mechanic_inspector_id, для обычных пользователей - по user_id
+    if current_user.role == UserRole.MECHANIC:
+        rental_with_car = (
+            db.query(RentalHistory, Car)
+            .join(Car, Car.id == RentalHistory.car_id)
+            .filter(
+                RentalHistory.mechanic_inspector_id == current_user.id,
+                RentalHistory.mechanic_inspection_status.in_([
+                    "PENDING",
+                    "IN_USE",
+                    "SERVICE"
+                ])
+            )
+            .first()
         )
-        .first()
-    )
+    else:
+        rental_with_car = (
+            db.query(RentalHistory, Car)
+            .join(Car, Car.id == RentalHistory.car_id)
+            .filter(
+                RentalHistory.user_id == current_user.id,
+                RentalHistory.rental_status.in_([
+                    RentalStatus.RESERVED,
+                    RentalStatus.IN_USE,
+                    RentalStatus.DELIVERING,
+                    RentalStatus.DELIVERY_RESERVED,
+                    RentalStatus.DELIVERING_IN_PROGRESS
+                ])
+            )
+            .first()
+        )
 
     current_rental = None
     if rental_with_car:
         rental, car = rental_with_car
 
-        rental_details = {
-            "reservation_time": rental.reservation_time.isoformat() if rental.reservation_time else None,
-            "start_time": rental.start_time.isoformat() if rental.start_time else None,
-            "rental_type": rental.rental_type.value,
-            "duration": rental.duration,
-            "already_payed": float(rental.already_payed or 0),
-            "status": rental.rental_status.value
-        }
+        # Для механиков используем mechanic_inspection_status, для обычных пользователей - rental_status
+        if current_user.role == UserRole.MECHANIC:
+            rental_details = {
+                "reservation_time": rental.mechanic_inspection_start_time.isoformat() if rental.mechanic_inspection_start_time else None,
+                "start_time": rental.mechanic_inspection_start_time.isoformat() if rental.mechanic_inspection_start_time else None,
+                "rental_type": rental.rental_type.value if rental.rental_type else "minutes",
+                "duration": rental.duration,
+                "already_payed": 0,  # Для механиков всегда 0
+                "status": rental.mechanic_inspection_status
+            }
+        else:
+            rental_details = {
+                "reservation_time": rental.reservation_time.isoformat() if rental.reservation_time else None,
+                "start_time": rental.start_time.isoformat() if rental.start_time else None,
+                "rental_type": rental.rental_type.value,
+                "duration": rental.duration,
+                "already_payed": float(rental.already_payed or 0),
+                "status": rental.rental_status.value
+            }
 
-        if rental.rental_status == RentalStatus.DELIVERING or rental.rental_status == RentalStatus.DELIVERING_IN_PROGRESS or rental.rental_status == RentalStatus.DELIVERY_RESERVED:
+        # Для механиков проверяем mechanic_inspection_status, для обычных пользователей - rental_status
+        if current_user.role == UserRole.MECHANIC:
+            # Для механиков логика доставки не применима
+            current_mechanic = None
+        elif rental.rental_status == RentalStatus.DELIVERING or rental.rental_status == RentalStatus.DELIVERING_IN_PROGRESS or rental.rental_status == RentalStatus.DELIVERY_RESERVED:
             # Рассчитываем время доставки если она началась
             delivery_duration_minutes = None
             if rental.delivery_start_time:
@@ -336,31 +367,44 @@ async def read_users_me(
         else:
             current_mechanic = None
 
+        # Для механиков добавляем current_renter_details
+        car_details = {
+            "id": car.id,
+            "name": car.name,
+            "plate_number": car.plate_number,
+            "fuel_level": car.fuel_level,
+            "latitude": car.latitude,
+            "longitude": car.longitude,
+            "course": car.course,
+            "engine_volume": car.engine_volume,
+            "drive_type": car.drive_type,
+            "transmission_type": car.transmission_type,
+            "body_type": car.body_type,
+            "auto_class": car.auto_class,
+            "year": car.year,
+            "photos": car.photos,
+            "status": car.status,
+            "price_per_minute": car.price_per_minute,
+            "price_per_hour": car.price_per_hour,
+            "price_per_day": car.price_per_day,
+            "open_price": get_open_price(car),
+            "owned_car": car.owner_id == current_user.id,
+            "description": car.description,
+            "current_renter_id": car.current_renter_id,
+        }
+        
+        # Для механиков добавляем current_renter_details
+        if current_user.role == UserRole.MECHANIC and car.current_renter_id:
+            car_details["current_renter_details"] = {
+                "id": car.current_renter_id,
+                "phone_number": current_user.phone_number,
+                "first_name": current_user.first_name,
+                "last_name": current_user.last_name
+            }
+        
         current_rental = {
             "rental_details": rental_details,
-            "car_details": {
-                "id": car.id,
-                "name": car.name,
-                "plate_number": car.plate_number,
-                "fuel_level": car.fuel_level,
-                "latitude": car.latitude,
-                "longitude": car.longitude,
-                "course": car.course,
-                "engine_volume": car.engine_volume,
-                "drive_type": car.drive_type,
-                "transmission_type": car.transmission_type,
-                "body_type": car.body_type,
-                "auto_class": car.auto_class,
-                "year": car.year,
-                "photos": car.photos,
-                "status": car.status,
-                "price_per_minute": car.price_per_minute,
-                "price_per_hour": car.price_per_hour,
-                "price_per_day": car.price_per_day,
-                "open_price": get_open_price(car),
-                "owned_car": car.owner_id == current_user.id,
-                "description": car.description,
-            },
+            "car_details": car_details,
             "current_mechanic": current_mechanic
         }
 
