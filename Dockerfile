@@ -1,5 +1,16 @@
 FROM python:3.12
 
+# Устанавливаем системные зависимости для deepface/opencv и dlib (без X-сервера)
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    libopenblas-dev \
+    liblapack-dev \
+    libx11-6 \
+    libgl1 \
+    libglib2.0-0 \
+ && rm -rf /var/lib/apt/lists/*
+
 # Отключаем буферизацию Python для корректного вывода логов в Docker
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1

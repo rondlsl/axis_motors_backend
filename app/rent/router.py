@@ -31,6 +31,21 @@ from app.rent.schemas import (
     CancelBookingRequest, 
     CancelBookingResponse
 )
+from pathlib import Path
+from tempfile import NamedTemporaryFile
+import shutil
+from fastapi.concurrency import run_in_threadpool
+
+def _write_upload_to_temp(upload: UploadFile) -> str:
+    tmp = NamedTemporaryFile(delete=False, suffix=Path(upload.filename or 'upload').suffix)
+    with tmp as f:
+        shutil.copyfileobj(upload.file, f)
+    # вернуть курсор файла к началу, чтобы возможные повторные чтения не сломались
+    try:
+        upload.file.seek(0)
+    except Exception:
+        pass
+    return tmp.name
 
 RentRouter = APIRouter(tags=["Rent"], prefix="/rent")
 
@@ -943,6 +958,33 @@ async def upload_photos_before(
     validate_photos(car_photos, 'car_photos')
 
     try:
+        # 1) Сравниваем селфи с фото документа пользователя (id_card_front_url)
+        user: User = db.query(User).filter(User.id == current_user.id).first()
+        if not user or not user.id_card_front_url:
+            raise HTTPException(status_code=400, detail="В профиле отсутствует фото документа для проверки личности")
+
+        # сохраняем селфи во временный файл
+        selfie_tmp_path = _write_upload_to_temp(selfie)
+
+        # строим путь к фото из профиля (оно хранится в виде относительного пути в uploads/..)
+        profile_doc_path = user.id_card_front_url
+        candidate_paths = []
+        if profile_doc_path:
+            # как сохранено
+            candidate_paths.append(Path(profile_doc_path))
+            # как относительный в uploads
+            candidate_paths.append(Path("uploads") / Path(profile_doc_path).name)
+        resolved_doc = next((p for p in candidate_paths if p.exists()), None)
+        if not resolved_doc:
+            raise HTTPException(status_code=400, detail="Файл документа из профиля не найден для сверки личности")
+
+        # импорт внутри функции, чтобы не тянуть deepface при любом старте
+        from app.services.face_verify import verify_faces
+        is_same, details = await run_in_threadpool(verify_faces, selfie_tmp_path, str(resolved_doc))
+        if not is_same:
+            raise HTTPException(status_code=400, detail="Личность не подтверждена по селфи. Убедитесь, что на фото именно вы, и попробуйте снова.")
+
+        # 2) Если верификация успешна — сохраняем фото
         urls = list(rental.photos_before or [])
         # save selfie
         urls.append(await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/before/selfie/"))
