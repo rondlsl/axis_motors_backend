@@ -30,7 +30,6 @@ from app.admin.schemas import (
     CarListItemSchema,
     CarListResponseSchema,
     CarStatusUpdateSchema,
-    CarStatus,
     CarStatisticsSchema,
     CarDetailSchema,
     CarEditSchema,

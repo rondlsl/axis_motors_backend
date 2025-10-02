@@ -1,17 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from enum import Enum
-
-
-class CarStatus(str, Enum):
-    """Статусы автомобилей для админ-панели"""
-    FREE = "FREE"  # Свободные
-    IN_USE = "IN_USE"  # В аренде
-    SERVICE = "SERVICE"  # У механика/на ремонте
-    DELIVERING = "DELIVERING"  # В доставке
-    OWNER = "OWNER"  # У владельца
-    DELIVERING_IN_PROGRESS = "DELIVERING_IN_PROGRESS"  # Доставлено
-    COMPLETED = "COMPLETED"  # Завершено
+from app.models.car_model import CarStatus
 
 
 class CarFilterSchema(BaseModel):
