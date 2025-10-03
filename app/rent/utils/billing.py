@@ -335,26 +335,21 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                         ))
                         flags["pre_overtime"] = True
 
-                    # Overtime charges
                     overtime = max(0, elapsed - planned)
                     if overtime > 0:
                         extra = math.ceil(overtime)
                         fee_total_ov = math.ceil(extra * car.price_per_minute)
                         prev_ov = rental.overtime_fee or 0
-                        charge = fee_total_ov - prev_ov
-                        if charge > 0:
+                        if fee_total_ov != prev_ov:
                             rental.overtime_fee = fee_total_ov
                             rental.total_price = (
-                                    (rental.base_price or 0) +
-                                    (rental.open_fee or 0) +
-                                    (rental.delivery_fee or 0) +
-                                    (rental.waiting_fee or 0) +
-                                    rental.overtime_fee +
-                                    (rental.distance_fee or 0)
+                                (rental.base_price or 0)
+                                + (rental.open_fee or 0)
+                                + (rental.delivery_fee or 0)
+                                + (rental.waiting_fee or 0)
+                                + rental.overtime_fee
+                                + (rental.distance_fee or 0)
                             )
-                            rental.already_payed = (rental.already_payed or 0) + charge
-                            record_wallet_transaction(db, user=user, amount=-charge, ttype=WalletTransactionType.RENT_OVERTIME_FEE, description=f"Сверхтариф {extra} мин", related_rental=rental)
-                            user.wallet_balance -= charge
                             db.commit()
 
                             if 0 < user.wallet_balance <= 1000 and not flags["low_balance_1000"] and user.fcm_token:

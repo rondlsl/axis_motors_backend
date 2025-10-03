@@ -1630,24 +1630,42 @@ async def complete_rental(
         if rental.rental_type in (RentalType.HOURS, RentalType.DAYS) and fuel_fee > 0:
             rental.base_price = (rental.base_price or 0) + fuel_fee
 
-        # Итоговая сумма и списание
+        # Итоговая сумма
         rental.total_price = (
-                (rental.base_price or 0) + rental.open_fee + rental.delivery_fee +
-                rental.waiting_fee + rental.overtime_fee + rental.distance_fee
+            (rental.base_price or 0)
+            + rental.open_fee
+            + rental.delivery_fee
+            + rental.waiting_fee
+            + rental.overtime_fee
+            + rental.distance_fee
         )
         previous_paid = rental.already_payed or 0
         amount_to_charge = rental.total_price - previous_paid
 
-        if amount_to_charge != 0:
-            record_wallet_transaction(
-                db,
-                user=current_user,
-                amount=-amount_to_charge,
-                ttype=WalletTransactionType.RENT_BASE_CHARGE,
-                description="Завершение аренды: финальное списание"
-            )
-        current_user.wallet_balance -= amount_to_charge
-        rental.already_payed = rental.total_price
+        # Разделяем единовременное списание: сперва сверхтариф одной транзакцией, остаток — базовым списанием
+        if amount_to_charge > 0:
+            overtime_to_charge = rental.overtime_fee or 0
+            remainder = amount_to_charge
+            if overtime_to_charge > 0:
+                charge_now = min(overtime_to_charge, amount_to_charge)
+                record_wallet_transaction(
+                    db,
+                    user=current_user,
+                    amount=-charge_now,
+                    ttype=WalletTransactionType.RENT_OVERTIME_FEE,
+                    description=f"Сверхтариф {overtime_mins} мин",
+                )
+                remainder -= charge_now
+            if remainder > 0:
+                record_wallet_transaction(
+                    db,
+                    user=current_user,
+                    amount=-remainder,
+                    ttype=WalletTransactionType.RENT_BASE_CHARGE,
+                    description="Завершение аренды: финальное списание",
+                )
+            current_user.wallet_balance -= amount_to_charge
+            rental.already_payed = rental.total_price
 
     # 12) Автоматическая блокировка двигателя при завершении аренды
     try:
