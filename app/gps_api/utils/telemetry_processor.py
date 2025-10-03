@@ -2,7 +2,7 @@ import re
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
-from app.gps_api.schemas_telemetry import VehicleTelemetryResponse, SensorData
+from app.gps_api.schemas_telemetry import VehicleTelemetryResponse
 
 
 def parse_numeric(value: str) -> float:
