@@ -795,9 +795,10 @@ async def upload_photos_before(
     try:
         # сверяем селфи механика с его документом
         validate_photos([selfie], "selfie")
-        is_same, msg = verify_user_upload_against_profile(current_mechanic, selfie)
-        if not is_same:
-            raise HTTPException(status_code=400, detail=msg)
+        # Закомментировано для механиков - не требуется верификация с документом
+        # is_same, msg = verify_user_upload_against_profile(current_mechanic, selfie)
+        # if not is_same:
+        #     raise HTTPException(status_code=400, detail=msg)
         # сохраняем только selfie + car
         validate_photos(car_photos, "car_photos")
         urls = list(rental.mechanic_photos_before or [])
