@@ -653,6 +653,9 @@ async def check_car(
     rental.mechanic_inspector_id = current_mechanic.id
     rental.mechanic_inspection_start_time = datetime.utcnow()
     rental.mechanic_inspection_status = "PENDING"
+    # Фиксируем стартовые координаты осмотра по текущему положению автомобиля
+    rental.mechanic_inspection_start_latitude = car.latitude
+    rental.mechanic_inspection_start_longitude = car.longitude
     
     db.commit()
     return {
@@ -1019,6 +1022,9 @@ async def complete_rental(
     rental.mechanic_inspection_status = "COMPLETED"
     if review_input and review_input.comment:
         rental.mechanic_inspection_comment = review_input.comment
+    # Фиксируем конечные координаты осмотра по текущему положению автомобиля
+    rental.mechanic_inspection_end_latitude = car.latitude
+    rental.mechanic_inspection_end_longitude = car.longitude
     
     # Освобождаем автомобиль
     car.current_renter_id = None

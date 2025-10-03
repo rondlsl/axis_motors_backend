@@ -505,9 +505,29 @@ async def get_trip_detail(
             "start": {"latitude": rental.start_latitude, "longitude": rental.start_longitude},
             "end": {"latitude": rental.end_latitude, "longitude": rental.end_longitude},
         },
-        "mechanic_route": {
-            "start": None,
-            "end": None,
+        "mechanic_delivery_route": {
+            "start": {
+                "latitude": getattr(rental, "delivery_start_latitude", None),
+                "longitude": getattr(rental, "delivery_start_longitude", None),
+                "time": rental.delivery_start_time.isoformat() if rental.delivery_start_time else None,
+            },
+            "end": {
+                "latitude": getattr(rental, "delivery_end_latitude", None),
+                "longitude": getattr(rental, "delivery_end_longitude", None),
+                "time": rental.delivery_end_time.isoformat() if rental.delivery_end_time else None,
+            },
+        },
+        "mechanic_inspection_route": {
+            "start": {
+                "latitude": getattr(rental, "mechanic_inspection_start_latitude", None),
+                "longitude": getattr(rental, "mechanic_inspection_start_longitude", None),
+                "time": rental.mechanic_inspection_start_time.isoformat() if rental.mechanic_inspection_start_time else None,
+            },
+            "end": {
+                "latitude": getattr(rental, "mechanic_inspection_end_latitude", None),
+                "longitude": getattr(rental, "mechanic_inspection_end_longitude", None),
+                "time": rental.mechanic_inspection_end_time.isoformat() if rental.mechanic_inspection_end_time else None,
+            },
         },
         "reviews": {
             "client": {

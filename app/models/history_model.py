@@ -81,6 +81,12 @@ class RentalHistory(Base):
     delivery_end_time = Column(DateTime, nullable=True)    # Когда механик завершил доставку
     delivery_penalty_fee = Column(Integer, nullable=True, default=0)  # Штраф за задержку доставки
 
+    # Координаты начала/окончания доставки (фиксируются у механика-доставщика)
+    delivery_start_latitude = Column(Float, nullable=True)
+    delivery_start_longitude = Column(Float, nullable=True)
+    delivery_end_latitude = Column(Float, nullable=True)
+    delivery_end_longitude = Column(Float, nullable=True)
+
     # Поля для хранения фотографий перед и после доставки
     delivery_photos_before = Column(ARRAY(String), nullable=True)
     delivery_photos_after = Column(ARRAY(String), nullable=True)
@@ -95,6 +101,12 @@ class RentalHistory(Base):
     mechanic_inspection_end_time = Column(DateTime, nullable=True)
     mechanic_inspection_status = Column(String, nullable=True, default="PENDING")
     mechanic_inspection_comment = Column(Text, nullable=True)
+
+    # Координаты начала/окончания осмотра механиком
+    mechanic_inspection_start_latitude = Column(Float, nullable=True)
+    mechanic_inspection_start_longitude = Column(Float, nullable=True)
+    mechanic_inspection_end_latitude = Column(Float, nullable=True)
+    mechanic_inspection_end_longitude = Column(Float, nullable=True)
 
     # Явно задаём связь для механика доставки:
     delivery_mechanic = relationship("User", foreign_keys=[delivery_mechanic_id])

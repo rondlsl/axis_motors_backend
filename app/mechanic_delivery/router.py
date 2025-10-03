@@ -181,6 +181,9 @@ async def start_delivery(
 
     rental.rental_status = RentalStatus.DELIVERING_IN_PROGRESS
     rental.delivery_start_time = datetime.utcnow()  # Записываем время начала доставки
+    # Фиксируем стартовые координаты доставки по текущему положению автомобиля
+    rental.delivery_start_latitude = car.latitude
+    rental.delivery_start_longitude = car.longitude
     db.commit()
     db.refresh(rental)
 
@@ -237,6 +240,9 @@ async def complete_delivery(
     # Записываем время окончания доставки
     delivery_end_time = datetime.utcnow()
     rental.delivery_end_time = delivery_end_time
+    # Фиксируем конечные координаты доставки по текущему положению автомобиля
+    rental.delivery_end_latitude = car.latitude
+    rental.delivery_end_longitude = car.longitude
     
     # Рассчитываем штраф за задержку доставки (если больше 1.5 часа = 90 минут)
     if rental.delivery_start_time:
