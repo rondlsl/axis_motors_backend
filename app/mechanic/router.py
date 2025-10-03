@@ -894,9 +894,10 @@ async def upload_photos_after(
     try:
         validate_photos([selfie], "selfie")
         # сверяем селфи механика после осмотра
-        is_same, msg = verify_user_upload_against_profile(current_mechanic, selfie)
-        if not is_same:
-            raise HTTPException(status_code=400, detail=msg)
+        # Закомментировано для механиков - не требуется верификация с документом
+        # is_same, msg = verify_user_upload_against_profile(current_mechanic, selfie)
+        # if not is_same:
+        #     raise HTTPException(status_code=400, detail=msg)
         validate_photos(interior_photos, "interior_photos")
         urls = list(rental.mechanic_photos_after or [])
         urls.append(await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/mechanic/after/selfie/"))
