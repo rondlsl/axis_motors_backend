@@ -22,7 +22,7 @@ from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.get_active_rental import get_active_rental_car, get_active_rental
 from app.gps_api.utils.car_data import send_command_to_terminal, send_open, send_close, send_give_key, send_take_key, send_lock_engine, send_unlock_engine
 from app.rent.utils.calculate_price import get_open_price
-from app.gps_api.schemas_telemetry import VehicleTelemetryResponse, VehicleTelemetryError
+from app.gps_api.schemas_telemetry import VehicleTelemetryResponse
 from app.gps_api.utils.glonassoft_client import glonassoft_client
 from app.gps_api.utils.telemetry_processor import process_glonassoft_data
 
