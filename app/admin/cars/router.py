@@ -234,7 +234,7 @@ async def delete_car(
         # Проверяем, не используется ли автомобиль в активной аренде
         active_rental = db.query(RentalHistory).filter(
             RentalHistory.car_id == car_id,
-            RentalHistory.status.in_([
+            RentalHistory.rental_status.in_([
                 RentalStatus.RESERVED,
                 RentalStatus.IN_USE,
                 RentalStatus.DELIVERING,
@@ -873,7 +873,7 @@ async def get_cars_statistics(
 
     # Активные аренды
     active_rentals = db.query(RentalHistory).filter(
-        RentalHistory.status.in_([
+        RentalHistory.rental_status.in_([
             RentalStatus.RESERVED,
             RentalStatus.IN_USE,
             RentalStatus.DELIVERING,
