@@ -812,9 +812,11 @@ async def get_vehicle_telemetry(
                     detail="IMEI устройства не найден для данного автомобиля"
                 )
         
+        logger.info(f"Getting telemetry for car_id={car_id}, IMEI={vehicle_imei}")
         glonassoft_data = await glonassoft_client.get_vehicle_data(vehicle_imei)
         
         if not glonassoft_data:
+            logger.error(f"No data received from Glonassoft for IMEI={vehicle_imei}")
             raise HTTPException(
                 status_code=503,
                 detail="Не удалось получить данные от системы мониторинга"

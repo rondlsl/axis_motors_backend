@@ -44,7 +44,9 @@ class GlonassoftClient:
     async def get_vehicle_data(self, vehicle_imei: str) -> Optional[Dict[str, Any]]:
         """Получает данные о конкретном автомобиле по IMEI"""
         if not self.token:
+            logger.info("No token, authenticating...")
             if not await self.authenticate():
+                logger.error("Authentication failed")
                 return None
         
         try:
@@ -59,12 +61,15 @@ class GlonassoftClient:
                 "timezone": 5
             }
             
+            logger.info(f"Requesting telemetry from {url} with IMEI={vehicle_imei}")
             response = await self.client.get(url, headers=headers, params=params)
             
             if response.status_code == 200:
-                return response.json()
+                data = response.json()
+                logger.info(f"Successfully received telemetry data for {vehicle_imei}")
+                return data
             else:
-                logger.error(f"Failed to get vehicle data for {vehicle_imei}: {response.status_code}")
+                logger.error(f"Failed to get vehicle data for {vehicle_imei}: {response.status_code} - {response.text}")
                 return None
                 
         except Exception as e:

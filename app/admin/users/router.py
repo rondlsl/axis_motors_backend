@@ -9,7 +9,7 @@ from app.models.user_model import User, UserRole
 from app.models.application_model import Application, ApplicationStatus
 from app.admin.users.schemas import UserProfileSchema, UserRoleUpdateSchema
 
-users_router = APIRouter(prefix="/admin/users", tags=["Admin Users"])
+users_router = APIRouter(prefix="/users", tags=["Admin Users"])
 
 
 @users_router.get("/pending", response_model=List[UserProfileSchema])
