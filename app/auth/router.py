@@ -16,7 +16,7 @@ from app.auth.security.tokens import create_refresh_token, create_access_token
 from app.core.config import SMS_TOKEN
 from app.dependencies.database.database import get_db
 from app.models.car_model import Car
-from app.models.history_model import RentalHistory, RentalStatus
+from app.models.history_model import RentalHistory, RentalStatus, RentalReview
 from app.models.user_model import UserRole, User
 from app.models.application_model import Application, ApplicationStatus
 from app.models.notification_model import Notification
@@ -448,15 +448,43 @@ async def read_users_me(
             car_details["rental_id"] = rental.id
             
             # Добавляем last_client_review для механиков
-            if rental.review:
-                car_details["last_client_review"] = {
-                    "rating": rental.review.rating or 0,
-                    "comment": rental.review.comment or "",
-                    "photos_after": {
-                        "interior": [],  # Пока пустой массив, так как структура не определена
-                        "exterior": []
+            # Ищем последнюю завершенную аренду от обычного клиента (не механика)
+            last_completed_rental = (
+                db.query(RentalHistory)
+                .join(User, RentalHistory.user_id == User.id)
+                .filter(
+                    RentalHistory.car_id == car.id,
+                    RentalHistory.rental_status == RentalStatus.COMPLETED,
+                    User.role != UserRole.MECHANIC  # Исключаем аренды от механиков
+                )
+                .order_by(RentalHistory.end_time.desc())
+                .first()
+            )
+            
+            if last_completed_rental:
+                # Получаем отзыв клиента
+                client_review = (
+                    db.query(RentalReview)
+                    .filter(RentalReview.rental_id == last_completed_rental.id)
+                    .first()
+                )
+                
+                if client_review:
+                    # Получаем фото после аренды (салон и кузов)
+                    after_photos = last_completed_rental.photos_after or []
+                    interior_photos = [p for p in after_photos if ("/after/interior/" in p) or ("\\after\\interior\\" in p)]
+                    exterior_photos = [p for p in after_photos if ("/after/car/" in p) or ("\\after\\car\\" in p)]
+                    
+                    car_details["last_client_review"] = {
+                        "rating": client_review.rating,
+                        "comment": client_review.comment,
+                        "photos_after": {
+                            "interior": interior_photos,
+                            "exterior": exterior_photos
+                        }
                     }
-                }
+                else:
+                    car_details["last_client_review"] = None
             else:
                 car_details["last_client_review"] = None
         
