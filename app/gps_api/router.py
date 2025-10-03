@@ -3,8 +3,11 @@ from sqlalchemy import or_, and_, func
 from sqlalchemy.orm import Session
 from typing import Dict, Any, List
 import asyncio
+import logging
 
 from starlette import status
+
+logger = logging.getLogger(__name__)
 
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD, RENTED_CARS_ENDPOINT_KEY
 from app.dependencies.database.database import get_db
@@ -19,6 +22,9 @@ from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.get_active_rental import get_active_rental_car, get_active_rental
 from app.gps_api.utils.car_data import send_command_to_terminal, send_open, send_close, send_give_key, send_take_key, send_lock_engine, send_unlock_engine
 from app.rent.utils.calculate_price import get_open_price
+from app.gps_api.schemas_telemetry import VehicleTelemetryResponse, VehicleTelemetryError
+from app.gps_api.utils.glonassoft_client import glonassoft_client
+from app.gps_api.utils.telemetry_processor import process_glonassoft_data
 
 Vehicle_Router = APIRouter(prefix="/vehicles", tags=["Vehicles"])
 
@@ -759,3 +765,274 @@ def get_rented_cars(
     )
 
     return [RentedCar(name=name, plate_number=plate) for name, plate in rows]
+
+
+@Vehicle_Router.get("/telemetry/{car_id}", response_model=VehicleTelemetryResponse)
+async def get_vehicle_telemetry(
+    car_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Получение текущего состояния автомобиля (телеметрия в реальном времени)
+    
+    Возвращает полную информацию о состоянии автомобиля:
+    - Скорость движения
+    - Состояние замков всех дверей, капота и багажника
+    - Ближний свет, авто-свет
+    - Парковочный тормоз
+    - И другие параметры
+    
+    Если данных нет — возвращает ошибку "Нет данных"
+    """
+    # Проверяем права доступа - только для админов
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администраторы могут получать телеметрию")
+    
+    # Получаем информацию об автомобиле
+    car = db.query(Car).filter(Car.id == car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    # Получаем данные от Глонассофт
+    try:
+        vehicle_imei = getattr(car, 'imei', None) or getattr(car, 'vehicle_imei', None)
+        
+        if not vehicle_imei:
+            vehicle_imei_map = {
+                1: "869132074567851",  # MB CLA45s
+                2: "866011056063951",  # Haval F7x  
+                3: "869132074464026",  # Hongqi e-qm5
+            }
+            vehicle_imei = vehicle_imei_map.get(car_id)
+            
+            if not vehicle_imei:
+                raise HTTPException(
+                    status_code=404,
+                    detail="IMEI устройства не найден для данного автомобиля"
+                )
+        
+        glonassoft_data = await glonassoft_client.get_vehicle_data(vehicle_imei)
+        
+        if not glonassoft_data:
+            raise HTTPException(
+                status_code=503,
+                detail="Не удалось получить данные от системы мониторинга"
+            )
+        
+        telemetry = process_glonassoft_data(glonassoft_data, car.name)
+        
+        return telemetry
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting telemetry for car {car_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Внутренняя ошибка сервера при получении телеметрии"
+        )
+
+
+# === УПРАВЛЕНИЕ АВТОМОБИЛЕМ ПО CAR_ID ===
+
+@Vehicle_Router.post("/{car_id}/open", summary="Открыть автомобиль")
+async def open_vehicle_by_id(
+    car_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Открыть автомобиль по ID"""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администраторы могут управлять автомобилями")
+    
+    # Получаем информацию об автомобиле
+    car = db.query(Car).filter(Car.id == car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    global AUTH_TOKEN
+    if not AUTH_TOKEN:
+        try:
+            AUTH_TOKEN = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
+    
+    try:
+        cmd = await send_open(car.gps_imei, AUTH_TOKEN)
+        return {"message": "Команда открытия отправлена", "car_name": car.name, "result": cmd}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
+
+
+@Vehicle_Router.post("/{car_id}/close", summary="Закрыть автомобиль")
+async def close_vehicle_by_id(
+    car_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Закрыть автомобиль по ID"""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администраторы могут управлять автомобилями")
+    
+    # Получаем информацию об автомобиле
+    car = db.query(Car).filter(Car.id == car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    global AUTH_TOKEN
+    if not AUTH_TOKEN:
+        try:
+            AUTH_TOKEN = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
+    
+    try:
+        cmd = await send_close(car.gps_imei, AUTH_TOKEN)
+        return {"message": "Команда закрытия отправлена", "car_name": car.name, "result": cmd}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
+
+
+@Vehicle_Router.post("/{car_id}/lock_engine", summary="Заблокировать двигатель")
+async def lock_engine_by_id(
+    car_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Заблокировать двигатель автомобиля по ID"""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администраторы могут управлять автомобилями")
+    
+    # Получаем информацию об автомобиле
+    car = db.query(Car).filter(Car.id == car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    global AUTH_TOKEN
+    if not AUTH_TOKEN:
+        try:
+            AUTH_TOKEN = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
+    
+    try:
+        cmd = await send_lock_engine(car.gps_imei, AUTH_TOKEN)
+        return {"message": "Команда блокировки двигателя отправлена", "car_name": car.name, "result": cmd}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
+
+
+@Vehicle_Router.post("/{car_id}/unlock_engine", summary="Разблокировать двигатель")
+async def unlock_engine_by_id(
+    car_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Разблокировать двигатель автомобиля по ID"""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администраторы могут управлять автомобилями")
+    
+    # Получаем информацию об автомобиле
+    car = db.query(Car).filter(Car.id == car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    global AUTH_TOKEN
+    if not AUTH_TOKEN:
+        try:
+            AUTH_TOKEN = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
+    
+    try:
+        cmd = await send_unlock_engine(car.gps_imei, AUTH_TOKEN)
+        return {"message": "Команда разблокировки двигателя отправлена", "car_name": car.name, "result": cmd}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
+
+
+@Vehicle_Router.post("/{car_id}/give_key", summary="Выдать ключ")
+async def give_key_by_id(
+    car_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Выдать ключ автомобиля по ID"""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администраторы могут управлять автомобилями")
+    
+    # Получаем информацию об автомобиле
+    car = db.query(Car).filter(Car.id == car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    global AUTH_TOKEN
+    if not AUTH_TOKEN:
+        try:
+            AUTH_TOKEN = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
+    
+    try:
+        cmd = await send_give_key(car.gps_imei, AUTH_TOKEN)
+        return {"message": "Команда выдачи ключа отправлена", "car_name": car.name, "result": cmd}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
+
+
+@Vehicle_Router.post("/{car_id}/take_key", summary="Забрать ключ")
+async def take_key_by_id(
+    car_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Забрать ключ автомобиля по ID
+    
+    Если двигатель не выключен, сначала заблокирует двигатель, затем заберет ключ
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администраторы могут управлять автомобилями")
+    
+    # Получаем информацию об автомобиле
+    car = db.query(Car).filter(Car.id == car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    global AUTH_TOKEN
+    if not AUTH_TOKEN:
+        try:
+            AUTH_TOKEN = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
+    
+    try:
+        # Сначала проверяем состояние двигателя через телеметрию
+        vehicle_imei_map = {
+            1: "869132074567851",  # MB CLA45s
+            2: "866011056063951",  # Haval F7x  
+            3: "869132074464026",  # Hongqi e-qm5
+        }
+        vehicle_imei = vehicle_imei_map.get(car_id, car.gps_imei)
+        
+        # Получаем телеметрию для проверки состояния двигателя
+        glonassoft_data = await glonassoft_client.get_vehicle_data(vehicle_imei)
+        
+        if glonassoft_data:
+            # Обрабатываем данные телеметрии
+            telemetry = process_glonassoft_data(glonassoft_data, car.name)
+            
+            # Если двигатель включен, сначала блокируем его
+            if telemetry.is_engine_on:
+                lock_cmd = await send_lock_engine(car.gps_imei, AUTH_TOKEN)
+                logger.info(f"Двигатель автомобиля {car.name} заблокирован перед забором ключа")
+        
+        # Забираем ключ
+        cmd = await send_take_key(car.gps_imei, AUTH_TOKEN)
+        return {"message": "Команда забора ключа отправлена", "car_name": car.name, "result": cmd}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
+
+
+
+

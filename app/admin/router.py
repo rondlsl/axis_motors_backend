@@ -1735,4 +1735,150 @@ async def get_car_rental_history(
     return result
 
 
+@admin_router.patch("/cars/{car_id}/status", summary="Изменить статус автомобиля")
+async def change_car_status(
+    car_id: int,
+    new_status: CarStatus,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Изменить статус автомобиля на любой из доступных"""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администраторы могут изменять статус автомобилей")
+    
+    car = db.query(Car).filter(Car.id == car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    try:
+        old_status = car.status
+        car.status = new_status
+        db.commit()
+        
+        return {
+            "message": "Статус автомобиля успешно изменен",
+            "car_name": car.name,
+            "old_status": old_status.value if old_status else None,
+            "new_status": new_status.value
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Ошибка изменения статуса: {e}")
+
+
+@admin_router.get("/cars/{car_id}/status", summary="Получить текущий статус автомобиля")
+async def get_car_status(
+    car_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Получить текущий статус автомобиля"""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администраторы могут получать статус автомобилей")
+    
+    car = db.query(Car).filter(Car.id == car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    return {
+        "car_id": car.id,
+        "car_name": car.name,
+        "plate_number": car.plate_number,
+        "current_status": car.status.value if car.status else None,
+        "available_statuses": [status.value for status in CarStatus]
+    }
+
+
+@admin_router.get("/cars/statuses", summary="Получить список доступных статусов")
+async def get_available_statuses(
+    current_user: User = Depends(get_current_user)
+):
+    """Получить список всех доступных статусов автомобилей"""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администраторы могут получать список статусов")
+    
+    statuses = []
+    for status in CarStatus:
+        statuses.append({
+            "value": status.value,
+            "description": _get_status_description(status)
+        })
+    
+    return {
+        "available_statuses": statuses
+    }
+
+
+def _get_status_description(status: CarStatus) -> str:
+    """Получить описание статуса на русском языке"""
+    descriptions = {
+        CarStatus.FREE: "Свободен",
+        CarStatus.PENDING: "Ожидает механика", 
+        CarStatus.IN_USE: "В аренде",
+        CarStatus.DELIVERING: "В доставке",
+        CarStatus.SERVICE: "На ремонте",
+        CarStatus.RESERVED: "Зарезервирован",
+        CarStatus.SCHEDULED: "Забронирован заранее",
+        CarStatus.OWNER: "У владельца",
+        CarStatus.OCCUPIED: "Занят"
+    }
+    return descriptions.get(status, status.value)
+
+
+@admin_router.delete("/cars/{car_id}", summary="Удалить автомобиль")
+async def delete_car(
+    car_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Удалить автомобиль (необратимая операция)"""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администраторы могут удалять автомобили")
+    
+    car = db.query(Car).filter(Car.id == car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    try:
+        # Проверяем, не используется ли автомобиль в активной аренде
+        active_rental = db.query(RentalHistory).filter(
+            RentalHistory.car_id == car_id,
+            RentalHistory.status.in_([
+                RentalStatus.RESERVED,
+                RentalStatus.IN_USE,
+                RentalStatus.DELIVERING,
+                RentalStatus.DELIVERING_IN_PROGRESS,
+                RentalStatus.DELIVERY_RESERVED,
+                RentalStatus.SCHEDULED
+            ])
+        ).first()
+        
+        if active_rental:
+            raise HTTPException(
+                status_code=400, 
+                detail="Нельзя удалить автомобиль, который используется в активной аренде"
+            )
+        
+        car_info = {
+            "id": car.id,
+            "name": car.name,
+            "plate_number": car.plate_number,
+            "status": car.status.value if car.status else None
+        }
+        
+        db.delete(car)
+        db.commit()
+        
+        return {
+            "message": "Автомобиль успешно удален",
+            "deleted_car": car_info
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Ошибка удаления автомобиля: {e}")
+
+
 router = admin_router
