@@ -21,7 +21,7 @@ from app.admin.cars.schemas import (
 )
 from app.admin.cars.utils import car_to_detail_schema, status_display, _get_drive_type_display
 
-cars_router = APIRouter(prefix="/cars", tags=["Admin Cars"])
+cars_router = APIRouter(tags=["Admin Cars"])
 
 
 @cars_router.patch("/{car_id}", response_model=CarDetailSchema)

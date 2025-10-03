@@ -5,8 +5,8 @@ from app.admin.users.router import users_router
 
 admin_router = APIRouter(prefix="/admin", tags=["Admin"])
 
-admin_router.include_router(cars_router)
-admin_router.include_router(guarantors_router)
-admin_router.include_router(users_router)
+admin_router.include_router(cars_router, prefix="/cars")
+admin_router.include_router(guarantors_router, prefix="/guarantors")
+admin_router.include_router(users_router, prefix="/users")
 
 router = admin_router

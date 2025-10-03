@@ -14,7 +14,7 @@ from app.admin.guarantors.schemas import (
     AdminRejectGuarantorSchema
 )
 
-guarantors_router = APIRouter(prefix="/guarantors", tags=["Admin Guarantors"])
+guarantors_router = APIRouter(tags=["Admin Guarantors"])
 
 
 @guarantors_router.get("/requests", response_model=List[GuarantorRequestAdminSchema])
