@@ -31,10 +31,15 @@ async def get_pending_users(
             first_name=user.first_name,
             last_name=user.last_name,
             phone_number=user.phone_number,
-            role=user.role,
+            role=user.role.value,
             is_active=user.is_active,
             documents_verified=user.documents_verified,
-            created_at=user.created_at.isoformat() if user.created_at else None
+            selfie_url=user.selfie_url,
+            selfie_with_license_url=user.selfie_with_license_url,
+            drivers_license_url=user.drivers_license_url,
+            id_card_front_url=user.id_card_front_url,
+            id_card_back_url=user.id_card_back_url,
+            auto_class=user.auto_class or []
         ))
     
     return result
@@ -95,10 +100,15 @@ async def get_all_users(
             first_name=user.first_name,
             last_name=user.last_name,
             phone_number=user.phone_number,
-            role=user.role,
+            role=user.role.value,
             is_active=user.is_active,
             documents_verified=user.documents_verified,
-            created_at=user.created_at.isoformat() if user.created_at else None
+            selfie_url=user.selfie_url,
+            selfie_with_license_url=user.selfie_with_license_url,
+            drivers_license_url=user.drivers_license_url,
+            id_card_front_url=user.id_card_front_url,
+            id_card_back_url=user.id_card_back_url,
+            auto_class=user.auto_class or []
         ))
     
     return result
@@ -122,10 +132,15 @@ async def get_all_clients(
             first_name=user.first_name,
             last_name=user.last_name,
             phone_number=user.phone_number,
-            role=user.role,
+            role=user.role.value,
             is_active=user.is_active,
             documents_verified=user.documents_verified,
-            created_at=user.created_at.isoformat() if user.created_at else None
+            selfie_url=user.selfie_url,
+            selfie_with_license_url=user.selfie_with_license_url,
+            drivers_license_url=user.drivers_license_url,
+            id_card_front_url=user.id_card_front_url,
+            id_card_back_url=user.id_card_back_url,
+            auto_class=user.auto_class or []
         ))
     
     return result
@@ -183,14 +198,13 @@ async def get_user_profile(
         phone_number=user.phone_number,
         first_name=user.first_name,
         last_name=user.last_name,
-        email=user.email,
         role=user.role.value,
-        is_verified=user.is_verified,
+        is_active=user.is_active,
+        documents_verified=user.documents_verified,
         selfie_url=user.selfie_url,
         selfie_with_license_url=user.selfie_with_license_url,
-        license_front_url=user.license_front_url,
-        license_back_url=user.license_back_url,
+        drivers_license_url=user.drivers_license_url,
+        id_card_front_url=user.id_card_front_url,
+        id_card_back_url=user.id_card_back_url,
         auto_class=auto_class_list,
-        created_at=user.created_at.isoformat() if user.created_at else None,
-        updated_at=user.updated_at.isoformat() if user.updated_at else None,
     )

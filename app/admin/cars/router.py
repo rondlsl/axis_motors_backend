@@ -73,6 +73,7 @@ async def get_car_details(
         year=now.year,
         month=now.month,
         owner_id=car.owner_id,
+        db=db
     )
 
     return CarDetailSchema(
@@ -522,6 +523,7 @@ async def get_car_availability_timer(
         year=now.year,
         month=now.month,
         owner_id=car.owner_id,
+        db=db
     )
 
     last_rental = db.query(RentalHistory).filter(
@@ -1085,8 +1087,8 @@ async def get_car_rental_history(
                 "last_name": renter.last_name or "",
                 "phone_number": renter.phone_number or "",
                 "selfie_url": renter.selfie_url,
-                "license_front_url": renter.license_front_url,
-                "license_back_url": renter.license_back_url,
+                "license_front_url": renter.drivers_license_url,
+                "license_back_url": None,
             }
 
         result.append({
@@ -1118,8 +1120,8 @@ async def get_car_rental_history(
                 "mechanic_rating": review.mechanic_rating if review else None,
                 "mechanic_comment": review.mechanic_comment if review else None,
             } if review else None,
-            "created_at": rental.created_at.isoformat() if rental.created_at else None,
-            "updated_at": rental.updated_at.isoformat() if rental.updated_at else None,
+            "created_at": rental.reservation_time.isoformat() if rental.reservation_time else None,
+            "updated_at": rental.end_time.isoformat() if rental.end_time else None,
         })
 
     return {
