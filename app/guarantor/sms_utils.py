@@ -53,3 +53,28 @@ async def send_user_rejection_with_guarantor_sms(user_phone: str, user_name: str
     except Exception as e:
         print(f"SMS sending error: {e}")
         return {"message": "SMS sending failed", "error": str(e)}
+
+
+async def send_guarantor_approval_sms(guarantor_phone: str, client_first_name: str, client_last_name: str):
+    """Отправка SMS гаранту при одобрении заявки администратором"""
+    client_full_name = f"{client_first_name} {client_last_name}"
+    
+    sms_text = f"""Здравствуйте!
+
+{client_full_name} указал вас в качестве гаранта при подключении к сервису AZV Motors.
+Гарант несет поручительство за клиента и обязуется компенсировать возможный материальный ущерб, причинённый по его вине в процессе пользования автомобилем.
+
+Для подтверждения вашего согласия на данную ответственность, необходимо зарегестрироваться в нашем приложении перейдя по ссылке:
+AppStore: https://apps.apple.com/kz/app/azv-motors/id6744049292
+Google Play: Скоро будет доступно
+В случае отказа — клиенту потребуется выбрать другого гаранта.
+
+С уважением,
+Команда AZV Motors"""
+    
+    try:
+        result = await send_sms_mobizon(guarantor_phone, sms_text, SMS_TOKEN)
+        return {"message": "SMS sent successfully", "result": result}
+    except Exception as e:
+        print(f"SMS sending error: {e}")
+        return {"message": "SMS sending failed", "error": str(e)}

@@ -12,7 +12,7 @@ from app.models.application_model import Application
 from app.models.car_model import Car, CarStatus, CarBodyType, TransmissionType
 from app.models.car_comment_model import CarComment
 from app.models.history_model import RentalHistory, RentalStatus, RentalReview
-from app.guarantor.sms_utils import send_user_rejection_with_guarantor_sms
+from app.guarantor.sms_utils import send_user_rejection_with_guarantor_sms, send_guarantor_approval_sms
 from app.guarantor.schemas import (
     GuarantorRequestAdminSchema, 
     AdminApproveGuarantorSchema, 
@@ -817,7 +817,20 @@ async def approve_guarantor_request(
         auto_classes_strings = [cls.value for cls in approval_data.auto_classes]
         requestor.auto_class = auto_classes_strings
     
+    guarantor = db.query(User).filter(User.id == request.guarantor_id).first()
+    
     db.commit()
+    
+    # Отправляем SMS гаранту при одобрении
+    if guarantor and requestor:
+        try:
+            await send_guarantor_approval_sms(
+                guarantor_phone=guarantor.phone_number,
+                client_first_name=requestor.first_name,
+                client_last_name=requestor.last_name
+            )
+        except Exception as e:
+            print(f"Failed to send SMS to guarantor: {e}")
     
     return {
         "message": "Заявка одобрена",
