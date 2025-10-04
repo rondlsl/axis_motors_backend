@@ -1107,7 +1107,6 @@ async def get_car_rental_history(
             "overtime_fee": rental.overtime_fee,
             "distance_fee": rental.distance_fee,
             "delivery_fee": rental.delivery_fee,
-            "door_opening_fee": rental.door_opening_fee,
             "delivery_mechanic": delivery_mechanic_info,
             "inspection_mechanic": inspection_mechanic_info,
             "photos_before": rental.photos_before or [],
