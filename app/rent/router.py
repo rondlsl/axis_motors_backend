@@ -130,15 +130,13 @@ def get_trip_history(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ) -> dict:
-    # Показываем поездки только после проверки механика:
-    # признак — автомобиль уже возвращён в доступ (FREE) после механика
+    # Получаем все завершенные поездки пользователя
     histories = (
         db.query(RentalHistory, Car)
         .join(Car, Car.id == RentalHistory.car_id)
         .filter(
             RentalHistory.user_id == current_user.id,
-            RentalHistory.rental_status == RentalStatus.COMPLETED,
-            Car.status == CarStatus.FREE
+            RentalHistory.rental_status == RentalStatus.COMPLETED
         )
         .order_by(RentalHistory.end_time.desc())
         .all()
