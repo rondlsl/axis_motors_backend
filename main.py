@@ -31,7 +31,7 @@ logging.basicConfig(
 )
 from app.gps_api.router import Vehicle_Router
 from app.mechanic.router import MechanicRouter
-from app.models.car_model import Car, CarBodyType
+from app.models.car_model import Car, CarBodyType, CarAutoClass
 from app.models.user_model import User, UserRole
 from app.rent.router import RentRouter
 from app.rent.utils.billing import billing_job
@@ -189,6 +189,7 @@ def init_app(app: FastAPI):
                     longitude=76.889709,
                     fuel_level=80,
                     body_type=CarBodyType.CROSSOVER,
+                    auto_class=CarAutoClass.A, 
                     owner_id=owner.id,
                     course=90,
                     description="Машина в идеальном состоянии.",
@@ -225,6 +226,7 @@ def init_app(app: FastAPI):
                     fuel_level=40,
                     course=23,
                     body_type=CarBodyType.SEDAN,
+                    auto_class=CarAutoClass.B, 
                     owner_id=owner.id,
                     description="Разбита левая передняя фара. Разбит задний правый фонарь. Вмятина и царапина на правой задней двери.",
                     photos=photos
@@ -253,6 +255,7 @@ def init_app(app: FastAPI):
                     price_per_day=50000,
                     plate_number="890AVB09",
                     body_type=CarBodyType.SEDAN,
+                    auto_class=CarAutoClass.A, 
                     owner_id=owner.id,
                     photos=photos
                 )

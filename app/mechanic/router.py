@@ -807,6 +807,20 @@ async def upload_photos_before(
             urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/mechanic/before/car/"))
         rental.mechanic_photos_before = urls
         db.commit()
+        
+        # Открываем замки после успешной загрузки фото
+        try:
+            car = db.query(Car).get(rental.car_id)
+            if car and car.gps_imei:
+                from app.gps_api.utils.auth_api import get_auth_token
+                from app.gps_api.utils.car_data import send_open
+                from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
+                
+                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                open_result = await send_open(car.gps_imei, auth_token)
+        except Exception as e:
+            print(f"Ошибка открытия замков после загрузки фото механиком: {e}")
+        
         return {"message": "Фотографии до проверки (selfie+car) загружены", "photo_count": len(urls)}
     except HTTPException:
         raise
@@ -906,15 +920,16 @@ async def upload_photos_after(
         rental.mechanic_photos_after = urls
         db.commit()
         
-        # Автоматическая блокировка после успешной загрузки фото механиком
+        # Автоматическая блокировка и закрытие замков после успешной загрузки фото механиком
         try:
             car = db.query(Car).get(rental.car_id)
             if car and car.gps_imei:
+                from app.gps_api.utils.car_data import send_close
                 auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                close_result = await send_close(car.gps_imei, auth_token)
                 lock_result = await auto_lock_vehicle_after_rental(car.gps_imei, auth_token)
-                print(f"Автоматическая блокировка после загрузки фото механиком: {lock_result}")
         except Exception as e:
-            print(f"Ошибка автоматической блокировки после загрузки фото механиком: {e}")
+            print(f"Ошибка блокировки/закрытия после загрузки фото механиком: {e}")
         
         return {"message": "Фотографии после проверки (selfie+interior) загружены", "photo_count": len(urls)}
     except HTTPException:

@@ -1255,6 +1255,20 @@ async def upload_photos_before_owner(
 
         rental.photos_before = urls
         db.commit()
+        
+        # Открываем замки после успешной загрузки фото
+        try:
+            car = db.query(Car).get(rental.car_id)
+            if car and car.gps_imei:
+                from app.gps_api.utils.auth_api import get_auth_token
+                from app.gps_api.utils.car_data import send_open
+                from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
+                
+                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                open_result = await send_open(car.gps_imei, auth_token)
+        except Exception as e:
+            print(f"Ошибка открытия замков после загрузки фото владельцем: {e}")
+        
         return {"message": "Owner photos before (car) uploaded", "photo_count": len(car_photos)}
     except Exception:
         db.rollback()
@@ -1342,15 +1356,16 @@ async def upload_photos_after_owner(
         rental.photos_after = urls
         db.commit()
         
-        # Автоматическая блокировка после успешной загрузки фото владельцем
+        # Автоматическая блокировка и закрытие замков после успешной загрузки фото владельцем
         try:
             car = db.query(Car).get(rental.car_id)
             if car and car.gps_imei:
+                from app.gps_api.utils.car_data import send_close
                 auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                close_result = await send_close(car.gps_imei, auth_token)
                 lock_result = await auto_lock_vehicle_after_rental(car.gps_imei, auth_token)
-                print(f"Автоматическая блокировка после загрузки фото владельцем: {lock_result}")
         except Exception as e:
-            print(f"Ошибка автоматической блокировки после загрузки фото владельцем: {e}")
+            print(f"Ошибка блокировки/закрытия после загрузки фото владельцем: {e}")
         
         return {"message": "Owner photos after (interior) uploaded", "photo_count": len(interior_photos)}
     except Exception:
