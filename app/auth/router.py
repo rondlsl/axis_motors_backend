@@ -236,7 +236,6 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
 
     try:
         from app.models.guarantor_model import GuarantorRequest, GuarantorRequestStatus
-        from datetime import datetime
         
         # Ищем заявки с этим номером телефона где guarantor_id = NULL
         pending_requests = db.query(GuarantorRequest).filter(
