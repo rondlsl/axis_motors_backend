@@ -28,17 +28,25 @@ class GlonassoftClient:
                 json=auth_data
             )
             
+            print(f"[GLONASSOFT AUTH] Response status: {response.status_code}")
+            print(f"[GLONASSOFT AUTH] Response text: {response.text}")
+            
             if response.status_code == 200:
                 data = response.json()
                 self.token = data.get("AuthId")  # Используем AuthId как в основном роутере
                 logger.info("Successfully authenticated with Glonassoft")
+                print(f"[GLONASSOFT AUTH] Successfully authenticated, token: {self.token}")
                 return True
             else:
                 logger.error(f"Authentication failed: {response.status_code} - {response.text}")
+                print(f"[GLONASSOFT AUTH ERROR] Authentication failed: {response.status_code} - {response.text}")
                 return False
                 
         except Exception as e:
             logger.error(f"Authentication error: {e}")
+            print(f"[GLONASSOFT AUTH ERROR] Authentication error: {e}")
+            import traceback
+            print(f"[GLONASSOFT AUTH ERROR] Traceback: {traceback.format_exc()}")
             return False
     
     async def get_vehicle_data(self, vehicle_imei: str) -> Optional[Dict[str, Any]]:
@@ -62,18 +70,30 @@ class GlonassoftClient:
             }
             
             logger.info(f"Requesting telemetry from {url} with IMEI={vehicle_imei}")
+            print(f"[GLONASSOFT] Requesting telemetry from {url} with IMEI={vehicle_imei}")
+            print(f"[GLONASSOFT] Headers: {headers}")
+            print(f"[GLONASSOFT] Params: {params}")
+            
             response = await self.client.get(url, headers=headers, params=params)
+            print(f"[GLONASSOFT] Response status: {response.status_code}")
+            print(f"[GLONASSOFT] Response text: {response.text}")
             
             if response.status_code == 200:
                 data = response.json()
                 logger.info(f"Successfully received telemetry data for {vehicle_imei}")
+                print(f"[GLONASSOFT] Successfully received telemetry data for {vehicle_imei}")
+                print(f"[GLONASSOFT] Data keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
                 return data
             else:
                 logger.error(f"Failed to get vehicle data for {vehicle_imei}: {response.status_code} - {response.text}")
+                print(f"[GLONASSOFT ERROR] Failed to get vehicle data for {vehicle_imei}: {response.status_code} - {response.text}")
                 return None
                 
         except Exception as e:
             logger.error(f"Error getting vehicle data for {vehicle_imei}: {e}")
+            print(f"[GLONASSOFT ERROR] Error getting vehicle data for {vehicle_imei}: {e}")
+            import traceback
+            print(f"[GLONASSOFT ERROR] Traceback: {traceback.format_exc()}")
             return None
     
     async def get_last_vehicles_data(self, vehicle_ids: list) -> Optional[list]:

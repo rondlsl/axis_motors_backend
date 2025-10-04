@@ -813,16 +813,22 @@ async def get_vehicle_telemetry(
                 )
         
         logger.info(f"Getting telemetry for car_id={car_id}, IMEI={vehicle_imei}")
+        print(f"[TELEMETRY] Getting telemetry for car_id={car_id}, IMEI={vehicle_imei}")
+        
         glonassoft_data = await glonassoft_client.get_vehicle_data(vehicle_imei)
+        print(f"[TELEMETRY] Glonassoft response: {glonassoft_data}")
         
         if not glonassoft_data:
             logger.error(f"No data received from Glonassoft for IMEI={vehicle_imei}")
+            print(f"[TELEMETRY ERROR] No data received from Glonassoft for IMEI={vehicle_imei}")
             raise HTTPException(
                 status_code=503,
                 detail="Не удалось получить данные от системы мониторинга"
             )
         
+        print(f"[TELEMETRY] Processing data for car: {car.name}")
         telemetry = process_glonassoft_data(glonassoft_data, car.name)
+        print(f"[TELEMETRY] Processed telemetry: {telemetry}")
         
         return telemetry
         
@@ -830,6 +836,9 @@ async def get_vehicle_telemetry(
         raise
     except Exception as e:
         logger.error(f"Error getting telemetry for car {car_id}: {e}")
+        print(f"[TELEMETRY ERROR] Error getting telemetry for car {car_id}: {e}")
+        import traceback
+        print(f"[TELEMETRY ERROR] Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=500,
             detail="Внутренняя ошибка сервера при получении телеметрии"

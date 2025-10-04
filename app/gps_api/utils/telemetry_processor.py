@@ -47,11 +47,19 @@ def extract_first_match(items: List[Dict], possible_keys: List[str]) -> str:
 def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "") -> VehicleTelemetryResponse:
     """Обрабатывает данные от Глонассофт и преобразует в структурированный формат"""
     
+    print(f"[TELEMETRY PROCESSOR] Processing data for car: {car_name}")
+    print(f"[TELEMETRY PROCESSOR] Raw data keys: {list(glonassoft_data.keys()) if isinstance(glonassoft_data, dict) else 'Not a dict'}")
+    
     # Извлекаем основные данные
     pkg = glonassoft_data.get("PackageItems", [])
     regs = glonassoft_data.get("RegistredSensors", [])
     unregs = glonassoft_data.get("UnregisteredSensors", [])
     general = glonassoft_data.get("GeneralSensors", [])
+    
+    print(f"[TELEMETRY PROCESSOR] PackageItems count: {len(pkg)}")
+    print(f"[TELEMETRY PROCESSOR] RegistredSensors count: {len(regs)}")
+    print(f"[TELEMETRY PROCESSOR] UnregisteredSensors count: {len(unregs)}")
+    print(f"[TELEMETRY PROCESSOR] GeneralSensors count: {len(general)}")
     
     # Основная информация
     imei = glonassoft_data.get("imei", "")
@@ -346,6 +354,7 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
     if pdop_value:
         pdop = parse_int(pdop_value)
     
+    print(f"[TELEMETRY PROCESSOR] Final processed data - IMEI: {imei}, Speed: {speed}, Engine: {is_engine_on}")
     
     return VehicleTelemetryResponse(
         # Основная информация
