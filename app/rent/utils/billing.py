@@ -148,7 +148,9 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                     fee_total_wait = math.ceil(extra * car.price_per_minute * 0.5)
                     prev_wait = rental.waiting_fee or 0
                     charge = fee_total_wait - prev_wait
-                    if charge > 0:
+                    
+                    # Создаем транзакцию только один раз за весь период ожидания
+                    if charge > 0 and prev_wait == 0:
                         rental.waiting_fee = fee_total_wait
                         rental.total_price = (
                                 (rental.base_price or 0) +
@@ -194,7 +196,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                                 "waiting_started",
                                 "paid_waiting_started",
                                 {
-                                    "charge": charge,
+                                    "charge": extra * car.price_per_minute * 0.5,
                                     "extra": extra
                                 }
                             ))
@@ -234,7 +236,9 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                     fee_total_wait = math.ceil(extra * car.price_per_minute * 0.5)
                     prev_wait = rental.waiting_fee or 0
                     charge = fee_total_wait - prev_wait
-                    if charge > 0:
+                    
+                    # Создаем транзакцию только один раз за весь период ожидания
+                    if charge > 0 and prev_wait == 0:
                         rental.waiting_fee = fee_total_wait
                         rental.total_price = (
                                 (rental.base_price or 0) +
@@ -279,7 +283,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                                 "waiting_started",
                                 "paid_waiting_started",
                                 {
-                                    "charge": charge,
+                                    "charge": extra * car.price_per_minute * 0.5,
                                     "extra": extra
                                 }
                             ))
@@ -294,7 +298,9 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                     due = elapsed_min * car.price_per_minute
                     prev = rental.overtime_fee or 0
                     charge = due - prev
-                    if charge > 0:
+                    
+                    # Создаем транзакцию только один раз за весь период аренды
+                    if charge > 0 and prev == 0:
                         rental.overtime_fee = due
                         rental.total_price = (
                                 (rental.base_price or 0) +
@@ -305,7 +311,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                                 (rental.distance_fee or 0)
                         )
                         rental.already_payed = (rental.already_payed or 0) + charge
-                        record_wallet_transaction(db, user=user, amount=-charge, ttype=WalletTransactionType.RENT_MINUTE_CHARGE, description="Поминутное списание", related_rental=rental)
+                        record_wallet_transaction(db, user=user, amount=-charge, ttype=WalletTransactionType.RENT_MINUTE_CHARGE, description=f"Поминутное списание {elapsed_min} мин", related_rental=rental)
                         user.wallet_balance -= charge
                         db.commit()
 
