@@ -24,17 +24,17 @@ class GlonassoftClient:
             }
             
             response = await self.client.post(
-                f"{self.base_url}/api/auth/login",
+                f"{self.base_url}/api/v3/auth/login",
                 json=auth_data
             )
             
             if response.status_code == 200:
                 data = response.json()
-                self.token = data.get("token")
+                self.token = data.get("AuthId")  # Используем AuthId как в основном роутере
                 logger.info("Successfully authenticated with Glonassoft")
                 return True
             else:
-                logger.error(f"Authentication failed: {response.status_code}")
+                logger.error(f"Authentication failed: {response.status_code} - {response.text}")
                 return False
                 
         except Exception as e:
@@ -51,7 +51,7 @@ class GlonassoftClient:
         
         try:
             headers = {
-                "X-Auth": self.token,
+                "Authorization": f"Bearer {self.token}",
                 "Content-Type": "application/json"
             }
             
@@ -84,7 +84,7 @@ class GlonassoftClient:
         
         try:
             headers = {
-                "X-Auth": self.token,
+                "Authorization": f"Bearer {self.token}",
                 "Content-Type": "application/json"
             }
             
