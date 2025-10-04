@@ -1082,6 +1082,11 @@ async def upload_photos_after(
     validate_photos([selfie], 'selfie')
     validate_photos(interior_photos, 'interior_photos')
     
+    # Проверяем селфи на идентичность с документом
+    is_same, msg = await run_in_threadpool(verify_user_upload_against_profile, current_user, selfie)
+    if not is_same:
+        raise HTTPException(status_code=400, detail=msg)
+    
     # Получаем автомобиль
     car = db.query(Car).get(rental.car_id)
     if not car:
