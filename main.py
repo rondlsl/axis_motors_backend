@@ -31,8 +31,8 @@ logging.basicConfig(
 )
 from app.gps_api.router import Vehicle_Router
 from app.mechanic.router import MechanicRouter
-from app.models.car_model import Car, CarBodyType, CarAutoClass
-from app.models.user_model import User, UserRole
+from app.seed.init_data import init_test_data
+from app.models.car_model import Car
 from app.rent.router import RentRouter
 from app.rent.utils.billing import billing_job
 from app.push.router import router as PushRouter
@@ -157,163 +157,8 @@ def init_app(app: FastAPI):
         scheduler.start()
 
         try:
-            owner_phone = "77000250400"
-            owner = db.query(User).filter(User.phone_number == owner_phone).first()
-            if not owner:
-                owner = User(phone_number=owner_phone, role=UserRole.CLIENT, wallet_balance=0)
-                db.add(owner)
-                db.commit()
-                db.refresh(owner)
-
-            if not db.query(Car).filter(Car.id == 1).first():
-                photos_dir = os.path.join(os.path.dirname(__file__), "uploads", "cars", "1")
-                photos = []
-                if os.path.isdir(photos_dir):
-                    for fname in sorted(os.listdir(photos_dir)):
-                        if os.path.isfile(os.path.join(photos_dir, fname)):
-                            photos.append(f"/uploads/cars/1/{fname}")
-
-                car1 = Car(
-                    id=1,
-                    name="HAVAL F7x",
-                    gps_id="800153076",
-                    gps_imei="866011056063951",
-                    engine_volume=2.0,
-                    year=2021,
-                    drive_type=3,
-                    price_per_minute=70,
-                    price_per_hour=3125,
-                    price_per_day=50000,
-                    plate_number="422ABK02",
-                    latitude=43.238949,
-                    longitude=76.889709,
-                    fuel_level=80,
-                    body_type=CarBodyType.CROSSOVER,
-                    auto_class=CarAutoClass.A, 
-                    owner_id=owner.id,
-                    course=90,
-                    description="Машина в идеальном состоянии.",
-                    photos=photos
-                )
-                db.add(car1)
-                db.commit()
-                print("✅ HAVAL F7x (id=1) добавлена")
-            else:
-                print("ℹ️ HAVAL F7x (id=1) уже существует")
-
-            if not db.query(Car).filter(Car.id == 2).first():
-                photos_dir = os.path.join(os.path.dirname(__file__), "uploads", "cars", "2")
-                photos = []
-                if os.path.isdir(photos_dir):
-                    for fname in sorted(os.listdir(photos_dir)):
-                        if os.path.isfile(os.path.join(photos_dir, fname)):
-                            photos.append(f"/uploads/cars/2/{fname}")
-
-                car2 = Car(
-                    id=2,
-                    name="MB CLA45s",
-                    gps_id="800212421",
-                    gps_imei="869132074567851",
-                    engine_volume=2.0,
-                    year=2019,
-                    drive_type=3,
-                    price_per_minute=140,
-                    price_per_hour=5600,
-                    price_per_day=100000,
-                    plate_number="666AZV02",
-                    latitude=43.224048,
-                    longitude=76.961871,
-                    fuel_level=40,
-                    course=23,
-                    body_type=CarBodyType.SEDAN,
-                    auto_class=CarAutoClass.B, 
-                    owner_id=owner.id,
-                    description="Разбита левая передняя фара. Разбит задний правый фонарь. Вмятина и царапина на правой задней двери.",
-                    photos=photos
-                )
-                db.add(car2)
-                db.commit()
-                print("✅ MB CLA45s (id=2) добавлена")
-            else:
-                print("ℹ️ MB CLA45s (id=2) уже существует")
-
-            if not db.query(Car).filter(Car.id == 3).first():
-                photos_dir = os.path.join(os.path.dirname(__file__), "uploads", "cars", "3")
-                photos = []
-                if os.path.isdir(photos_dir):
-                    for fname in sorted(os.listdir(photos_dir)):
-                        if os.path.isfile(os.path.join(photos_dir, fname)):
-                            photos.append(f"/uploads/cars/3/{fname}")
-
-                car3 = Car(
-                    id=3,
-                    name="Hongqi e-qm5",
-                    gps_id="800283232",
-                    gps_imei="869132074464026",
-                    price_per_minute=70,
-                    price_per_hour=3125,
-                    price_per_day=50000,
-                    plate_number="890AVB09",
-                    body_type=CarBodyType.SEDAN,
-                    auto_class=CarAutoClass.A, 
-                    owner_id=owner.id,
-                    photos=photos
-                )
-                db.add(car3)
-                db.commit()
-                print("✅ Hongqi e-qm5 (id=3) добавлена")
-            else:
-                print("ℹ️ Hongqi e-qm5 (id=3) уже существует")
-
-            mechanic_phone = "77007007070"
-            mechanic = db.query(User).filter(User.phone_number == mechanic_phone).first()
-            if not mechanic:
-                mechanic = User(phone_number=mechanic_phone, role=UserRole.MECHANIC, wallet_balance=0)
-                db.add(mechanic)
-                db.commit()
-                db.refresh(mechanic)
-                print("✅ Механик успешно добавлен")
-            else:
-                print("ℹ️ Механик уже существует")
-
-            # Seed Financier user
-            financier_phone = "77777777771"
-            financier = db.query(User).filter(User.phone_number == financier_phone).first()
-            if not financier:
-                financier = User(
-                    phone_number=financier_phone,
-                    first_name="Financier",
-                    last_name="Financier",
-                    role=UserRole.FINANCIER,
-                    documents_verified=True,
-                    is_active=True,
-                )
-                db.add(financier)
-                db.commit()
-                db.refresh(financier)
-                print("✅ Финансист успешно добавлен")
-            else:
-                print("ℹ️ Финансист уже существует")
-
-            # Seed MVD user
-            mvd_phone = "77777777772"
-            mvd_user = db.query(User).filter(User.phone_number == mvd_phone).first()
-            if not mvd_user:
-                mvd_user = User(
-                    phone_number=mvd_phone,
-                    first_name="MVD",
-                    last_name="MVD",
-                    role=UserRole.MVD,
-                    documents_verified=True,
-                    is_active=True,
-                )
-                db.add(mvd_user)
-                db.commit()
-                db.refresh(mvd_user)
-                print("✅ Пользователь МВД успешно добавлен")
-            else:
-                print("ℹ️ Пользователь МВД уже существует")
-
+            # Инициализируем тестовые данные
+            init_test_data(db)
         except Exception as e:
             print(e)
             logger.error(f"Ошибка в стартап-инициализации: {e}")
