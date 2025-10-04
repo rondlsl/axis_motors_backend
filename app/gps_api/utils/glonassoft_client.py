@@ -59,7 +59,7 @@ class GlonassoftClient:
         
         try:
             headers = {
-                "Authorization": f"Bearer {self.token}",
+                "X-Auth": self.token,
                 "Content-Type": "application/json"
             }
             
@@ -104,7 +104,7 @@ class GlonassoftClient:
         
         try:
             headers = {
-                "Authorization": f"Bearer {self.token}",
+                "X-Auth": self.token,
                 "Content-Type": "application/json"
             }
             
