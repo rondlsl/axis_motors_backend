@@ -435,13 +435,53 @@ async def read_users_me(
                 car_details["photo_after_interior_uploaded"] = bool(rental.mechanic_photos_after and len(rental.mechanic_photos_after) > 2)
             else:
                 # Это доставка - используем delivery_photos_before/after
-                car_details["photo_before_selfie_uploaded"] = bool(rental.delivery_photos_before and len(rental.delivery_photos_before) > 0)
-                car_details["photo_before_car_uploaded"] = bool(rental.delivery_photos_before and len(rental.delivery_photos_before) > 1)
-                car_details["photo_before_interior_uploaded"] = bool(rental.delivery_photos_before and len(rental.delivery_photos_before) > 2)
+                # Проверяем флаги загрузки фото ПЕРЕД доставкой по содержимому путей
+                photo_before_selfie_uploaded = False
+                photo_before_car_uploaded = False
+                photo_before_interior_uploaded = False
                 
-                car_details["photo_after_selfie_uploaded"] = bool(rental.delivery_photos_after and len(rental.delivery_photos_after) > 0)
-                car_details["photo_after_car_uploaded"] = bool(rental.delivery_photos_after and len(rental.delivery_photos_after) > 1)
-                car_details["photo_after_interior_uploaded"] = bool(rental.delivery_photos_after and len(rental.delivery_photos_after) > 2)
+                if rental.delivery_photos_before:
+                    photos_before = rental.delivery_photos_before
+                    photo_before_selfie_uploaded = any(
+                        ("/before/selfie/" in photo) or ("\\before\\selfie\\" in photo) 
+                        for photo in photos_before
+                    )
+                    photo_before_car_uploaded = any(
+                        ("/before/car/" in photo) or ("\\before\\car\\" in photo) 
+                        for photo in photos_before
+                    )
+                    photo_before_interior_uploaded = any(
+                        ("/before/interior/" in photo) or ("\\before\\interior\\" in photo) 
+                        for photo in photos_before
+                    )
+                
+                car_details["photo_before_selfie_uploaded"] = photo_before_selfie_uploaded
+                car_details["photo_before_car_uploaded"] = photo_before_car_uploaded
+                car_details["photo_before_interior_uploaded"] = photo_before_interior_uploaded
+                
+                # Проверяем флаги загрузки фото ПОСЛЕ доставки по содержимому путей
+                photo_after_selfie_uploaded = False
+                photo_after_car_uploaded = False
+                photo_after_interior_uploaded = False
+                
+                if rental.delivery_photos_after:
+                    photos_after = rental.delivery_photos_after
+                    photo_after_selfie_uploaded = any(
+                        ("/after/selfie/" in photo) or ("\\after\\selfie\\" in photo) 
+                        for photo in photos_after
+                    )
+                    photo_after_car_uploaded = any(
+                        ("/after/car/" in photo) or ("\\after\\car\\" in photo) 
+                        for photo in photos_after
+                    )
+                    photo_after_interior_uploaded = any(
+                        ("/after/interior/" in photo) or ("\\after\\interior\\" in photo) 
+                        for photo in photos_after
+                    )
+                
+                car_details["photo_after_selfie_uploaded"] = photo_after_selfie_uploaded
+                car_details["photo_after_car_uploaded"] = photo_after_car_uploaded
+                car_details["photo_after_interior_uploaded"] = photo_after_interior_uploaded
             
             # Добавляем rental_id для механиков
             car_details["rental_id"] = rental.id
