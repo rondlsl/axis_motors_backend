@@ -490,12 +490,11 @@ async def get_trip_details(
             detail="Автомобиль не найден или не принадлежит вам"
         )
 
-    # Получаем поездку только после проверки механика
+    # Получаем завершённую поездку 
     trip = db.query(RentalHistory).join(Car, RentalHistory.car_id == Car.id).filter(
         RentalHistory.id == trip_id,
         RentalHistory.car_id == vehicle_id,
-        RentalHistory.rental_status == RentalStatus.COMPLETED,
-        Car.status == CarStatus.FREE  # Только после проверки механика
+        RentalHistory.rental_status == RentalStatus.COMPLETED
     ).first()
 
     if not trip:
