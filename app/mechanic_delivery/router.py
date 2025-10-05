@@ -516,10 +516,11 @@ async def upload_delivery_photos_before(
         raise HTTPException(404, "Нет активной доставки для загрузки фотографий")
 
     validate_photos([selfie], "selfie")
+    # Закомментировано для механиков - не требуется верификация с документом
     # сверяем селфи механика доставки
-    is_same, msg = verify_user_upload_against_profile(current_mechanic, selfie)
-    if not is_same:
-        raise HTTPException(status_code=400, detail=msg)
+    # is_same, msg = verify_user_upload_against_profile(current_mechanic, selfie)
+    # if not is_same:
+    #     raise HTTPException(status_code=400, detail=msg)
     validate_photos(car_photos, "car_photos")
 
     try:
@@ -607,10 +608,11 @@ async def upload_delivery_photos_after(
         raise HTTPException(404, "Нет активной доставки для загрузки фотографий")
 
     validate_photos([selfie], "selfie")
+    # Закомментировано для механиков - не требуется верификация с документом
     # сверяем селфи механика доставки
-    is_same, msg = verify_user_upload_against_profile(current_mechanic, selfie)
-    if not is_same:
-        raise HTTPException(status_code=400, detail=msg)
+    # is_same, msg = verify_user_upload_against_profile(current_mechanic, selfie)
+    # if not is_same:
+    #     raise HTTPException(status_code=400, detail=msg)
     validate_photos(interior_photos, "interior_photos")
 
     try:
