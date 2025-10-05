@@ -998,40 +998,10 @@ def create_mock_cars(db: Session, owner: User) -> None:
     else:
         print("ℹ️ Toyota Land Cruiser 2018 (id=29) уже существует")
 
-    # Toyota Land Cruiser 2018 (второй)
+    # BMW 540i 2024 
     if not db.query(Car).filter(Car.id == 30).first():
         car30 = Car(
             id=30,
-            name="Toyota Land Cruiser",
-            plate_number="x",
-            latitude=43.510000,
-            longitude=77.210000,
-            gps_id=None,
-            gps_imei=None,
-            fuel_level=70,
-            course=225,
-            price_per_minute=110,
-            price_per_hour=5500,
-            price_per_day=110000,
-            engine_volume=4.6,
-            year=2018,
-            drive_type=3,
-            body_type=CarBodyType.SUV,
-            auto_class=CarAutoClass.B,
-            owner_id=owner.id,
-            status=CarStatus.OCCUPIED,
-            description="Легендарный внедорожник Toyota Land Cruiser (второй)."
-        )
-        car30.photos = get_car_photos(30)
-        car30.plate_number = f"x{car30.id}"
-        mock_cars_to_create.append(("Toyota Land Cruiser 2018 второй (id=30)", car30))
-    else:
-        print("ℹ️ Toyota Land Cruiser 2018 второй (id=30) уже существует")
-
-    # BMW 540i 2024
-    if not db.query(Car).filter(Car.id == 31).first():
-        car31 = Car(
-            id=31,
             name="BMW 540i",
             plate_number="x",
             latitude=43.520000,
@@ -1052,11 +1022,11 @@ def create_mock_cars(db: Session, owner: User) -> None:
             status=CarStatus.OCCUPIED,
             description="Спортивный седан BMW 540i 2024."
         )
-        car31.photos = get_car_photos(31)
-        car31.plate_number = f"x{car31.id}"
-        mock_cars_to_create.append(("BMW 540i 2024 (id=31)", car31))
+        car30.photos = get_car_photos(30)
+        car30.plate_number = f"x{car30.id}"
+        mock_cars_to_create.append(("BMW 540i 2024 (id=30)", car30))
     else:
-        print("ℹ️ BMW 540i 2024 (id=31) уже существует")
+        print("ℹ️ BMW 540i 2024 (id=30) уже существует")
 
     # Добавляем все моковые автомобили одним commit'ом
     if mock_cars_to_create:
