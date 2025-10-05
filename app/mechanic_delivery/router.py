@@ -334,24 +334,44 @@ def current_delivery(
         from datetime import datetime
         delivery_duration_minutes = int((datetime.utcnow() - rental.delivery_start_time).total_seconds() / 60)
 
-    # Проверяем флаги загрузки фото механика
+    # Проверяем флаги загрузки фото ПЕРЕД доставкой
     photo_before_selfie_uploaded = False
     photo_before_car_uploaded = False
     photo_before_interior_uploaded = False
     
-    if rental.mechanic_photos_before:
-        photos_before = rental.mechanic_photos_before
+    if rental.delivery_photos_before:
+        photos_before = rental.delivery_photos_before
         photo_before_selfie_uploaded = any(
-            ("/mechanic/before/selfie/" in photo) or ("\\mechanic\\before\\selfie\\" in photo) 
+            ("/before/selfie/" in photo) or ("\\before\\selfie\\" in photo) 
             for photo in photos_before
         )
         photo_before_car_uploaded = any(
-            ("/mechanic/before/car/" in photo) or ("\\mechanic\\before\\car\\" in photo) 
+            ("/before/car/" in photo) or ("\\before\\car\\" in photo) 
             for photo in photos_before
         )
         photo_before_interior_uploaded = any(
-            ("/mechanic/before/interior/" in photo) or ("\\mechanic\\before\\interior\\" in photo) 
+            ("/before/interior/" in photo) or ("\\before\\interior\\" in photo) 
             for photo in photos_before
+        )
+
+    # Проверяем флаги загрузки фото ПОСЛЕ доставки
+    photo_after_selfie_uploaded = False
+    photo_after_car_uploaded = False
+    photo_after_interior_uploaded = False
+    
+    if rental.delivery_photos_after:
+        photos_after = rental.delivery_photos_after
+        photo_after_selfie_uploaded = any(
+            ("/after/selfie/" in photo) or ("\\after\\selfie\\" in photo) 
+            for photo in photos_after
+        )
+        photo_after_car_uploaded = any(
+            ("/after/car/" in photo) or ("\\after\\car\\" in photo) 
+            for photo in photos_after
+        )
+        photo_after_interior_uploaded = any(
+            ("/after/interior/" in photo) or ("\\after\\interior\\" in photo) 
+            for photo in photos_after
         )
 
     return {
@@ -380,7 +400,10 @@ def current_delivery(
         "status": rental.rental_status.value,
         "photo_before_selfie_uploaded": photo_before_selfie_uploaded,
         "photo_before_car_uploaded": photo_before_car_uploaded,
-        "photo_before_interior_uploaded": photo_before_interior_uploaded
+        "photo_before_interior_uploaded": photo_before_interior_uploaded,
+        "photo_after_selfie_uploaded": photo_after_selfie_uploaded,
+        "photo_after_car_uploaded": photo_after_car_uploaded,
+        "photo_after_interior_uploaded": photo_after_interior_uploaded
     }
 
 
