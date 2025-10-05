@@ -949,7 +949,10 @@ async def upload_car_photos(
 
     for f in photos:
         path = await save_file(f, user_id=car.id, UPLOAD_DIR=base_dir)
-        saved_paths.append(path.replace("\\", "/"))
+        normalized = path.replace("\\", "/")
+        if not normalized.startswith("/"):
+            normalized = "/" + normalized.lstrip("/")
+        saved_paths.append(normalized)
 
     existing = car.photos or []
     car.photos = existing + saved_paths
