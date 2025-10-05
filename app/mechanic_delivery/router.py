@@ -650,9 +650,9 @@ async def upload_delivery_photos_after(
         try:
             car = db.query(Car).get(rental.car_id)
             if car and car.gps_imei:
-                from app.gps_api.utils.car_data import send_close
                 auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-                close_result = await send_close(car.gps_imei, auth_token)
+                
+                # Закрываем замки, блокируем двигатель и забираем ключ
                 lock_result = await auto_lock_vehicle_after_rental(car.gps_imei, auth_token)
         except Exception as e:
             print(f"Ошибка блокировки/закрытия после загрузки фото доставки: {e}")
