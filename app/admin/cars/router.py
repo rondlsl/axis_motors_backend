@@ -20,6 +20,8 @@ from app.admin.cars.schemas import (
     CarListItemSchema, CarMapItemSchema
 )
 from app.admin.cars.utils import car_to_detail_schema, status_display, _get_drive_type_display
+from app.gps_api.utils.route_data import get_gps_route_data
+from app.models.support_action_model import SupportAction
 
 cars_router = APIRouter(tags=["Admin Cars"])
 
@@ -32,7 +34,7 @@ async def edit_car(
     db: Session = Depends(get_db)
 ):
     """Редактировать автомобиль"""
-    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+    if current_user.role not in [UserRole.ADMIN]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     car = db.query(Car).filter(Car.id == car_id).first()
@@ -171,8 +173,8 @@ async def change_car_status(
     current_user: User = Depends(get_current_user)
 ):
     """Изменить статус автомобиля на любой из доступных"""
-    if current_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Только администраторы могут изменять статус автомобилей")
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
     
     car = db.query(Car).filter(Car.id == car_id).first()
     if not car:
@@ -182,6 +184,16 @@ async def change_car_status(
         old_status = car.status
         car.status = new_status
         db.commit()
+        # Аудит действий поддержки
+        if current_user.role == UserRole.SUPPORT:
+            sa = SupportAction(
+                user_id=current_user.id,
+                action="change_car_status",
+                entity_type="car",
+                entity_id=car.id
+            )
+            db.add(sa)
+            db.commit()
         
         return {
             "message": "Статус автомобиля успешно изменен",
@@ -316,7 +328,7 @@ async def get_car_comments(
     db: Session = Depends(get_db)
 ) -> List[CarCommentSchema]:
     """Получить комментарии к автомобилю"""
-    if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
+    if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     car = db.query(Car).filter(Car.id == car_id).first()
@@ -354,7 +366,7 @@ async def create_car_comment(
     db: Session = Depends(get_db)
 ) -> CarCommentSchema:
     """Добавить комментарий к автомобилю"""
-    if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
+    if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     car = db.query(Car).filter(Car.id == car_id).first()
@@ -371,6 +383,17 @@ async def create_car_comment(
     db.add(comment)
     db.commit()
     db.refresh(comment)
+
+    # Аудит действий поддержки
+    if current_user.role == UserRole.SUPPORT:
+        sa = SupportAction(
+            user_id=current_user.id,
+            action="create_car_comment",
+            entity_type="car_comment",
+            entity_id=comment.id
+        )
+        db.add(sa)
+        db.commit()
 
     author_name = f"{current_user.first_name or ''} {current_user.last_name or ''}".strip()
     if not author_name:
@@ -397,7 +420,7 @@ async def update_car_comment(
     db: Session = Depends(get_db)
 ) -> CarCommentSchema:
     """Обновить комментарий к автомобилю"""
-    if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
+    if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     comment = db.query(CarComment).filter(
@@ -414,6 +437,17 @@ async def update_car_comment(
 
     db.commit()
     db.refresh(comment)
+
+    # Аудит действий поддержки
+    if current_user.role == UserRole.SUPPORT:
+        sa = SupportAction(
+            user_id=current_user.id,
+            action="update_car_comment",
+            entity_type="car_comment",
+            entity_id=comment.id
+        )
+        db.add(sa)
+        db.commit()
 
     author_name = f"{current_user.first_name or ''} {current_user.last_name or ''}".strip()
     if not author_name:
@@ -439,7 +473,7 @@ async def delete_car_comment(
     db: Session = Depends(get_db)
 ):
     """Удалить комментарий к автомобилю"""
-    if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
+    if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     comment = db.query(CarComment).filter(
@@ -453,6 +487,17 @@ async def delete_car_comment(
 
     db.delete(comment)
     db.commit()
+
+    # Аудит действий поддержки
+    if current_user.role == UserRole.SUPPORT:
+        sa = SupportAction(
+            user_id=current_user.id,
+            action="delete_car_comment",
+            entity_type="car_comment",
+            entity_id=comment_id
+        )
+        db.add(sa)
+        db.commit()
 
     return {"message": "Комментарий удален"}
 
@@ -684,6 +729,19 @@ async def get_trip_detail(
 
     review = db.query(RentalReview).filter(RentalReview.rental_id == rental.id).first()
 
+    # Данные маршрута (если доступны gps_id и времена)
+    route_data = None
+    try:
+        if car and car.gps_id and rental.start_time and rental.end_time:
+            route = await get_gps_route_data(
+                device_id=car.gps_id,
+                start_date=rental.start_time.isoformat(),
+                end_date=rental.end_time.isoformat()
+            )
+            route_data = route.dict() if route else None
+    except Exception:
+        route_data = None
+
     result = {
         "rental_id": rental.id,
         "car_name": car.name,
@@ -703,6 +761,13 @@ async def get_trip_detail(
         "client_comment": review.comment if review else None,
         "mechanic_rating": review.mechanic_rating if review else None,
         "mechanic_comment": review.mechanic_comment if review else None,
+        "route_map": {
+            "start_latitude": rental.start_latitude,
+            "start_longitude": rental.start_longitude,
+            "end_latitude": rental.end_latitude,
+            "end_longitude": rental.end_longitude,
+            "route_data": route_data
+        },
     }
 
     return result
