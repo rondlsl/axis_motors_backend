@@ -243,6 +243,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Роскошный седан Bentley в отличном состоянии."
         )
         car4.photos = get_car_photos(4)
+        car4.plate_number = f"x{car4.id}"
         mock_cars_to_create.append(("Bentley Flying Spur (id=4)", car4))
     else:
         print("ℹ️ Bentley Flying Spur (id=4) уже существует")
@@ -272,6 +273,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Просторный внедорожник Hyundai для всей семьи."
         )
         car5.photos = get_car_photos(5)
+        car5.plate_number = f"x{car5.id}"
         mock_cars_to_create.append(("Hyundai Palisade (id=5)", car5))
     else:
         print("ℹ️ Hyundai Palisade (id=5) уже существует")
@@ -301,6 +303,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Спортивный седан Mercedes с мощным двигателем."
         )
         car6.photos = get_car_photos(6)
+        car6.plate_number = f"x{car6.id}"
         mock_cars_to_create.append(("Mercedes CLA 45s (id=6)", car6))
     else:
         print("ℹ️ Mercedes CLA 45s (id=6) уже существует")
@@ -330,6 +333,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Современный электромобиль ZEEKR с передовыми технологиями."
         )
         car7.photos = get_car_photos(7)
+        car7.plate_number = f"x{car7.id}"
         mock_cars_to_create.append(("ZEEKR 001 (id=7)", car7))
     else:
         print("ℹ️ ZEEKR 001 (id=7) уже существует")
@@ -359,6 +363,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Новейший электромобиль Hongqi 2025 года."
         )
         car8.photos = get_car_photos(8)
+        car8.plate_number = f"x{car8.id}"
         mock_cars_to_create.append(("Hongqi E-QM5 (id=8)", car8))
     else:
         print("ℹ️ Hongqi E-QM5 (id=8) уже существует")
@@ -388,6 +393,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Надежный внедорожник Toyota для любых дорог."
         )
         car9.photos = get_car_photos(9)
+        car9.plate_number = f"x{car9.id}"
         mock_cars_to_create.append(("Toyota Land Cruiser Prado (id=9)", car9))
     else:
         print("ℹ️ Toyota Land Cruiser Prado (id=9) уже существует")
@@ -417,6 +423,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Премиальный внедорожник Range Rover Sport."
         )
         car10.photos = get_car_photos(10)
+        car10.plate_number = f"x{car10.id}"
         mock_cars_to_create.append(("Range Rover Sport (id=10)", car10))
     else:
         print("ℹ️ Range Rover Sport (id=10) уже существует")
@@ -446,6 +453,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Спортивный седан Mercedes e63s."
         )
         car11.photos = get_car_photos(11)
+        car11.plate_number = f"x{car11.id}"
         mock_cars_to_create.append(("Mercedes e63s (id=11)", car11))
     else:
         print("ℹ️ Mercedes e63s (id=11) уже существует")
@@ -475,6 +483,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Надежный седан Toyota Camry."
         )
         car12.photos = get_car_photos(12)
+        car12.plate_number = f"x{car12.id}"
         mock_cars_to_create.append(("Toyota Camry 2020 (id=12)", car12))
     else:
         print("ℹ️ Toyota Camry 2020 (id=12) уже существует")
@@ -504,6 +513,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Спортивный седан BMW m5."
         )
         car13.photos = get_car_photos(13)
+        car13.plate_number = f"x{car13.id}"
         mock_cars_to_create.append(("BMW m5 (id=13)", car13))
     else:
         print("ℹ️ BMW m5 (id=13) уже существует")
@@ -533,6 +543,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Просторный кроссовер Toyota Highlander."
         )
         car14.photos = get_car_photos(14)
+        car14.plate_number = f"x{car14.id}"
         mock_cars_to_create.append(("Toyota Highlander (id=14)", car14))
     else:
         print("ℹ️ Toyota Highlander (id=14) уже существует")
@@ -562,6 +573,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Премиальный седан Lexus es 350."
         )
         car15.photos = get_car_photos(15)
+        car15.plate_number = f"x{car15.id}"
         mock_cars_to_create.append(("Lexus es 350 (id=15)", car15))
     else:
         print("ℹ️ Lexus es 350 (id=15) уже существует")
@@ -591,6 +603,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Новейший седан Toyota Camry 2024."
         )
         car16.photos = get_car_photos(16)
+        car16.plate_number = f"x{car16.id}"
         mock_cars_to_create.append(("Toyota Camry 2024 (id=16)", car16))
     else:
         print("ℹ️ Toyota Camry 2024 (id=16) уже существует")
@@ -620,6 +633,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Спортивный седан BMW 540i."
         )
         car17.photos = get_car_photos(17)
+        car17.plate_number = f"x{car17.id}"
         mock_cars_to_create.append(("BMW 540i 2018 (id=17)", car17))
     else:
         print("ℹ️ BMW 540i 2018 (id=17) уже существует")
@@ -649,6 +663,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Гибридный кроссовер Lexus rx 350h."
         )
         car18.photos = get_car_photos(18)
+        car18.plate_number = f"x{car18.id}"
         mock_cars_to_create.append(("Lexus rx 350h (id=18)", car18))
     else:
         print("ℹ️ Lexus rx 350h (id=18) уже существует")
@@ -678,6 +693,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Компактный седан Changan uni-v."
         )
         car19.photos = get_car_photos(19)
+        car19.plate_number = f"x{car19.id}"
         mock_cars_to_create.append(("Changan uni-v (id=19)", car19))
     else:
         print("ℹ️ Changan uni-v (id=19) уже существует")
@@ -707,6 +723,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Гибридный седан Lexus es 300h."
         )
         car20.photos = get_car_photos(20)
+        car20.plate_number = f"x{car20.id}"
         mock_cars_to_create.append(("Lexus es 300h (id=20)", car20))
     else:
         print("ℹ️ Lexus es 300h (id=20) уже существует")
@@ -736,6 +753,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Премиальный седан Kia k8."
         )
         car21.photos = get_car_photos(21)
+        car21.plate_number = f"x{car21.id}"
         mock_cars_to_create.append(("Kia k8 (id=21)", car21))
     else:
         print("ℹ️ Kia k8 (id=21) уже существует")
@@ -765,6 +783,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Новейший седан Toyota Camry 2024 (второй)."
         )
         car22.photos = get_car_photos(22)
+        car22.plate_number = f"x{car22.id}"
         mock_cars_to_create.append(("Toyota Camry 2024 второй (id=22)", car22))
     else:
         print("ℹ️ Toyota Camry 2024 второй (id=22) уже существует")
@@ -794,6 +813,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Просторный внедорожник Hyundai Palisade."
         )
         car23.photos = get_car_photos(23)
+        car23.plate_number = f"x{car23.id}"
         mock_cars_to_create.append(("Hyundai Palisade (id=23)", car23))
     else:
         print("ℹ️ Hyundai Palisade (id=23) уже существует")
@@ -823,6 +843,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Элегантный седан Mercedes e200."
         )
         car24.photos = get_car_photos(24)
+        car24.plate_number = f"x{car24.id}"
         mock_cars_to_create.append(("Mercedes e200 (id=24)", car24))
     else:
         print("ℹ️ Mercedes e200 (id=24) уже существует")
@@ -852,6 +873,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Роскошный седан Mercedes s63."
         )
         car25.photos = get_car_photos(25)
+        car25.plate_number = f"x{car25.id}"
         mock_cars_to_create.append(("Mercedes s63 (id=25)", car25))
     else:
         print("ℹ️ Mercedes s63 (id=25) уже существует")
@@ -881,6 +903,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Современный кроссовер Hyundai Tucson."
         )
         car26.photos = get_car_photos(26)
+        car26.plate_number = f"x{car26.id}"
         mock_cars_to_create.append(("Hyundai Tucson (id=26)", car26))
     else:
         print("ℹ️ Hyundai Tucson (id=26) уже существует")
@@ -910,6 +933,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Компактный кроссовер Changan uni-k."
         )
         car27.photos = get_car_photos(27)
+        car27.plate_number = f"x{car27.id}"
         mock_cars_to_create.append(("Changan uni-k (id=27)", car27))
     else:
         print("ℹ️ Changan uni-k (id=27) уже существует")
@@ -939,6 +963,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Современный электромобиль ZEEKR 001 (второй)."
         )
         car28.photos = get_car_photos(28)
+        car28.plate_number = f"x{car28.id}"
         mock_cars_to_create.append(("ZEEKR 001 второй (id=28)", car28))
     else:
         print("ℹ️ ZEEKR 001 второй (id=28) уже существует")
@@ -968,6 +993,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Легендарный внедорожник Toyota Land Cruiser."
         )
         car29.photos = get_car_photos(29)
+        car29.plate_number = f"x{car29.id}"
         mock_cars_to_create.append(("Toyota Land Cruiser 2018 (id=29)", car29))
     else:
         print("ℹ️ Toyota Land Cruiser 2018 (id=29) уже существует")
@@ -997,6 +1023,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Легендарный внедорожник Toyota Land Cruiser (второй)."
         )
         car30.photos = get_car_photos(30)
+        car30.plate_number = f"x{car30.id}"
         mock_cars_to_create.append(("Toyota Land Cruiser 2018 второй (id=30)", car30))
     else:
         print("ℹ️ Toyota Land Cruiser 2018 второй (id=30) уже существует")
@@ -1026,6 +1053,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             description="Спортивный седан BMW 540i 2024."
         )
         car31.photos = get_car_photos(31)
+        car31.plate_number = f"x{car31.id}"
         mock_cars_to_create.append(("BMW 540i 2024 (id=31)", car31))
     else:
         print("ℹ️ BMW 540i 2024 (id=31) уже существует")
