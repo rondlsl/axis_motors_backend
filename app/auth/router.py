@@ -303,6 +303,7 @@ async def read_users_me(
                 .filter(
                     RentalHistory.delivery_mechanic_id == current_user.id,
                     RentalHistory.rental_status.in_([
+                        RentalStatus.DELIVERY_RESERVED,
                         RentalStatus.DELIVERING,
                         RentalStatus.DELIVERING_IN_PROGRESS
                     ])
@@ -482,6 +483,12 @@ async def read_users_me(
                 car_details["photo_after_selfie_uploaded"] = photo_after_selfie_uploaded
                 car_details["photo_after_car_uploaded"] = photo_after_car_uploaded
                 car_details["photo_after_interior_uploaded"] = photo_after_interior_uploaded
+                
+                # Добавляем delivery_coordinates для доставки
+                car_details["delivery_coordinates"] = {
+                    "latitude": rental.delivery_latitude,
+                    "longitude": rental.delivery_longitude,
+                }
             
             # Добавляем rental_id для механиков
             car_details["rental_id"] = rental.id
