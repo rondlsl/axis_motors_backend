@@ -814,8 +814,6 @@ async def refresh_token(db: Session = Depends(get_db), token: str = Depends(JWTB
 - drivers_license: Фото водительских прав (JPEG/PNG)
 - selfie_with_license: Селфи с водительскими правами (JPEG/PNG)
 - selfie: Обычное селфи (JPEG/PNG)
-
-**Дополнительные (необязательные) файлы-справки:**
 - psych_neurology_certificate: Справка из психоневрологического диспансера (изображение/PDF)
 - narcology_certificate: Справка из наркологического диспансера (изображение/PDF)
 - pension_contributions_certificate: Справка о пенсионных отчислениях (изображение/PDF)
