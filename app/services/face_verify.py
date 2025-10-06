@@ -76,15 +76,15 @@ def _resolve_profile_document_path(profile_doc_path: str) -> Path | None:
 
 def verify_user_upload_against_profile(user, upload_file) -> Tuple[bool, str]:
     """
-    Сравнивает selfie (upload_file) с фото из профиля пользователя (id_card_front_url).
+    Сравнивает selfie (upload_file) с селфи из профиля пользователя (selfie_url).
     Возвращает (is_same, message). При False message содержит причину для 400.
     """
-    if not user or not getattr(user, 'id_card_front_url', None):
-        return False, "В профиле отсутствует фото документа для проверки личности"
+    if not user or not getattr(user, 'selfie_url', None):
+        return False, "В профиле отсутствует селфи для проверки личности"
 
-    resolved = _resolve_profile_document_path(user.id_card_front_url)
+    resolved = _resolve_profile_document_path(user.selfie_url)
     if not resolved:
-        return False, "Файл документа из профиля не найден для сверки личности"
+        return False, "Файл селфи из профиля не найден для сверки личности"
 
     selfie_tmp_path = _write_upload_to_temp_file(upload_file)
     try:
