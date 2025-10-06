@@ -33,6 +33,7 @@ import traceback
 Auth_router = APIRouter(prefix="/auth", tags=["Auth"])
 
 ALLOWED_TYPES = ["image/jpeg", "image/png"]
+CERT_ALLOWED_TYPES = ["image/jpeg", "image/png", "application/pdf"]
 
 
 class VerifyEmailRequest(BaseModel):
@@ -839,10 +840,10 @@ async def upload_documents(
         drivers_license: UploadFile = File(...),
         selfie_with_license: UploadFile = File(...),
         selfie: UploadFile = File(...),
-        psych_neurology_certificate: UploadFile = File(None),
-        narcology_certificate: UploadFile = File(None),
-        pension_contributions_certificate: UploadFile = File(None),
-        criminal_record_certificate: UploadFile = File(None),
+        psych_neurology_certificate: UploadFile = File(...),
+        narcology_certificate: UploadFile = File(...),
+        pension_contributions_certificate: UploadFile = File(...),
+        criminal_record_certificate: UploadFile = File(...),
 
         # Данные формы
         first_name: str = Form(..., min_length=1, max_length=50),
@@ -858,26 +859,30 @@ async def upload_documents(
         db: Session = Depends(get_db),
 ):
     # Валидация типов обязательных файлов
-    for doc in [id_front, id_back, drivers_license, selfie_with_license, selfie]:
-        if doc.content_type not in ALLOWED_TYPES:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"File {doc.filename} is not an image. Only JPEG and PNG are allowed."
-            )
-
-    optional_docs = [
+    image_docs = [
+        id_front,
+        id_back,
+        drivers_license,
+        selfie_with_license,
+        selfie,
+    ]
+    cert_docs = [
         psych_neurology_certificate,
         narcology_certificate,
         pension_contributions_certificate,
         criminal_record_certificate,
     ]
-    for doc in optional_docs:
-        if doc is None:
-            continue
+    for doc in image_docs:
         if doc.content_type not in ALLOWED_TYPES:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Optional file {doc.filename} is not an image. Only JPEG and PNG are allowed."
+                detail=f"File {doc.filename} is not an image. Only JPEG and PNG are allowed."
+            )
+    for doc in cert_docs:
+        if doc.content_type not in CERT_ALLOWED_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Certificate {doc.filename} must be JPEG, PNG or PDF."
             )
 
     # Валидация данных через Pydantic-схему
@@ -905,19 +910,11 @@ async def upload_documents(
         selfie_with_license_path = await save_file(selfie_with_license, current_user.id, "uploads/documents")
         selfie_path = await save_file(selfie, current_user.id, "uploads/documents")
 
-        # Необязательные справки
-        psych_neuro_path = None
-        narcology_path = None
-        pension_path = None
-        criminal_record_path = None
-        if psych_neurology_certificate is not None:
-            psych_neuro_path = await save_file(psych_neurology_certificate, current_user.id, "uploads/documents")
-        if narcology_certificate is not None:
-            narcology_path = await save_file(narcology_certificate, current_user.id, "uploads/documents")
-        if pension_contributions_certificate is not None:
-            pension_path = await save_file(pension_contributions_certificate, current_user.id, "uploads/documents")
-        if criminal_record_certificate is not None:
-            criminal_record_path = await save_file(criminal_record_certificate, current_user.id, "uploads/documents")
+        # Справки (теперь обязательные)
+        psych_neuro_path = await save_file(psych_neurology_certificate, current_user.id, "uploads/documents")
+        narcology_path = await save_file(narcology_certificate, current_user.id, "uploads/documents")
+        pension_path = await save_file(pension_contributions_certificate, current_user.id, "uploads/documents")
+        criminal_record_path = await save_file(criminal_record_certificate, current_user.id, "uploads/documents")
 
         # Обновление данных пользователя
         current_user.first_name = document_data.first_name
@@ -938,15 +935,11 @@ async def upload_documents(
         current_user.selfie_with_license_url = selfie_with_license_path
         current_user.selfie_url = selfie_path
 
-        # Привязываем пути к справкам, если были загружены
-        if psych_neuro_path:
-            current_user.psych_neurology_certificate_url = psych_neuro_path
-        if narcology_path:
-            current_user.narcology_certificate_url = narcology_path
-        if pension_path:
-            current_user.pension_contributions_certificate_url = pension_path
-        if criminal_record_path:
-            current_user.criminal_record_certificate_url = criminal_record_path
+        # Привязываем пути к справкам
+        current_user.psych_neurology_certificate_url = psych_neuro_path
+        current_user.narcology_certificate_url = narcology_path
+        current_user.pension_contributions_certificate_url = pension_path
+        current_user.criminal_record_certificate_url = criminal_record_path
 
         # Стартовый этап после загрузки документов — ожидание финансиста
         current_user.role = UserRole.PENDINGTOFIRST
