@@ -63,12 +63,8 @@ async def verify_email(request: VerifyEmailRequest, current_user: User = Depends
     return {"message": "Email успешно подтверждён."}
 
 
-class ResendEmailCodeRequest(BaseModel):
-    pass
-
-
 @Auth_router.post("/resend_email_code/")
-async def resend_email_code(request: ResendEmailCodeRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def resend_email_code(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Повторная отправка кода подтверждения на email."""
     if not current_user.email:
         raise HTTPException(status_code=400, detail="У пользователя не указан email")
