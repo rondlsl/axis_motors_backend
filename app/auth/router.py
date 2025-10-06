@@ -36,16 +36,17 @@ ALLOWED_TYPES = ["image/jpeg", "image/png"]
 
 
 class VerifyEmailRequest(BaseModel):
-    email: str
     code: str
 
 
 @Auth_router.post("/verify_email/")
 async def verify_email(request: VerifyEmailRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Проверка кода подтверждения email."""
+    if not current_user.email:
+        raise HTTPException(status_code=400, detail="У пользователя не указан email")
     # Ищем неиспользованный и неистекший код
     vc = db.query(VerificationCode).filter(
-        VerificationCode.email == request.email,
+        VerificationCode.email == current_user.email,
         VerificationCode.code == request.code,
         VerificationCode.purpose == "email_verification",
         VerificationCode.is_used == False,
