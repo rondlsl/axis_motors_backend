@@ -28,17 +28,23 @@ async def get_pending_users(
     for user in users:
         result.append(UserProfileSchema(
             id=user.id,
+            email=user.email,
             first_name=user.first_name,
             last_name=user.last_name,
             phone_number=user.phone_number,
             role=user.role.value,
             is_active=user.is_active,
+            is_verified_email=user.is_verified_email,
             documents_verified=user.documents_verified,
             selfie_url=user.selfie_url,
             selfie_with_license_url=user.selfie_with_license_url,
             drivers_license_url=user.drivers_license_url,
             id_card_front_url=user.id_card_front_url,
             id_card_back_url=user.id_card_back_url,
+            psych_neurology_certificate_url=user.psych_neurology_certificate_url,
+            narcology_certificate_url=user.narcology_certificate_url,
+            pension_contributions_certificate_url=user.pension_contributions_certificate_url,
+            criminal_record_certificate_url=user.criminal_record_certificate_url,
             auto_class=user.auto_class or []
         ))
     
@@ -97,17 +103,23 @@ async def get_all_users(
     for user in users:
         result.append(UserProfileSchema(
             id=user.id,
+            email=user.email,
             first_name=user.first_name,
             last_name=user.last_name,
             phone_number=user.phone_number,
             role=user.role.value,
             is_active=user.is_active,
+            is_verified_email=user.is_verified_email,
             documents_verified=user.documents_verified,
             selfie_url=user.selfie_url,
             selfie_with_license_url=user.selfie_with_license_url,
             drivers_license_url=user.drivers_license_url,
             id_card_front_url=user.id_card_front_url,
             id_card_back_url=user.id_card_back_url,
+            psych_neurology_certificate_url=user.psych_neurology_certificate_url,
+            narcology_certificate_url=user.narcology_certificate_url,
+            pension_contributions_certificate_url=user.pension_contributions_certificate_url,
+            criminal_record_certificate_url=user.criminal_record_certificate_url,
             auto_class=user.auto_class or []
         ))
     
@@ -129,17 +141,23 @@ async def get_all_clients(
     for user in users:
         result.append(UserProfileSchema(
             id=user.id,
+            email=user.email,
             first_name=user.first_name,
             last_name=user.last_name,
             phone_number=user.phone_number,
             role=user.role.value,
             is_active=user.is_active,
+            is_verified_email=user.is_verified_email,
             documents_verified=user.documents_verified,
             selfie_url=user.selfie_url,
             selfie_with_license_url=user.selfie_with_license_url,
             drivers_license_url=user.drivers_license_url,
             id_card_front_url=user.id_card_front_url,
             id_card_back_url=user.id_card_back_url,
+            psych_neurology_certificate_url=user.psych_neurology_certificate_url,
+            narcology_certificate_url=user.narcology_certificate_url,
+            pension_contributions_certificate_url=user.pension_contributions_certificate_url,
+            criminal_record_certificate_url=user.criminal_record_certificate_url,
             auto_class=user.auto_class or []
         ))
     
@@ -195,16 +213,22 @@ async def get_user_profile(
 
     return UserProfileSchema(
         id=user.id,
+        email=user.email,
         phone_number=user.phone_number,
         first_name=user.first_name,
         last_name=user.last_name,
         role=user.role.value,
         is_active=user.is_active,
+        is_verified_email=user.is_verified_email,
         documents_verified=user.documents_verified,
         selfie_url=user.selfie_url,
         selfie_with_license_url=user.selfie_with_license_url,
         drivers_license_url=user.drivers_license_url,
         id_card_front_url=user.id_card_front_url,
         id_card_back_url=user.id_card_back_url,
+        psych_neurology_certificate_url=user.psych_neurology_certificate_url,
+        narcology_certificate_url=user.narcology_certificate_url,
+        pension_contributions_certificate_url=user.pension_contributions_certificate_url,
+        criminal_record_certificate_url=user.criminal_record_certificate_url,
         auto_class=auto_class_list,
     )

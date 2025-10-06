@@ -5,6 +5,9 @@ from datetime import datetime, timedelta
 import httpx
 from pydantic import BaseModel
 from typing import Optional
+import smtplib
+from email.mime.text import MIMEText
+import os
 
 from starlette import status
 
@@ -18,6 +21,7 @@ from app.dependencies.database.database import get_db
 from app.models.car_model import Car
 from app.models.history_model import RentalHistory, RentalStatus, RentalReview
 from app.models.user_model import UserRole, User
+from app.models.verification_code_model import VerificationCode
 from app.models.application_model import Application, ApplicationStatus
 from app.models.notification_model import Notification
 from app.rent.utils.calculate_price import get_open_price
@@ -29,6 +33,82 @@ import traceback
 Auth_router = APIRouter(prefix="/auth", tags=["Auth"])
 
 ALLOWED_TYPES = ["image/jpeg", "image/png"]
+
+
+class VerifyEmailRequest(BaseModel):
+    email: str
+    code: str
+
+
+@Auth_router.post("/verify_email/")
+async def verify_email(request: VerifyEmailRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Проверка кода подтверждения email."""
+    # Ищем неиспользованный и неистекший код
+    vc = db.query(VerificationCode).filter(
+        VerificationCode.email == request.email,
+        VerificationCode.code == request.code,
+        VerificationCode.purpose == "email_verification",
+        VerificationCode.is_used == False,
+        VerificationCode.expires_at >= datetime.utcnow(),
+    ).order_by(VerificationCode.id.desc()).first()
+
+    if not vc:
+        raise HTTPException(status_code=400, detail="Неверный код подтверждения. Попробуйте ещё раз.")
+
+    # Отмечаем код использованным и подтверждаем email
+    vc.is_used = True
+    current_user.is_verified_email = True
+    db.commit()
+
+    return {"message": "Email успешно подтверждён."}
+
+
+class ResendEmailCodeRequest(BaseModel):
+    email: str
+
+
+@Auth_router.post("/resend_email_code/")
+async def resend_email_code(request: ResendEmailCodeRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Повторная отправка кода подтверждения на email."""
+    # Генерируем (пока фиксированный) код
+    code = "666666"
+    record = VerificationCode(
+        phone_number=None,
+        email=request.email,
+        code=code,
+        purpose="email_verification",
+        is_used=False,
+        expires_at=datetime.utcnow() + timedelta(minutes=15),
+    )
+    db.add(record)
+
+    # Пытаемся отправить письмо
+    try:
+        smtp_host = os.getenv("SMTP_HOST")
+        smtp_port = int(os.getenv("SMTP_PORT", "587"))
+        smtp_user = os.getenv("SMTP_USER")
+        smtp_pass = os.getenv("SMTP_PASSWORD")
+        smtp_from = os.getenv("SMTP_FROM", smtp_user or "no-reply@example.com")
+        if smtp_host and smtp_user and smtp_pass:
+            msg = MIMEText(f"Ваш код подтверждения: {code}")
+            msg["Subject"] = "Код подтверждения email"
+            msg["From"] = smtp_from
+            msg["To"] = request.email
+            with smtplib.SMTP(smtp_host, smtp_port) as server:
+                server.starttls()
+                server.login(smtp_user, smtp_pass)
+                server.send_message(msg)
+        else:
+            try:
+                from app.core.config import logger
+                logger.warning(f"SMTP not configured; verification code for {request.email}: {code}")
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    db.commit()
+    return {"message": "Код подтверждения повторно отправлен."}
 
 # Определяем константу срока действия документов по умолчанию: 15 июля 2025
 DEFAULT_DOC_EXPIRY = datetime(2025, 7, 15)
@@ -633,12 +713,14 @@ async def read_users_me(
         return {
             "id": current_user.id,
             "phone_number": current_user.phone_number,
+            "email": current_user.email,
             "first_name": first_name,
             "last_name": last_name,
             "iin": current_user.iin,
             "passport_number": current_user.passport_number,
             "birth_date": current_user.birth_date.isoformat() if current_user.birth_date else None,
             "role": role,
+            "is_verified_email": getattr(current_user, "is_verified_email", False),
             "wallet_balance": float(current_user.wallet_balance or 0.0),
             "current_rental": current_rental,
             "owned_cars": owned_cars,
@@ -654,6 +736,10 @@ async def read_users_me(
                 "documents_verified": current_user.documents_verified,
                 "selfie_with_license_url": current_user.selfie_with_license_url,
                 "selfie_url": current_user.selfie_url,
+                "psych_neurology_certificate_url": getattr(current_user, "psych_neurology_certificate_url", None),
+                "narcology_certificate_url": getattr(current_user, "narcology_certificate_url", None),
+                "pension_contributions_certificate_url": getattr(current_user, "pension_contributions_certificate_url", None),
+                "criminal_record_certificate_url": getattr(current_user, "criminal_record_certificate_url", None),
                 "drivers_license": {
                     "url": current_user.drivers_license_url,
                     "expiry": current_user.drivers_license_expiry.isoformat()
@@ -724,6 +810,12 @@ async def refresh_token(db: Session = Depends(get_db), token: str = Depends(JWTB
 - selfie_with_license: Селфи с водительскими правами (JPEG/PNG)
 - selfie: Обычное селфи (JPEG/PNG)
 
+**Дополнительные (необязательные) файлы-справки:**
+- psych_neurology_certificate: Справка из психоневрологического диспансера (изображение/PDF)
+- narcology_certificate: Справка из наркологического диспансера (изображение/PDF)
+- pension_contributions_certificate: Справка о пенсионных отчислениях (изображение/PDF)
+- criminal_record_certificate: Справка об отсутствии/наличии судимости (изображение/PDF)
+
 **Требуемые данные:**
 - first_name: Имя (1-50 символов). Пример: "Иван"
 - last_name: Фамилия (1-50 символов). Пример: "Иванов"
@@ -732,6 +824,7 @@ async def refresh_token(db: Session = Depends(get_db), token: str = Depends(JWTB
 - passport_number: Номер паспорта (можно указать вместо ИИН)
 - id_card_expiry: Дата истечения ID карты в формате YYYY-MM-DD (будущая дата). Пример: "2030-12-31"
 - drivers_license_expiry: Дата истечения прав в формате YYYY-MM-DD (будущая дата). Пример: "2029-08-20"
+- email: Электронная почта (необязательное поле)
 
 После успешной загрузки статус пользователя изменится на PENDING (ожидает проверки).
                   """)
@@ -742,6 +835,10 @@ async def upload_documents(
         drivers_license: UploadFile = File(...),
         selfie_with_license: UploadFile = File(...),
         selfie: UploadFile = File(...),
+        psych_neurology_certificate: UploadFile = File(None),
+        narcology_certificate: UploadFile = File(None),
+        pension_contributions_certificate: UploadFile = File(None),
+        criminal_record_certificate: UploadFile = File(None),
 
         # Данные формы
         first_name: str = Form(..., min_length=1, max_length=50),
@@ -751,16 +848,32 @@ async def upload_documents(
         passport_number: Optional[str] = Form(None),
         id_card_expiry: str = Form(...),
         drivers_license_expiry: str = Form(...),
+        email: str = Form(...),
 
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
 ):
-    # Валидация типов файлов
+    # Валидация типов обязательных файлов
     for doc in [id_front, id_back, drivers_license, selfie_with_license, selfie]:
         if doc.content_type not in ALLOWED_TYPES:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"File {doc.filename} is not an image. Only JPEG and PNG are allowed."
+            )
+
+    optional_docs = [
+        psych_neurology_certificate,
+        narcology_certificate,
+        pension_contributions_certificate,
+        criminal_record_certificate,
+    ]
+    for doc in optional_docs:
+        if doc is None:
+            continue
+        if doc.content_type not in ALLOWED_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Optional file {doc.filename} is not an image. Only JPEG and PNG are allowed."
             )
 
     # Валидация данных через Pydantic-схему
@@ -788,10 +901,25 @@ async def upload_documents(
         selfie_with_license_path = await save_file(selfie_with_license, current_user.id, "uploads/documents")
         selfie_path = await save_file(selfie, current_user.id, "uploads/documents")
 
+        # Необязательные справки
+        psych_neuro_path = None
+        narcology_path = None
+        pension_path = None
+        criminal_record_path = None
+        if psych_neurology_certificate is not None:
+            psych_neuro_path = await save_file(psych_neurology_certificate, current_user.id, "uploads/documents")
+        if narcology_certificate is not None:
+            narcology_path = await save_file(narcology_certificate, current_user.id, "uploads/documents")
+        if pension_contributions_certificate is not None:
+            pension_path = await save_file(pension_contributions_certificate, current_user.id, "uploads/documents")
+        if criminal_record_certificate is not None:
+            criminal_record_path = await save_file(criminal_record_certificate, current_user.id, "uploads/documents")
+
         # Обновление данных пользователя
         current_user.first_name = document_data.first_name
         current_user.last_name = document_data.last_name
         current_user.birth_date = datetime.strptime(document_data.birth_date, '%Y-%m-%d')
+        current_user.email = email
         # Сохраняем ИИН или паспорт
         current_user.iin = document_data.iin
         current_user.passport_number = document_data.passport_number
@@ -805,6 +933,16 @@ async def upload_documents(
 
         current_user.selfie_with_license_url = selfie_with_license_path
         current_user.selfie_url = selfie_path
+
+        # Привязываем пути к справкам, если были загружены
+        if psych_neuro_path:
+            current_user.psych_neurology_certificate_url = psych_neuro_path
+        if narcology_path:
+            current_user.narcology_certificate_url = narcology_path
+        if pension_path:
+            current_user.pension_contributions_certificate_url = pension_path
+        if criminal_record_path:
+            current_user.criminal_record_certificate_url = criminal_record_path
 
         # Стартовый этап после загрузки документов — ожидание финансиста
         current_user.role = UserRole.PENDINGTOFIRST
@@ -843,6 +981,48 @@ async def upload_documents(
             print(f"Ошибка при обновлении заявок гаранта: {e}")
             # Продолжаем выполнение без обработки гарантов
 
+        # Записываем код подтверждения email и отправляем его на почту
+        try:
+            code = "666666"
+            record = VerificationCode(
+                phone_number=None,
+                email=current_user.email,
+                code=code,
+                purpose="email_verification",
+                is_used=False,
+                expires_at=datetime.utcnow() + timedelta(minutes=15),
+            )
+            db.add(record)
+            # Пытаемся отправить письмо
+            try:
+                smtp_host = os.getenv("SMTP_HOST")
+                smtp_port = int(os.getenv("SMTP_PORT", "587"))
+                smtp_user = os.getenv("SMTP_USER")
+                smtp_pass = os.getenv("SMTP_PASSWORD")
+                smtp_from = os.getenv("SMTP_FROM", smtp_user or "no-reply@example.com")
+                if smtp_host and smtp_user and smtp_pass:
+                    msg = MIMEText(f"Ваш код подтверждения: {code}")
+                    msg["Subject"] = "Код подтверждения email"
+                    msg["From"] = smtp_from
+                    msg["To"] = current_user.email
+                    with smtplib.SMTP(smtp_host, smtp_port) as server:
+                        server.starttls()
+                        server.login(smtp_user, smtp_pass)
+                        server.send_message(msg)
+                else:
+                    # Если SMTP не настроен — просто логируем
+                    try:
+                        from app.core.config import logger
+                        logger.warning(f"SMTP not configured; verification code for {current_user.email}: {code}")
+                    except Exception:
+                        pass
+            except Exception:
+                # Не блокируем основной флоу из-за ошибки отправки почты
+                pass
+        except Exception:
+            # Не блокируем основной флоу из-за ошибок записи кода
+            pass
+
         db.commit()
 
         return {
@@ -852,12 +1032,18 @@ async def upload_documents(
                 "first_name": current_user.first_name,
                 "last_name": current_user.last_name,
                 "birth_date": current_user.birth_date.strftime('%Y-%m-%d'),
+                "email": current_user.email,
+                "is_verified_email": current_user.is_verified_email,
                 "iin": current_user.iin,
                 "passport_number": current_user.passport_number,
                 "id_card_expiry": current_user.id_card_expiry.strftime('%Y-%m-%d'),
                 "drivers_license_expiry": current_user.drivers_license_expiry.strftime('%Y-%m-%d'),
                 "selfie_with_license_url": current_user.selfie_with_license_url,
-                "selfie_url": current_user.selfie_url
+                "selfie_url": current_user.selfie_url,
+                "psych_neurology_certificate_url": current_user.psych_neurology_certificate_url,
+                "narcology_certificate_url": current_user.narcology_certificate_url,
+                "pension_contributions_certificate_url": current_user.pension_contributions_certificate_url,
+                "criminal_record_certificate_url": current_user.criminal_record_certificate_url
             }
         }
 
