@@ -768,6 +768,18 @@ async def get_trip_detail(
             "end_longitude": rental.end_longitude,
             "route_data": route_data
         },
+        "delivery_route": {
+            "start_latitude": rental.delivery_start_latitude,
+            "start_longitude": rental.delivery_start_longitude,
+            "end_latitude": rental.delivery_end_latitude,
+            "end_longitude": rental.delivery_end_longitude,
+        },
+        "mechanic_inspection_route": {
+            "start_latitude": rental.mechanic_inspection_start_latitude,
+            "start_longitude": rental.mechanic_inspection_start_longitude,
+            "end_latitude": rental.mechanic_inspection_end_latitude,
+            "end_longitude": rental.mechanic_inspection_end_longitude,
+        },
     }
 
     return result
