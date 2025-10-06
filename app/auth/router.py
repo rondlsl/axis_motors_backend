@@ -64,17 +64,19 @@ async def verify_email(request: VerifyEmailRequest, current_user: User = Depends
 
 
 class ResendEmailCodeRequest(BaseModel):
-    email: str
+    pass
 
 
 @Auth_router.post("/resend_email_code/")
 async def resend_email_code(request: ResendEmailCodeRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Повторная отправка кода подтверждения на email."""
+    if not current_user.email:
+        raise HTTPException(status_code=400, detail="У пользователя не указан email")
     # Генерируем (пока фиксированный) код
     code = "666666"
     record = VerificationCode(
         phone_number=None,
-        email=request.email,
+        email=current_user.email,
         code=code,
         purpose="email_verification",
         is_used=False,
@@ -93,7 +95,7 @@ async def resend_email_code(request: ResendEmailCodeRequest, current_user: User 
     #         msg = MIMEText(f"Ваш код подтверждения: {code}")
     #         msg["Subject"] = "Код подтверждения email"
     #         msg["From"] = smtp_from
-    #         msg["To"] = request.email
+    #         msg["To"] = current_user.email
     #         with smtplib.SMTP(smtp_host, smtp_port) as server:
     #             server.starttls()
     #             server.login(smtp_user, smtp_pass)
@@ -108,7 +110,7 @@ async def resend_email_code(request: ResendEmailCodeRequest, current_user: User 
     #     pass
     try:
         from app.core.config import logger
-        logger.warning(f"Email verification code for {request.email}: {code}")
+        logger.warning(f"Email verification code for {current_user.email}: {code}")
     except Exception:
         pass
 
