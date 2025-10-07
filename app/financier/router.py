@@ -61,6 +61,13 @@ async def get_pending_applications(
             "birth_date": user.birth_date.isoformat() if user.birth_date else None,
             "id_card_expiry": user.id_card_expiry.isoformat() if user.id_card_expiry else None,
             "drivers_license_expiry": user.drivers_license_expiry.isoformat() if user.drivers_license_expiry else None,
+            "is_citizen_kz": user.is_citizen_kz,
+            "certificates": {
+                "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
+                "narcology_certificate_url": user.narcology_certificate_url,
+                "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
+                "criminal_record_certificate_url": user.criminal_record_certificate_url
+            },
             "documents": {
                 "id_card_front_url": user.id_card_front_url,
                 "id_card_back_url": user.id_card_back_url,
@@ -117,6 +124,13 @@ async def get_approved_applications(
             "birth_date": user.birth_date.isoformat() if user.birth_date else None,
             "id_card_expiry": user.id_card_expiry.isoformat() if user.id_card_expiry else None,
             "drivers_license_expiry": user.drivers_license_expiry.isoformat() if user.drivers_license_expiry else None,
+            "is_citizen_kz": user.is_citizen_kz,
+            "certificates": {
+                "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
+                "narcology_certificate_url": user.narcology_certificate_url,
+                "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
+                "criminal_record_certificate_url": user.criminal_record_certificate_url
+            },
             "documents": {
                 "id_card_front_url": user.id_card_front_url,
                 "id_card_back_url": user.id_card_back_url,
@@ -175,6 +189,13 @@ async def get_rejected_applications(
             "birth_date": user.birth_date.isoformat() if user.birth_date else None,
             "id_card_expiry": user.id_card_expiry.isoformat() if user.id_card_expiry else None,
             "drivers_license_expiry": user.drivers_license_expiry.isoformat() if user.drivers_license_expiry else None,
+            "is_citizen_kz": user.is_citizen_kz,
+            "certificates": {
+                "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
+                "narcology_certificate_url": user.narcology_certificate_url,
+                "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
+                "criminal_record_certificate_url": user.criminal_record_certificate_url
+            },
             "documents": {
                 "id_card_front_url": user.id_card_front_url,
                 "id_card_back_url": user.id_card_back_url,

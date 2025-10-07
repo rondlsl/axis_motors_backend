@@ -60,6 +60,7 @@ class User(Base):
     sms_code_valid_until = Column(DateTime)
     is_active = Column(Boolean, default=True, nullable=False)
     is_verified_email = Column(Boolean, default=False, nullable=False, server_default="false")
+    is_citizen_kz = Column(Boolean, default=False, nullable=False, server_default="false")  
     fcm_token = Column(String, nullable=True)
     locale = Column(String, nullable=False, server_default=text("'ru'"))
     auto_class = Column(ARRAY(String), nullable=True)  # Доступные классы авто (может быть несколько): A, B, C

@@ -65,6 +65,10 @@ class DocumentUploadRequest(BaseModel):
         ...,
         description="Дата окончания действия водительских прав в формате YYYY-MM-DD. Должна быть в будущем. Пример: '2029-08-20'"
     )
+    is_citizen_kz: bool = Field(
+        default=False,
+        description="Гражданин Республики Казахстан. Если true, то обязательны справки"
+    )
 
     @validator('iin', pre=True)
     def normalize_iin(cls, v):

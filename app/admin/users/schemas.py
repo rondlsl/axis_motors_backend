@@ -13,6 +13,7 @@ class UserProfileSchema(BaseModel):
     role: str
     is_active: bool
     is_verified_email: bool
+    is_citizen_kz: bool
     documents_verified: bool
     selfie_url: Optional[str] = None
     selfie_with_license_url: Optional[str] = None

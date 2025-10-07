@@ -727,6 +727,7 @@ async def read_users_me(
             "birth_date": current_user.birth_date.isoformat() if current_user.birth_date else None,
             "role": role,
             "is_verified_email": getattr(current_user, "is_verified_email", False),
+            "is_citizen_kz": getattr(current_user, "is_citizen_kz", False),
             "wallet_balance": float(current_user.wallet_balance or 0.0),
             "current_rental": current_rental,
             "owned_cars": owned_cars,
@@ -857,19 +858,13 @@ async def upload_documents(
         id_card_expiry: str = Form(...),
         drivers_license_expiry: str = Form(...),
         email: str = Form(...),
+        is_citizen_kz: bool = Form(False),
 
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
 ):
     # Инициализируем переменную для email верификации
     email_needs_verification = False
-    
-    # Проверяем, что пользователь существует
-    if not current_user or not current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found or invalid"
-        )
     
     # Валидация типов обязательных файлов
     image_docs = [
@@ -913,13 +908,32 @@ async def upload_documents(
             iin=iin,
             passport_number=passport_number,
             id_card_expiry=id_card_expiry,
-            drivers_license_expiry=drivers_license_expiry
+            drivers_license_expiry=drivers_license_expiry,
+            is_citizen_kz=is_citizen_kz
         )
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Validation error: {e}"
         )
+
+    # Валидация для граждан Казахстана: если is_citizen_kz = true, то все 4 сертификата обязательны
+    if is_citizen_kz:
+        missing_certificates = []
+        if psych_neurology_certificate is None:
+            missing_certificates.append("психоневрологическая справка")
+        if narcology_certificate is None:
+            missing_certificates.append("наркологическая справка")
+        if pension_contributions_certificate is None:
+            missing_certificates.append("справка о пенсионных взносах")
+        if criminal_record_certificate is None:
+            missing_certificates.append("справка об отсутствии судимости")
+        
+        if missing_certificates:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Как гражданин Республики Казахстан, вы обязаны предоставить все сертификаты. Отсутствуют: {', '.join(missing_certificates)}"
+            )
 
     try:
         # Сохранение обязательных файлов
@@ -944,14 +958,12 @@ async def upload_documents(
         if criminal_record_certificate is not None:
             criminal_record_path = await save_file(criminal_record_certificate, current_user.id, "uploads/documents")
 
-        # Сохраняем старый email для сравнения ДО обновления
-        old_email = current_user.email
-        
         # Обновление данных пользователя
         current_user.first_name = document_data.first_name
         current_user.last_name = document_data.last_name
         current_user.birth_date = datetime.strptime(document_data.birth_date, '%Y-%m-%d')
         current_user.email = email
+        current_user.is_citizen_kz = document_data.is_citizen_kz
         # Сохраняем ИИН или паспорт
         current_user.iin = document_data.iin
         current_user.passport_number = document_data.passport_number
@@ -975,9 +987,14 @@ async def upload_documents(
         # Стартовый этап после загрузки документов — ожидание финансиста
         current_user.role = UserRole.PENDINGTOFIRST
         current_user.documents_verified = True
+        
+        # Сохраняем старый email для сравнения
+        old_email = current_user.email
 
         # Создаем/обновляем заявку для проверки документов (idempotent)
+        logger.info("Processing application...")
         existing_application = db.query(Application).filter(Application.user_id == current_user.id).first()
+        logger.info(f"Existing application: {existing_application.id if existing_application else 'None'}")
         
         # Логика для email верификации:
         # Если пользователь повторно загружает документы (был отклонен), но email уже подтвержден - сбрасываем верификацию
@@ -1084,6 +1101,7 @@ async def upload_documents(
                 "birth_date": current_user.birth_date.strftime('%Y-%m-%d'),
                 "email": current_user.email,
                 "is_verified_email": not email_needs_verification,
+                "is_citizen_kz": current_user.is_citizen_kz,
                 "iin": current_user.iin,
                 "passport_number": current_user.passport_number,
                 "id_card_expiry": current_user.id_card_expiry.strftime('%Y-%m-%d'),
@@ -1100,8 +1118,10 @@ async def upload_documents(
     except Exception as e:
         db.rollback()
         try:
-            logger.error(f"Error in /auth/upload-documents: {e}")
+            logger.error(f"Error in /auth/upload-documents for user {current_user.id}: {e}")
             logger.error(traceback.format_exc())
+            # Логируем дополнительную информацию для диагностики
+            logger.error(f"User role: {current_user.role}, Email: {current_user.email}")
         except Exception:
             pass
         raise HTTPException(
