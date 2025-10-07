@@ -866,6 +866,13 @@ async def upload_documents(
     # Инициализируем переменную для email верификации
     email_needs_verification = False
     
+    # Проверяем, что пользователь существует и активен
+    if not current_user or not current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Пользователь не найден или не авторизован"
+        )
+    
     # Правильно обрабатываем is_citizen_kz (может прийти как строка из формы)
     if isinstance(is_citizen_kz, str):
         is_citizen_kz = is_citizen_kz.lower() in ('true', '1', 'yes', 'on')
@@ -962,11 +969,17 @@ async def upload_documents(
         if criminal_record_certificate is not None:
             criminal_record_path = await save_file(criminal_record_certificate, current_user.id, "uploads/documents")
 
-        old_email = current_user.email # не трогать
+        old_email = current_user.email or ""
         # Обновление данных пользователя
         current_user.first_name = document_data.first_name
         current_user.last_name = document_data.last_name
-        current_user.birth_date = datetime.strptime(document_data.birth_date, '%Y-%m-%d')
+        try:
+            current_user.birth_date = datetime.strptime(document_data.birth_date, '%Y-%m-%d')
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Некорректная дата рождения: {e}"
+            )
         current_user.email = email
         current_user.is_citizen_kz = document_data.is_citizen_kz
         # Сохраняем ИИН или паспорт
@@ -975,10 +988,22 @@ async def upload_documents(
 
         current_user.id_card_front_url = id_front_path
         current_user.id_card_back_url = id_back_path
-        current_user.id_card_expiry = datetime.strptime(document_data.id_card_expiry, '%Y-%m-%d')
+        try:
+            current_user.id_card_expiry = datetime.strptime(document_data.id_card_expiry, '%Y-%m-%d')
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Некорректная дата окончания удостоверения личности: {e}"
+            )
 
         current_user.drivers_license_url = license_path
-        current_user.drivers_license_expiry = datetime.strptime(document_data.drivers_license_expiry, '%Y-%m-%d')
+        try:
+            current_user.drivers_license_expiry = datetime.strptime(document_data.drivers_license_expiry, '%Y-%m-%d')
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Некорректная дата окончания водительских прав: {e}"
+            )
 
         current_user.selfie_with_license_url = selfie_with_license_path
         current_user.selfie_url = selfie_path
@@ -1044,7 +1069,7 @@ async def upload_documents(
             for request in guarantor_requests:
                 request.guarantor_phone = current_user.phone_number
         except Exception as e:
-            print(f"Ошибка при обновлении заявок гаранта: {e}")
+            logger.warning(f"Ошибка при обновлении заявок гаранта: {e}")
             # Продолжаем выполнение без обработки гарантов
 
         # Записываем код подтверждения email и отправляем его на почту
