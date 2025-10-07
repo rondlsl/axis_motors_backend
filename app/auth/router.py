@@ -864,6 +864,13 @@ async def upload_documents(
     # Инициализируем переменную для email верификации
     email_needs_verification = False
     
+    # Проверяем, что пользователь существует
+    if not current_user or not current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or invalid"
+        )
+    
     # Валидация типов обязательных файлов
     image_docs = [
         id_front,
@@ -915,27 +922,14 @@ async def upload_documents(
         )
 
     try:
-        logger.info(f"Starting document upload for user {current_user.id}")
-        
         # Сохранение обязательных файлов
-        logger.info("Saving mandatory files...")
         id_front_path = await save_file(id_front, current_user.id, "uploads/documents")
-        logger.info(f"Saved id_front: {id_front_path}")
-        
         id_back_path = await save_file(id_back, current_user.id, "uploads/documents")
-        logger.info(f"Saved id_back: {id_back_path}")
-        
         license_path = await save_file(drivers_license, current_user.id, "uploads/documents")
-        logger.info(f"Saved license: {license_path}")
-        
         selfie_with_license_path = await save_file(selfie_with_license, current_user.id, "uploads/documents")
-        logger.info(f"Saved selfie_with_license: {selfie_with_license_path}")
-        
         selfie_path = await save_file(selfie, current_user.id, "uploads/documents")
-        logger.info(f"Saved selfie: {selfie_path}")
 
         # Сохранение необязательных файлов справок (только если они предоставлены)
-        logger.info("Saving certificate files...")
         psych_neuro_path = None
         narcology_path = None
         pension_path = None
@@ -943,19 +937,17 @@ async def upload_documents(
         
         if psych_neurology_certificate is not None:
             psych_neuro_path = await save_file(psych_neurology_certificate, current_user.id, "uploads/documents")
-            logger.info(f"Saved psych_neurology_certificate: {psych_neuro_path}")
         if narcology_certificate is not None:
             narcology_path = await save_file(narcology_certificate, current_user.id, "uploads/documents")
-            logger.info(f"Saved narcology_certificate: {narcology_path}")
         if pension_contributions_certificate is not None:
             pension_path = await save_file(pension_contributions_certificate, current_user.id, "uploads/documents")
-            logger.info(f"Saved pension_contributions_certificate: {pension_path}")
         if criminal_record_certificate is not None:
             criminal_record_path = await save_file(criminal_record_certificate, current_user.id, "uploads/documents")
-            logger.info(f"Saved criminal_record_certificate: {criminal_record_path}")
 
+        # Сохраняем старый email для сравнения ДО обновления
+        old_email = current_user.email
+        
         # Обновление данных пользователя
-        logger.info("Updating user data...")
         current_user.first_name = document_data.first_name
         current_user.last_name = document_data.last_name
         current_user.birth_date = datetime.strptime(document_data.birth_date, '%Y-%m-%d')
@@ -983,14 +975,9 @@ async def upload_documents(
         # Стартовый этап после загрузки документов — ожидание финансиста
         current_user.role = UserRole.PENDINGTOFIRST
         current_user.documents_verified = True
-        
-        # Сохраняем старый email для сравнения
-        old_email = current_user.email
 
         # Создаем/обновляем заявку для проверки документов (idempotent)
-        logger.info("Processing application...")
         existing_application = db.query(Application).filter(Application.user_id == current_user.id).first()
-        logger.info(f"Existing application: {existing_application.id if existing_application else 'None'}")
         
         # Логика для email верификации:
         # Если пользователь повторно загружает документы (был отклонен), но email уже подтвержден - сбрасываем верификацию
@@ -1113,10 +1100,8 @@ async def upload_documents(
     except Exception as e:
         db.rollback()
         try:
-            logger.error(f"Error in /auth/upload-documents for user {current_user.id}: {e}")
+            logger.error(f"Error in /auth/upload-documents: {e}")
             logger.error(traceback.format_exc())
-            # Логируем дополнительную информацию для диагностики
-            logger.error(f"User role: {current_user.role}, Email: {current_user.email}")
         except Exception:
             pass
         raise HTTPException(
