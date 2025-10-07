@@ -64,9 +64,9 @@ async def send_command_to_terminal(
 def get_vehicle_id_by_imei(imei: str) -> int:
     """Возвращает vehicle_id для конкретного IMEI"""
     imei_to_vehicle_id = {
-        "869132074464026": 800283232,
-        "869132074567851": 800212421,
-        "866011056063951": 800153076
+        "860803068139548": 800283232,  # Hongqi
+        "860803068143045": 800212421,  # Mercedes
+        "866011056063951": 800153076   # HAVAL
     }
     return imei_to_vehicle_id.get(imei, 800153076)  # Дефолтный vehicle_id
 
@@ -74,7 +74,7 @@ def get_vehicle_id_by_imei(imei: str) -> int:
 def get_commands_by_imei(imei: str) -> dict:
     """Возвращает команды для конкретного IMEI"""
     commands_map = {
-        "869132074464026": {  # vehicle_id 800283232
+        "860803068139548": {  # Hongqi - vehicle_id 800283232
             "open": "chat OPEN",
             "close": "chat CLOSE",
             "give_key": "OUTPUT1 1",
@@ -82,7 +82,7 @@ def get_commands_by_imei(imei: str) -> dict:
             "lock_engine": "chat LOCK",
             "unlock_engine": "chat UNLOCK"
         },
-        "869132074567851": {  # vehicle_id 800212421
+        "860803068143045": {  # Mercedes - vehicle_id 800212421
             "open": "chat OP|chat OPEN",
             "close": "chat CL|chat CLOSE",
             "give_key": "OUTPUT1 1",
@@ -90,7 +90,7 @@ def get_commands_by_imei(imei: str) -> dict:
             "lock_engine": "OUTPUT0 1",
             "unlock_engine": "OUTPUT0 0"
         },
-        "866011056063951": {  # vehicle_id 800153076
+        "866011056063951": {  # HAVAL - vehicle_id 800153076
             "open": "*!CEVT 1",
             "close": "*!CEVT 2",
             "give_key": "*!2Y",

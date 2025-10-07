@@ -94,7 +94,7 @@ def create_cars(db: Session, owner: User) -> None:
             id=2,
             name="MB CLA45s",
             gps_id="800212421",
-            gps_imei="869132074567851",
+            gps_imei="860803068143045",
             engine_volume=2.0,
             year=2019,
             drive_type=3,
@@ -122,7 +122,7 @@ def create_cars(db: Session, owner: User) -> None:
             id=3,
             name="Hongqi e-qm5",
             gps_id="800283232",
-            gps_imei="869132074464026",
+            gps_imei="860803068139548",
             engine_volume=0.0,  # Электромобиль
             year=2025,
             drive_type=3,
