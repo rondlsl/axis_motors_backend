@@ -20,6 +20,7 @@ class UserRole(enum.Enum):
     PENDINGTOFIRST = "PENDINGTOFIRST"          # Загрузил документы, ждёт финансиста
     PENDINGTOSECOND = "PENDINGTOSECOND"        # Одобрен финансистом, ждёт МВД
     REJECTFIRSTDOC = "REJECTFIRSTDOC"          # Отказ финансиста: неверные документы
+    REJECTFIRSTSPRAV = "REJECTFIRSTSPRAV"      # Отказ финансиста: отсутствуют справки для граждан Казахстана
     REJECTFIRST = "REJECTFIRST"                 # Отказ финансиста: финансовые причины
     REJECTSECOND = "REJECTSECOND"               # Отказ МВД: полный блок
 

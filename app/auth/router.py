@@ -962,9 +962,32 @@ async def upload_documents(
         # Стартовый этап после загрузки документов — ожидание финансиста
         current_user.role = UserRole.PENDINGTOFIRST
         current_user.documents_verified = True
+        
+        # Сохраняем старый email для сравнения
+        old_email = current_user.email
 
         # Создаем/обновляем заявку для проверки документов (idempotent)
         existing_application = db.query(Application).filter(Application.user_id == current_user.id).first()
+        
+        # Логика для email верификации:
+        # Если пользователь повторно загружает документы (был отклонен), но email уже подтвержден - сбрасываем верификацию
+        # Если email изменился - тоже сбрасываем верификацию
+        # Если email новый и еще не подтвержден - оставляем как есть
+        email_needs_verification = False
+        
+        if existing_application and existing_application.financier_status == ApplicationStatus.REJECTED:
+            # Пользователь повторно загружает документы после отказа
+            if current_user.is_verified_email:
+                # Email был подтвержден, но нужна повторная верификация
+                current_user.is_verified_email = False
+                email_needs_verification = True
+        elif old_email != document_data.email:
+            # Пользователь изменил email - нужна верификация нового email
+            current_user.is_verified_email = False
+            email_needs_verification = True
+        elif not current_user.is_verified_email:
+            # Email еще не был подтвержден
+            email_needs_verification = True
         if existing_application:
             # Если пользователь был отклонен финансистом из-за документов, сбрасываем статус заявки
             if existing_application.financier_status == ApplicationStatus.REJECTED:
@@ -1051,7 +1074,7 @@ async def upload_documents(
                 "last_name": current_user.last_name,
                 "birth_date": current_user.birth_date.strftime('%Y-%m-%d'),
                 "email": current_user.email,
-                "is_verified_email": current_user.is_verified_email,
+                "is_verified_email": not email_needs_verification,
                 "iin": current_user.iin,
                 "passport_number": current_user.passport_number,
                 "id_card_expiry": current_user.id_card_expiry.strftime('%Y-%m-%d'),
