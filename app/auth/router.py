@@ -815,6 +815,8 @@ async def refresh_token(db: Session = Depends(get_db), token: str = Depends(JWTB
 - drivers_license: Фото водительских прав (JPEG/PNG)
 - selfie_with_license: Селфи с водительскими правами (JPEG/PNG)
 - selfie: Обычное селфи (JPEG/PNG)
+
+**Необязательные файлы:**
 - psych_neurology_certificate: Справка из психоневрологического диспансера (изображение/PDF)
 - narcology_certificate: Справка из наркологического диспансера (изображение/PDF)
 - pension_contributions_certificate: Справка о пенсионных отчислениях (изображение/PDF)
@@ -833,16 +835,18 @@ async def refresh_token(db: Session = Depends(get_db), token: str = Depends(JWTB
 После успешной загрузки статус пользователя изменится на PENDING (ожидает проверки).
                   """)
 async def upload_documents(
-        # Файлы
+        # Обязательные файлы
         id_front: UploadFile = File(...),
         id_back: UploadFile = File(...),
         drivers_license: UploadFile = File(...),
         selfie_with_license: UploadFile = File(...),
         selfie: UploadFile = File(...),
-        psych_neurology_certificate: UploadFile = File(...),
-        narcology_certificate: UploadFile = File(...),
-        pension_contributions_certificate: UploadFile = File(...),
-        criminal_record_certificate: UploadFile = File(...),
+        
+        # Необязательные файлы справок
+        psych_neurology_certificate: Optional[UploadFile] = File(None),
+        narcology_certificate: Optional[UploadFile] = File(None),
+        pension_contributions_certificate: Optional[UploadFile] = File(None),
+        criminal_record_certificate: Optional[UploadFile] = File(None),
 
         # Данные формы
         first_name: str = Form(..., min_length=1, max_length=50),
@@ -865,20 +869,26 @@ async def upload_documents(
         selfie_with_license,
         selfie,
     ]
+    
+    # Необязательные файлы справок (фильтруем None)
     cert_docs = [
         psych_neurology_certificate,
         narcology_certificate,
         pension_contributions_certificate,
         criminal_record_certificate,
     ]
+    
+    # Валидация обязательных файлов
     for doc in image_docs:
         if doc.content_type not in ALLOWED_TYPES:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"File {doc.filename} is not an image. Only JPEG and PNG are allowed."
             )
+    
+    # Валидация необязательных файлов справок (только если они предоставлены)
     for doc in cert_docs:
-        if doc.content_type not in CERT_ALLOWED_TYPES:
+        if doc is not None and doc.content_type not in CERT_ALLOWED_TYPES:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Certificate {doc.filename} must be JPEG, PNG or PDF."
@@ -902,18 +912,27 @@ async def upload_documents(
         )
 
     try:
-        # Сохранение файлов
+        # Сохранение обязательных файлов
         id_front_path = await save_file(id_front, current_user.id, "uploads/documents")
         id_back_path = await save_file(id_back, current_user.id, "uploads/documents")
         license_path = await save_file(drivers_license, current_user.id, "uploads/documents")
         selfie_with_license_path = await save_file(selfie_with_license, current_user.id, "uploads/documents")
         selfie_path = await save_file(selfie, current_user.id, "uploads/documents")
 
-        # Справки (теперь обязательные)
-        psych_neuro_path = await save_file(psych_neurology_certificate, current_user.id, "uploads/documents")
-        narcology_path = await save_file(narcology_certificate, current_user.id, "uploads/documents")
-        pension_path = await save_file(pension_contributions_certificate, current_user.id, "uploads/documents")
-        criminal_record_path = await save_file(criminal_record_certificate, current_user.id, "uploads/documents")
+        # Сохранение необязательных файлов справок (только если они предоставлены)
+        psych_neuro_path = None
+        narcology_path = None
+        pension_path = None
+        criminal_record_path = None
+        
+        if psych_neurology_certificate is not None:
+            psych_neuro_path = await save_file(psych_neurology_certificate, current_user.id, "uploads/documents")
+        if narcology_certificate is not None:
+            narcology_path = await save_file(narcology_certificate, current_user.id, "uploads/documents")
+        if pension_contributions_certificate is not None:
+            pension_path = await save_file(pension_contributions_certificate, current_user.id, "uploads/documents")
+        if criminal_record_certificate is not None:
+            criminal_record_path = await save_file(criminal_record_certificate, current_user.id, "uploads/documents")
 
         # Обновление данных пользователя
         current_user.first_name = document_data.first_name
@@ -934,7 +953,7 @@ async def upload_documents(
         current_user.selfie_with_license_url = selfie_with_license_path
         current_user.selfie_url = selfie_path
 
-        # Привязываем пути к справкам
+        # Привязываем пути к справкам (только если файлы были загружены)
         current_user.psych_neurology_certificate_url = psych_neuro_path
         current_user.narcology_certificate_url = narcology_path
         current_user.pension_contributions_certificate_url = pension_path
