@@ -866,6 +866,10 @@ async def upload_documents(
     # Инициализируем переменную для email верификации
     email_needs_verification = False
     
+    # Правильно обрабатываем is_citizen_kz (может прийти как строка из формы)
+    if isinstance(is_citizen_kz, str):
+        is_citizen_kz = is_citizen_kz.lower() in ('true', '1', 'yes', 'on')
+    
     # Валидация типов обязательных файлов
     image_docs = [
         id_front,
@@ -958,6 +962,7 @@ async def upload_documents(
         if criminal_record_certificate is not None:
             criminal_record_path = await save_file(criminal_record_certificate, current_user.id, "uploads/documents")
 
+        old_email = current_user.email # не трогать
         # Обновление данных пользователя
         current_user.first_name = document_data.first_name
         current_user.last_name = document_data.last_name
@@ -987,9 +992,6 @@ async def upload_documents(
         # Стартовый этап после загрузки документов — ожидание финансиста
         current_user.role = UserRole.PENDINGTOFIRST
         current_user.documents_verified = True
-        
-        # Сохраняем старый email для сравнения
-        old_email = current_user.email
 
         # Создаем/обновляем заявку для проверки документов (idempotent)
         logger.info("Processing application...")
