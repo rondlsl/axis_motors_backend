@@ -878,6 +878,16 @@ async def upload_documents(
     if isinstance(is_citizen_kz, str):
         is_citizen_kz = is_citizen_kz.lower() in ('true', '1', 'yes', 'on')
     
+    # Обрабатываем пустые файлы
+    if isinstance(psych_neurology_certificate, str) and not psych_neurology_certificate:
+        psych_neurology_certificate = None
+    if isinstance(narcology_certificate, str) and not narcology_certificate:
+        narcology_certificate = None
+    if isinstance(pension_contributions_certificate, str) and not pension_contributions_certificate:
+        pension_contributions_certificate = None
+    if isinstance(criminal_record_certificate, str) and not criminal_record_certificate:
+        criminal_record_certificate = None
+    
     # Валидация типов обязательных файлов
     image_docs = [
         id_front,
