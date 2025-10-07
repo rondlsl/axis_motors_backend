@@ -152,7 +152,8 @@ async def send_sms_mobizon(recipient: str, sms_text: str, api_key: str):
     params = {
         "recipient": recipient,
         "text": sms_text,
-        "apiKey": api_key
+        "apiKey": api_key,
+        "from": "AZV Motors"
     }
     async with httpx.AsyncClient() as client:
         response = await client.get(url, params=params)
@@ -1079,3 +1080,4 @@ async def delete_account(
     current_user.is_active = False
     db.commit()
     return {"message": "Аккаунт помечен как неактивный."}
+
