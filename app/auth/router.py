@@ -155,39 +155,9 @@ async def send_sms_mobizon(recipient: str, sms_text: str, api_key: str):
         "apiKey": api_key,
         "from": "AZV Motors"
     }
-    
-    # Логируем детали запроса
-    logger.info(f"[MOBIZON REQUEST] URL: {url}")
-    logger.info(f"[MOBIZON REQUEST] Recipient: {recipient}")
-    logger.info(f"[MOBIZON REQUEST] Text: {sms_text}")
-    logger.info(f"[MOBIZON REQUEST] From: AZV Motors")
-    logger.info(f"[MOBIZON REQUEST] API Key: {api_key[:8]}...{api_key[-4:] if len(api_key) > 12 else '***'}")
-    
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            logger.info(f"[MOBIZON REQUEST] Sending HTTP GET request...")
-            response = await client.get(url, params=params)
-            
-            logger.info(f"[MOBIZON RESPONSE] Status Code: {response.status_code}")
-            logger.info(f"[MOBIZON RESPONSE] Response Headers: {dict(response.headers)}")
-            logger.info(f"[MOBIZON RESPONSE] Response Text: {response.text}")
-            
-            if response.status_code == 200:
-                logger.info(f"[MOBIZON SUCCESS] SMS sent successfully to {recipient}")
-            else:
-                logger.error(f"[MOBIZON ERROR] Failed to send SMS. Status: {response.status_code}")
-            
-            return response.text
-            
-    except httpx.TimeoutException as e:
-        logger.error(f"[MOBIZON TIMEOUT] Request timeout: {e}")
-        raise
-    except httpx.RequestError as e:
-        logger.error(f"[MOBIZON REQUEST ERROR] Network error: {e}")
-        raise
-    except Exception as e:
-        logger.error(f"[MOBIZON UNEXPECTED ERROR] Unexpected error: {e}")
-        raise
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, params=params)
+        return response.text
 
 
 @Auth_router.post("/send_sms/")
@@ -251,20 +221,13 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
     db.commit()
     print(sms_code)
     sms_text = f"{sms_code} - Ваш код подтверждения AZV Motors"
-    
-    logger.info(f"[AUTH SMS] Starting SMS code sending to {phone_number}")
-    logger.info(f"[AUTH SMS] SMS code: {sms_code}")
-    logger.info(f"[AUTH SMS] SMS text: {sms_text}")
-    
     try:
         if SMS_TOKEN:
-            logger.info(f"[AUTH SMS] Calling send_sms_mobizon for {phone_number}")
-            result = await send_sms_mobizon(phone_number, sms_text, f"{SMS_TOKEN}")
-            logger.info(f"[AUTH SMS] Successfully sent SMS code to {phone_number}")
+            await send_sms_mobizon(phone_number, sms_text, f"{SMS_TOKEN}")
         else:
-            logger.warning("[AUTH SMS] SMS_TOKEN is not configured; skipping Mobizon send")
+            logger.warning("SMS_TOKEN is not configured; skipping Mobizon send")
     except Exception as e:
-        logger.error(f"[AUTH SMS ERROR] Mobizon send error: {e}")
+        logger.error(f"Mobizon send error: {e}")
 
     return {"message": "SMS code sent successfully"}
 
