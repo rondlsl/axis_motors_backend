@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import calendar
+import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, HTTPException
@@ -280,7 +281,7 @@ def export_my_transactions_legacy_path(
 
 @WalletRouter.get("/transactions/{transaction_id}", response_model=WalletTransactionOut)
 def get_transaction_detail(
-    transaction_id: int,
+    transaction_id: uuid.UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

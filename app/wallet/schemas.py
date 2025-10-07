@@ -1,11 +1,12 @@
 from datetime import datetime
 from typing import Optional, List, Dict
+import uuid
 
 from pydantic import BaseModel
 
 
 class WalletTransactionOut(BaseModel):
-    id: int
+    id: uuid.UUID
     user_id: int
     amount: float
     type: str
@@ -53,7 +54,7 @@ class WalletTransactionsSummaryOut(BaseModel):
 
 
 class WalletUserBalanceItem(BaseModel):
-    id: int
+    id: uuid.UUID
     phone_number: Optional[str]
     role: Optional[str]
     wallet_balance: float

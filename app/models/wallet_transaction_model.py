@@ -1,7 +1,8 @@
 from datetime import datetime
 import enum
+import uuid
 
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Numeric, Enum
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Numeric, Enum, UUID
 from sqlalchemy.orm import relationship
 
 from app.dependencies.database.database import Base
@@ -35,7 +36,7 @@ class WalletTransactionType(enum.Enum):
 class WalletTransaction(Base):
     __tablename__ = "wallet_transactions"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     amount = Column(Numeric(10, 2), nullable=False)
     transaction_type = Column(
