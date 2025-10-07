@@ -63,6 +63,13 @@ def validate_user_can_control_car(current_user: User, db: Session) -> None:
             detail="Необходимо загрузить документы заново"
         )
     
+    # Пользователи без сертификатов не могут управлять
+    if current_user.role == UserRole.REJECTFIRSTCERT:
+        raise HTTPException(
+            status_code=403, 
+            detail="Необходимо прикрепить недостающие сертификаты"
+        )
+    
     # Пользователи с финансовыми проблемами не могут управлять
     if current_user.role == UserRole.REJECTFIRST:
         raise HTTPException(
@@ -123,6 +130,9 @@ def get_vehicle_info(
 ) -> Dict[str, Any]:
     try:
         if current_user.role == UserRole.REJECTFIRST:
+            return {"vehicles": []}
+        
+        if current_user.role == UserRole.REJECTFIRSTCERT:
             return {"vehicles": []}
         
         # Базовый фильтр: механики видят все, клиенты - только FREE и OCCUPIED
@@ -276,6 +286,9 @@ def search_vehicles(
         if current_user.role == UserRole.REJECTFIRST:
             return {"vehicles": []}
         
+        if current_user.role == UserRole.REJECTFIRSTCERT:
+            return {"vehicles": []}
+        
         # Ищем по имени или номеру
         if current_user.role == UserRole.MECHANIC:
             # Механики могут искать по всем статусам включая занятые
@@ -407,6 +420,9 @@ def get_frequently_used_vehicles(
 ) -> Dict[str, Any]:
     try:
         if current_user.role == UserRole.REJECTFIRST:
+            return {"vehicles": []}
+        
+        if current_user.role == UserRole.REJECTFIRSTCERT:
             return {"vehicles": []}
         
         # Сначала проверяем, есть ли активная аренда

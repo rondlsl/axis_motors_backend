@@ -86,6 +86,13 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
             detail="Необходимо загрузить документы заново"
         )
     
+    # Пользователи без сертификатов не могут арендовать
+    if current_user.role == UserRole.REJECTFIRSTCERT:
+        raise HTTPException(
+            status_code=403, 
+            detail="Необходимо прикрепить недостающие сертификаты"
+        )
+    
     # Пользователи с финансовыми проблемами не могут арендовать
     if current_user.role == UserRole.REJECTFIRST:
         raise HTTPException(
