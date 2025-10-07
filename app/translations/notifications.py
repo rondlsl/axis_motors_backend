@@ -4,9 +4,9 @@ NOTIFICATIONS_TRANSLATIONS = {
         "financier_reject_documents_title": "Заявка отклонена",
         "financier_reject_documents_body": "Ваши документы нечитабельны, пожалуйста, прикрепите их снова.",
         
-        # Отклонение финансистом - отсутствуют справки для граждан Казахстана
-        "financier_reject_spravki_title": "Заявка отклонена",
-        "financier_reject_spravki_body": "Как гражданин Республики Казахстан, вы обязаны предоставить справки: психоневрологическую, наркологическую, о пенсионных взносах и справку об отсутствии судимости. Пожалуйста, прикрепите недостающие документы.",
+        # Отклонение финансистом - отсутствуют сертификаты для граждан Казахстана
+        "financier_reject_certificates_title": "Заявка отклонена",
+        "financier_reject_certificates_body": "Как гражданин Республики Казахстан, вы обязаны предоставить справки: психоневрологическую, наркологическую, о пенсионных взносах и справку об отсутствии судимости. Пожалуйста, прикрепите недостающие документы.",
         
         # Отклонение финансистом - финансовые причины
         "financier_reject_financial_title": "Заявка отклонена",
@@ -75,9 +75,9 @@ NOTIFICATIONS_TRANSLATIONS = {
         "financier_reject_documents_title": "Application Rejected",
         "financier_reject_documents_body": "Your documents are unreadable, please attach them again.",
         
-        # Отклонение финансистом - отсутствуют справки для граждан Казахстана
-        "financier_reject_spravki_title": "Application Rejected",
-        "financier_reject_spravki_body": "As a citizen of the Republic of Kazakhstan, you are required to provide certificates: psychoneurological, narcological, pension contributions, and criminal record certificate. Please attach the missing documents.",
+        # Отклонение финансистом - отсутствуют сертификаты для граждан Казахстана
+        "financier_reject_certificates_title": "Application Rejected",
+        "financier_reject_certificates_body": "As a citizen of the Republic of Kazakhstan, you are required to provide certificates: psychoneurological, narcological, pension contributions, and criminal record certificate. Please attach the missing documents.",
         
         # Отклонение финансистом - финансовые причины
         "financier_reject_financial_title": "Application Rejected",
@@ -146,9 +146,9 @@ NOTIFICATIONS_TRANSLATIONS = {
         "financier_reject_documents_title": "Өтініш бас тартылды",
         "financier_reject_documents_body": "Сіздің құжаттарыңыз оқылмайды, қайта тіркеңіз.",
         
-        # Отклонение финансистом - отсутствуют справки для граждан Казахстана
-        "financier_reject_spravki_title": "Өтініш бас тартылды",
-        "financier_reject_spravki_body": "Қазақстан Республикасының азаматы ретінде сіз справкаларды ұсынуға міндеттісіз: психоневрологиялық, наркологиялық, зейнетақы жарналары және сотталу туралы справка. Жетіспейтін құжаттарды тіркеңіз.",
+        # Отклонение финансистом - отсутствуют сертификаты для граждан Казахстана
+        "financier_reject_certificates_title": "Өтініш бас тартылды",
+        "financier_reject_certificates_body": "Қазақстан Республикасының азаматы ретінде сіз справкаларды ұсынуға міндеттісіз: психоневрологиялық, наркологиялық, зейнетақы жарналары және сотталу туралы справка. Жетіспейтін құжаттарды тіркеңіз.",
         
         # Отклонение финансистом - финансовые причины
         "financier_reject_financial_title": "Өтініш бас тартылды",

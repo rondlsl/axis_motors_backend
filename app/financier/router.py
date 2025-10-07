@@ -285,7 +285,7 @@ async def reject_application(
         reason: Optional[str] = Query(None, description="Причина отклонения"),
         reason_type: Optional[str] = Query(
             None,
-            description="Тип причины: 'financial', 'documents' или 'spravki'",
+            description="Тип причины: 'financial', 'documents' или 'certificates'",
         ),
         db: Session = Depends(get_db),
         current_financier: User = Depends(get_current_financier)
@@ -313,8 +313,8 @@ async def reject_application(
     # Выставляем подробную роль-отказ в зависимости от типа
     if reason_type == "documents":
         user.role = UserRole.REJECTFIRSTDOC
-    elif reason_type == "spravki":
-        user.role = UserRole.REJECTFIRSTSPRAV
+    elif reason_type == "certificates":
+        user.role = UserRole.REJECTFIRSTCERT
     else:
         user.role = UserRole.REJECTFIRST
     
@@ -348,8 +348,8 @@ async def reject_application(
     try:
         if reason_type == "documents":
             translation_key = "financier_reject_documents"
-        elif reason_type == "spravki":
-            translation_key = "financier_reject_spravki"
+        elif reason_type == "certificates":
+            translation_key = "financier_reject_certificates"
         else:
             translation_key = "financier_reject_financial"
         
