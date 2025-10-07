@@ -861,6 +861,9 @@ async def upload_documents(
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
 ):
+    # Инициализируем переменную для email верификации
+    email_needs_verification = False
+    
     # Валидация типов обязательных файлов
     image_docs = [
         id_front,
@@ -973,7 +976,6 @@ async def upload_documents(
         # Если пользователь повторно загружает документы (был отклонен), но email уже подтвержден - сбрасываем верификацию
         # Если email изменился - тоже сбрасываем верификацию
         # Если email новый и еще не подтвержден - оставляем как есть
-        email_needs_verification = False
         
         if existing_application and existing_application.financier_status == ApplicationStatus.REJECTED:
             # Пользователь повторно загружает документы после отказа
@@ -1091,8 +1093,10 @@ async def upload_documents(
     except Exception as e:
         db.rollback()
         try:
-            logger.error(f"Error in /auth/upload-documents: {e}")
+            logger.error(f"Error in /auth/upload-documents for user {current_user.id}: {e}")
             logger.error(traceback.format_exc())
+            # Логируем дополнительную информацию для диагностики
+            logger.error(f"User role: {current_user.role}, Email: {current_user.email}")
         except Exception:
             pass
         raise HTTPException(
