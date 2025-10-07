@@ -1,5 +1,6 @@
 import httpx
-from app.core.config import SMS_TOKEN
+import logging
+from app.core.config import SMS_TOKEN, logger
 
 
 async def send_sms_mobizon(recipient: str, sms_text: str, api_key: str):
@@ -8,15 +9,48 @@ async def send_sms_mobizon(recipient: str, sms_text: str, api_key: str):
     params = {
         "recipient": recipient,
         "text": sms_text,
-        "apiKey": api_key
+        "apiKey": api_key,
+        "from": "AZV Motors"
     }
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url, params=params)
-        return response.text
+    
+    # Логируем детали запроса
+    logger.info(f"[MOBIZON REQUEST] URL: {url}")
+    logger.info(f"[MOBIZON REQUEST] Recipient: {recipient}")
+    logger.info(f"[MOBIZON REQUEST] Text: {sms_text}")
+    logger.info(f"[MOBIZON REQUEST] From: AZV Motors")
+    logger.info(f"[MOBIZON REQUEST] API Key: {api_key[:8]}...{api_key[-4:] if len(api_key) > 12 else '***'}")
+    
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            logger.info(f"[MOBIZON REQUEST] Sending HTTP GET request...")
+            response = await client.get(url, params=params)
+            
+            logger.info(f"[MOBIZON RESPONSE] Status Code: {response.status_code}")
+            logger.info(f"[MOBIZON RESPONSE] Response Headers: {dict(response.headers)}")
+            logger.info(f"[MOBIZON RESPONSE] Response Text: {response.text}")
+            
+            if response.status_code == 200:
+                logger.info(f"[MOBIZON SUCCESS] SMS sent successfully to {recipient}")
+            else:
+                logger.error(f"[MOBIZON ERROR] Failed to send SMS. Status: {response.status_code}")
+            
+            return response.text
+            
+    except httpx.TimeoutException as e:
+        logger.error(f"[MOBIZON TIMEOUT] Request timeout: {e}")
+        raise
+    except httpx.RequestError as e:
+        logger.error(f"[MOBIZON REQUEST ERROR] Network error: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"[MOBIZON UNEXPECTED ERROR] Unexpected error: {e}")
+        raise
 
 
 async def send_guarantor_invitation_sms(guarantor_phone: str, requestor_first_name: str, requestor_last_name: str = None):
     """Отправка SMS приглашения гаранту"""
+    logger.info(f"[GUARANTOR SMS] Starting guarantor invitation SMS to {guarantor_phone}")
+    
     # Формируем имя для SMS
     if requestor_last_name:
         requestor_display_name = f"{requestor_first_name} {requestor_last_name}"
@@ -25,15 +59,21 @@ async def send_guarantor_invitation_sms(guarantor_phone: str, requestor_first_na
     
     sms_text = f"{requestor_display_name} выбрал(а) вас в качестве Гаранта. Перейдите по ссылке и скачайте приложение"
     
+    logger.info(f"[GUARANTOR SMS] SMS text: {sms_text}")
+    
     # Если SMS_TOKEN = "6666" - тестовый режим, SMS не отправляем
     if SMS_TOKEN == "6666":
+        logger.info(f"[GUARANTOR SMS] TEST MODE - SMS not sent to {guarantor_phone}: {sms_text}")
         print(f"TEST SMS to {guarantor_phone}: {sms_text}")
         return {"message": "TEST SMS sent successfully"}
     
     try:
+        logger.info(f"[GUARANTOR SMS] Calling send_sms_mobizon for {guarantor_phone}")
         result = await send_sms_mobizon(guarantor_phone, sms_text, SMS_TOKEN)
+        logger.info(f"[GUARANTOR SMS] Successfully sent invitation SMS to {guarantor_phone}")
         return {"message": "SMS sent successfully", "result": result}
     except Exception as e:
+        logger.error(f"[GUARANTOR SMS ERROR] Failed to send SMS to {guarantor_phone}: {e}")
         print(f"SMS sending error: {e}")
         return {"message": "SMS sending failed", "error": str(e)}
 
