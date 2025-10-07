@@ -13,10 +13,12 @@ from app.models.user_model import User, UserRole
 from app.wallet.utils import record_wallet_transaction
 from app.models.wallet_transaction_model import WalletTransactionType
 from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
-from app.core.config import TELEGRAM_BOT_TOKEN
+from app.core.config import TELEGRAM_BOT_TOKEN, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
+from app.gps_api.utils.auth_api import get_auth_token
+from app.gps_api.utils.car_data import send_lock_engine
 
-# Кэш флагов уведомлений: rental_id -> flags
-_notification_flags: dict[int, dict[str, bool]] = {}
+# Кэш флагов уведомлений: rental_id -> flags (в т.ч. timestamp нулевого баланса)
+_notification_flags: dict[int, dict[str, object]] = {}
 
 
 async def billing_job():
@@ -28,7 +30,7 @@ async def billing_job():
       4) Yield control to event loop.
     """
     # 1) Run sync processing in thread pool
-    push_notifications, telegram_alerts = await asyncio.to_thread(process_rentals_sync)
+    push_notifications, telegram_alerts, lock_requests = await asyncio.to_thread(process_rentals_sync)
 
     # 2) Open one DB session
     db = SessionLocal()
@@ -53,13 +55,35 @@ async def billing_job():
             )
 
     for text in telegram_alerts:
-        for chat_id in (965048905, 5941825713):
+        for chat_id in (965048905, 5941825713, 860991388):
             asyncio.create_task(_send_telegram(text, chat_id))
+
+    # 5) Выполняем блокировки двигателя для просроченных (10+ минут) нулевых балансов
+    try:
+        if lock_requests:
+            auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+            for imei, car_name, user_id in lock_requests:
+                try:
+                    await send_lock_engine(imei, auth_token)
+                    # Уведомим пользователя в приложение
+                    asyncio.create_task(send_localized_notification_to_user(db, user_id, "engine_locked_due_to_balance", "engine_locked_due_to_balance", car_name=car_name))
+                    # И в телеграм
+                    note = f"🛑 Двигатель заблокирован из-за нулевого баланса. Авто: {car_name} (IMEI {imei}), user_id={user_id}"
+                    for chat_id in (965048905, 5941825713, 860991388):
+                        asyncio.create_task(_send_telegram(note, chat_id))
+                except Exception as e:
+                    err = f"⚠️ Ошибка блокировки двигателя (IMEI {imei}): {e}"
+                    for chat_id in (965048905, 5941825713, 860991388):
+                        asyncio.create_task(_send_telegram(err, chat_id))
+    except Exception as e:
+        for chat_id in (965048905, 5941825713, 860991388):
+            asyncio.create_task(_send_telegram(f"⚠️ Ошибка при обработке блокировок двигателя: {e}", chat_id))
+
     # 6) Yield back to event loop
     await asyncio.sleep(0)
 
 
-def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
+def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[tuple[str, str, int]]]:
     """
     Синхронная часть биллинга:
       1) RESERVED → за 1 мин до ожидания + первое платное списание
@@ -77,6 +101,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
     now = datetime.utcnow()
     push_notifications: list[tuple[int, str, str]] = []
     telegram_alerts: list[str] = []
+    lock_requests: list[tuple[str, str, int]] = []  # (imei, car_name, user_id)
 
     rentals = (
         db.query(RentalHistory)
@@ -318,11 +343,27 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
                         if 0 < user.wallet_balance <= 1000 and not flags["low_balance_1000"] and user.fcm_token:
                             flags["low_balance_1000"] = True
 
-                        if user.wallet_balance <= 0 and not flags["low_balance_zero"] and user.fcm_token:
-                            flags["low_balance_zero"] = True
-                            telegram_alerts.append(
-                                f"🔔 У клиента (тел.: {user.phone_number}) на авто ID {car.id} баланс исчерпан."
-                            )
+                        # Нулевой баланс → помечаем время и предупреждаем о предстоящей блокировке через 10 минут
+                        if user.wallet_balance <= 0:
+                            if not flags.get("balance_zero_at"):
+                                flags["balance_zero_at"] = now
+                                flags["low_balance_zero"] = True
+                                telegram_alerts.append(
+                                    f"🔔 Баланс исчерпан. Клиент {user.phone_number}, авто {car.name} (ID {car.id}). Через 10 минут будет блокировка двигателя, если баланс не пополнится."
+                                )
+                            else:
+                                zero_at = flags.get("balance_zero_at")
+                                try:
+                                    elapsed_min = (now - zero_at).total_seconds() / 60  # type: ignore[arg-type]
+                                except Exception:
+                                    elapsed_min = 0
+                                if elapsed_min >= 10 and not flags.get("engine_lock_scheduled"):
+                                    flags["engine_lock_scheduled"] = True
+                                    if car.gps_imei:
+                                        lock_requests.append((car.gps_imei, car.name, user.id))
+                                        telegram_alerts.append(
+                                            f"⏱️ 10 минут с нулевого баланса истекли. Планируется блокировка двигателя. Авто: {car.name} (IMEI {car.gps_imei})."
+                                        )
 
                 else:
                     factor = 60 if rental.rental_type == RentalType.HOURS else 1440
@@ -438,4 +479,4 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str]]:
             _notification_flags.pop(rid)
 
     db.close()
-    return push_notifications, telegram_alerts
+    return push_notifications, telegram_alerts, lock_requests

@@ -1636,6 +1636,7 @@ async def complete_rental(
 
     # 10) Рассчитать топливный сбор (включать только при необходимости)
     fuel_fee = 0
+    fuel_consumed = 0
     if rental.fuel_before is not None and rental.fuel_after is not None:
         fuel_consumed = rental.fuel_before - rental.fuel_after
         if fuel_consumed > 0:
@@ -1665,8 +1666,8 @@ async def complete_rental(
             current_user.wallet_balance -= amount_to_charge
             rental.already_payed = (rental.already_payed or 0) + amount_to_charge
     else:
-        # Клиент: топливо учитываем только для часового и суточного тарифов
-        if rental.rental_type in (RentalType.HOURS, RentalType.DAYS) and fuel_fee > 0:
+        # Клиент: теперь топливо учитываем для всех тарифов (включая поминутный)
+        if fuel_fee > 0:
             rental.base_price = (rental.base_price or 0) + fuel_fee
 
         # Итоговая сумма
@@ -1681,7 +1682,7 @@ async def complete_rental(
         previous_paid = rental.already_payed or 0
         amount_to_charge = rental.total_price - previous_paid
 
-        # Разделяем единовременное списание: сперва сверхтариф одной транзакцией, остаток — базовым списанием
+        # Разделяем единовременное списание: сверхтариф, топливо (если есть), затем базовое списание
         if amount_to_charge > 0:
             overtime_to_charge = rental.overtime_fee or 0
             remainder = amount_to_charge
@@ -1695,6 +1696,17 @@ async def complete_rental(
                     description=f"Сверхтариф {overtime_mins} мин",
                 )
                 remainder -= charge_now
+            # Отдельной транзакцией списываем топливо, если считалось (для всех тарифов)
+            if (fuel_fee > 0) and (remainder > 0):
+                fuel_charge = min(fuel_fee, remainder)
+                record_wallet_transaction(
+                    db,
+                    user=current_user,
+                    amount=-fuel_charge,
+                    ttype=WalletTransactionType.RENT_FUEL_FEE,
+                    description=f"Оплата топлива: {round(fuel_consumed, 1)} л × {FUEL_PRICE_PER_LITER} = {fuel_fee}",
+                )
+                remainder -= fuel_charge
             if remainder > 0:
                 record_wallet_transaction(
                     db,
