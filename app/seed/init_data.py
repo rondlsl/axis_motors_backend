@@ -154,7 +154,7 @@ def create_cars(db: Session, owner: User) -> None:
 
 def create_mechanic(db: Session) -> None:
     """Создает механика"""
-    mechanic_phone = "77007007070"
+    mechanic_phone = "71234567890"
     mechanic = db.query(User).filter(User.phone_number == mechanic_phone).first()
     
     if not mechanic:
