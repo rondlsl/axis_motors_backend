@@ -817,7 +817,7 @@ async def refresh_token(db: Session = Depends(get_db), token: str = Depends(JWTB
 - selfie_with_license: Селфи с водительскими правами (JPEG/PNG)
 - selfie: Обычное селфи (JPEG/PNG)
 
-**Необязательные файлы:**
+**Необязательные файлы (для граждан Казахстана обязательны):**
 - psych_neurology_certificate: Справка из психоневрологического диспансера (изображение/PDF)
 - narcology_certificate: Справка из наркологического диспансера (изображение/PDF)
 - pension_contributions_certificate: Справка о пенсионных отчислениях (изображение/PDF)
@@ -831,7 +831,8 @@ async def refresh_token(db: Session = Depends(get_db), token: str = Depends(JWTB
 - passport_number: Номер паспорта (можно указать вместо ИИН)
 - id_card_expiry: Дата истечения ID карты в формате YYYY-MM-DD (будущая дата). Пример: "2030-12-31"
 - drivers_license_expiry: Дата истечения прав в формате YYYY-MM-DD (будущая дата). Пример: "2029-08-20"
-- email: Электронная почта (необязательное поле)
+- email: Электронная почта
+- is_citizen_kz: Гражданин Республики Казахстан (true/false). Если true, то справки обязательны
 
 После успешной загрузки статус пользователя изменится на PENDING (ожидает проверки).
                   """)
@@ -842,7 +843,7 @@ async def upload_documents(
         drivers_license: UploadFile = File(...),
         selfie_with_license: UploadFile = File(...),
         selfie: UploadFile = File(...),
-        
+
         # Необязательные файлы справок
         psych_neurology_certificate: Optional[UploadFile] = File(None),
         narcology_certificate: Optional[UploadFile] = File(None),
@@ -865,12 +866,12 @@ async def upload_documents(
 ):
     # Инициализируем переменную для email верификации
     email_needs_verification = False
-    
-    # Проверяем, что пользователь существует и активен
+
+    # Проверяем, что пользователь существует
     if not current_user or not current_user.id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Пользователь не найден или не авторизован"
+            detail="User not found or invalid"
         )
     
     # Правильно обрабатываем is_citizen_kz (может прийти как строка из формы)
@@ -885,7 +886,7 @@ async def upload_documents(
         selfie_with_license,
         selfie,
     ]
-    
+
     # Необязательные файлы справок (фильтруем None)
     cert_docs = [
         psych_neurology_certificate,
@@ -893,7 +894,7 @@ async def upload_documents(
         pension_contributions_certificate,
         criminal_record_certificate,
     ]
-    
+
     # Валидация обязательных файлов
     for doc in image_docs:
         if doc.content_type not in ALLOWED_TYPES:
@@ -901,7 +902,7 @@ async def upload_documents(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"File {doc.filename} is not an image. Only JPEG and PNG are allowed."
             )
-    
+
     # Валидация необязательных файлов справок (только если они предоставлены)
     for doc in cert_docs:
         if doc is not None and doc.content_type not in CERT_ALLOWED_TYPES:
@@ -959,7 +960,7 @@ async def upload_documents(
         narcology_path = None
         pension_path = None
         criminal_record_path = None
-        
+
         if psych_neurology_certificate is not None:
             psych_neuro_path = await save_file(psych_neurology_certificate, current_user.id, "uploads/documents")
         if narcology_certificate is not None:
@@ -969,17 +970,13 @@ async def upload_documents(
         if criminal_record_certificate is not None:
             criminal_record_path = await save_file(criminal_record_certificate, current_user.id, "uploads/documents")
 
-        old_email = current_user.email or ""
+        # Сохраняем старый email для сравнения ДО обновления
+        old_email = current_user.email
+        
         # Обновление данных пользователя
         current_user.first_name = document_data.first_name
         current_user.last_name = document_data.last_name
-        try:
-            current_user.birth_date = datetime.strptime(document_data.birth_date, '%Y-%m-%d')
-        except ValueError as e:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Некорректная дата рождения: {e}"
-            )
+        current_user.birth_date = datetime.strptime(document_data.birth_date, '%Y-%m-%d')
         current_user.email = email
         current_user.is_citizen_kz = document_data.is_citizen_kz
         # Сохраняем ИИН или паспорт
@@ -988,22 +985,10 @@ async def upload_documents(
 
         current_user.id_card_front_url = id_front_path
         current_user.id_card_back_url = id_back_path
-        try:
-            current_user.id_card_expiry = datetime.strptime(document_data.id_card_expiry, '%Y-%m-%d')
-        except ValueError as e:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Некорректная дата окончания удостоверения личности: {e}"
-            )
+        current_user.id_card_expiry = datetime.strptime(document_data.id_card_expiry, '%Y-%m-%d')
 
         current_user.drivers_license_url = license_path
-        try:
-            current_user.drivers_license_expiry = datetime.strptime(document_data.drivers_license_expiry, '%Y-%m-%d')
-        except ValueError as e:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Некорректная дата окончания водительских прав: {e}"
-            )
+        current_user.drivers_license_expiry = datetime.strptime(document_data.drivers_license_expiry, '%Y-%m-%d')
 
         current_user.selfie_with_license_url = selfie_with_license_path
         current_user.selfie_url = selfie_path
@@ -1017,17 +1002,15 @@ async def upload_documents(
         # Стартовый этап после загрузки документов — ожидание финансиста
         current_user.role = UserRole.PENDINGTOFIRST
         current_user.documents_verified = True
-
+    
         # Создаем/обновляем заявку для проверки документов (idempotent)
-        logger.info("Processing application...")
         existing_application = db.query(Application).filter(Application.user_id == current_user.id).first()
-        logger.info(f"Existing application: {existing_application.id if existing_application else 'None'}")
-        
+
         # Логика для email верификации:
         # Если пользователь повторно загружает документы (был отклонен), но email уже подтвержден - сбрасываем верификацию
         # Если email изменился - тоже сбрасываем верификацию
         # Если email новый и еще не подтвержден - оставляем как есть
-        
+
         if existing_application and existing_application.financier_status == ApplicationStatus.REJECTED:
             # Пользователь повторно загружает документы после отказа
             if current_user.is_verified_email:
@@ -1065,12 +1048,12 @@ async def upload_documents(
             guarantor_requests = db.query(GuarantorRequest).filter(
                 GuarantorRequest.guarantor_id == current_user.id
             ).all()
-            
+
             for request in guarantor_requests:
                 request.guarantor_phone = current_user.phone_number
         except Exception as e:
-            logger.warning(f"Ошибка при обновлении заявок гаранта: {e}")
             # Продолжаем выполнение без обработки гарантов
+            pass
 
         # Записываем код подтверждения email и отправляем его на почту
         try:
@@ -1145,10 +1128,8 @@ async def upload_documents(
     except Exception as e:
         db.rollback()
         try:
-            logger.error(f"Error in /auth/upload-documents for user {current_user.id}: {e}")
+            logger.error(f"Error in /auth/upload-documents: {e}")
             logger.error(traceback.format_exc())
-            # Логируем дополнительную информацию для диагностики
-            logger.error(f"User role: {current_user.role}, Email: {current_user.email}")
         except Exception:
             pass
         raise HTTPException(
@@ -1178,4 +1159,3 @@ async def delete_account(
     current_user.is_active = False
     db.commit()
     return {"message": "Аккаунт помечен как неактивный."}
-
