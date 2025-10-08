@@ -7,6 +7,12 @@ class LocaleUpdate(BaseModel):
     locale: str
 
 
+class SelfieUploadResponse(BaseModel):
+    message: str = Field(..., description="Сообщение об успешной загрузке")
+    selfie_url: str = Field(..., description="URL загруженного селфи")
+    user_id: int = Field(..., description="ID пользователя")
+
+
 class SendSmsRequest(BaseModel):
     phone_number: constr(min_length=11, max_length=11)
     first_name: str = Field(

@@ -37,13 +37,15 @@ def init_test_data(db: Session) -> None:
 def create_owner(db: Session) -> User:
     """Создает владельца автомобилей"""
     owner_phone = "77000250400"
+    owner_iin = "980601523456" 
     owner = db.query(User).filter(User.phone_number == owner_phone).first()
     
     if not owner:
         owner = User(
             phone_number=owner_phone, 
             role=UserRole.CLIENT, 
-            wallet_balance=0
+            wallet_balance=0,
+            iin=owner_iin
         )
         db.add(owner)
         db.commit()
@@ -155,13 +157,15 @@ def create_cars(db: Session, owner: User) -> None:
 def create_mechanic(db: Session) -> None:
     """Создает механика"""
     mechanic_phone = "71234567890"
+    mechanic_iin = "950301523456" 
     mechanic = db.query(User).filter(User.phone_number == mechanic_phone).first()
     
     if not mechanic:
         mechanic = User(
             phone_number=mechanic_phone, 
             role=UserRole.MECHANIC, 
-            wallet_balance=0
+            wallet_balance=0,
+            iin=mechanic_iin
         )
         db.add(mechanic)
         db.commit()
@@ -176,6 +180,7 @@ def create_system_users(db: Session) -> None:
     
     # Финансист
     financier_phone = "77777777771"
+    financier_iin = "970401523457"  
     financier = db.query(User).filter(User.phone_number == financier_phone).first()
     if not financier:
         financier = User(
@@ -185,6 +190,7 @@ def create_system_users(db: Session) -> None:
             role=UserRole.FINANCIER,
             documents_verified=True,
             is_active=True,
+            iin=financier_iin,
         )
         db.add(financier)
         db.commit()
@@ -195,6 +201,7 @@ def create_system_users(db: Session) -> None:
 
     # МВД
     mvd_phone = "77777777772"
+    mvd_iin = "970205558210"  
     mvd_user = db.query(User).filter(User.phone_number == mvd_phone).first()
     if not mvd_user:
         mvd_user = User(
@@ -204,6 +211,7 @@ def create_system_users(db: Session) -> None:
             role=UserRole.MVD,
             documents_verified=True,
             is_active=True,
+            iin=mvd_iin,
         )
         db.add(mvd_user)
         db.commit()
