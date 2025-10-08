@@ -1,3 +1,4 @@
+from math import ceil, floor
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
@@ -124,7 +125,7 @@ async def accept_delivery(
     # Назначаем механика и переводим в DELIVERY_RESERVED
     rental.delivery_mechanic_id = current_mechanic.id
     rental.rental_status = RentalStatus.DELIVERY_RESERVED
-    rental.fuel_before = car.fuel_level
+    rental.fuel_before = ceil(car.fuel_level) if car.fuel_level is not None else None
     rental.mileage_before = car.mileage
 
     db.commit()
@@ -234,7 +235,7 @@ async def complete_delivery(
             missing.append("внешний вид")
         raise HTTPException(status_code=400, detail=f"Для завершения доставки загрузите фото: {', '.join(missing)}")
 
-    rental.fuel_after = car.fuel_level
+    rental.fuel_after = floor(car.fuel_level) if car.fuel_level is not None else None
     rental.mileage_after = car.mileage
 
     # Записываем время окончания доставки

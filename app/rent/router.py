@@ -928,7 +928,7 @@ async def start_rental(
                 detail=f"Перед стартом аренды загрузите фото: {', '.join(missing)}"
             )
 
-    rental.fuel_before = car.fuel_level
+    rental.fuel_before = ceil(car.fuel_level) if car.fuel_level is not None else None
     rental.mileage_before = car.mileage
 
     if car.owner_id == current_user.id:
@@ -1608,7 +1608,7 @@ async def complete_rental(
     rental.end_time = now
     rental.end_latitude = car.latitude
     rental.end_longitude = car.longitude
-    rental.fuel_after = car.fuel_level
+    rental.fuel_after = floor(car.fuel_level) if car.fuel_level is not None else None
     rental.mileage_after = car.mileage
     rental.rental_status = RentalStatus.COMPLETED
 
@@ -1697,11 +1697,7 @@ async def complete_rental(
             current_user.wallet_balance -= amount_to_charge
             rental.already_payed = (rental.already_payed or 0) + amount_to_charge
     else:
-        # Клиент: теперь топливо учитываем для всех тарифов (включая поминутный)
-        if fuel_fee > 0:
-            rental.base_price = (rental.base_price or 0) + fuel_fee
-
-        # Итоговая сумма
+        # Итоговая сумма БЕЗ топлива (топливо списываем отдельно)
         rental.total_price = (
             (rental.base_price or 0)
             + rental.open_fee
@@ -1713,7 +1709,18 @@ async def complete_rental(
         previous_paid = rental.already_payed or 0
         amount_to_charge = rental.total_price - previous_paid
 
-        # Разделяем единовременное списание: сверхтариф, топливо (если есть), затем базовое списание
+        # Сначала списываем топливо отдельной транзакцией (если есть)
+        if fuel_fee > 0:
+            record_wallet_transaction(
+                db,
+                user=current_user,
+                amount=-fuel_fee,
+                ttype=WalletTransactionType.RENT_FUEL_FEE,
+                description=f"Оплата топлива: {round(fuel_consumed, 1)} л × {FUEL_PRICE_PER_LITER} = {fuel_fee}",
+            )
+            current_user.wallet_balance -= fuel_fee
+
+        # Затем списываем остальную сумму: сверхтариф + базовая плата
         if amount_to_charge > 0:
             overtime_to_charge = rental.overtime_fee or 0
             remainder = amount_to_charge
@@ -1727,17 +1734,6 @@ async def complete_rental(
                     description=f"Сверхтариф {overtime_mins} мин",
                 )
                 remainder -= charge_now
-            # Отдельной транзакцией списываем топливо, если считалось (для всех тарифов)
-            if (fuel_fee > 0) and (remainder > 0):
-                fuel_charge = min(fuel_fee, remainder)
-                record_wallet_transaction(
-                    db,
-                    user=current_user,
-                    amount=-fuel_charge,
-                    ttype=WalletTransactionType.RENT_FUEL_FEE,
-                    description=f"Оплата топлива: {round(fuel_consumed, 1)} л × {FUEL_PRICE_PER_LITER} = {fuel_fee}",
-                )
-                remainder -= fuel_charge
             if remainder > 0:
                 record_wallet_transaction(
                     db,

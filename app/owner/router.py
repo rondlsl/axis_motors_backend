@@ -512,10 +512,18 @@ async def get_trip_details(
     # Заработок
     earnings = calculate_owner_earnings(trip)
 
-    # Фотографии
+    # Фотографии (исключаем селфи клиента)
+    client_before_photos = []
+    if trip.photos_before:
+        client_before_photos = [photo for photo in trip.photos_before if "/selfie/" not in photo and "\\selfie\\" not in photo]
+    
+    client_after_photos = []
+    if trip.photos_after:
+        client_after_photos = [photo for photo in trip.photos_after if "/selfie/" not in photo and "\\selfie\\" not in photo]
+    
     photos = TripPhotos(
-        client_before=PhotoGroup(photos=trip.photos_before or []),
-        client_after=PhotoGroup(photos=trip.photos_after or [])
+        client_before=PhotoGroup(photos=client_before_photos),
+        client_after=PhotoGroup(photos=client_after_photos)
     )
 
     # Маршрут с GPS данными
