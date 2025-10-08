@@ -159,15 +159,25 @@ def get_trip_history(
             fuel_consumed = rental.fuel_before - rental.fuel_after
             if fuel_consumed > 0:
                 is_owner = car.owner_id == rental.user_id
-                if is_owner or rental.rental_type in (RentalType.HOURS, RentalType.DAYS):
+                if is_owner:
+                    # Владелец платит полную стоимость топлива
                     fuel_fee_display = int(fuel_consumed * FUEL_PRICE_PER_LITER)
+                elif rental.rental_type in (RentalType.HOURS, RentalType.DAYS):
+                    # Для клиентов топливо включено в стоимость только для часов/дней
+                    fuel_fee_display = int(fuel_consumed * FUEL_PRICE_PER_LITER)
+        
+        # Рассчитываем итоговую стоимость для отображения
+        final_total_price = rental.total_price
+        if car.owner_id == rental.user_id:
+            # Для владельца показываем только стоимость топлива
+            final_total_price = fuel_fee_display
         
         result.append({
             "history_id": rental.id,
             # Сдвиг +5 ч
             "date": apply_offset(rental.end_time),
             "car_name": car.name,
-            "final_total_price": rental.total_price,
+            "final_total_price": final_total_price,
             # Детализация
             "base_price": rental.base_price or 0,
             "open_fee": rental.open_fee or 0,
@@ -243,8 +253,8 @@ async def get_trip_history_detail(
         "fuel_fee": (lambda: (
             (int((rental.fuel_before - rental.fuel_after) * FUEL_PRICE_PER_LITER)
              if rental.fuel_before is not None and rental.fuel_after is not None and
-                ((car.owner_id == rental.user_id) or (rental.rental_type in (RentalType.HOURS, RentalType.DAYS))) and
-                (rental.fuel_before - rental.fuel_after) > 0 else 0)
+                (rental.fuel_before - rental.fuel_after) > 0 and
+                (car.owner_id == rental.user_id or rental.rental_type in (RentalType.HOURS, RentalType.DAYS)) else 0)
         ))(),
         "fuel_before": rental.fuel_before,
         "fuel_after": rental.fuel_after,

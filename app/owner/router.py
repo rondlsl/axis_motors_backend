@@ -40,7 +40,7 @@ def apply_offset(dt: datetime) -> str | None:
 def calculate_fuel_cost(rental: RentalHistory, car: Car, current_user: User) -> int:
     """
     Рассчитывает стоимость топлива для поездки.
-    Если поездка была совершена владельцем, то 50% стоимости топлива списывается с его баланса.
+    Если поездка была совершена владельцем, то полная стоимость топлива списывается с его баланса.
     """
     if rental.fuel_before is None or rental.fuel_after is None:
         return 0
@@ -51,8 +51,8 @@ def calculate_fuel_cost(rental: RentalHistory, car: Car, current_user: User) -> 
     
     # Если поездка была совершена владельцем
     if rental.user_id == car.owner_id:
-        # Владелец платит 50% от стоимости топлива
-        fuel_cost = int(fuel_consumed * FUEL_PRICE_PER_LITER * 0.5)
+        # Владелец платит полную стоимость топлива
+        fuel_cost = int(fuel_consumed * FUEL_PRICE_PER_LITER)
         return fuel_cost
     
     # Для обычных клиентов топливо уже включено в общую стоимость
@@ -61,21 +61,19 @@ def calculate_fuel_cost(rental: RentalHistory, car: Car, current_user: User) -> 
 
 def calculate_owner_earnings(rental: RentalHistory, car: Car, current_user: User) -> int:
     """
-    Рассчитывает заработок владельца с поездки с учетом стоимости топлива.
-    Владелец получает всю сумму total_price, но если это была его поездка,
-    то из заработка вычитается 50% стоимости топлива.
+    Рассчитывает заработок владельца с поездки.
+    Если поездка была совершена владельцем, то заработок = 0 (владелец не зарабатывает на своих поездках).
+    Для поездок клиентов владелец получает только 50% от общей суммы.
     """
     if not rental.total_price:
         return 0
     
-    base_earnings = rental.total_price
-    
-    # Если поездка была совершена владельцем, вычитаем 50% стоимости топлива
+    # Если поездка была совершена владельцем, заработок = 0
     if rental.user_id == car.owner_id:
-        fuel_cost = calculate_fuel_cost(rental, car, current_user)
-        return base_earnings - fuel_cost
+        return 0
     
-    return base_earnings
+    # Для обычных клиентов владелец получает 50% от общей суммы
+    return int(rental.total_price * 0.5)
 
 
 @OwnerRouter.get(
