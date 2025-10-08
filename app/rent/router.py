@@ -939,6 +939,22 @@ async def start_rental(
         rental.open_fee = 0
         # waiting_fee, overtime_fee, distance_fee остаются прежними (nullable)
         db.commit()
+        
+        # Автоматическая разблокировка двигателя при начале аренды (для владельца)
+        try:
+            from app.gps_api.utils.auth_api import get_auth_token
+            from app.gps_api.utils.car_data import send_unlock_engine
+            
+            # Получаем токен для GPS API
+            from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
+            auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+            
+            # Разблокируем двигатель
+            await send_unlock_engine(car.gps_imei, auth_token)
+            print(f"Двигатель автомобиля {car.name} разблокирован при начале аренды (владелец)")
+        except Exception as e:
+            print(f"Ошибка разблокировки двигателя при начале аренды (владелец): {e}")
+        
         return {"message": "Rental started successfully (owner rental)", "rental_id": rental.id}
     else:
         # Если аренда минутная или часовая, списываем с баланса open_price, вычисленный через get_open_price
@@ -966,6 +982,21 @@ async def start_rental(
         car.status = CarStatus.IN_USE
 
         db.commit()
+
+        # Автоматическая разблокировка двигателя при начале аренды
+        try:
+            from app.gps_api.utils.auth_api import get_auth_token
+            from app.gps_api.utils.car_data import send_unlock_engine
+            
+            # Получаем токен для GPS API
+            from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
+            auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+            
+            # Разблокируем двигатель
+            await send_unlock_engine(car.gps_imei, auth_token)
+            print(f"Двигатель автомобиля {car.name} разблокирован при начале аренды")
+        except Exception as e:
+            print(f"Ошибка разблокировки двигателя при начале аренды: {e}")
 
         return {"message": "Rental started successfully", "rental_id": rental.id}
 
