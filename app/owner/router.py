@@ -389,16 +389,22 @@ def get_trips_by_month(
             fuel_cost = calculate_fuel_cost(trip, car, current_user)
             month_total_earnings += earnings
 
-            trips_response.append(TripResponse(
-                id=trip.id,
-                duration_minutes=duration_minutes,
-                earnings=earnings,
-                rental_type=trip.rental_type.value,
-                start_time=apply_offset(trip.start_time),
-                end_time=apply_offset(trip.end_time),
-                user_id=trip.user_id,
-                fuel_cost=fuel_cost
-            ))
+            # Создаем базовый словарь для TripResponse
+            trip_data = {
+                "id": trip.id,
+                "duration_minutes": duration_minutes,
+                "earnings": earnings,
+                "rental_type": trip.rental_type.value,
+                "start_time": apply_offset(trip.start_time),
+                "end_time": apply_offset(trip.end_time),
+                "user_id": trip.user_id
+            }
+            
+            # Добавляем fuel_cost только если это поездка владельца
+            if trip.user_id == car.owner_id:
+                trip_data["fuel_cost"] = fuel_cost
+            
+            trips_response.append(TripResponse(**trip_data))
 
         # Получаем все доступные месяцы с заработком, исключая поездки механиков
         available_months_query = (
@@ -669,20 +675,26 @@ async def get_trip_details(
             "mechanic_comment": review.mechanic_comment if review else None
         }
 
-    return TripDetailResponse(
-        id=trip.id,
-        vehicle_id=vehicle_id,
-        vehicle_name=car.name,
-        vehicle_plate_number=car.plate_number,
-        duration_minutes=duration_minutes,
-        earnings=earnings,
-        rental_type=trip.rental_type.value,
-        start_time=apply_offset(trip.start_time),
-        end_time=apply_offset(trip.end_time),
-        fuel_cost=fuel_cost,
-        photos=photos,
-        route_map=route_map,
-        mechanic_delivery=mechanic_delivery,
-        mechanic_inspection=mechanic_inspection
-    )
+    # Создаем базовый словарь для TripDetailResponse
+    trip_detail_data = {
+        "id": trip.id,
+        "vehicle_id": vehicle_id,
+        "vehicle_name": car.name,
+        "vehicle_plate_number": car.plate_number,
+        "duration_minutes": duration_minutes,
+        "earnings": earnings,
+        "rental_type": trip.rental_type.value,
+        "start_time": apply_offset(trip.start_time),
+        "end_time": apply_offset(trip.end_time),
+        "photos": photos,
+        "route_map": route_map,
+        "mechanic_delivery": mechanic_delivery,
+        "mechanic_inspection": mechanic_inspection
+    }
+    
+    # Добавляем fuel_cost только если это поездка владельца
+    if trip.user_id == car.owner_id:
+        trip_detail_data["fuel_cost"] = fuel_cost
+    
+    return TripDetailResponse(**trip_detail_data)
 
