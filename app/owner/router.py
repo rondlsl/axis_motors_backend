@@ -384,12 +384,11 @@ def get_trips_by_month(
                 duration_minutes = int(duration_seconds / 60)
 
             fuel_cost = calculate_fuel_cost(trip, car, current_user)
+            earnings = calculate_owner_earnings(trip, car, current_user)
             
-            # Если есть fuel_cost (поездка владельца), то earnings = 0
+            # Если есть fuel_cost (поездка владельца), то из заработка вычитаем стоимость топлива
             if fuel_cost > 0:
-                earnings = 0
-            else:
-                earnings = calculate_owner_earnings(trip, car, current_user)
+                earnings = earnings - fuel_cost
             
             month_total_earnings += earnings
 
@@ -573,14 +572,13 @@ async def get_trip_details(
         duration_seconds = (trip.end_time - trip.start_time).total_seconds()
         duration_minutes = int(duration_seconds / 60)
 
-    # Сначала рассчитываем стоимость топлива
+    # Рассчитываем стоимость топлива и заработок
     fuel_cost = calculate_fuel_cost(trip, car, current_user)
+    earnings = calculate_owner_earnings(trip, car, current_user)
     
-    # Если есть fuel_cost (поездка владельца), то earnings = 0
+    # Если есть fuel_cost (поездка владельца), то из заработка вычитаем стоимость топлива
     if fuel_cost > 0:
-        earnings = 0
-    else:
-        earnings = calculate_owner_earnings(trip, car, current_user)
+        earnings = earnings - fuel_cost
 
     # Фотографии (исключаем селфи клиента)
     client_before_photos = []
