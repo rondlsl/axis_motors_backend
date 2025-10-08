@@ -166,18 +166,12 @@ def get_trip_history(
                     # Для клиентов топливо включено в стоимость только для часов/дней
                     fuel_fee_display = int(fuel_consumed * FUEL_PRICE_PER_LITER)
         
-        # Рассчитываем итоговую стоимость для отображения
-        final_total_price = rental.total_price
-        if car.owner_id == rental.user_id:
-            # Для владельца показываем только стоимость топлива
-            final_total_price = fuel_fee_display
-        
         result.append({
             "history_id": rental.id,
             # Сдвиг +5 ч
             "date": apply_offset(rental.end_time),
             "car_name": car.name,
-            "final_total_price": final_total_price,
+            "final_total_price": rental.total_price,
             # Детализация
             "base_price": rental.base_price or 0,
             "open_fee": rental.open_fee or 0,
