@@ -74,6 +74,19 @@ def calculate_fuel_cost(rental: RentalHistory, car: Car, current_user: User) -> 
     return 0
 
 
+def calculate_delivery_cost(rental: RentalHistory, car: Car, current_user: User) -> int:
+    """
+    Рассчитывает стоимость доставки для владельца.
+    Если поездка была совершена владельцем и есть delivery_fee, то стоимость доставки списывается с его заработка.
+    """
+    # Если поездка была совершена владельцем и есть доставка
+    if rental.user_id == car.owner_id and rental.delivery_fee and rental.delivery_fee > 0:
+        return rental.delivery_fee
+    
+    # Для обычных клиентов доставка не влияет на заработок владельца
+    return 0
+
+
 def calculate_owner_earnings(rental: RentalHistory, car: Car, current_user: User) -> int:
     """
     Рассчитывает заработок владельца с поездки.
@@ -92,7 +105,12 @@ def calculate_owner_earnings(rental: RentalHistory, car: Car, current_user: User
     # - open_fee - сервис открытия дверей платформы  
     # - fuel_fee - расходы на топливо клиента
     
-    return int(base_earnings * 0.5)
+    owner_earnings = int(base_earnings * 0.5)
+    
+    # Отнимаем стоимость доставки, если владелец сам вызвал доставку
+    delivery_cost = calculate_delivery_cost(rental, car, current_user)
+    
+    return owner_earnings - delivery_cost
 
 
 @OwnerRouter.get(
@@ -403,6 +421,7 @@ def get_trips_by_month(
                 duration_minutes = int(duration_seconds / 60)
 
             fuel_cost = calculate_fuel_cost(trip, car, current_user)
+            delivery_cost = calculate_delivery_cost(trip, car, current_user)
             earnings = calculate_owner_earnings(trip, car, current_user)
             
             # Если есть fuel_cost (поездка владельца), то из заработка вычитаем стоимость топлива
@@ -422,9 +441,10 @@ def get_trips_by_month(
                 "user_id": trip.user_id
             }
             
-            # Добавляем fuel_cost только если это поездка владельца
+            # Добавляем fuel_cost и delivery_cost только если это поездка владельца
             if trip.user_id == car.owner_id:
                 trip_data["fuel_cost"] = fuel_cost
+                trip_data["delivery_cost"] = delivery_cost
             
             trips_response.append(TripResponse(**trip_data))
 
@@ -591,8 +611,9 @@ async def get_trip_details(
         duration_seconds = (trip.end_time - trip.start_time).total_seconds()
         duration_minutes = int(duration_seconds / 60)
 
-    # Рассчитываем стоимость топлива и заработок
+    # Рассчитываем стоимость топлива, доставки и заработок
     fuel_cost = calculate_fuel_cost(trip, car, current_user)
+    delivery_cost = calculate_delivery_cost(trip, car, current_user)
     earnings = calculate_owner_earnings(trip, car, current_user)
     
     # Если есть fuel_cost (поездка владельца), то из заработка вычитаем стоимость топлива
@@ -718,9 +739,10 @@ async def get_trip_details(
         "mechanic_inspection": mechanic_inspection
     }
     
-    # Добавляем fuel_cost только если это поездка владельца
+    # Добавляем fuel_cost и delivery_cost только если это поездка владельца
     if trip.user_id == car.owner_id:
         trip_detail_data["fuel_cost"] = fuel_cost
+        trip_detail_data["delivery_cost"] = delivery_cost
     
     return TripDetailResponse(**trip_detail_data)
 

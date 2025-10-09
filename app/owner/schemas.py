@@ -24,6 +24,7 @@ class TripResponse(BaseModel):
     end_time: Optional[str] = Field(None, description="Время окончания поездки (ISO 8601)", example="2024-01-15T16:30:00")
     user_id: int = Field(..., description="ID водителя (пользователя)", example=123)
     fuel_cost: Optional[int] = Field(None, description="Стоимость топлива в тенге (только для поездок владельца)", example=2250)
+    delivery_cost: Optional[int] = Field(None, description="Стоимость доставки в тенге (только для поездок владельца)", example=5000)
     
     class Config:
         from_attributes = True
@@ -106,6 +107,7 @@ class TripDetailResponse(BaseModel):
     start_time: Optional[str] = Field(None, description="Время начала поездки", example="2024-01-15T14:30:00")
     end_time: Optional[str] = Field(None, description="Время окончания поездки", example="2024-01-15T16:30:00")
     fuel_cost: Optional[int] = Field(None, description="Стоимость топлива в тенге (только для поездок владельца)", example=2250)
+    delivery_cost: Optional[int] = Field(None, description="Стоимость доставки в тенге (только для поездок владельца)", example=5000)
     photos: TripPhotos = Field(..., description="Фотографии поездки")
     route_map: RouteMapData = Field(..., description="Данные маршрута для карты")
     mechanic_delivery: Optional[Dict[str, Any]] = Field(None, description="Информация о доставке механика")

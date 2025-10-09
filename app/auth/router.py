@@ -83,29 +83,29 @@ async def resend_email_code(current_user: User = Depends(get_current_user), db: 
     db.add(record)
 
     # Пытаемся отправить письмо
-    # try:
-    #     smtp_host = os.getenv("SMTP_HOST")
-    #     smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    #     smtp_user = os.getenv("SMTP_USER")
-    #     smtp_pass = os.getenv("SMTP_PASSWORD")
-    #     smtp_from = os.getenv("SMTP_FROM", smtp_user or "no-reply@example.com")
-    #     if smtp_host and smtp_user and smtp_pass:
-    #         msg = MIMEText(f"Ваш код подтверждения: {code}")
-    #         msg["Subject"] = "Код подтверждения email"
-    #         msg["From"] = smtp_from
-    #         msg["To"] = current_user.email
-    #         with smtplib.SMTP(smtp_host, smtp_port) as server:
-    #             server.starttls()
-    #             server.login(smtp_user, smtp_pass)
-    #             server.send_message(msg)
-    #     else:
-    #         try:
-    #             from app.core.config import logger
-    #             logger.warning(f"SMTP not configured; verification code for {request.email}: {code}")
-    #         except Exception:
-    #             pass
-    # except Exception:
-    #     pass
+    try:
+        smtp_host = os.getenv("SMTP_HOST")
+        smtp_port = int(os.getenv("SMTP_PORT", "587"))
+        smtp_user = os.getenv("SMTP_USER")
+        smtp_pass = os.getenv("SMTP_PASSWORD")
+        smtp_from = os.getenv("SMTP_FROM", smtp_user or "no-reply@example.com")
+        if smtp_host and smtp_user and smtp_pass:
+            msg = MIMEText(f"Ваш код подтверждения: {code}")
+            msg["Subject"] = "Код подтверждения email"
+            msg["From"] = smtp_from
+            msg["To"] = current_user.email
+            with smtplib.SMTP(smtp_host, smtp_port) as server:
+                server.starttls()
+                server.login(smtp_user, smtp_pass)
+                server.send_message(msg)
+        else:
+            try:
+                from app.core.config import logger
+                logger.warning(f"SMTP not configured; verification code for {current_user.email}: {code}")
+            except Exception:
+                pass
+    except Exception:
+        pass
     try:
         from app.core.config import logger
         logger.warning(f"Email verification code for {current_user.email}: {code}")
@@ -1144,29 +1144,29 @@ async def upload_documents(
             )
             db.add(record)
             # Пытаемся отправить письмо
-            # try:
-            #     smtp_host = os.getenv("SMTP_HOST")
-            #     smtp_port = int(os.getenv("SMTP_PORT", "587"))
-            #     smtp_user = os.getenv("SMTP_USER")
-            #     smtp_pass = os.getenv("SMTP_PASSWORD")
-            #     smtp_from = os.getenv("SMTP_FROM", smtp_user or "no-reply@example.com")
-            #     if smtp_host and smtp_user and smtp_pass:
-            #         msg = MIMEText(f"Ваш код подтверждения: {code}")
-            #         msg["Subject"] = "Код подтверждения email"
-            #         msg["From"] = smtp_from
-            #         msg["To"] = current_user.email
-            #         with smtplib.SMTP(smtp_host, smtp_port) as server:
-            #             server.starttls()
-            #             server.login(smtp_user, smtp_pass)
-            #             server.send_message(msg)
-            #     else:
-            #         try:
-            #             from app.core.config import logger
-            #             logger.warning(f"SMTP not configured; verification code for {current_user.email}: {code}")
-            #         except Exception:
-            #             pass
-            # except Exception:
-            #     pass
+            try:
+                smtp_host = os.getenv("SMTP_HOST")
+                smtp_port = int(os.getenv("SMTP_PORT", "587"))
+                smtp_user = os.getenv("SMTP_USER")
+                smtp_pass = os.getenv("SMTP_PASSWORD")
+                smtp_from = os.getenv("SMTP_FROM", smtp_user or "no-reply@example.com")
+                if smtp_host and smtp_user and smtp_pass:
+                    msg = MIMEText(f"Ваш код подтверждения: {code}")
+                    msg["Subject"] = "Код подтверждения email"
+                    msg["From"] = smtp_from
+                    msg["To"] = current_user.email
+                    with smtplib.SMTP(smtp_host, smtp_port) as server:
+                        server.starttls()
+                        server.login(smtp_user, smtp_pass)
+                        server.send_message(msg)
+                else:
+                    try:
+                        from app.core.config import logger
+                        logger.warning(f"SMTP not configured; verification code for {current_user.email}: {code}")
+                    except Exception:
+                        pass
+            except Exception:
+                pass
             try:
                 from app.core.config import logger
                 logger.warning(f"Email verification code for {current_user.email}: {code}")
