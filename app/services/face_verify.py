@@ -5,7 +5,7 @@ import shutil
 
 
 def verify_faces(img1_path: str, img2_path: str,
-                 model: str = "Facenet",
+                 model: str = "ArcFace",
                  detector: str = "opencv",
                  enforce_detection: bool = False) -> Tuple[bool, Dict[str, Any]]:
     """
@@ -87,7 +87,7 @@ def _resolve_profile_document_path(profile_doc_path: str) -> Path | None:
     return None
 
 
-def verify_user_upload_against_profile(user, upload_file) -> Tuple[bool, str]:
+def verify_user_upload_against_profile(user, upload_file, save_debug_copies: bool = True) -> Tuple[bool, str]:
     """
     Сравнивает selfie (upload_file) с селфи из профиля пользователя (selfie_url).
     Возвращает (is_same, message). При False message содержит причину для 400.
@@ -115,17 +115,40 @@ def verify_user_upload_against_profile(user, upload_file) -> Tuple[bool, str]:
     if resolved.exists():
         print(f"Profile selfie size: {resolved.stat().st_size} bytes")
     
+    # Сохраняем копии для отладки (если включено)
+    debug_copies = []
+    if save_debug_copies:
+        import shutil
+        from datetime import datetime
+        
+        debug_dir = Path("debug_face_verification")
+        debug_dir.mkdir(exist_ok=True)
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Копируем новое селфи
+        new_debug_path = debug_dir / f"rental_selfie_{timestamp}_{user.id}.jpg"
+        shutil.copy2(selfie_tmp_path, new_debug_path)
+        debug_copies.append(str(new_debug_path))
+        print(f"🔍 Debug copy saved: {new_debug_path.absolute()}")
+        
+        # Копируем селфи из профиля
+        profile_debug_path = debug_dir / f"profile_selfie_{timestamp}_{user.id}.jpg"
+        shutil.copy2(str(resolved), profile_debug_path)
+        debug_copies.append(str(profile_debug_path))
+        print(f"🔍 Debug copy saved: {profile_debug_path.absolute()}")
+    
     try:
-        # Первая попытка с Facenet (основная модель)
+        # Первая попытка с ArcFace (основная модель)
         print(f"Starting face verification: {selfie_tmp_path} vs {resolved}")
         is_same, details = verify_faces(selfie_tmp_path, str(resolved))
-        print(f"Face verification result (Facenet): {is_same}, details: {details}")
+        print(f"Face verification result (ArcFace): {is_same}, details: {details}")
         
         if is_same:
             return True, "ok"
         
-        # Если Facenet не прошел, пробуем с VGG-Face (более мягкая модель)
-        print("Facenet failed, trying VGG-Face...")
+        # Если ArcFace не прошел, пробуем с VGG-Face (более мягкая модель)
+        print("ArcFace failed, trying VGG-Face...")
         is_same_vgg, details_vgg = verify_faces(selfie_tmp_path, str(resolved), model="VGG-Face")
         print(f"Face verification result (VGG-Face): {is_same_vgg}, details: {details_vgg}")
         
@@ -136,5 +159,14 @@ def verify_user_upload_against_profile(user, upload_file) -> Tuple[bool, str]:
     except Exception as e:
         print(f"Error in face verification: {e}")
         return False, f"Ошибка проверки селфи: {str(e)}"
+    finally:
+        # Очищаем временный файл
+        try:
+            import os
+            if os.path.exists(selfie_tmp_path):
+                os.unlink(selfie_tmp_path)
+                print(f"🧹 Cleaned up temp file: {selfie_tmp_path}")
+        except Exception:
+            pass
 
 
