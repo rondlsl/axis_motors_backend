@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, extract, and_, or_
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any
+import math
 
 from app.auth.dependencies.get_current_user import get_current_user
 from app.dependencies.database.database import get_db
@@ -41,18 +42,31 @@ def calculate_fuel_cost(rental: RentalHistory, car: Car, current_user: User) -> 
     """
     Рассчитывает стоимость топлива для поездки.
     Если поездка была совершена владельцем, то полная стоимость топлива списывается с его баланса.
+    Округление в пользу платформы: fuel_before округляем вверх, fuel_after округляем вниз.
     """
     if rental.fuel_before is None or rental.fuel_after is None:
         return 0
     
-    fuel_consumed = rental.fuel_before - rental.fuel_after
+    # Округляем в пользу платформы:
+    # fuel_before округляем вверх (больше топлива в начале)
+    # fuel_after округляем вниз (меньше топлива в конце)
+    fuel_before_rounded = math.ceil(rental.fuel_before) if rental.fuel_before else 0
+    fuel_after_rounded = math.floor(rental.fuel_after) if rental.fuel_after else 0
+    
+    fuel_consumed = fuel_before_rounded - fuel_after_rounded
     if fuel_consumed <= 0:
         return 0
     
     # Если поездка была совершена владельцем
     if rental.user_id == car.owner_id:
+        # Определяем цену за литр в зависимости от типа автомобиля
+        if car.body_type == "ELECTRIC":
+            price_per_liter = 200  # Электрические автомобили: 200 тенге за литр
+        else:
+            price_per_liter = FUEL_PRICE_PER_LITER  # Обычные автомобили: 450 тенге за литр
+        
         # Владелец платит полную стоимость топлива
-        fuel_cost = int(fuel_consumed * FUEL_PRICE_PER_LITER)
+        fuel_cost = int(fuel_consumed * price_per_liter)
         return fuel_cost
     
     # Для обычных клиентов топливо уже включено в общую стоимость

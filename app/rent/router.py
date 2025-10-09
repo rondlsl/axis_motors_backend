@@ -932,7 +932,7 @@ async def start_rental(
                 detail=f"Перед стартом аренды загрузите фото: {', '.join(missing)}"
             )
 
-    rental.fuel_before = ceil(car.fuel_level) if car.fuel_level is not None else None
+    rental.fuel_before = car.fuel_level
     rental.mileage_before = car.mileage
 
     if car.owner_id == current_user.id:
@@ -1612,7 +1612,7 @@ async def complete_rental(
     rental.end_time = now
     rental.end_latitude = car.latitude
     rental.end_longitude = car.longitude
-    rental.fuel_after = floor(car.fuel_level) if car.fuel_level is not None else None
+    rental.fuel_after = car.fuel_level
     rental.mileage_after = car.mileage
     rental.rental_status = RentalStatus.COMPLETED
 
