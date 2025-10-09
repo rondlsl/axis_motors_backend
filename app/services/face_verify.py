@@ -102,15 +102,15 @@ def verify_user_upload_against_profile(user, upload_file) -> Tuple[bool, str]:
     
     selfie_tmp_path = _write_upload_to_temp_file(upload_file)
     try:
-        # Первая попытка с ArcFace (более точная)
+        # Первая попытка с Facenet (основная модель)
         is_same, details = verify_faces(selfie_tmp_path, str(resolved))
-        print(f"Face verification result (ArcFace): {is_same}, details: {details}")
+        print(f"Face verification result (Facenet): {is_same}, details: {details}")
         
         if is_same:
             return True, "ok"
         
-        # Если ArcFace не прошел, пробуем с VGG-Face (более мягкая модель)
-        print("ArcFace failed, trying VGG-Face...")
+        # Если Facenet не прошел, пробуем с VGG-Face (более мягкая модель)
+        print("Facenet failed, trying VGG-Face...")
         is_same_vgg, details_vgg = verify_faces(selfie_tmp_path, str(resolved), model="VGG-Face")
         print(f"Face verification result (VGG-Face): {is_same_vgg}, details: {details_vgg}")
         
