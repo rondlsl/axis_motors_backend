@@ -424,11 +424,11 @@ def get_trips_by_month(
             delivery_cost = calculate_delivery_cost(trip, car, current_user)
             earnings = calculate_owner_earnings(trip, car, current_user)
             
-            # Если есть fuel_cost (поездка владельца), то из заработка вычитаем стоимость топлива
+            # Если есть fuel_cost (поездка владельца), то из общего заработка вычитаем стоимость топлива
             if fuel_cost > 0:
-                earnings = earnings - fuel_cost
-            
-            month_total_earnings += earnings
+                month_total_earnings -= fuel_cost
+            else:
+                month_total_earnings += earnings
 
             # Создаем базовый словарь для TripResponse
             trip_data = {
@@ -616,9 +616,7 @@ async def get_trip_details(
     delivery_cost = calculate_delivery_cost(trip, car, current_user)
     earnings = calculate_owner_earnings(trip, car, current_user)
     
-    # Если есть fuel_cost (поездка владельца), то из заработка вычитаем стоимость топлива
-    if fuel_cost > 0:
-        earnings = earnings - fuel_cost
+    # Если есть fuel_cost (поездка владельца), то заработок остается 0 (уже рассчитан в функции)
 
     # Фотографии (исключаем селфи клиента)
     client_before_photos = []
