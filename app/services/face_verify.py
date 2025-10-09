@@ -7,7 +7,8 @@ import shutil
 def verify_faces(img1_path: str, img2_path: str,
                  model: str = "ArcFace",
                  detector: str = "opencv",
-                 enforce_detection: bool = False) -> Tuple[bool, Dict[str, Any]]:
+                 enforce_detection: bool = False,
+                 threshold: float = 0.68) -> Tuple[bool, Dict[str, Any]]:
     """
     Сравнивает два изображения лиц и возвращает (is_same, details).
 
@@ -21,7 +22,8 @@ def verify_faces(img1_path: str, img2_path: str,
         img2_path=img2_path,
         model_name=model,
         detector_backend=detector,
-        enforce_detection=enforce_detection
+        enforce_detection=enforce_detection,
+        threshold=threshold
     )
 
     details = {
@@ -44,50 +46,15 @@ def _write_upload_to_temp_file(upload_file) -> str:
     
     tmp = NamedTemporaryFile(delete=False, suffix=suffix)
     
-    # DEBUG: Логируем информацию о файле
-    print(f"[UPLOAD_DEBUG] Filename: {filename}")
-    print(f"[UPLOAD_DEBUG] Suffix: {suffix}")
-    print(f"[UPLOAD_DEBUG] Upload file type: {type(upload_file)}")
-    
     with tmp as f:
         src = getattr(upload_file, 'file', None) or upload_file
-        print(f"[UPLOAD_DEBUG] Source type: {type(src)}")
-        
-        # Проверяем, что источник не пустой
-        if hasattr(src, 'read'):
-            # Читаем первые несколько байт для проверки
-            try:
-                initial_pos = src.tell() if hasattr(src, 'tell') else 0
-                first_bytes = src.read(10) if hasattr(src, 'read') else b''
-                print(f"[UPLOAD_DEBUG] First 10 bytes: {first_bytes}")
-                
-                # Возвращаем позицию в начало
-                if hasattr(src, 'seek'):
-                    src.seek(initial_pos)
-                else:
-                    # Если нет seek, создаем новый объект
-                    src = getattr(upload_file, 'file', None) or upload_file
-            except Exception as e:
-                print(f"[UPLOAD_DEBUG] Error reading initial bytes: {e}")
-        
         shutil.copyfileobj(src, f)
-        print(f"[UPLOAD_DEBUG] Written to temp file: {tmp.name}")
     
     try:
         if hasattr(upload_file, 'file') and hasattr(upload_file.file, 'seek'):
             upload_file.file.seek(0)
     except Exception:
         pass
-    
-    # Проверяем размер созданного файла
-    temp_path = Path(tmp.name)
-    if temp_path.exists():
-        size = temp_path.stat().st_size
-        print(f"[UPLOAD_DEBUG] Temp file size: {size} bytes")
-        if size == 0:
-            print("[UPLOAD_DEBUG] WARNING: Temp file is empty!")
-    else:
-        print("[UPLOAD_DEBUG] ERROR: Temp file was not created!")
     
     return tmp.name
 
@@ -118,7 +85,7 @@ def _resolve_profile_document_path(profile_doc_path: str) -> Path | None:
     return None
 
 
-def verify_user_upload_against_profile(user, upload_file, save_debug_copies: bool = True) -> Tuple[bool, str]:
+def verify_user_upload_against_profile(user, upload_file) -> Tuple[bool, str]:
     """
     Сравнивает selfie (upload_file) с селфи из профиля пользователя (selfie_url).
     Возвращает (is_same, message). При False message содержит причину для 400.
@@ -132,51 +99,15 @@ def verify_user_upload_against_profile(user, upload_file, save_debug_copies: boo
 
     selfie_tmp_path = _write_upload_to_temp_file(upload_file)
     
-    # DEBUG: Проверяем, что файлы действительно существуют и имеют размер
-    tmp_path_obj = Path(selfie_tmp_path)
-    profile_path_obj = Path(resolved)
-    
-    print(f"[FILE_DEBUG] Temp file exists: {tmp_path_obj.exists()}, size: {tmp_path_obj.stat().st_size if tmp_path_obj.exists() else 'N/A'} bytes")
-    print(f"[FILE_DEBUG] Profile file exists: {profile_path_obj.exists()}, size: {profile_path_obj.stat().st_size if profile_path_obj.exists() else 'N/A'} bytes")
-    print(f"[FILE_DEBUG] Temp file path: {tmp_path_obj.absolute()}")
-    print(f"[FILE_DEBUG] Profile file path: {profile_path_obj.absolute()}")
-    
-    # Сохраняем копии для отладки (если включено)
-    debug_copies = []
-    if save_debug_copies:
-        import shutil
-        from datetime import datetime
-        
-        debug_dir = Path("debug_face_verification")
-        debug_dir.mkdir(exist_ok=True)
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
-        # Копируем новое селфи
-        new_debug_path = debug_dir / f"rental_selfie_{timestamp}_{user.id}.jpg"
-        shutil.copy2(selfie_tmp_path, new_debug_path)
-        debug_copies.append(str(new_debug_path))
-        
-        # Копируем селфи из профиля
-        profile_debug_path = debug_dir / f"profile_selfie_{timestamp}_{user.id}.jpg"
-        shutil.copy2(str(resolved), profile_debug_path)
-        debug_copies.append(str(profile_debug_path))
-    
     try:
-        # Проверка с ArcFace
-        is_same, details = verify_faces(selfie_tmp_path, str(resolved))
-        
-        # DEBUG: Логируем результат для сравнения с вашим скриптом
-        print(f"[FACE_VERIFY_DEBUG] Distance: {details['distance']:.6f}, Threshold: {details['threshold']:.6f}")
-        print(f"[FACE_VERIFY_DEBUG] Verified: {is_same}")
-        print(f"[FACE_VERIFY_DEBUG] Files: {selfie_tmp_path} vs {resolved}")
+        # Проверка с ArcFace (строгий threshold для высокой точности)
+        is_same, details = verify_faces(selfie_tmp_path, str(resolved), threshold=0.40)
         
         if is_same:
             return True, "ok"
         
         return False, "Личность не подтверждена по селфи. Убедитесь, что на фото именно вы, и попробуйте снова."
     except Exception as e:
-        print(f"[FACE_VERIFY_DEBUG] Exception: {e}")
         return False, f"Ошибка проверки селфи: {str(e)}"
     finally:
         # Очищаем временный файл
