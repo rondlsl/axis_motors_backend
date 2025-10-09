@@ -31,6 +31,7 @@ OwnerRouter = APIRouter(
 
 OFFSET_HOURS = 5
 FUEL_PRICE_PER_LITER = 450
+ELECTRIC_FUEL_PRICE_PER_LITER = 200
 
 
 def apply_offset(dt: datetime) -> str | None:
@@ -61,9 +62,9 @@ def calculate_fuel_cost(rental: RentalHistory, car: Car, current_user: User) -> 
     if rental.user_id == car.owner_id:
         # Определяем цену за литр в зависимости от типа автомобиля
         if car.body_type == "ELECTRIC":
-            price_per_liter = 200  # Электрические автомобили: 200 тенге за литр
+            price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
         else:
-            price_per_liter = FUEL_PRICE_PER_LITER  # Обычные автомобили: 450 тенге за литр
+            price_per_liter = FUEL_PRICE_PER_LITER
         
         # Владелец платит полную стоимость топлива
         fuel_cost = int(fuel_consumed * price_per_liter)
