@@ -75,14 +75,15 @@ def _resolve_profile_document_path(profile_doc_path: str) -> Path | None:
     if "/" not in p:
         candidates.extend([Path("uploads/documents") / p, Path(".") / "uploads/documents" / p,])
     
-    for c in candidates:
+    for i, c in enumerate(candidates):
         if c and c.exists():
-            print(f"Found profile document at: {c.absolute()}")
+            print(f"✓ Found profile document at: {c.absolute()}")
+            print(f"✓ Profile document size: {c.stat().st_size} bytes")
             return c
         else:
-            print(f"Not found: {c}")
+            print(f"✗ Not found ({i+1}/{len(candidates)}): {c}")
     
-    print(f"Profile document not found. Tried {len(candidates)} paths")
+    print(f"❌ Profile document not found. Tried {len(candidates)} paths")
     return None
 
 
@@ -99,10 +100,24 @@ def verify_user_upload_against_profile(user, upload_file) -> Tuple[bool, str]:
         return False, "Файл селфи из профиля не найден для сверки личности"
 
     print(f"Comparing new selfie with profile selfie: {resolved}")
+    print(f"Profile selfie full path: {resolved.absolute()}")
     
     selfie_tmp_path = _write_upload_to_temp_file(upload_file)
+    print(f"New rental selfie temp path: {selfie_tmp_path}")
+    print(f"New rental selfie absolute path: {Path(selfie_tmp_path).absolute()}")
+    
+    # Информация о новом селфи
+    new_selfie_path = Path(selfie_tmp_path)
+    if new_selfie_path.exists():
+        print(f"New rental selfie size: {new_selfie_path.stat().st_size} bytes")
+    
+    # Информация о селфи из профиля
+    if resolved.exists():
+        print(f"Profile selfie size: {resolved.stat().st_size} bytes")
+    
     try:
         # Первая попытка с Facenet (основная модель)
+        print(f"Starting face verification: {selfie_tmp_path} vs {resolved}")
         is_same, details = verify_faces(selfie_tmp_path, str(resolved))
         print(f"Face verification result (Facenet): {is_same}, details: {details}")
         
