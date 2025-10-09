@@ -30,7 +30,11 @@ def verify_faces(img1_path: str, img2_path: str,
         "model": model,
         "detector": detector,
     }
-    return bool(res.get("verified", False)), details
+    
+    verified = bool(res.get("verified", False))
+    print(f"DeepFace verification: {verified}, distance: {details['distance']:.4f}, threshold: {details['threshold']:.4f}")
+    
+    return verified, details
 
 
 def _write_upload_to_temp_file(upload_file) -> str:
@@ -39,7 +43,6 @@ def _write_upload_to_temp_file(upload_file) -> str:
     suffix = Path(filename).suffix
     tmp = NamedTemporaryFile(delete=False, suffix=suffix)
     with tmp as f:
-        # FastAPI UploadFile имеет .file
         src = getattr(upload_file, 'file', None) or upload_file
         shutil.copyfileobj(src, f)
     try:
@@ -57,20 +60,29 @@ def _resolve_profile_document_path(profile_doc_path: str) -> Path | None:
     """
     if not profile_doc_path:
         return None
+    
     p = profile_doc_path.strip()
-    candidates = [
-        Path(p),
-        Path(".") / p.lstrip("/"),
-        Path("uploads") / Path(p).name,
-    ]
+    print(f"Looking for profile document: {p}")
+    
+    candidates = [Path(p), Path(".") / p.lstrip("/"), ]
+    
+    if p.startswith("uploads/"):
+        candidates.extend([Path(p),Path(".") / p,])
+    
     if p.startswith("/uploads/"):
         candidates.append(Path(".") / p.lstrip("/"))
-    if p.startswith("uploads/"):
-        candidates.append(Path(p))
-        candidates.append(Path(".") / p)
+    
+    if "/" not in p:
+        candidates.extend([Path("uploads/documents") / p, Path(".") / "uploads/documents" / p,])
+    
     for c in candidates:
         if c and c.exists():
+            print(f"Found profile document at: {c.absolute()}")
             return c
+        else:
+            print(f"Not found: {c}")
+    
+    print(f"Profile document not found. Tried {len(candidates)} paths")
     return None
 
 
@@ -86,13 +98,28 @@ def verify_user_upload_against_profile(user, upload_file) -> Tuple[bool, str]:
     if not resolved:
         return False, "Файл селфи из профиля не найден для сверки личности"
 
+    print(f"Comparing new selfie with profile selfie: {resolved}")
+    
     selfie_tmp_path = _write_upload_to_temp_file(upload_file)
     try:
-        is_same, _details = verify_faces(selfie_tmp_path, str(resolved))
-        if not is_same:
-            return False, "Личность не подтверждена по селфи. Убедитесь, что на фото именно вы, и попробуйте снова."
-        return True, "ok"
+        # Первая попытка с ArcFace (более точная)
+        is_same, details = verify_faces(selfie_tmp_path, str(resolved))
+        print(f"Face verification result (ArcFace): {is_same}, details: {details}")
+        
+        if is_same:
+            return True, "ok"
+        
+        # Если ArcFace не прошел, пробуем с VGG-Face (более мягкая модель)
+        print("ArcFace failed, trying VGG-Face...")
+        is_same_vgg, details_vgg = verify_faces(selfie_tmp_path, str(resolved), model="VGG-Face")
+        print(f"Face verification result (VGG-Face): {is_same_vgg}, details: {details_vgg}")
+        
+        if is_same_vgg:
+            return True, "ok"
+        
+        return False, "Личность не подтверждена по селфи. Убедитесь, что на фото именно вы, и попробуйте снова."
     except Exception as e:
+        print(f"Error in face verification: {e}")
         return False, f"Ошибка проверки селфи: {str(e)}"
 
 
