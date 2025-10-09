@@ -5,7 +5,7 @@ import shutil
 
 
 def verify_faces(img1_path: str, img2_path: str,
-                 model: str = "ArcFace",
+                 model: str = "Facenet",
                  detector: str = "opencv",
                  enforce_detection: bool = False) -> Tuple[bool, Dict[str, Any]]:
     """

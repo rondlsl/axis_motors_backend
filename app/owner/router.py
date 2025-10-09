@@ -29,6 +29,7 @@ OwnerRouter = APIRouter(
 )
 
 OFFSET_HOURS = 5
+FUEL_PRICE_PER_LITER = 450
 
 
 def apply_offset(dt: datetime) -> str | None:
@@ -36,14 +37,43 @@ def apply_offset(dt: datetime) -> str | None:
     return (dt + timedelta(hours=OFFSET_HOURS)).isoformat() if dt else None
 
 
-def calculate_owner_earnings(rental: RentalHistory) -> int:
+def calculate_fuel_cost(rental: RentalHistory, car: Car, current_user: User) -> int:
+    """
+    Рассчитывает стоимость топлива для поездки.
+    Если поездка была совершена владельцем, то полная стоимость топлива списывается с его баланса.
+    """
+    if rental.fuel_before is None or rental.fuel_after is None:
+        return 0
+    
+    fuel_consumed = rental.fuel_before - rental.fuel_after
+    if fuel_consumed <= 0:
+        return 0
+    
+    # Если поездка была совершена владельцем
+    if rental.user_id == car.owner_id:
+        # Владелец платит полную стоимость топлива
+        fuel_cost = int(fuel_consumed * FUEL_PRICE_PER_LITER)
+        return fuel_cost
+    
+    # Для обычных клиентов топливо уже включено в общую стоимость
+    return 0
+
+
+def calculate_owner_earnings(rental: RentalHistory, car: Car, current_user: User) -> int:
     """
     Рассчитывает заработок владельца с поездки.
-    Владелец получает всю сумму total_price, так как это доход с его автомобиля.
+    Если поездка была совершена владельцем, то заработок = 0 (владелец не зарабатывает на своих поездках).
+    Для поездок клиентов владелец получает только 50% от общей суммы.
     """
-    if rental.total_price:
-        return rental.total_price
-    return 0
+    if not rental.total_price:
+        return 0
+    
+    # Если поездка была совершена владельцем, заработок = 0
+    if rental.user_id == car.owner_id:
+        return 0
+    
+    # Для обычных клиентов владелец получает 50% от общей суммы
+    return int(rental.total_price * 0.5)
 
 
 @OwnerRouter.get(
@@ -353,18 +383,31 @@ def get_trips_by_month(
                 duration_seconds = (trip.end_time - trip.start_time).total_seconds()
                 duration_minutes = int(duration_seconds / 60)
 
-            earnings = calculate_owner_earnings(trip)
+            fuel_cost = calculate_fuel_cost(trip, car, current_user)
+            earnings = calculate_owner_earnings(trip, car, current_user)
+            
+            # Если есть fuel_cost (поездка владельца), то из заработка вычитаем стоимость топлива
+            if fuel_cost > 0:
+                earnings = earnings - fuel_cost
+            
             month_total_earnings += earnings
 
-            trips_response.append(TripResponse(
-                id=trip.id,
-                duration_minutes=duration_minutes,
-                earnings=earnings,
-                rental_type=trip.rental_type.value,
-                start_time=apply_offset(trip.start_time),
-                end_time=apply_offset(trip.end_time),
-                user_id=trip.user_id
-            ))
+            # Создаем базовый словарь для TripResponse
+            trip_data = {
+                "id": trip.id,
+                "duration_minutes": duration_minutes,
+                "earnings": earnings,
+                "rental_type": trip.rental_type.value,
+                "start_time": apply_offset(trip.start_time),
+                "end_time": apply_offset(trip.end_time),
+                "user_id": trip.user_id
+            }
+            
+            # Добавляем fuel_cost только если это поездка владельца
+            if trip.user_id == car.owner_id:
+                trip_data["fuel_cost"] = fuel_cost
+            
+            trips_response.append(TripResponse(**trip_data))
 
         # Получаем все доступные месяцы с заработком, исключая поездки механиков
         available_months_query = (
@@ -402,11 +445,31 @@ def get_trips_by_month(
                 owner_id=current_user.id,
                 db=db
             )
+            
+            # Рассчитываем корректный заработок с учетом топлива для этого месяца
+            month_trips = (
+                db.query(RentalHistory)
+                .join(User, RentalHistory.user_id == User.id)
+                .filter(
+                    RentalHistory.car_id == vehicle_id,
+                    RentalHistory.rental_status == RentalStatus.COMPLETED,
+                    extract('year', RentalHistory.end_time) == int(row.year),
+                    extract('month', RentalHistory.end_time) == int(row.month),
+                    User.role != UserRole.MECHANIC
+                )
+                .all()
+            )
+            
+            # Пересчитываем заработок с учетом топлива
+            corrected_total_earnings = 0
+            for trip in month_trips:
+                corrected_total_earnings += calculate_owner_earnings(trip, car, current_user)
+            
             # Создаем объект MonthEarnings
             month_earnings = MonthEarnings(
                 year=int(row.year),
                 month=int(row.month),
-                total_earnings=int(row.total_earnings or 0),
+                total_earnings=corrected_total_earnings,
                 trip_count=int(row.trip_count),
                 available_minutes=available_minutes
             )
@@ -509,13 +572,26 @@ async def get_trip_details(
         duration_seconds = (trip.end_time - trip.start_time).total_seconds()
         duration_minutes = int(duration_seconds / 60)
 
-    # Заработок
-    earnings = calculate_owner_earnings(trip)
+    # Рассчитываем стоимость топлива и заработок
+    fuel_cost = calculate_fuel_cost(trip, car, current_user)
+    earnings = calculate_owner_earnings(trip, car, current_user)
+    
+    # Если есть fuel_cost (поездка владельца), то из заработка вычитаем стоимость топлива
+    if fuel_cost > 0:
+        earnings = earnings - fuel_cost
 
-    # Фотографии
+    # Фотографии (исключаем селфи клиента)
+    client_before_photos = []
+    if trip.photos_before:
+        client_before_photos = [photo for photo in trip.photos_before if "/selfie/" not in photo and "\\selfie\\" not in photo]
+    
+    client_after_photos = []
+    if trip.photos_after:
+        client_after_photos = [photo for photo in trip.photos_after if "/selfie/" not in photo and "\\selfie\\" not in photo]
+    
     photos = TripPhotos(
-        client_before=PhotoGroup(photos=trip.photos_before or []),
-        client_after=PhotoGroup(photos=trip.photos_after or [])
+        client_before=PhotoGroup(photos=client_before_photos),
+        client_after=PhotoGroup(photos=client_after_photos)
     )
 
     # Маршрут с GPS данными
@@ -606,19 +682,26 @@ async def get_trip_details(
             "mechanic_comment": review.mechanic_comment if review else None
         }
 
-    return TripDetailResponse(
-        id=trip.id,
-        vehicle_id=vehicle_id,
-        vehicle_name=car.name,
-        vehicle_plate_number=car.plate_number,
-        duration_minutes=duration_minutes,
-        earnings=earnings,
-        rental_type=trip.rental_type.value,
-        start_time=apply_offset(trip.start_time),
-        end_time=apply_offset(trip.end_time),
-        photos=photos,
-        route_map=route_map,
-        mechanic_delivery=mechanic_delivery,
-        mechanic_inspection=mechanic_inspection
-    )
+    # Создаем базовый словарь для TripDetailResponse
+    trip_detail_data = {
+        "id": trip.id,
+        "vehicle_id": vehicle_id,
+        "vehicle_name": car.name,
+        "vehicle_plate_number": car.plate_number,
+        "duration_minutes": duration_minutes,
+        "earnings": earnings,
+        "rental_type": trip.rental_type.value,
+        "start_time": apply_offset(trip.start_time),
+        "end_time": apply_offset(trip.end_time),
+        "photos": photos,
+        "route_map": route_map,
+        "mechanic_delivery": mechanic_delivery,
+        "mechanic_inspection": mechanic_inspection
+    }
+    
+    # Добавляем fuel_cost только если это поездка владельца
+    if trip.user_id == car.owner_id:
+        trip_detail_data["fuel_cost"] = fuel_cost
+    
+    return TripDetailResponse(**trip_detail_data)
 

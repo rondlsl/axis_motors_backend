@@ -13,7 +13,7 @@ from starlette import status
 
 from app.auth.dependencies.get_current_user import get_current_user  # обновлённая версия — см. ниже
 from app.auth.dependencies.save_documents import save_file
-from app.auth.schemas import SendSmsRequest, VerifySmsRequest, DocumentUploadRequest, LocaleUpdate
+from app.auth.schemas import SendSmsRequest, VerifySmsRequest, DocumentUploadRequest, LocaleUpdate, SelfieUploadResponse
 from app.auth.security.auth_bearer import JWTBearer
 from app.auth.security.tokens import create_refresh_token, create_access_token
 from app.core.config import SMS_TOKEN
@@ -782,6 +782,72 @@ async def set_locale(
     db.commit()
     db.refresh(current_user)
     return {"message": "Locale updated", "locale": current_user.locale}
+
+
+@Auth_router.post(
+    "/upload-selfie/",
+    summary="Загрузка селфи пользователя",
+    description="Позволяет пользователю загрузить новое селфи для обновления профиля",
+    response_model=SelfieUploadResponse
+)
+async def upload_selfie(
+        selfie: UploadFile = File(..., description="Селфи пользователя (JPEG/PNG)"),
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """
+    Загрузка селфи пользователя.
+    
+    **Требования:**
+    - Файл должен быть изображением (JPEG/PNG)
+    - Размер файла не должен превышать разумные пределы
+    - Пользователь должен быть авторизован
+    
+    **Возвращает:**
+    - URL загруженного селфи
+    - Сообщение об успешной загрузке
+    """
+    # Валидация файла
+    if not selfie.content_type in ["image/jpeg", "image/png"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Файл должен быть изображением в формате JPEG или PNG"
+        )
+    
+    # Проверяем размер файла (максимум 10MB)
+    content = await selfie.read()
+    if len(content) > 10 * 1024 * 1024:  # 10MB
+        raise HTTPException(
+            status_code=400,
+            detail="Размер файла не должен превышать 10MB"
+        )
+    
+    # Возвращаем указатель файла в начало
+    await selfie.seek(0)
+    
+    try:
+        # Сохраняем файл
+        from app.auth.dependencies.save_documents import save_file
+        selfie_path = await save_file(selfie, current_user.id, "uploads/profile")
+        
+        # Обновляем URL селфи в профиле пользователя
+        current_user.selfie_url = selfie_path
+        db.add(current_user)
+        db.commit()
+        db.refresh(current_user)
+        
+        return SelfieUploadResponse(
+            message="Селфи успешно загружено",
+            selfie_url=selfie_path,
+            user_id=current_user.id
+        )
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка при загрузке селфи: {str(e)}"
+        )
 
 
 @Auth_router.post("/refresh_token/")
