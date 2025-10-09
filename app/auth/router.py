@@ -96,7 +96,7 @@ async def resend_email_code(current_user: User = Depends(get_current_user), db: 
         smtp_from = os.getenv("SMTP_FROM", smtp_user or "no-reply@example.com")
         if smtp_host and smtp_user and smtp_pass:
             msg = MIMEText(f"Ваш код подтверждения: {code}")
-            msg["Subject"] = "Код подтверждения email"
+            msg["Subject"] = "AZV Motors"
             msg["From"] = smtp_from
             msg["To"] = current_user.email
             with smtplib.SMTP(smtp_host, smtp_port) as server:
@@ -1157,7 +1157,7 @@ async def upload_documents(
                 smtp_from = os.getenv("SMTP_FROM", smtp_user or "no-reply@example.com")
                 if smtp_host and smtp_user and smtp_pass:
                     msg = MIMEText(f"Ваш код подтверждения: {code}")
-                    msg["Subject"] = "Код подтверждения email"
+                    msg["Subject"] = "AZV Motors"
                     msg["From"] = smtp_from
                     msg["To"] = current_user.email
                     with smtplib.SMTP(smtp_host, smtp_port) as server:
