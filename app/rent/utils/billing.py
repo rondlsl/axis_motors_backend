@@ -68,7 +68,14 @@ async def billing_job():
                     # Уведомим пользователя в приложение
                     asyncio.create_task(send_localized_notification_to_user(db, user_id, "engine_locked_due_to_balance", "engine_locked_due_to_balance", car_name=car_name))
                     # И в телеграм
-                    note = f"🛑 Двигатель заблокирован из-за нулевого баланса. Авто: {car_name} (IMEI {imei}), user_id={user_id}"
+                    user = db.query(User).filter(User.id == user_id).first()
+                    user_info = f"user_id={user_id}"
+                    if user:
+                        user_info = f"тел.: {user.phone_number}"
+                        if user.email:
+                            user_info += f", email: {user.email}"
+                        user_info += f", user_id={user_id}"
+                    note = f"🛑 Двигатель заблокирован из-за нулевого баланса. Авто: {car_name} (IMEI {imei}), {user_info}"
                     for chat_id in (965048905, 5941825713, 860991388):
                         asyncio.create_task(_send_telegram(note, chat_id))
                 except Exception as e:
@@ -211,7 +218,9 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                 "balance_exhausted"
                             ))
                             telegram_alerts.append(
-                                f"🔔 У клиента (тел.: {user.phone_number}) на авто ID {car.id} баланс исчерпан."
+                                f"🔔 У клиента (тел.: {user.phone_number}" + 
+                                (f", email: {user.email}" if user.email else "") + 
+                                f") на авто ID {car.id} баланс исчерпан."
                             )
 
                         # First paid waiting
@@ -298,7 +307,9 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                 "balance_exhausted"
                             ))
                             telegram_alerts.append(
-                                f"🔔 У клиента (тел.: {user.phone_number}) на авто ID {car.id} баланс исчерпан."
+                                f"🔔 У клиента (тел.: {user.phone_number}" + 
+                                (f", email: {user.email}" if user.email else "") + 
+                                f") на авто ID {car.id} баланс исчерпан."
                             )
 
                         # First paid waiting
@@ -405,7 +416,9 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                             if user.wallet_balance <= 0 and not flags["low_balance_zero"] and user.fcm_token:
                                 flags["low_balance_zero"] = True
                                 telegram_alerts.append(
-                                    f"🔔 У клиента (тел.: {user.phone_number}) на авто ID {car.id} баланс исчерпан."
+                                    f"🔔 У клиента (тел.: {user.phone_number}" + 
+                                (f", email: {user.email}" if user.email else "") + 
+                                f") на авто ID {car.id} баланс исчерпан."
                                 )
 
                             if not flags["overtime"] and user.fcm_token:
@@ -461,8 +474,11 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                         ))
                                         
                         # Уведомляем в Telegram
+                        mechanic_info = f"тел.: {mechanic.phone_number}"
+                        if mechanic.email:
+                            mechanic_info += f", email: {mechanic.email}"
                         telegram_alerts.append(
-                            f"⚠️ Механик {mechanic.phone_number} получил штраф {penalty_fee}₸ "
+                            f"⚠️ Механик ({mechanic_info}) получил штраф {penalty_fee}₸ "
                             f"за задержку доставки автомобиля ID {rental.car_id} на {penalty_minutes:.1f} мин."
                         )
                         
