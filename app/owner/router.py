@@ -63,17 +63,21 @@ def calculate_owner_earnings(rental: RentalHistory, car: Car, current_user: User
     """
     Рассчитывает заработок владельца с поездки.
     Если поездка была совершена владельцем, то заработок = 0 (владелец не зарабатывает на своих поездках).
-    Для поездок клиентов владелец получает только 50% от общей суммы.
+    Для поездок клиентов владелец получает 50% только от базовых услуг (без доставки, открытия дверей и бензина).
     """
-    if not rental.total_price:
-        return 0
-    
     # Если поездка была совершена владельцем, заработок = 0
     if rental.user_id == car.owner_id:
         return 0
     
-    # Для обычных клиентов владелец получает 50% от общей суммы
-    return int(rental.total_price * 0.5)
+    # Владелец получает 50% только от базовых услуг (без delivery_fee, open_fee, fuel_fee)
+    base_earnings = (rental.base_price or 0) + (rental.overtime_fee or 0) + (rental.waiting_fee or 0) + (rental.distance_fee or 0)
+    
+    # Исключаем доходы от сервисов платформы:
+    # - delivery_fee - сервис доставки платформы
+    # - open_fee - сервис открытия дверей платформы  
+    # - fuel_fee - расходы на топливо клиента
+    
+    return int(base_earnings * 0.5)
 
 
 @OwnerRouter.get(
