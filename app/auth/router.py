@@ -8,6 +8,7 @@ from typing import Optional
 import smtplib
 from email.mime.text import MIMEText
 import os
+import random
 
 from starlette import status
 
@@ -34,6 +35,11 @@ Auth_router = APIRouter(prefix="/auth", tags=["Auth"])
 
 ALLOWED_TYPES = ["image/jpeg", "image/png"]
 CERT_ALLOWED_TYPES = ["image/jpeg", "image/png", "application/pdf"]
+
+
+def generate_email_verification_code() -> str:
+    """Генерирует случайный 6-значный код для подтверждения email"""
+    return str(random.randint(100000, 999999))
 
 
 class VerifyEmailRequest(BaseModel):
@@ -70,8 +76,7 @@ async def resend_email_code(current_user: User = Depends(get_current_user), db: 
     """Повторная отправка кода подтверждения на email."""
     if not current_user.email:
         raise HTTPException(status_code=400, detail="У пользователя не указан email")
-    # Генерируем (пока фиксированный) код
-    code = "666666"
+    code = generate_email_verification_code()
     record = VerificationCode(
         phone_number=None,
         email=current_user.email,
@@ -1133,7 +1138,7 @@ async def upload_documents(
 
         # Записываем код подтверждения email и отправляем его на почту
         try:
-            code = "666666"
+            code = generate_email_verification_code()
             record = VerificationCode(
                 phone_number=None,
                 email=current_user.email,
