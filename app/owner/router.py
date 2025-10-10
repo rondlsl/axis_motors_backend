@@ -424,9 +424,12 @@ def get_trips_by_month(
             delivery_cost = calculate_delivery_cost(trip, car, current_user)
             earnings = calculate_owner_earnings(trip, car, current_user)
             
-            # Если есть fuel_cost (поездка владельца), то из общего заработка вычитаем стоимость топлива
-            if fuel_cost > 0:
-                month_total_earnings -= fuel_cost
+            # Агрегация заработка за месяц:
+            # - для поездок владельца вычитаем его расходы (топливо и доставку)
+            # - для клиентов добавляем доход владельца
+            if trip.user_id == car.owner_id:
+                month_total_earnings -= (fuel_cost or 0)
+                month_total_earnings -= (delivery_cost or 0)
             else:
                 month_total_earnings += earnings
 

@@ -633,15 +633,9 @@ async def reserve_delivery(
         open_fee = 0  # остальное бесплатно
         base_price = 0  # база бесплатна
         total_price = delivery_fee  # к оплате только доставка
-
-        # ### Проверяем и списываем у владельца 5к
+        # Проверим баланс сейчас, само списание сделаем после создания rental (чтобы связать транзакцию)
         if current_user.wallet_balance < delivery_fee:
             raise InsufficientBalanceException(required_amount=delivery_fee)
-        # запись транзакции доставки (у владельца 5000)
-        record_wallet_transaction(db, user=current_user, amount=-delivery_fee, ttype=WalletTransactionType.DELIVERY_FEE, description="Оплата доставки")
-        current_user.wallet_balance -= delivery_fee
-
-        db.commit()
     else:
         # НЕ владелец — сбор за доставку
         delivery_fee = extra_fee
@@ -677,10 +671,9 @@ async def reserve_delivery(
             base_price = calculate_total_price(rental_type, duration, price_per_hour, price_per_day)
             total_price = base_price + two_hours_fee + delivery_fee
 
-        # Если не владелец, сразу списываем доставку
-        record_wallet_transaction(db, user=current_user, amount=-delivery_fee, ttype=WalletTransactionType.DELIVERY_FEE, description="Оплата доставки")
-        current_user.wallet_balance -= delivery_fee
-        db.commit()
+        # Если не владелец — проверим баланс сейчас, само списание сделаем после создания rental
+        # (чтобы связать транзакцию с related_rental)
+        pass
 
     # Создаём запись о доставке
     rental = RentalHistory(
@@ -705,6 +698,19 @@ async def reserve_delivery(
     db.add(rental)
     db.commit()
     db.refresh(rental)
+
+    # Теперь фиксируем списание доставки и связываем транзакцию с арендой
+    if delivery_fee and delivery_fee > 0:
+        record_wallet_transaction(
+            db,
+            user=current_user,
+            amount=-delivery_fee,
+            ttype=WalletTransactionType.DELIVERY_FEE,
+            description="Оплата доставки",
+            related_rental=rental,
+        )
+        current_user.wallet_balance -= delivery_fee
+        db.commit()
 
     # Обновляем статус машины
     car.current_renter_id = current_user.id
