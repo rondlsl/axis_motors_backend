@@ -1699,7 +1699,6 @@ async def complete_rental(
         # Владелец платит только за топливо
         rental.base_price = 0
         rental.open_fee = 0
-        rental.delivery_fee = 0
         rental.waiting_fee = 0
         rental.overtime_fee = 0
         rental.distance_fee = 0
