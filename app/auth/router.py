@@ -751,7 +751,6 @@ async def read_users_me(
                 "psych_neurology_certificate_url": getattr(current_user, "psych_neurology_certificate_url", None),
                 "narcology_certificate_url": getattr(current_user, "narcology_certificate_url", None),
                 "pension_contributions_certificate_url": getattr(current_user, "pension_contributions_certificate_url", None),
-                "criminal_record_certificate_url": getattr(current_user, "criminal_record_certificate_url", None),
                 "drivers_license": {
                     "url": current_user.drivers_license_url,
                     "expiry": current_user.drivers_license_expiry.isoformat()
@@ -892,7 +891,6 @@ async def refresh_token(db: Session = Depends(get_db), token: str = Depends(JWTB
 - psych_neurology_certificate: Справка из психоневрологического диспансера (изображение/PDF)
 - narcology_certificate: Справка из наркологического диспансера (изображение/PDF)
 - pension_contributions_certificate: Справка о пенсионных отчислениях (изображение/PDF)
-- criminal_record_certificate: Справка об отсутствии/наличии судимости (изображение/PDF)
 
 **Требуемые данные:**
 - first_name: Имя (1-50 символов). Пример: "Иван"
@@ -919,7 +917,6 @@ async def upload_documents(
         psych_neurology_certificate: Optional[UploadFile] = File(None),
         narcology_certificate: Optional[UploadFile] = File(None),
         pension_contributions_certificate: Optional[UploadFile] = File(None),
-        criminal_record_certificate: Optional[UploadFile] = File(None),
 
         # Данные формы
         first_name: str = Form(..., min_length=1, max_length=50),
@@ -956,8 +953,6 @@ async def upload_documents(
         narcology_certificate = None
     if isinstance(pension_contributions_certificate, str) and not pension_contributions_certificate:
         pension_contributions_certificate = None
-    if isinstance(criminal_record_certificate, str) and not criminal_record_certificate:
-        criminal_record_certificate = None
     
     # Валидация типов обязательных файлов
     image_docs = [
@@ -973,7 +968,6 @@ async def upload_documents(
         psych_neurology_certificate,
         narcology_certificate,
         pension_contributions_certificate,
-        criminal_record_certificate,
     ]
 
     # Валидация обязательных файлов
@@ -1019,8 +1013,6 @@ async def upload_documents(
             missing_certificates.append("наркологическая справка")
         if pension_contributions_certificate is None:
             missing_certificates.append("справка о пенсионных взносах")
-        if criminal_record_certificate is None:
-            missing_certificates.append("справка об отсутствии судимости")
         
         if missing_certificates:
             raise HTTPException(
@@ -1040,7 +1032,6 @@ async def upload_documents(
         psych_neuro_path = None
         narcology_path = None
         pension_path = None
-        criminal_record_path = None
 
         if psych_neurology_certificate is not None:
             psych_neuro_path = await save_file(psych_neurology_certificate, current_user.id, "uploads/documents")
@@ -1048,8 +1039,6 @@ async def upload_documents(
             narcology_path = await save_file(narcology_certificate, current_user.id, "uploads/documents")
         if pension_contributions_certificate is not None:
             pension_path = await save_file(pension_contributions_certificate, current_user.id, "uploads/documents")
-        if criminal_record_certificate is not None:
-            criminal_record_path = await save_file(criminal_record_certificate, current_user.id, "uploads/documents")
 
         # Сохраняем старый email для сравнения ДО обновления
         old_email = current_user.email
@@ -1078,7 +1067,6 @@ async def upload_documents(
         current_user.psych_neurology_certificate_url = psych_neuro_path
         current_user.narcology_certificate_url = narcology_path
         current_user.pension_contributions_certificate_url = pension_path
-        current_user.criminal_record_certificate_url = criminal_record_path
 
         # Стартовый этап после загрузки документов — ожидание финансиста
         current_user.role = UserRole.PENDINGTOFIRST
@@ -1202,7 +1190,6 @@ async def upload_documents(
                 "psych_neurology_certificate_url": current_user.psych_neurology_certificate_url,
                 "narcology_certificate_url": current_user.narcology_certificate_url,
                 "pension_contributions_certificate_url": current_user.pension_contributions_certificate_url,
-                "criminal_record_certificate_url": current_user.criminal_record_certificate_url
             }
         }
 

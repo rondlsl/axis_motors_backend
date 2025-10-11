@@ -67,7 +67,6 @@ async def get_pending_applications(
                 "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
                 "narcology_certificate_url": user.narcology_certificate_url,
                 "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
-                "criminal_record_certificate_url": user.criminal_record_certificate_url
             },
             "documents": {
                 "id_card_front_url": user.id_card_front_url,
@@ -131,7 +130,6 @@ async def get_approved_applications(
                 "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
                 "narcology_certificate_url": user.narcology_certificate_url,
                 "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
-                "criminal_record_certificate_url": user.criminal_record_certificate_url
             },
             "documents": {
                 "id_card_front_url": user.id_card_front_url,
@@ -197,7 +195,6 @@ async def get_rejected_applications(
                 "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
                 "narcology_certificate_url": user.narcology_certificate_url,
                 "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
-                "criminal_record_certificate_url": user.criminal_record_certificate_url
             },
             "documents": {
                 "id_card_front_url": user.id_card_front_url,

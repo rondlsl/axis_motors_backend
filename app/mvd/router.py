@@ -77,7 +77,6 @@ async def get_pending_applications(
                 "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
                 "narcology_certificate_url": user.narcology_certificate_url,
                 "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
-                "criminal_record_certificate_url": user.criminal_record_certificate_url
             },
             "auto_class": app.user.auto_class,
             "financier_approved_at": app.financier_approved_at.isoformat() if app.financier_approved_at else None,
@@ -146,7 +145,6 @@ async def get_approved_applications(
                 "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
                 "narcology_certificate_url": user.narcology_certificate_url,
                 "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
-                "criminal_record_certificate_url": user.criminal_record_certificate_url
             },
             "auto_class": app.user.auto_class,
             "financier_approved_at": app.financier_approved_at.isoformat() if app.financier_approved_at else None,
@@ -216,7 +214,6 @@ async def get_rejected_applications(
                 "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
                 "narcology_certificate_url": user.narcology_certificate_url,
                 "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
-                "criminal_record_certificate_url": user.criminal_record_certificate_url
             },
             "auto_class": app.user.auto_class,
             "financier_approved_at": app.financier_approved_at.isoformat() if app.financier_approved_at else None,

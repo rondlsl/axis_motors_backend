@@ -23,7 +23,6 @@ class UserProfileSchema(BaseModel):
     psych_neurology_certificate_url: Optional[str] = None
     narcology_certificate_url: Optional[str] = None
     pension_contributions_certificate_url: Optional[str] = None
-    criminal_record_certificate_url: Optional[str] = None
     auto_class: List[str] = []
 
 

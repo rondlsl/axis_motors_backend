@@ -53,7 +53,6 @@ class User(Base):
     psych_neurology_certificate_url = Column(String, nullable=True)
     narcology_certificate_url = Column(String, nullable=True)
     pension_contributions_certificate_url = Column(String, nullable=True)
-    criminal_record_certificate_url = Column(String, nullable=True)
     documents_verified = Column(Boolean, default=False, server_default="false")
     role = Column(Enum(UserRole), default=UserRole.CLIENT)
     last_sms_code = Column(String)
