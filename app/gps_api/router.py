@@ -869,8 +869,8 @@ async def open_vehicle_by_id(
     current_user: User = Depends(get_current_user)
 ):
     """Открыть автомобиль по ID"""
-    if current_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Только администраторы могут управлять автомобилями")
+    if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
+        raise HTTPException(status_code=403, detail="Только администраторы и механики могут управлять автомобилями")
     
     # Получаем информацию об автомобиле
     car = db.query(Car).filter(Car.id == car_id).first()
@@ -898,8 +898,8 @@ async def close_vehicle_by_id(
     current_user: User = Depends(get_current_user)
 ):
     """Закрыть автомобиль по ID"""
-    if current_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Только администраторы могут управлять автомобилями")
+    if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
+        raise HTTPException(status_code=403, detail="Только администраторы и механики могут управлять автомобилями")
     
     # Получаем информацию об автомобиле
     car = db.query(Car).filter(Car.id == car_id).first()
@@ -927,8 +927,8 @@ async def lock_engine_by_id(
     current_user: User = Depends(get_current_user)
 ):
     """Заблокировать двигатель автомобиля по ID"""
-    if current_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Только администраторы могут управлять автомобилями")
+    if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
+        raise HTTPException(status_code=403, detail="Только администраторы и механики могут управлять автомобилями")
     
     # Получаем информацию об автомобиле
     car = db.query(Car).filter(Car.id == car_id).first()
@@ -956,8 +956,8 @@ async def unlock_engine_by_id(
     current_user: User = Depends(get_current_user)
 ):
     """Разблокировать двигатель автомобиля по ID"""
-    if current_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Только администраторы могут управлять автомобилями")
+    if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
+        raise HTTPException(status_code=403, detail="Только администраторы и механики могут управлять автомобилями")
     
     # Получаем информацию об автомобиле
     car = db.query(Car).filter(Car.id == car_id).first()
@@ -985,8 +985,8 @@ async def give_key_by_id(
     current_user: User = Depends(get_current_user)
 ):
     """Выдать ключ автомобиля по ID"""
-    if current_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Только администраторы могут управлять автомобилями")
+    if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
+        raise HTTPException(status_code=403, detail="Только администраторы и механики могут управлять автомобилями")
     
     # Получаем информацию об автомобиле
     car = db.query(Car).filter(Car.id == car_id).first()
@@ -1017,8 +1017,8 @@ async def take_key_by_id(
     
     Если двигатель не выключен, сначала заблокирует двигатель, затем заберет ключ
     """
-    if current_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Только администраторы могут управлять автомобилями")
+    if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
+        raise HTTPException(status_code=403, detail="Только администраторы и механики могут управлять автомобилями")
     
     # Получаем информацию об автомобиле
     car = db.query(Car).filter(Car.id == car_id).first()
