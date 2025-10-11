@@ -23,7 +23,18 @@ async def send_guarantor_invitation_sms(guarantor_phone: str, requestor_first_na
     else:
         requestor_display_name = requestor_first_name
     
-    sms_text = f"{requestor_display_name} выбрал(а) вас в качестве Гаранта. Перейдите по ссылке и скачайте приложение"
+    sms_text = f"""Здравствуйте!
+
+{requestor_display_name} указал вас в качестве гаранта при подключении к сервису AZV Motors.
+Гарант несет поручительство за клиента и обязуется компенсировать возможный материальный ущерб, причинённый по его вине в процессе пользования автомобилем.
+
+Для подтверждения вашего согласия на данную ответственность, необходимо зарегестрироваться в нашем приложении перейдя по ссылке:
+AppStore: https://apps.apple.com/kz/app/azv-motors/id6744049292
+Google play:
+В случае отказа — клиенту потребуется выбрать другого гаранта.
+
+С уважением,
+Команда AZV Motors"""
     
     # Если SMS_TOKEN = "6666" - тестовый режим, SMS не отправляем
     if SMS_TOKEN == "6666":
