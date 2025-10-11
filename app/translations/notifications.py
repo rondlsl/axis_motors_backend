@@ -6,7 +6,7 @@ NOTIFICATIONS_TRANSLATIONS = {
         
         # Отклонение финансистом - отсутствуют сертификаты для граждан Казахстана
         "financier_reject_certificates_title": "Заявка отклонена",
-        "financier_reject_certificates_body": "Как гражданин Республики Казахстан, вы обязаны предоставить справки: психоневрологическую, наркологическую, о пенсионных взносах. Пожалуйста, прикрепите недостающие документы.",
+        "financier_reject_certificates_body": "Как гражданин Республики Казахстан, вы обязаны предоставить справки: из психоневрологического диспансера, наркологического диспансера, справку о пенсионных отчислениях.\nПожалуйста, прикрепите недостающие документы.",
         
         # Отклонение финансистом - финансовые причины
         "financier_reject_financial_title": "Заявка отклонена",
@@ -77,7 +77,7 @@ NOTIFICATIONS_TRANSLATIONS = {
         
         # Отклонение финансистом - отсутствуют сертификаты для граждан Казахстана
         "financier_reject_certificates_title": "Application Rejected",
-        "financier_reject_certificates_body": "As a citizen of the Republic of Kazakhstan, you are required to provide certificates: psychoneurological, narcological, pension contributions. Please attach the missing documents.",
+        "financier_reject_certificates_body": "As a citizen of the Republic of Kazakhstan, you are required to provide certificates: from a psychoneurological dispensary, narcological dispensary, and pension contributions certificate.\nPlease attach the missing documents.",
         
         # Отклонение финансистом - финансовые причины
         "financier_reject_financial_title": "Application Rejected",
@@ -148,7 +148,7 @@ NOTIFICATIONS_TRANSLATIONS = {
         
         # Отклонение финансистом - отсутствуют сертификаты для граждан Казахстана
         "financier_reject_certificates_title": "Өтініш бас тартылды",
-        "financier_reject_certificates_body": "Қазақстан Республикасының азаматы ретінде сіз справкаларды ұсынуға міндеттісіз: психоневрологиялық, наркологиялық, зейнетақы жарналары. Жетіспейтін құжаттарды тіркеңіз.",
+        "financier_reject_certificates_body": "Қазақстан Республикасының азаматы ретінде сіз справкаларды ұсынуға міндеттісіз: психоневрологиялық диспансерден, наркологиялық диспансерден, зейнетақы жарналары туралы справка.\nЖетіспейтін құжаттарды тіркеңіз.",
         
         # Отклонение финансистом - финансовые причины
         "financier_reject_financial_title": "Өтініш бас тартылды",
