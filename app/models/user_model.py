@@ -63,6 +63,11 @@ class User(Base):
     fcm_token = Column(String, nullable=True)
     locale = Column(String, nullable=False, server_default=text("'ru'"))
     auto_class = Column(ARRAY(String), nullable=True)  # Доступные классы авто (может быть несколько): A, B, C
+    
+    # Дополнительные поля для админ-панели
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    last_activity_at = Column(DateTime, nullable=True)
+    admin_comment = Column(String, nullable=True)  # Комментарий админа/поддержки/механика
 
     rental_history = relationship("RentalHistory", back_populates="user",
                                   foreign_keys="[RentalHistory.user_id]")

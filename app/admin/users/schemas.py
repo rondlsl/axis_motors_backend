@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
+from datetime import datetime
 from app.models.user_model import UserRole
 
 
@@ -26,6 +27,170 @@ class UserProfileSchema(BaseModel):
     auto_class: List[str] = []
 
 
+class UserCardSchema(BaseModel):
+    """Полная схема карточки пользователя для админ-панели"""
+    id: int
+    phone_number: str
+    email: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    iin: Optional[str] = None
+    passport_number: Optional[str] = None
+    birth_date: Optional[datetime] = None
+    drivers_license_expiry: Optional[datetime] = None
+    id_card_expiry: Optional[datetime] = None
+    locale: Optional[str] = None
+    role: str
+    is_active: bool
+    is_verified_email: bool
+    is_citizen_kz: bool
+    documents_verified: bool
+    selfie_url: Optional[str] = None
+    selfie_with_license_url: Optional[str] = None
+    drivers_license_url: Optional[str] = None
+    id_card_front_url: Optional[str] = None
+    id_card_back_url: Optional[str] = None
+    psych_neurology_certificate_url: Optional[str] = None
+    narcology_certificate_url: Optional[str] = None
+    pension_contributions_certificate_url: Optional[str] = None
+    auto_class: List[str] = []
+    wallet_balance: float = 0.0
+    created_at: Optional[datetime] = None
+    last_activity_at: Optional[datetime] = None
+    mvd_approved: bool = False
+    is_blocked: bool = False
+    admin_comment: Optional[str] = None
+    
+    # Дополнительная информация
+    current_rental_car: Optional[Dict[str, Any]] = None
+    owner_earnings_current_month: Optional[float] = None
+    owner_earnings_total: Optional[float] = None
+
+
+class UserListSchema(BaseModel):
+    """Схема для списка пользователей"""
+    id: int
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone_number: str
+    iin: Optional[str] = None
+    passport_number: Optional[str] = None
+    role: str
+    auto_class: List[str] = []
+    selfie_url: Optional[str] = None
+    is_blocked: bool = False
+    current_rental_car: Optional[Dict[str, Any]] = None
+
+
+class UserMapPositionSchema(BaseModel):
+    """Схема для позиций пользователей на карте"""
+    id: int
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    selfie_url: Optional[str] = None
+    last_rental_end_latitude: Optional[float] = None
+    last_rental_end_longitude: Optional[float] = None
+    last_activity_at: Optional[datetime] = None
+    is_active_rental: bool = False
+
+
+class UserCommentUpdateSchema(BaseModel):
+    """Схема для обновления комментария пользователя"""
+    admin_comment: Optional[str] = None
+
+
 class UserRoleUpdateSchema(BaseModel):
     """Схема обновления роли пользователя"""
     role: UserRole = Field(..., description="Новая роль пользователя")
+
+
+class UserSearchFiltersSchema(BaseModel):
+    """Схема фильтров для поиска пользователей"""
+    role: Optional[str] = None
+    search_query: Optional[str] = None
+    has_active_rental: Optional[bool] = None
+    is_blocked: Optional[bool] = None
+    mvd_approved: Optional[bool] = None
+
+
+class GuarantorInfoSchema(BaseModel):
+    """Схема информации о гаранте/клиенте"""
+    id: int
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone_number: str
+    iin: Optional[str] = None
+    passport_number: Optional[str] = None
+    selfie_url: Optional[str] = None
+
+
+class TripSummarySchema(BaseModel):
+    """Сводка по поездкам"""
+    total_minutes: int = 0
+    total_spent: float = 0.0
+    total_trips: int = 0
+
+
+class TripListItemSchema(BaseModel):
+    """Элемент списка поездок"""
+    id: int
+    rental_type: str
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    duration_minutes: int = 0
+    total_price: float = 0.0
+    car_name: Optional[str] = None
+    car_plate_number: Optional[str] = None
+
+
+class TripDetailSchema(BaseModel):
+    """Детальная информация о поездке"""
+    id: int
+    rental_type: str
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    duration_minutes: int = 0
+    total_price: float = 0.0
+    
+    car_id: int
+    car_name: str
+    car_plate_number: str
+    
+    photos_before: List[str] = [] 
+    photos_after: List[str] = [] 
+    mechanic_photos_before: List[str] = [] 
+    mechanic_photos_after: List[str] = [] 
+    
+    client_comment: Optional[str] = None
+    mechanic_comment: Optional[str] = None
+    
+    client_rating: Optional[int] = None
+    mechanic_rating: Optional[int] = None
+    
+    start_latitude: Optional[float] = None
+    start_longitude: Optional[float] = None
+    end_latitude: Optional[float] = None
+    end_longitude: Optional[float] = None
+
+
+class OwnerCarListItemSchema(BaseModel):
+    """Элемент списка автомобилей владельца"""
+    id: int
+    name: str
+    plate_number: str
+    available_minutes: int = 0
+    earnings_current_month: float = 0.0
+    earnings_total: float = 0.0
+    photos: Optional[List[str]] = None
+
+
+class UserEditSchema(BaseModel):
+    """Схема для редактирования пользователя"""
+    auto_class: Optional[List[str]] = None
+    role: Optional[UserRole] = None
+
+
+class UserBlockSchema(BaseModel):
+    """Схема для блокировки пользователя"""
+    is_blocked: bool
+    block_reason: Optional[str] = None

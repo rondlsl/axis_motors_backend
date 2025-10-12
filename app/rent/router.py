@@ -505,6 +505,10 @@ async def reserve_car(
         # Обновляем статус машины
         car.current_renter_id = current_user.id
         car.status = CarStatus.FREE  # Возвращаем машину в свободное состояние
+        
+        # Обновляем время последней активности пользователя
+        current_user.last_activity_at = datetime.utcnow()
+        
         db.commit()
 
         return {
@@ -567,6 +571,10 @@ async def reserve_car(
     # Обновляем машину: устанавливаем текущего арендатора и меняем статус на RESERVED
     car.current_renter_id = current_user.id
     car.status = CarStatus.RESERVED
+    
+    # Обновляем время последней активности пользователя
+    current_user.last_activity_at = datetime.utcnow()
+    
     db.commit()
 
     return {
@@ -715,6 +723,10 @@ async def reserve_delivery(
     # Обновляем статус машины
     car.current_renter_id = current_user.id
     car.status = CarStatus.DELIVERING
+    
+    # Обновляем время последней активности пользователя
+    current_user.last_activity_at = datetime.utcnow()
+    
     db.commit()
 
     # Уведомляем всех механиков
@@ -984,6 +996,9 @@ async def start_rental(
 
         rental.rental_status = RentalStatus.IN_USE
         rental.start_time = datetime.utcnow()
+        
+        # Обновляем время последней активности пользователя
+        current_user.last_activity_at = datetime.utcnow()
 
         total_cost = rental.total_price
 
@@ -1631,6 +1646,9 @@ async def complete_rental(
     rental.fuel_after = car.fuel_level
     rental.mileage_after = car.mileage
     rental.rental_status = RentalStatus.COMPLETED
+    
+    # Обновляем время последней активности пользователя
+    current_user.last_activity_at = now
 
     # Освободить машину
     car.current_renter_id = None
@@ -1933,6 +1951,10 @@ async def create_advance_booking(
     # 8) Обновляем машину: устанавливаем текущего арендатора и меняем статус
     car.current_renter_id = current_user.id
     car.status = CarStatus.SCHEDULED  # Для запланированных аренд машина получает статус SCHEDULED
+    
+    # Обновляем время последней активности пользователя
+    current_user.last_activity_at = datetime.utcnow()
+    
     db.commit()
 
     return BookingResponse(
