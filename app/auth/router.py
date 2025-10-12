@@ -324,6 +324,7 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
 
     # Обновляем время последней активности
     user.last_activity_at = datetime.utcnow()
+    db.commit()
     
     access_token = create_access_token(data={"sub": user.phone_number})
     refresh_token = create_refresh_token(data={"sub": user.phone_number})
