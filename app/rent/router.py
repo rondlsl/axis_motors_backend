@@ -781,6 +781,12 @@ async def cancel_reservation(
         rental.already_payed = 0
         rental.end_latitude = car.latitude
         rental.end_longitude = car.longitude
+        
+        # Рассчитываем продолжительность поездки в минутах
+        if rental.start_time:
+            duration_seconds = (now - rental.start_time).total_seconds()
+            rental.duration = int(duration_seconds / 60)
+        
         car.current_renter_id = None
         car.status = CarStatus.FREE
         db.commit()
@@ -813,6 +819,11 @@ async def cancel_reservation(
         rental.end_time = now
         rental.total_price = fee
         rental.already_payed = fee
+        
+        # Рассчитываем продолжительность поездки в минутах
+        if rental.start_time:
+            duration_seconds = (now - rental.start_time).total_seconds()
+            rental.duration = int(duration_seconds / 60)
 
         # Освобождаем машину и возвращаем статус "FREE"
         car.current_renter_id = None
@@ -872,6 +883,11 @@ async def cancel_delivery(
     # Если доставка была в процессе, записываем время окончания
     if rental.delivery_start_time and not rental.delivery_end_time:
         rental.delivery_end_time = datetime.utcnow()
+    
+    # Рассчитываем продолжительность поездки в минутах
+    if rental.start_time:
+        duration_seconds = (datetime.utcnow() - rental.start_time).total_seconds()
+        rental.duration = int(duration_seconds / 60)
     
     rental.delivery_mechanic_id = None
 
@@ -1646,6 +1662,11 @@ async def complete_rental(
     rental.fuel_after = car.fuel_level
     rental.mileage_after = car.mileage
     rental.rental_status = RentalStatus.COMPLETED
+    
+    # Рассчитываем продолжительность поездки в минутах
+    if rental.start_time:
+        duration_seconds = (now - rental.start_time).total_seconds()
+        rental.duration = int(duration_seconds / 60)
     
     # Обновляем время последней активности пользователя
     current_user.last_activity_at = now
