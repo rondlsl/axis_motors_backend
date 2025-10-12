@@ -868,6 +868,10 @@ async def refresh_token(db: Session = Depends(get_db), token: str = Depends(JWTB
     if user is None:
         raise HTTPException(status_code=404, detail="User not found or inactive")
 
+    # Обновляем время последней активности
+    user.last_activity_at = datetime.utcnow()
+    db.commit()
+
     new_access_token = create_access_token(data={"sub": user.phone_number})
     new_refresh_token = create_refresh_token(data={"sub": user.phone_number})
 
