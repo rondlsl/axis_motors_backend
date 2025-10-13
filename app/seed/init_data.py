@@ -162,7 +162,9 @@ def create_mechanic(db: Session) -> None:
     
     if not mechanic:
         mechanic = User(
-            phone_number=mechanic_phone, 
+            phone_number=mechanic_phone,
+            first_name="Механик",
+            last_name="Механик",
             role=UserRole.MECHANIC, 
             wallet_balance=0,
             iin=mechanic_iin
@@ -173,6 +175,12 @@ def create_mechanic(db: Session) -> None:
         print("✅ Механик создан")
     else:
         print("ℹ️ Механик уже существует")
+        # Обновляем имена если они отсутствуют
+        if not mechanic.first_name or not mechanic.last_name:
+            mechanic.first_name = "Механик"
+            mechanic.last_name = "Механик"
+            db.commit()
+            print("✅ Имена механика обновлены")
 
 
 def create_system_users(db: Session) -> None:
