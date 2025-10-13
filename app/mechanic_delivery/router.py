@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field, constr
+import uuid
 
 from app.auth.dependencies.get_current_user import get_current_mechanic
 from app.auth.dependencies.save_documents import validate_photos, save_file
