@@ -9,6 +9,7 @@ import smtplib
 from email.mime.text import MIMEText
 import os
 import random
+from app.utils.short_id import uuid_to_sid
 
 from starlette import status
 
@@ -435,7 +436,7 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
         client_info={
             "full_name": full_name,
             "phone_number": user.phone_number,
-            "user_id": str(user.id),
+            "user_id": uuid_to_sid(user.id),
             "digital_signature": user.digital_signature
         }
     )

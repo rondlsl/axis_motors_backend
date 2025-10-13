@@ -69,9 +69,9 @@ async def get_pending_users(
     return result
 
 
-@users_router.post("/{user_id}/approve")
+@users_router.post("/{user_sid}/approve")
 async def approve_or_reject_user(
-    user_id: str,
+    user_sid: str,
     approved: bool,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -80,7 +80,7 @@ async def approve_or_reject_user(
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user_uuid = safe_sid_to_uuid(user_id)
+    user_uuid = safe_sid_to_uuid(user_sid)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -120,27 +120,30 @@ async def get_all_users(
     
     result = []
     for user in users:
-        result.append(UserProfileSchema(
-            id=user.id,
-            email=user.email,
-            first_name=user.first_name,
-            last_name=user.last_name,
-            phone_number=user.phone_number,
-            role=user.role.value,
-            is_active=user.is_active,
-            is_verified_email=user.is_verified_email,
-            is_citizen_kz=user.is_citizen_kz,
-            documents_verified=user.documents_verified,
-            selfie_url=user.selfie_url,
-            selfie_with_license_url=user.selfie_with_license_url,
-            drivers_license_url=user.drivers_license_url,
-            id_card_front_url=user.id_card_front_url,
-            id_card_back_url=user.id_card_back_url,
-            psych_neurology_certificate_url=user.psych_neurology_certificate_url,
-            narcology_certificate_url=user.narcology_certificate_url,
-            pension_contributions_certificate_url=user.pension_contributions_certificate_url,
-            auto_class=user.auto_class or []
-        ))
+        user_data = {
+            "id": user.id,
+            "email": user.email,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "phone_number": user.phone_number,
+            "role": user.role.value,
+            "is_active": user.is_active,
+            "is_verified_email": user.is_verified_email,
+            "is_citizen_kz": user.is_citizen_kz,
+            "documents_verified": user.documents_verified,
+            "selfie_url": user.selfie_url,
+            "selfie_with_license_url": user.selfie_with_license_url,
+            "drivers_license_url": user.drivers_license_url,
+            "id_card_front_url": user.id_card_front_url,
+            "id_card_back_url": user.id_card_back_url,
+            "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
+            "narcology_certificate_url": user.narcology_certificate_url,
+            "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
+            "auto_class": user.auto_class or []
+        }
+        
+        converted_data = convert_uuid_response_to_sid(user_data, ["id"])
+        result.append(UserProfileSchema(**converted_data))
     
     return result
 
@@ -158,34 +161,37 @@ async def get_all_clients(
     
     result = []
     for user in users:
-        result.append(UserProfileSchema(
-            id=user.id,
-            email=user.email,
-            first_name=user.first_name,
-            last_name=user.last_name,
-            phone_number=user.phone_number,
-            role=user.role.value,
-            is_active=user.is_active,
-            is_verified_email=user.is_verified_email,
-            is_citizen_kz=user.is_citizen_kz,
-            documents_verified=user.documents_verified,
-            selfie_url=user.selfie_url,
-            selfie_with_license_url=user.selfie_with_license_url,
-            drivers_license_url=user.drivers_license_url,
-            id_card_front_url=user.id_card_front_url,
-            id_card_back_url=user.id_card_back_url,
-            psych_neurology_certificate_url=user.psych_neurology_certificate_url,
-            narcology_certificate_url=user.narcology_certificate_url,
-            pension_contributions_certificate_url=user.pension_contributions_certificate_url,
-            auto_class=user.auto_class or []
-        ))
+        user_data = {
+            "id": user.id,
+            "email": user.email,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "phone_number": user.phone_number,
+            "role": user.role.value,
+            "is_active": user.is_active,
+            "is_verified_email": user.is_verified_email,
+            "is_citizen_kz": user.is_citizen_kz,
+            "documents_verified": user.documents_verified,
+            "selfie_url": user.selfie_url,
+            "selfie_with_license_url": user.selfie_with_license_url,
+            "drivers_license_url": user.drivers_license_url,
+            "id_card_front_url": user.id_card_front_url,
+            "id_card_back_url": user.id_card_back_url,
+            "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
+            "narcology_certificate_url": user.narcology_certificate_url,
+            "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
+            "auto_class": user.auto_class or []
+        }
+        
+        converted_data = convert_uuid_response_to_sid(user_data, ["id"])
+        result.append(UserProfileSchema(**converted_data))
     
     return result
 
 
-@users_router.patch("/{user_id}/role")
+@users_router.patch("/{user_sid}/role")
 async def update_employee_role(
-    user_id: str,
+    user_sid: str,
     role_data: UserRoleUpdateSchema,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -194,7 +200,7 @@ async def update_employee_role(
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user_uuid = safe_sid_to_uuid(user_id)
+    user_uuid = safe_sid_to_uuid(user_sid)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -420,19 +426,22 @@ async def get_users_list(
                     raw = raw[1:-1]
                 auto_class_list = [part.strip() for part in raw.split(",") if part.strip()]
         
-        result.append(UserListSchema(
-            id=user.id,
-            first_name=user.first_name,
-            last_name=user.last_name,
-            phone_number=user.phone_number,
-            iin=user.iin,
-            passport_number=user.passport_number,
-            role=user.role.value,
-            auto_class=auto_class_list,
-            selfie_url=user.selfie_url,
-            is_blocked=not user.is_active,
-            current_rental_car=current_car
-        ))
+        user_data = {
+            "id": user.id,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "phone_number": user.phone_number,
+            "iin": user.iin,
+            "passport_number": user.passport_number,
+            "role": user.role.value,
+            "auto_class": auto_class_list,
+            "selfie_url": user.selfie_url,
+            "is_blocked": not user.is_active,
+            "current_rental_car": current_car
+        }
+        
+        converted_data = convert_uuid_response_to_sid(user_data, ["id"])
+        result.append(UserListSchema(**converted_data))
     
     # Сортировка: сначала с активной арендой, потом без
     result.sort(key=lambda x: x.current_rental_car is None)
@@ -486,23 +495,26 @@ async def get_users_map_positions(
         if not last_rental or not last_rental.end_latitude or not last_rental.end_longitude:
             continue
         
-        result.append(UserMapPositionSchema(
-            id=user.id,
-            first_name=user.first_name,
-            last_name=user.last_name,
-            selfie_url=user.selfie_url,
-            last_rental_end_latitude=float(last_rental.end_latitude),
-            last_rental_end_longitude=float(last_rental.end_longitude),
-            last_activity_at=last_rental.end_time,
-            is_active_rental=current_car is not None
-        ))
+        user_data = {
+            "id": user.id,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "selfie_url": user.selfie_url,
+            "last_rental_end_latitude": float(last_rental.end_latitude),
+            "last_rental_end_longitude": float(last_rental.end_longitude),
+            "last_activity_at": last_rental.end_time,
+            "is_active_rental": current_car is not None
+        }
+        
+        converted_data = convert_uuid_response_to_sid(user_data, ["id"])
+        result.append(UserMapPositionSchema(**converted_data))
     
     return result
 
 
-@users_router.get("/{user_id}/card", response_model=UserCardSchema)
+@users_router.get("/{user_sid}/card", response_model=UserCardSchema)
 async def get_user_card(
-    user_id: str,
+    user_sid: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -510,7 +522,7 @@ async def get_user_card(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user_uuid = safe_sid_to_uuid(user_id)
+    user_uuid = safe_sid_to_uuid(user_sid)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -538,48 +550,51 @@ async def get_user_card(
                 raw = raw[1:-1]
             auto_class_list = [part.strip() for part in raw.split(",") if part.strip()]
     
-    return UserCardSchema(
-        id=user.id,
-        digital_signature=user.digital_signature,
-        phone_number=user.phone_number,
-        email=user.email,
-        first_name=user.first_name,
-        last_name=user.last_name,
-        iin=user.iin,
-        passport_number=user.passport_number,
-        birth_date=user.birth_date,
-        drivers_license_expiry=user.drivers_license_expiry,
-        id_card_expiry=user.id_card_expiry,
-        locale=user.locale,
-        role=user.role.value,
-        is_active=user.is_active,
-        is_verified_email=user.is_verified_email,
-        is_citizen_kz=user.is_citizen_kz,
-        documents_verified=user.documents_verified,
-        selfie_url=user.selfie_url,
-        selfie_with_license_url=user.selfie_with_license_url,
-        drivers_license_url=user.drivers_license_url,
-        id_card_front_url=user.id_card_front_url,
-        id_card_back_url=user.id_card_back_url,
-        psych_neurology_certificate_url=user.psych_neurology_certificate_url,
-        narcology_certificate_url=user.narcology_certificate_url,
-        pension_contributions_certificate_url=user.pension_contributions_certificate_url,
-        auto_class=auto_class_list,
-        wallet_balance=float(user.wallet_balance) if user.wallet_balance else 0.0,
-        created_at=user.created_at,
-        last_activity_at=user.last_activity_at,
-        mvd_approved=mvd_approved,
-        is_blocked=not user.is_active,
-        admin_comment=user.admin_comment,
-        current_rental_car=current_car,
-        owner_earnings_current_month=owner_earnings["current_month"] if owner_earnings else None,
-        owner_earnings_total=owner_earnings["total"] if owner_earnings else None
-    )
+    user_data = {
+        "id": user.id,
+        "digital_signature": user.digital_signature,
+        "phone_number": user.phone_number,
+        "email": user.email,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "iin": user.iin,
+        "passport_number": user.passport_number,
+        "birth_date": user.birth_date,
+        "drivers_license_expiry": user.drivers_license_expiry,
+        "id_card_expiry": user.id_card_expiry,
+        "locale": user.locale,
+        "role": user.role.value,
+        "is_active": user.is_active,
+        "is_verified_email": user.is_verified_email,
+        "is_citizen_kz": user.is_citizen_kz,
+        "documents_verified": user.documents_verified,
+        "selfie_url": user.selfie_url,
+        "selfie_with_license_url": user.selfie_with_license_url,
+        "drivers_license_url": user.drivers_license_url,
+        "id_card_front_url": user.id_card_front_url,
+        "id_card_back_url": user.id_card_back_url,
+        "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
+        "narcology_certificate_url": user.narcology_certificate_url,
+        "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
+        "auto_class": auto_class_list,
+        "wallet_balance": float(user.wallet_balance) if user.wallet_balance else 0.0,
+        "created_at": user.created_at,
+        "last_activity_at": user.last_activity_at,
+        "mvd_approved": mvd_approved,
+        "is_blocked": not user.is_active,
+        "admin_comment": user.admin_comment,
+        "current_rental_car": current_car,
+        "owner_earnings_current_month": owner_earnings["current_month"] if owner_earnings else None,
+        "owner_earnings_total": owner_earnings["total"] if owner_earnings else None
+    }
+    
+    converted_data = convert_uuid_response_to_sid(user_data, ["id"])
+    return UserCardSchema(**converted_data)
 
 
-@users_router.patch("/{user_id}/comment")
+@users_router.patch("/{user_sid}/comment")
 async def update_user_comment(
-    user_id: str,
+    user_sid: str,
     comment_data: UserCommentUpdateSchema,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -588,7 +603,7 @@ async def update_user_comment(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user_uuid = safe_sid_to_uuid(user_id)
+    user_uuid = safe_sid_to_uuid(user_sid)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -600,9 +615,9 @@ async def update_user_comment(
     return {"message": "Комментарий обновлен", "admin_comment": comment_data.admin_comment}
 
 
-@users_router.get("/{user_id}/guarantors/he-is-guarantor", response_model=List[GuarantorInfoSchema])
+@users_router.get("/{user_sid}/guarantors/he-is-guarantor", response_model=List[GuarantorInfoSchema])
 async def get_users_he_is_guarantor_for(
-    user_id: str,
+    user_sid: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -610,7 +625,7 @@ async def get_users_he_is_guarantor_for(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user_uuid = safe_sid_to_uuid(user_id)
+    user_uuid = safe_sid_to_uuid(user_sid)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -628,22 +643,25 @@ async def get_users_he_is_guarantor_for(
     for relation in guarantor_relations:
         client = db.query(User).filter(User.id == relation.client_id).first()
         if client:
-            result.append(GuarantorInfoSchema(
-                id=client.id,
-                first_name=client.first_name,
-                last_name=client.last_name,
-                phone_number=client.phone_number,
-                iin=client.iin,
-                passport_number=client.passport_number,
-                selfie_url=client.selfie_url
-            ))
+            client_data = {
+                "id": client.id,
+                "first_name": client.first_name,
+                "last_name": client.last_name,
+                "phone_number": client.phone_number,
+                "iin": client.iin,
+                "passport_number": client.passport_number,
+                "selfie_url": client.selfie_url
+            }
+            
+            converted_data = convert_uuid_response_to_sid(client_data, ["id"])
+            result.append(GuarantorInfoSchema(**converted_data))
     
     return result
 
 
-@users_router.get("/{user_id}/guarantors/his-guarantors", response_model=List[GuarantorInfoSchema])
+@users_router.get("/{user_sid}/guarantors/his-guarantors", response_model=List[GuarantorInfoSchema])
 async def get_his_guarantors(
-    user_id: str,
+    user_sid: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -651,7 +669,7 @@ async def get_his_guarantors(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user_uuid = safe_sid_to_uuid(user_id)
+    user_uuid = safe_sid_to_uuid(user_sid)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -669,22 +687,25 @@ async def get_his_guarantors(
     for relation in guarantor_relations:
         guarantor = db.query(User).filter(User.id == relation.guarantor_id).first()
         if guarantor:
-            result.append(GuarantorInfoSchema(
-                id=guarantor.id,
-                first_name=guarantor.first_name,
-                last_name=guarantor.last_name,
-                phone_number=guarantor.phone_number,
-                iin=guarantor.iin,
-                passport_number=guarantor.passport_number,
-                selfie_url=guarantor.selfie_url
-            ))
+            guarantor_data = {
+                "id": guarantor.id,
+                "first_name": guarantor.first_name,
+                "last_name": guarantor.last_name,
+                "phone_number": guarantor.phone_number,
+                "iin": guarantor.iin,
+                "passport_number": guarantor.passport_number,
+                "selfie_url": guarantor.selfie_url
+            }
+            
+            converted_data = convert_uuid_response_to_sid(guarantor_data, ["id"])
+            result.append(GuarantorInfoSchema(**converted_data))
     
     return result
 
 
-@users_router.get("/{user_id}/trips/summary", response_model=TripSummarySchema)
+@users_router.get("/{user_sid}/trips/summary", response_model=TripSummarySchema)
 async def get_user_trips_summary(
-    user_id: str,
+    user_sid: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -692,7 +713,7 @@ async def get_user_trips_summary(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user_uuid = safe_sid_to_uuid(user_id)
+    user_uuid = safe_sid_to_uuid(user_sid)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -723,9 +744,9 @@ async def get_user_trips_summary(
     )
 
 
-@users_router.get("/{user_id}/trips", response_model=List[TripListItemSchema])
+@users_router.get("/{user_sid}/trips", response_model=List[TripListItemSchema])
 async def get_user_trips(
-    user_id: str,
+    user_sid: str,
     month: Optional[int] = Query(None, description="Месяц (1-12). Если не указан, возвращается текущий месяц"),
     year: Optional[int] = Query(None, description="Год. Если не указан, возвращается текущий год"),
     current_user: User = Depends(get_current_user),
@@ -735,7 +756,7 @@ async def get_user_trips(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user_uuid = safe_sid_to_uuid(user_id)
+    user_uuid = safe_sid_to_uuid(user_sid)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -785,9 +806,9 @@ async def get_user_trips(
     return result
 
 
-@users_router.get("/{user_id}/trips/{trip_id}", response_model=TripDetailSchema)
+@users_router.get("/{user_sid}/trips/{trip_id}", response_model=TripDetailSchema)
 async def get_trip_detail(
-    user_id: str,
+    user_sid: str,
     trip_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -796,7 +817,7 @@ async def get_trip_detail(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user_uuid = safe_sid_to_uuid(user_id)
+    user_uuid = safe_sid_to_uuid(user_sid)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -852,9 +873,9 @@ async def get_trip_detail(
     )
 
 
-@users_router.get("/{user_id}/cars", response_model=List[OwnerCarListItemSchema])
+@users_router.get("/{user_sid}/cars", response_model=List[OwnerCarListItemSchema])
 async def get_user_cars(
-    user_id: str,
+    user_sid: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -862,7 +883,7 @@ async def get_user_cars(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user_uuid = safe_sid_to_uuid(user_id)
+    user_uuid = safe_sid_to_uuid(user_sid)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -900,9 +921,9 @@ async def get_user_cars(
     return result
 
 
-@users_router.patch("/{user_id}/edit")
+@users_router.patch("/{user_sid}/edit")
 async def edit_user(
-    user_id: str,
+    user_sid: str,
     edit_data: UserEditSchema,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -911,7 +932,7 @@ async def edit_user(
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user_uuid = safe_sid_to_uuid(user_id)
+    user_uuid = safe_sid_to_uuid(user_sid)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -929,9 +950,9 @@ async def edit_user(
     return {"message": "Пользователь обновлен"}
 
 
-@users_router.patch("/{user_id}/block")
+@users_router.patch("/{user_sid}/block")
 async def block_user(
-    user_id: str,
+    user_sid: str,
     block_data: UserBlockSchema,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -940,7 +961,7 @@ async def block_user(
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user_uuid = safe_sid_to_uuid(user_id)
+    user_uuid = safe_sid_to_uuid(user_sid)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")

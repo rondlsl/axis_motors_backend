@@ -89,9 +89,9 @@ def get_delivery_vehicles(
     return {"delivery_vehicles": vehicles_data}
 
 
-@MechanicDeliveryRouter.post("/accept-delivery/{rental_id}")
+@MechanicDeliveryRouter.post("/accept-delivery/{rental_sid}")
 async def accept_delivery(
-        rental_id: str,
+        rental_sid: str,
         db: Session = Depends(get_db),
         current_mechanic: User = Depends(get_current_mechanic)
 ) -> Dict[str, Any]:
@@ -110,7 +110,7 @@ async def accept_delivery(
     if existing:
         raise HTTPException(400, "У вас уже есть активный заказ доставки.")
 
-    rental_uuid = safe_sid_to_uuid(rental_id)
+    rental_uuid = safe_sid_to_uuid(rental_sid)
     rental = db.query(RentalHistory).filter(
         RentalHistory.id == rental_uuid,
         RentalHistory.rental_status == RentalStatus.DELIVERING

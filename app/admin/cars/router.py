@@ -704,10 +704,10 @@ async def get_car_trips_list(
     return {"trips": items}
 
 
-@cars_router.get("/{car_id}/history/trips/{rental_id}")
+@cars_router.get("/{car_id}/history/trips/{rental_sid}")
 async def get_trip_detail(
     car_id: int,
-    rental_id: str,
+    rental_sid: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -715,7 +715,7 @@ async def get_trip_detail(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
-    rental_uuid = safe_sid_to_uuid(rental_id)
+    rental_uuid = safe_sid_to_uuid(rental_sid)
     rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid, RentalHistory.car_id == car_id).first()
     if not rental:
         raise HTTPException(status_code=404, detail="Поездка не найдена")

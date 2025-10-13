@@ -4,6 +4,7 @@ from typing import List
 import base64
 import os
 import uuid
+from app.utils.short_id import safe_sid_to_uuid
 from datetime import datetime
 
 from app.dependencies.database.database import get_db
@@ -458,16 +459,17 @@ async def get_contract_requirements(
     )
 
 
-@ContractsRouter.get("/rental/{rental_id}/status", response_model=RentalContractStatus)
+@ContractsRouter.get("/rental/{rental_sid}/status", response_model=RentalContractStatus)
 async def get_rental_contract_status(
-    rental_id: uuid.UUID,
+    rental_sid: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     Проверить статус договоров для конкретной аренды
     """
-    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_id).first()
+    rental_uuid = safe_sid_to_uuid(rental_sid)
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
     
     if not rental:
         raise HTTPException(

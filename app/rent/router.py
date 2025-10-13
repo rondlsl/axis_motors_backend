@@ -2054,9 +2054,9 @@ async def get_my_bookings(
     return result
 
 
-@RentRouter.post("/cancel-booking/{rental_id}", response_model=CancelBookingResponse)
+@RentRouter.post("/cancel-booking/{rental_sid}", response_model=CancelBookingResponse)
 async def cancel_booking(
-    rental_id: str,
+    rental_sid: str,
     cancel_request: CancelBookingRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -2065,7 +2065,7 @@ async def cancel_booking(
     Отменить бронирование
     """
     # 1) Находим бронирование
-    rental_uuid = safe_sid_to_uuid(rental_id)
+    rental_uuid = safe_sid_to_uuid(rental_sid)
     rental = db.query(RentalHistory).filter(
         RentalHistory.id == rental_uuid,
         RentalHistory.user_id == current_user.id,
