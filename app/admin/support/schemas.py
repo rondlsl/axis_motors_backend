@@ -9,6 +9,7 @@ class SupportUserSchema(BaseModel):
     last_name: Optional[str] = None
     phone_number: Optional[str] = None
     role: Optional[str] = None
+    digital_signature: Optional[str] = None
 
 
 class SupportActionItemSchema(BaseModel):

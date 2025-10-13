@@ -64,6 +64,7 @@ class User(Base):
     fcm_token = Column(String, nullable=True)
     locale = Column(String, nullable=False, server_default=text("'ru'"))
     auto_class = Column(ARRAY(String), nullable=True)  # Доступные классы авто (может быть несколько): A, B, C
+    digital_signature = Column(String, nullable=True, unique=True)  # Уникальная электронная подпись пользователя
     
     # Дополнительные поля для админ-панели
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)

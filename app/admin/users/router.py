@@ -527,6 +527,7 @@ async def get_user_card(
     
     return UserCardSchema(
         id=user.id,
+        digital_signature=user.digital_signature,
         phone_number=user.phone_number,
         email=user.email,
         first_name=user.first_name,

@@ -1,5 +1,6 @@
 from datetime import datetime
 import uuid
+from typing import Optional
 
 from pydantic import BaseModel, Field, validator, constr
 
@@ -12,6 +13,35 @@ class SelfieUploadResponse(BaseModel):
     message: str = Field(..., description="Сообщение об успешной загрузке")
     selfie_url: str = Field(..., description="URL загруженного селфи")
     user_id: uuid.UUID = Field(..., description="ID пользователя")
+    digital_signature: Optional[str] = Field(None, description="Цифровая подпись пользователя")
+
+
+class UserRegistrationInfoResponse(BaseModel):
+    """Схема ответа с информацией о пользователе после регистрации"""
+    user_id: uuid.UUID = Field(..., description="ID пользователя")
+    phone_number: str = Field(..., description="Номер телефона пользователя")
+    first_name: Optional[str] = Field(None, description="Имя пользователя")
+    last_name: Optional[str] = Field(None, description="Фамилия пользователя")
+    digital_signature: Optional[str] = Field(None, description="Цифровая подпись пользователя")
+    message: str = Field(..., description="Сообщение для пользователя")
+
+
+class ClientInfoResponse(BaseModel):
+    """Схема ответа с информацией о клиенте"""
+    full_name: str = Field(..., description="Полное имя клиента")
+    phone_number: str = Field(..., description="Номер телефона клиента")
+    user_id: str = Field(..., description="ID клиента")
+    digital_signature: Optional[str] = Field(None, description="Цифровая подпись клиента")
+
+
+class VerifySmsResponse(BaseModel):
+    """Схема ответа на верификацию SMS"""
+    access_token: str = Field(..., description="Токен доступа")
+    refresh_token: str = Field(..., description="Токен обновления")
+    token_type: str = Field(..., description="Тип токена")
+    linked_guarantor_requests: int = Field(..., description="Количество связанных заявок гарантов")
+    digital_signature: Optional[str] = Field(None, description="Цифровая подпись пользователя")
+    client_info: ClientInfoResponse = Field(..., description="Информация о клиенте")
 
 
 class SendSmsRequest(BaseModel):

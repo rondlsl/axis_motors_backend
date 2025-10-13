@@ -60,6 +60,7 @@ class WalletUserBalanceItem(BaseModel):
     wallet_balance: float
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    digital_signature: Optional[str] = None
 
 
 class WalletUsersBalancesOut(BaseModel):

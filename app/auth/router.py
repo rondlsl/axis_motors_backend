@@ -14,7 +14,7 @@ from starlette import status
 
 from app.auth.dependencies.get_current_user import get_current_user  # обновлённая версия — см. ниже
 from app.auth.dependencies.save_documents import save_file
-from app.auth.schemas import SendSmsRequest, VerifySmsRequest, DocumentUploadRequest, LocaleUpdate, SelfieUploadResponse
+from app.auth.schemas import SendSmsRequest, VerifySmsRequest, DocumentUploadRequest, LocaleUpdate, SelfieUploadResponse, UserRegistrationInfoResponse, VerifySmsResponse
 from app.auth.security.auth_bearer import JWTBearer
 from app.auth.security.tokens import create_refresh_token, create_access_token
 from app.core.config import SMS_TOKEN
@@ -29,6 +29,7 @@ from app.rent.utils.calculate_price import get_open_price
 from app.owner.utils import calculate_month_availability_minutes, ALMATY_TZ
 from app.core.config import logger
 from app.models.guarantor_model import Guarantor
+from app.utils.digital_signature import generate_digital_signature
 import traceback
 
 Auth_router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -218,6 +219,16 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
             is_active=True  # Новый аккаунт активен
         )
         db.add(user)
+        db.flush()  # Получаем ID пользователя
+        
+        # Генерируем цифровую подпись для нового пользователя
+        digital_signature = generate_digital_signature(
+            user_id=str(user.id),
+            phone_number=phone_number,
+            first_name=request.first_name,
+            last_name=request.last_name
+        )
+        user.digital_signature = digital_signature
     else:
         # Обновляем смс-код активного аккаунта
         user.last_sms_code = sms_code
@@ -225,7 +236,30 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
 
     db.commit()
     print(sms_code)
-    sms_text = f"{sms_code} - Ваш код подтверждения AZV Motors"
+    
+    # Формируем SMS с информацией о клиенте
+    if not user.digital_signature:
+        # Если у пользователя еще нет цифровой подписи, генерируем её
+        user.digital_signature = generate_digital_signature(
+            user_id=str(user.id),
+            phone_number=phone_number,
+            first_name=user.first_name or "",
+            last_name=user.last_name or ""
+        )
+        db.commit()
+    
+    # Получаем ФИО пользователя
+    full_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
+    if not full_name:
+        full_name = "Не указано"
+    
+    sms_text = f"""{sms_code} - Ваш код подтверждения AZV Motors
+
+Данные клиента:
+ФИО клиента: {full_name}
+Логин клиента: {phone_number}
+ID клиента: {user.id}
+Электронная подпись: {user.digital_signature}"""
     try:
         if SMS_TOKEN:
             await send_sms_mobizon(phone_number, sms_text, f"{SMS_TOKEN}")
@@ -235,6 +269,30 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
         logger.error(f"Mobizon send error: {e}")
 
     return {"message": "SMS code sent successfully"}
+
+
+@Auth_router.get("/user/registration-info", response_model=UserRegistrationInfoResponse)
+async def get_user_registration_info(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Получение информации о пользователе для отображения при регистрации
+    Включает цифровую подпись и другие данные для подписания документов
+    """
+    # Получаем ФИО пользователя
+    full_name = f"{current_user.first_name or ''} {current_user.last_name or ''}".strip()
+    if not full_name:
+        full_name = "Не указано"
+    
+    return UserRegistrationInfoResponse(
+        user_id=current_user.id,
+        phone_number=current_user.phone_number,
+        first_name=current_user.first_name,
+        last_name=current_user.last_name,
+        digital_signature=current_user.digital_signature,
+        message=f"ФИО клиента: {full_name}\nЛогин клиента: {current_user.phone_number}\nID клиента: {current_user.id}\nЭлектронная подпись: {current_user.digital_signature}"
+    )
 
 
 @Auth_router.patch(
@@ -288,7 +346,7 @@ async def update_user_name(
         raise HTTPException(status_code=500, detail="Failed to update profile")
 
 
-@Auth_router.post("/verify_sms/")
+@Auth_router.post("/verify_sms/", response_model=VerifySmsResponse)
 async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
     """
     Верификация смс-кода. Учтите, что ищем активного пользователя.
@@ -359,12 +417,24 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
         # Продолжаем выполнение без обработки гарантов
         linked_count = 0
 
-    return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer",
-        "linked_guarantor_requests": linked_count  # Сколько заявок связано
-    }
+    # Получаем ФИО пользователя
+    full_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
+    if not full_name:
+        full_name = "Не указано"
+    
+    return VerifySmsResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+        linked_guarantor_requests=linked_count,
+        digital_signature=user.digital_signature,
+        client_info={
+            "full_name": full_name,
+            "phone_number": user.phone_number,
+            "user_id": str(user.id),
+            "digital_signature": user.digital_signature
+        }
+    )
 
 
 @Auth_router.get("/user/me")
@@ -745,6 +815,7 @@ async def read_users_me(
             "guarantors_count": guarantors_count,
             "guarantors": guarantors,
             "auto_class": current_user.auto_class or [],
+            "digital_signature": current_user.digital_signature,
             "application": {
                 "reason": getattr(user_application, "reason", None) if user_application else None,
             },

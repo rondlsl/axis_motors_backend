@@ -26,6 +26,7 @@ class UserProfileSchema(BaseModel):
     narcology_certificate_url: Optional[str] = None
     pension_contributions_certificate_url: Optional[str] = None
     auto_class: List[str] = []
+    digital_signature: Optional[str] = None
 
 
 class UserCardSchema(BaseModel):
@@ -55,6 +56,7 @@ class UserCardSchema(BaseModel):
     narcology_certificate_url: Optional[str] = None
     pension_contributions_certificate_url: Optional[str] = None
     auto_class: List[str] = []
+    digital_signature: Optional[str] = None
     wallet_balance: float = 0.0
     created_at: Optional[datetime] = None
     last_activity_at: Optional[datetime] = None
@@ -78,6 +80,7 @@ class UserListSchema(BaseModel):
     passport_number: Optional[str] = None
     role: str
     auto_class: List[str] = []
+    digital_signature: Optional[str] = None
     selfie_url: Optional[str] = None
     is_blocked: bool = False
     current_rental_car: Optional[Dict[str, Any]] = None
@@ -88,6 +91,7 @@ class UserMapPositionSchema(BaseModel):
     id: uuid.UUID
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    digital_signature: Optional[str] = None
     selfie_url: Optional[str] = None
     last_rental_end_latitude: Optional[float] = None
     last_rental_end_longitude: Optional[float] = None
