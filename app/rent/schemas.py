@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Optional
+import uuid
 from app.models.history_model import RentalType, RentalStatus
 
 
@@ -18,7 +19,7 @@ class AdvanceBookingRequest(BaseModel):
 class BookingResponse(BaseModel):
     """Схема ответа для бронирования"""
     message: str
-    rental_id: int
+    rental_id: uuid.UUID
     reservation_time: str
     scheduled_start_time: Optional[str] = None
     scheduled_end_time: Optional[str] = None
@@ -27,7 +28,7 @@ class BookingResponse(BaseModel):
 
 class BookingListResponse(BaseModel):
     """Схема ответа для списка бронирований"""
-    id: int
+    id: uuid.UUID
     car_id: int
     car_name: str
     car_plate_number: str
@@ -55,5 +56,5 @@ class CancelBookingRequest(BaseModel):
 class CancelBookingResponse(BaseModel):
     """Схема ответа для отмены бронирования"""
     message: str
-    rental_id: int
+    rental_id: uuid.UUID
     refund_amount: Optional[int] = None

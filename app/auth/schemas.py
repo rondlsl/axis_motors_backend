@@ -1,4 +1,5 @@
 from datetime import datetime
+import uuid
 
 from pydantic import BaseModel, Field, validator, constr
 
@@ -10,7 +11,7 @@ class LocaleUpdate(BaseModel):
 class SelfieUploadResponse(BaseModel):
     message: str = Field(..., description="Сообщение об успешной загрузке")
     selfie_url: str = Field(..., description="URL загруженного селфи")
-    user_id: int = Field(..., description="ID пользователя")
+    user_id: uuid.UUID = Field(..., description="ID пользователя")
 
 
 class SendSmsRequest(BaseModel):

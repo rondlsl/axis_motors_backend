@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Optional, List, TYPE_CHECKING
+import uuid
 
 from fastapi import UploadFile, HTTPException
 from sqlalchemy.orm import Session
@@ -34,7 +35,7 @@ def validate_photo_types(files: List[UploadFile]):
 
 async def process_upload_photos(
         photos: List[UploadFile],
-        rental_id: int,
+        rental_id: uuid.UUID,
         subfolder: str
 ) -> List[str]:
     photo_urls = []
@@ -44,7 +45,7 @@ async def process_upload_photos(
     return photo_urls
 
 
-def add_review_if_exists(db: Session, rental_id: int, review_input: Optional["RentalReviewInput"]):
+def add_review_if_exists(db: Session, rental_id: uuid.UUID, review_input: Optional["RentalReviewInput"]):
     if review_input:
         # Ищем существующий отзыв для этой аренды
         existing_review = db.query(RentalReview).filter(RentalReview.rental_id == rental_id).first()
@@ -74,7 +75,7 @@ async def _handle_photos(
         selfie: UploadFile,
         car_photos: List[UploadFile],
         interior_photos: List[UploadFile],
-        rental_id: int,
+        rental_id: uuid.UUID,
         when: str
 ) -> List[str]:
     # валидация

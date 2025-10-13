@@ -1,13 +1,14 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from starlette import status
+import uuid
 
 from app.models.car_model import Car
 from app.models.history_model import RentalHistory, RentalStatus
 from app.models.user_model import User
 
 
-def get_active_rental(db: Session, user_id: int) -> RentalHistory:
+def get_active_rental(db: Session, user_id: uuid.UUID) -> RentalHistory:
     """
     Находит текущую аренду (IN_USE или DELIVERING_IN_PROGRESS) для пользователя.
     """

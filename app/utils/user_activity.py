@@ -2,11 +2,12 @@
 Утилиты для отслеживания активности пользователей
 """
 from datetime import datetime
+import uuid
 from sqlalchemy.orm import Session
 from app.models.user_model import User
 
 
-def update_user_last_activity(db: Session, user_id: int) -> None:
+def update_user_last_activity(db: Session, user_id: uuid.UUID) -> None:
     """
     Обновляет время последней активности пользователя
     """

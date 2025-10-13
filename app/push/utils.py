@@ -1,6 +1,7 @@
 import firebase_admin
 from firebase_admin import messaging, credentials
 import asyncio
+import uuid
 from app.models.user_model import User
 from app.translations.notifications import get_notification_text
 from sqlalchemy.orm import Session
@@ -159,7 +160,7 @@ async def broadcast_push_notification_async(db_session, title: str, body: str):
 
 async def send_push_to_user_by_id(
         db_session: Session,
-        user_id: int,
+        user_id: uuid.UUID,
         title: str,
         body: str,
         status: str = None
@@ -198,7 +199,7 @@ async def send_push_to_user_by_id(
 
 async def send_localized_notification_to_user(
         db_session: Session,
-        user_id: int,
+        user_id: uuid.UUID,
         translation_key: str,
         status: str = None,
         **kwargs

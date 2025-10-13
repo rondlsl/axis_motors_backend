@@ -1,6 +1,7 @@
 import asyncio
 import math
 from datetime import datetime
+import uuid
 
 import httpx
 from sqlalchemy import or_
@@ -106,9 +107,9 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
     """
     db = SessionLocal()
     now = datetime.utcnow()
-    push_notifications: list[tuple[int, str, str]] = []
+    push_notifications: list[tuple[uuid.UUID, str, str]] = []
     telegram_alerts: list[str] = []
-    lock_requests: list[tuple[str, str, int]] = []  # (imei, car_name, user_id)
+    lock_requests: list[tuple[str, str, uuid.UUID]] = []  # (imei, car_name, user_id)
 
     rentals = (
         db.query(RentalHistory)

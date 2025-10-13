@@ -2041,7 +2041,7 @@ async def get_my_bookings(
 
 @RentRouter.post("/cancel-booking/{rental_id}", response_model=CancelBookingResponse)
 async def cancel_booking(
-    rental_id: int,
+    rental_id: uuid.UUID,
     cancel_request: CancelBookingRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)

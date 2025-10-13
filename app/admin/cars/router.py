@@ -705,7 +705,7 @@ async def get_car_trips_list(
 @cars_router.get("/{car_id}/history/trips/{rental_id}")
 async def get_trip_detail(
     car_id: int,
-    rental_id: int,
+    rental_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):

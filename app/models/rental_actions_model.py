@@ -1,6 +1,8 @@
 from sqlalchemy import Column, Integer, String, DateTime, Enum, ForeignKey
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import enum
+import uuid
 from datetime import datetime
 from app.dependencies.database.database import Base
 
@@ -18,11 +20,11 @@ class ActionType(enum.Enum):
 class RentalAction(Base):
     __tablename__ = "rental_actions"
 
-    id = Column(Integer, primary_key=True, index=True)
-    rental_id = Column(Integer, ForeignKey("rental_history.id"), nullable=False)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    rental_id = Column(UUID(as_uuid=True), ForeignKey("rental_history.id"), nullable=False)
     rental = relationship("RentalHistory", back_populates="actions")
 
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     user = relationship("User")
 
     action_type = Column(Enum(ActionType), nullable=False)

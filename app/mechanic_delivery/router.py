@@ -89,7 +89,7 @@ def get_delivery_vehicles(
 
 @MechanicDeliveryRouter.post("/accept-delivery/{rental_id}")
 async def accept_delivery(
-        rental_id: int,
+        rental_id: uuid.UUID,
         db: Session = Depends(get_db),
         current_mechanic: User = Depends(get_current_mechanic)
 ) -> Dict[str, Any]:

@@ -1,9 +1,10 @@
 from pydantic import BaseModel
 from typing import List, Optional
+import uuid
 
 
 class SupportUserSchema(BaseModel):
-    id: int
+    id: uuid.UUID
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     phone_number: Optional[str] = None
@@ -11,11 +12,11 @@ class SupportUserSchema(BaseModel):
 
 
 class SupportActionItemSchema(BaseModel):
-    id: int
+    id: uuid.UUID
     user: SupportUserSchema
     action: str
     entity_type: Optional[str] = None
-    entity_id: Optional[int] = None
+    entity_id: Optional[uuid.UUID] = None
     created_at: str
 
 

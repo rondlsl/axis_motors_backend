@@ -1,6 +1,7 @@
 import enum
 
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, Numeric, ForeignKey, Enum
+from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
 
 from sqlalchemy.orm import relationship
@@ -27,7 +28,7 @@ class UserPromoCode(Base):
     __tablename__ = "user_promo_codes"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     promo_code_id = Column(Integer, ForeignKey("promo_codes.id"), nullable=False)
     status = Column(Enum(UserPromoStatus), default=UserPromoStatus.ACTIVATED, nullable=False)
     activated_at = Column(DateTime, default=datetime.utcnow, nullable=False)

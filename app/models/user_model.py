@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, DateTime, Enum, Numeric, Boolean, text
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 import enum
+import uuid
 from datetime import datetime
 from sqlalchemy.orm import relationship
 from app.dependencies.database.database import Base
@@ -34,7 +35,7 @@ class AutoClass(enum.Enum):
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     first_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)
     phone_number = Column(String, nullable=False, unique=False)

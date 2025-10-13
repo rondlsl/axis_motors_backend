@@ -37,7 +37,7 @@ class WalletTransaction(Base):
     __tablename__ = "wallet_transactions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     amount = Column(Numeric(10, 2), nullable=False)
     transaction_type = Column(
         Enum(
@@ -50,7 +50,7 @@ class WalletTransaction(Base):
     description = Column(String, nullable=True)
     balance_before = Column(Numeric(10, 2), nullable=False)
     balance_after = Column(Numeric(10, 2), nullable=False)
-    related_rental_id = Column(Integer, ForeignKey("rental_history.id"), nullable=True)
+    related_rental_id = Column(UUID(as_uuid=True), ForeignKey("rental_history.id"), nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     user = relationship("User")

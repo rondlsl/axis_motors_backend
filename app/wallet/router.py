@@ -102,7 +102,7 @@ def get_my_transactions(
     current_user: User = Depends(get_current_user),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    rental_id: Optional[int] = Query(None),
+    rental_id: Optional[uuid.UUID] = Query(None),
     type: Optional[WalletTransactionType] = Query(None),
     date_from: Optional[datetime] = Query(None),
     date_to: Optional[datetime] = Query(None),
@@ -314,7 +314,7 @@ def _ensure_admin(user: User):
 
 @WalletRouter.get("/transactions/by-user/{user_id}", response_model=WalletTransactionsListOut)
 def get_transactions_by_user(
-    user_id: int,
+    user_id: uuid.UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     limit: int = Query(100, ge=1, le=1000),
@@ -358,7 +358,7 @@ def get_transactions_by_user(
 
 @WalletRouter.get("/transactions/summary/by-user/{user_id}", response_model=WalletTransactionsSummaryOut)
 def get_transactions_summary_by_user(
-    user_id: int,
+    user_id: uuid.UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     type: Optional[WalletTransactionType] = Query(None),

@@ -1,5 +1,6 @@
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Tuple
+import uuid
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
@@ -137,7 +138,7 @@ def calculate_month_availability_minutes(
     car_id: int,
     year: int,
     month: int,
-    owner_id: int,
+    owner_id: uuid.UUID,
     db: Session
 ) -> int:
     """

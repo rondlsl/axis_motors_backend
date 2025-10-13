@@ -7,14 +7,14 @@ from pydantic import BaseModel
 
 class WalletTransactionOut(BaseModel):
     id: uuid.UUID
-    user_id: int
+    user_id: uuid.UUID
     amount: float
     type: str
     description: Optional[str] = None
     balance_before: float
     balance_after: float
     created_at: datetime
-    related_rental_id: Optional[int] = None
+    related_rental_id: Optional[uuid.UUID] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     phone_number: Optional[str] = None

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, func
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
+import uuid
 
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
@@ -64,7 +65,7 @@ async def get_pending_users(
 
 @users_router.post("/{user_id}/approve")
 async def approve_or_reject_user(
-    user_id: int,
+    user_id: uuid.UUID,
     approved: bool,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -177,7 +178,7 @@ async def get_all_clients(
 
 @users_router.patch("/{user_id}/role")
 async def update_employee_role(
-    user_id: int,
+    user_id: uuid.UUID,
     role_data: UserRoleUpdateSchema,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -199,7 +200,7 @@ async def update_employee_role(
 # === User Profile ===
 @users_router.get("/{user_id}/profile", response_model=UserProfileSchema)
 async def get_user_profile(
-    user_id: int,
+    user_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> UserProfileSchema:
@@ -489,7 +490,7 @@ async def get_users_map_positions(
 
 @users_router.get("/{user_id}/card", response_model=UserCardSchema)
 async def get_user_card(
-    user_id: int,
+    user_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -564,7 +565,7 @@ async def get_user_card(
 
 @users_router.patch("/{user_id}/comment")
 async def update_user_comment(
-    user_id: int,
+    user_id: uuid.UUID,
     comment_data: UserCommentUpdateSchema,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -586,7 +587,7 @@ async def update_user_comment(
 
 @users_router.get("/{user_id}/guarantors/he-is-guarantor", response_model=List[GuarantorInfoSchema])
 async def get_users_he_is_guarantor_for(
-    user_id: int,
+    user_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -626,7 +627,7 @@ async def get_users_he_is_guarantor_for(
 
 @users_router.get("/{user_id}/guarantors/his-guarantors", response_model=List[GuarantorInfoSchema])
 async def get_his_guarantors(
-    user_id: int,
+    user_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -666,7 +667,7 @@ async def get_his_guarantors(
 
 @users_router.get("/{user_id}/trips/summary", response_model=TripSummarySchema)
 async def get_user_trips_summary(
-    user_id: int,
+    user_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -706,7 +707,7 @@ async def get_user_trips_summary(
 
 @users_router.get("/{user_id}/trips", response_model=List[TripListItemSchema])
 async def get_user_trips(
-    user_id: int,
+    user_id: uuid.UUID,
     month: Optional[int] = Query(None, description="Месяц (1-12). Если не указан, возвращается текущий месяц"),
     year: Optional[int] = Query(None, description="Год. Если не указан, возвращается текущий год"),
     current_user: User = Depends(get_current_user),
@@ -767,7 +768,7 @@ async def get_user_trips(
 
 @users_router.get("/{user_id}/trips/{trip_id}", response_model=TripDetailSchema)
 async def get_trip_detail(
-    user_id: int,
+    user_id: uuid.UUID,
     trip_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -833,7 +834,7 @@ async def get_trip_detail(
 
 @users_router.get("/{user_id}/cars", response_model=List[OwnerCarListItemSchema])
 async def get_user_cars(
-    user_id: int,
+    user_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -880,7 +881,7 @@ async def get_user_cars(
 
 @users_router.patch("/{user_id}/edit")
 async def edit_user(
-    user_id: int,
+    user_id: uuid.UUID,
     edit_data: UserEditSchema,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -908,7 +909,7 @@ async def edit_user(
 
 @users_router.patch("/{user_id}/block")
 async def block_user(
-    user_id: int,
+    user_id: uuid.UUID,
     block_data: UserBlockSchema,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -946,7 +947,7 @@ def _calculate_month_availability_minutes(
     car_id: int,
     year: int,
     month: int,
-    owner_id: int,
+    owner_id: uuid.UUID,
     db: Session
 ) -> int:
     """Рассчитывает доступные минуты для автомобиля в месяце"""
@@ -955,7 +956,7 @@ def _calculate_month_availability_minutes(
     return calculate_month_availability_minutes(car_id, year, month, owner_id, db)
 
 
-def _calculate_car_earnings(car_id: int, owner_id: int, db: Session, month_start: datetime) -> Dict[str, float]:
+def _calculate_car_earnings(car_id: int, owner_id: uuid.UUID, db: Session, month_start: datetime) -> Dict[str, float]:
     """Рассчитывает заработок с автомобиля"""
     # Получаем поездки клиентов (исключаем поездки самого владельца)
     client_rentals = db.query(RentalHistory).filter(

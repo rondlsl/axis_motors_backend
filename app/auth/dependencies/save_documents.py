@@ -4,7 +4,7 @@ from uuid import uuid4
 from fastapi import UploadFile, HTTPException
 
 
-async def save_file(file: UploadFile, user_id: int, UPLOAD_DIR: str) -> str:
+async def save_file(file: UploadFile, user_id: uuid.UUID, UPLOAD_DIR: str) -> str:
     """
     Сохраняет файл и возвращает путь к нему
     """

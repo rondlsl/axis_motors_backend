@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, DateTime, Enum, Boolean, ForeignKey, Text
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -24,8 +25,8 @@ class GuarantorRequest(Base):
     __tablename__ = "guarantor_requests"
 
     id = Column(Integer, primary_key=True, index=True)
-    requestor_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # Кто запрашивает гаранта
-    guarantor_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # Кого просят быть гарантом (может быть NULL пока не зарегистрирован)
+    requestor_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)  # Кто запрашивает гаранта
+    guarantor_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)  # Кого просят быть гарантом (может быть NULL пока не зарегистрирован)
     guarantor_phone = Column(String, nullable=True)  # Номер телефона гаранта (для незарегистрированных)
     status = Column(Enum(GuarantorRequestStatus), default=GuarantorRequestStatus.PENDING)
     verification_status = Column(String, default="not_verified")  # Статус проверки администратором: not_verified, verified, rejected
@@ -45,8 +46,8 @@ class Guarantor(Base):
     __tablename__ = "guarantors"
 
     id = Column(Integer, primary_key=True, index=True)
-    guarantor_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # Кто является гарантом
-    client_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # За кого отвечает
+    guarantor_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)  # Кто является гарантом
+    client_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)  # За кого отвечает
     request_id = Column(Integer, ForeignKey("guarantor_requests.id"), nullable=False)  # Ссылка на заявку
     contract_signed = Column(Boolean, default=False)  # Подписан ли договор гаранта
     sublease_contract_signed = Column(Boolean, default=False)  # Подписан ли договор субаренды

@@ -1,12 +1,13 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+import uuid
 from app.models.user_model import UserRole
 
 
 class UserProfileSchema(BaseModel):
     """Схема профиля пользователя"""
-    id: int
+    id: uuid.UUID
     phone_number: str
     email: Optional[str] = None
     first_name: Optional[str] = None
@@ -29,7 +30,7 @@ class UserProfileSchema(BaseModel):
 
 class UserCardSchema(BaseModel):
     """Полная схема карточки пользователя для админ-панели"""
-    id: int
+    id: uuid.UUID
     phone_number: str
     email: Optional[str] = None
     first_name: Optional[str] = None
@@ -69,7 +70,7 @@ class UserCardSchema(BaseModel):
 
 class UserListSchema(BaseModel):
     """Схема для списка пользователей"""
-    id: int
+    id: uuid.UUID
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     phone_number: str
@@ -84,7 +85,7 @@ class UserListSchema(BaseModel):
 
 class UserMapPositionSchema(BaseModel):
     """Схема для позиций пользователей на карте"""
-    id: int
+    id: uuid.UUID
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     selfie_url: Optional[str] = None
@@ -115,7 +116,7 @@ class UserSearchFiltersSchema(BaseModel):
 
 class GuarantorInfoSchema(BaseModel):
     """Схема информации о гаранте/клиенте"""
-    id: int
+    id: uuid.UUID
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     phone_number: str
@@ -133,7 +134,7 @@ class TripSummarySchema(BaseModel):
 
 class TripListItemSchema(BaseModel):
     """Элемент списка поездок"""
-    id: int
+    id: uuid.UUID
     rental_type: str
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
@@ -145,7 +146,7 @@ class TripListItemSchema(BaseModel):
 
 class TripDetailSchema(BaseModel):
     """Детальная информация о поездке"""
-    id: int
+    id: uuid.UUID
     rental_type: str
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
@@ -175,7 +176,7 @@ class TripDetailSchema(BaseModel):
 
 class OwnerCarListItemSchema(BaseModel):
     """Элемент списка автомобилей владельца"""
-    id: int
+    id: uuid.UUID
     name: str
     plate_number: str
     available_minutes: int = 0

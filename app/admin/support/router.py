@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
+import uuid
 
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
@@ -20,7 +21,7 @@ support_router = APIRouter(tags=["Admin Support"])
 async def list_support_actions(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=200),
-    user_id: Optional[int] = None,
+    user_id: Optional[uuid.UUID] = None,
     action: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -76,7 +77,7 @@ async def list_support_actions(
 
 @support_router.get("/users/{user_id}", response_model=SupportUserSchema)
 async def get_support_user_profile(
-    user_id: int,
+    user_id: uuid.UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> SupportUserSchema:

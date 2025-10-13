@@ -1,7 +1,9 @@
 import enum
+import uuid
 from datetime import datetime
 
 from sqlalchemy import Column, Integer, ForeignKey, Enum, Float, DateTime, ARRAY, String, Text
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 from app.dependencies.database.database import Base
@@ -21,14 +23,14 @@ class RentalStatus(enum.Enum):
     DELIVERING_IN_PROGRESS = "delivering_in_progress"
     DELIVERY_RESERVED = "delivery_reserved"
     CANCELLED = "cancelled"
-    SCHEDULED = "scheduled"  # Забронировано заранее
+    SCHEDULED = "scheduled"
 
 
 class RentalHistory(Base):
     __tablename__ = "rental_history"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     user = relationship("User", back_populates="rental_history", foreign_keys=[user_id])
 
     car_id = Column(Integer, ForeignKey("cars.id"), nullable=False)
@@ -74,7 +76,7 @@ class RentalHistory(Base):
     # Новые поля для доставки
     delivery_latitude = Column(Float, nullable=True)
     delivery_longitude = Column(Float, nullable=True)
-    delivery_mechanic_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    delivery_mechanic_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     
     # Время доставки
     delivery_start_time = Column(DateTime, nullable=True)  # Когда механик начал доставку
@@ -96,7 +98,7 @@ class RentalHistory(Base):
     mechanic_photos_after = Column(ARRAY(String), nullable=True)
     
     # Поля для осмотра механиком
-    mechanic_inspector_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    mechanic_inspector_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     mechanic_inspection_start_time = Column(DateTime, nullable=True)
     mechanic_inspection_end_time = Column(DateTime, nullable=True)
     mechanic_inspection_status = Column(String, nullable=True, default="PENDING")
@@ -126,9 +128,9 @@ class RentalHistory(Base):
 class RentalReview(Base):
     __tablename__ = "rental_reviews"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
 
-    rental_id = Column(Integer, ForeignKey("rental_history.id"), nullable=False)
+    rental_id = Column(UUID(as_uuid=True), ForeignKey("rental_history.id"), nullable=False)
     rental = relationship("RentalHistory", back_populates="review")
 
     # Отзыв от клиента

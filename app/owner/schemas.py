@@ -1,6 +1,7 @@
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 from datetime import datetime
+import uuid
 
 
 class CarOwnerResponse(BaseModel):
@@ -22,7 +23,7 @@ class TripResponse(BaseModel):
     rental_type: str = Field(..., description="Тип тарифа", example="hours", enum=["minutes", "hours", "days"])
     start_time: Optional[str] = Field(None, description="Время начала поездки (ISO 8601)", example="2024-01-15T14:30:00")
     end_time: Optional[str] = Field(None, description="Время окончания поездки (ISO 8601)", example="2024-01-15T16:30:00")
-    user_id: int = Field(..., description="ID водителя (пользователя)", example=123)
+    user_id: uuid.UUID = Field(..., description="ID водителя (пользователя)", example="123e4567-e89b-12d3-a456-426614174000")
     fuel_cost: Optional[int] = Field(None, description="Стоимость топлива в тенге (только для поездок владельца)", example=2250)
     delivery_cost: Optional[int] = Field(None, description="Стоимость доставки в тенге (только для поездок владельца)", example=5000)
     

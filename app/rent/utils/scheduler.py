@@ -2,6 +2,7 @@
 Утилиты для работы с забронированными заранее автомобилями
 """
 from datetime import datetime, timedelta
+import uuid
 from sqlalchemy.orm import Session
 from app.models.history_model import RentalHistory, RentalStatus
 from app.models.car_model import CarStatus
@@ -86,7 +87,7 @@ def process_scheduled_bookings(db: Session) -> dict:
     }
 
 
-def get_upcoming_bookings(db: Session, user_id: int, limit: int = 10) -> list:
+def get_upcoming_bookings(db: Session, user_id: uuid.UUID, limit: int = 10) -> list:
     """
     Получает предстоящие бронирования пользователя
     """
@@ -106,7 +107,7 @@ def check_booking_conflicts(
     car_id: int, 
     start_time: datetime, 
     end_time: datetime,
-    exclude_rental_id: int = None
+    exclude_rental_id: uuid.UUID = None
 ) -> bool:
     """
     Проверяет конфликты бронирования для автомобиля

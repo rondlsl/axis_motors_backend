@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from app.models.car_model import CarStatus
+import uuid
 
 
 class CarFilterSchema(BaseModel):
@@ -127,8 +128,8 @@ class CarDetailSchema(BaseModel):
     price_per_minute: int
     price_per_hour: int
     price_per_day: int
-    owner_id: Optional[int] = None
-    current_renter_id: Optional[int] = None
+    owner_id: Optional[uuid.UUID] = None
+    current_renter_id: Optional[uuid.UUID] = None
     available_minutes: Optional[int] = None
     gps_id: Optional[str] = None
     gps_imei: Optional[str] = None
@@ -157,7 +158,7 @@ class CarCommentSchema(BaseModel):
     """Схема комментария к автомобилю"""
     id: int
     car_id: int
-    author_id: int
+    author_id: uuid.UUID
     author_name: str
     author_role: str
     comment: str
@@ -189,7 +190,7 @@ class CarAvailabilityTimerSchema(BaseModel):
 
 class CarCurrentUserSchema(BaseModel):
     """Схема текущего пользователя автомобиля"""
-    user_id: Optional[int] = None
+    user_id: Optional[uuid.UUID] = None
     user_type: str  # "owner" или "renter"
     first_name: Optional[str] = None
     last_name: Optional[str] = None

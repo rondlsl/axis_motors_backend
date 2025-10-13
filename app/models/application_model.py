@@ -1,5 +1,6 @@
 from enum import Enum
 from sqlalchemy import Column, Integer, String, DateTime, Enum as SAEnum, ForeignKey
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.dependencies.database.database import Base
 
@@ -14,19 +15,19 @@ class Application(Base):
     __tablename__ = "applications"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     
     # Статус проверки финансистом
     financier_status = Column(SAEnum(ApplicationStatus), default=ApplicationStatus.PENDING)
     financier_approved_at = Column(DateTime, nullable=True)
     financier_rejected_at = Column(DateTime, nullable=True)
-    financier_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    financier_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     
     # Статус проверки МВД
     mvd_status = Column(SAEnum(ApplicationStatus), default=ApplicationStatus.PENDING)
     mvd_approved_at = Column(DateTime, nullable=True)
     mvd_rejected_at = Column(DateTime, nullable=True)
-    mvd_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    mvd_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     
     # Unified reason for rejection by either financier or MVD
     reason = Column(String, nullable=True)
