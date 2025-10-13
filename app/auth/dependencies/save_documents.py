@@ -1,4 +1,5 @@
 import os
+import uuid
 from uuid import uuid4
 
 from fastapi import UploadFile, HTTPException
