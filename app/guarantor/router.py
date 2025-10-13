@@ -5,6 +5,8 @@ from typing import List
 import base64
 import os
 import uuid
+from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
+from app.utils.sid_converter import convert_uuid_response_to_sid
 
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
@@ -13,9 +15,9 @@ from app.models.guarantor_model import Guarantor
 from app.models.guarantor_model import (
     GuarantorRequest, 
     GuarantorRequestStatus, 
-    Guarantor, 
-    ContractFile
+    Guarantor
 )
+from app.models.contract_model import ContractFile, ContractType, UserContractSignature
 from app.guarantor.schemas import (
     GuarantorRequestCreateSchema,
     ContractListSchema,
@@ -298,13 +300,26 @@ async def get_my_guarantors(
     for relationship in guarantor_relationships:
         guarantor_user = db.query(User).filter(User.id == relationship.guarantor_id).first()
         if guarantor_user:
+            # Проверяем подписи из user_contract_signatures
+            contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                UserContractSignature.user_id == current_user.id,
+                UserContractSignature.guarantor_relationship_id == relationship.id,
+                ContractFile.contract_type == ContractType.GUARANTOR_CONTRACT
+            ).first() is not None
+            
+            main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                UserContractSignature.user_id == current_user.id,
+                UserContractSignature.guarantor_relationship_id == relationship.id,
+                ContractFile.contract_type == ContractType.GUARANTOR_MAIN_CONTRACT
+            ).first() is not None
+            
             result.append(SimpleGuarantorSchema(
                 id=relationship.id,
                 phone=guarantor_user.phone_number,
                 first_name=guarantor_user.first_name,
                 last_name=guarantor_user.last_name,
-                contract_signed=relationship.contract_signed,
-                sublease_contract_signed=relationship.sublease_contract_signed,
+                contract_signed=contract_signed,
+                main_contract_signed=main_contract_signed,
                 created_at=relationship.created_at
             ))
     
@@ -384,15 +399,18 @@ async def get_incoming_requests(
             requestor_first_name = requestor.first_name
             requestor_last_name = requestor.last_name
             
-            result.append(IncomingRequestSchema(
-                id=request.id,
-                requestor_id=request.requestor_id,
-                requestor_first_name=requestor_first_name,
-                requestor_last_name=requestor_last_name,
-                requestor_phone=requestor.phone_number,
-                reason=request.reason,
-                created_at=request.created_at
-            ))
+            request_data = {
+                "id": request.id,
+                "requestor_id": request.requestor_id,
+                "requestor_first_name": requestor_first_name,
+                "requestor_last_name": requestor_last_name,
+                "requestor_phone": requestor.phone_number,
+                "reason": request.reason,
+                "created_at": request.created_at
+            }
+            
+            converted_data = convert_uuid_response_to_sid(request_data, ["requestor_id"])
+            result.append(IncomingRequestSchema(**converted_data))
     
     return result
 
@@ -418,13 +436,26 @@ async def get_my_clients(
     for relationship in client_relationships:
         client_user = db.query(User).filter(User.id == relationship.client_id).first()
         if client_user:
+            # Проверяем подписи из user_contract_signatures (гарант подписывает для своего клиента)
+            contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                UserContractSignature.user_id == current_user.id,
+                UserContractSignature.guarantor_relationship_id == relationship.id,
+                ContractFile.contract_type == ContractType.GUARANTOR_CONTRACT
+            ).first() is not None
+            
+            main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                UserContractSignature.user_id == current_user.id,
+                UserContractSignature.guarantor_relationship_id == relationship.id,
+                ContractFile.contract_type == ContractType.GUARANTOR_MAIN_CONTRACT
+            ).first() is not None
+            
             result.append(SimpleClientSchema(
                 id=relationship.id,
                 first_name=client_user.first_name,
                 last_name=client_user.last_name,
                 phone=client_user.phone_number,
-                contract_signed=relationship.contract_signed,
-                sublease_contract_signed=relationship.sublease_contract_signed,
+                contract_signed=contract_signed,
+                main_contract_signed=main_contract_signed,
                 created_at=relationship.created_at
             ))
     
@@ -443,12 +474,12 @@ async def get_contracts(
     """Получение списка активных договоров"""
     
     guarantor_contracts = db.query(ContractFile).filter(
-        ContractFile.contract_type == "guarantor",
+        ContractFile.contract_type == ContractType.GUARANTOR_CONTRACT,
         ContractFile.is_active == True
     ).all()
     
-    sublease_contracts = db.query(ContractFile).filter(
-        ContractFile.contract_type == "sublease",
+    guarantor_main_contracts = db.query(ContractFile).filter(
+        ContractFile.contract_type == ContractType.GUARANTOR_MAIN_CONTRACT,
         ContractFile.is_active == True
     ).all()
     
@@ -464,7 +495,7 @@ async def get_contracts(
     
     return ContractListSchema(
         guarantor_contracts=[format_contract(c) for c in guarantor_contracts],
-        sublease_contracts=[format_contract(c) for c in sublease_contracts]
+        guarantor_main_contracts=[format_contract(c) for c in guarantor_main_contracts]
     )
 
 
@@ -488,7 +519,7 @@ async def get_contracts(
             "content": {
                 "application/json": {
                     "example": {
-                        "detail": "Тип договора должен быть 'guarantor' или 'sublease'"
+                        "detail": "Тип договора должен быть 'guarantor_contract' или 'guarantor_main_contract'"
                     }
                 }
             }
@@ -529,10 +560,10 @@ async def upload_contract(
         )
     
     # Проверяем тип договора
-    if contract_data.contract_type not in ["guarantor", "sublease"]:
+    if contract_data.contract_type not in ["guarantor_contract", "guarantor_main_contract"]:
         raise HTTPException(
             status_code=400,
-            detail="Тип договора должен быть 'guarantor' или 'sublease'"
+            detail="Тип договора должен быть 'guarantor_contract' или 'guarantor_main_contract'"
         )
     
     try:
@@ -616,7 +647,7 @@ async def upload_contract(
                 "application/json": {
                     "example": {
                         "id": 1,
-                        "contract_type": "guarantor",
+                        "contract_type": "guarantor_contract",
                         "file_name": "guarantor_contract.pdf",
                         "file_url": "https://api.azvmotors.kz/contracts/guarantor_a1b2c3d4.pdf",
                         "uploaded_at": "2024-01-15T10:30:00Z",
@@ -653,7 +684,7 @@ async def get_guarantor_contract(
     """Просмотр договора гаранта"""
     
     contract = db.query(ContractFile).filter(
-        ContractFile.contract_type == "guarantor",
+        ContractFile.contract_type == ContractType.GUARANTOR_CONTRACT,
         ContractFile.is_active == True
     ).first()
     
@@ -684,18 +715,18 @@ async def get_guarantor_contract(
 
 
 @guarantor_router.get(
-    "/contracts/sublease",
+    "/contracts/guarantor-main-contract",
     response_model=ContractDownloadSchema,
     responses={
         200: {
-            "description": "Договор субаренды успешно получен",
+            "description": "Основной договор гаранта успешно получен",
             "content": {
                 "application/json": {
                     "example": {
                         "id": 2,
-                        "contract_type": "sublease",
-                        "file_name": "sublease_contract.pdf",
-                        "file_url": "https://api.azvmotors.kz/contracts/guarantor_a1b2c3d4.pdf",
+                        "contract_type": "guarantor_main_contract",
+                        "file_name": "guarantor_main_contract.pdf",
+                        "file_url": "https://api.azvmotors.kz/contracts/guarantor_main_a1b2c3d4.pdf",
                         "uploaded_at": "2024-01-15T10:30:00Z",
                         "is_active": True
                     }
@@ -708,11 +739,11 @@ async def get_guarantor_contract(
         },
         404: {
             "model": ErrorResponseSchema,
-            "description": "Договор субаренды не найден",
+            "description": "Основной договор гаранта не найден",
             "content": {
                 "application/json": {
                     "example": {
-                        "detail": "Договор субаренды не найден"
+                        "detail": "Основной договор гаранта не найден"
                     }
                 }
             }
@@ -723,21 +754,21 @@ async def get_guarantor_contract(
         }
     },
 )
-async def get_sublease_contract(
+async def get_guarantor_main_contract(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Просмотр договора субаренды"""
+    """Просмотр основного договора гаранта"""
     
     contract = db.query(ContractFile).filter(
-        ContractFile.contract_type == "sublease",
+        ContractFile.contract_type == ContractType.GUARANTOR_MAIN_CONTRACT,
         ContractFile.is_active == True
     ).first()
     
     if not contract:
         raise HTTPException(
             status_code=404,
-            detail="Договор субаренды не найден"
+            detail="Основной договор гаранта не найден"
         )
     
     try:
@@ -789,7 +820,7 @@ async def get_sublease_contract(
                         "invalid_type": {
                             "summary": "Неверный тип договора",
                             "value": {
-                                "detail": "Неверный тип договора. Должен быть 'guarantor' или 'sublease'"
+                                "detail": "Неверный тип договора. Должен быть 'guarantor_contract' или 'guarantor_main_contract'"
                             }
                         }
                     }
@@ -856,27 +887,47 @@ async def sign_contract(
             detail="Заявка не была принята. Сначала примите заявку на роль гаранта."
         )
     
-    # Обновляем статус подписания в таблице guarantors
-    if sign_data.contract_type == "guarantor":
-        if relationship.contract_signed:
-            raise HTTPException(
-                status_code=400,
-                detail="Договор гаранта уже подписан"
-            )
-        relationship.contract_signed = True
-    elif sign_data.contract_type == "sublease":
-        if relationship.sublease_contract_signed:
-            raise HTTPException(
-                status_code=400,
-                detail="Договор субаренды уже подписан"
-            )
-        relationship.sublease_contract_signed = True
-    else:
+    # Проверяем, что у пользователя есть цифровая подпись
+    if not current_user.digital_signature:
         raise HTTPException(
             status_code=400,
-            detail="Неверный тип договора. Должен быть 'guarantor' или 'sublease'"
+            detail="У пользователя отсутствует цифровая подпись"
         )
     
+    # Получаем файл договора
+    contract_file = db.query(ContractFile).filter(
+        ContractFile.contract_type == sign_data.contract_type,
+        ContractFile.is_active == True
+    ).first()
+    
+    if not contract_file:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Файл договора типа {sign_data.contract_type} не найден"
+        )
+    
+    # Проверяем, не подписан ли уже этот договор
+    existing_signature = db.query(UserContractSignature).filter(
+        UserContractSignature.user_id == current_user.id,
+        UserContractSignature.contract_file_id == contract_file.id,
+        UserContractSignature.guarantor_relationship_id == sign_data.guarantor_relationship_id
+    ).first()
+    
+    if existing_signature:
+        raise HTTPException(
+            status_code=400,
+            detail="Этот договор уже подписан"
+        )
+    
+    # Создаем подпись в таблице user_contract_signatures
+    signature = UserContractSignature(
+        user_id=current_user.id,
+        contract_file_id=contract_file.id,
+        guarantor_relationship_id=sign_data.guarantor_relationship_id,
+        digital_signature=current_user.digital_signature
+    )
+    
+    db.add(signature)
     db.commit()
     
     return {"message": f"Договор {sign_data.contract_type} успешно подписан"}
@@ -920,22 +971,25 @@ async def get_guarantor_requests(
             if guarantor:
                 guarantor_phone = guarantor.phone_number
         
-        result.append(GuarantorRequestAdminSchema(
-            id=request.id,
-            requestor_id=request.requestor_id,
-            requestor_first_name=requestor_first_name,
-            requestor_last_name=requestor_last_name,
-            requestor_phone=requestor_phone or "",
-            guarantor_id=request.guarantor_id,
-            guarantor_phone=guarantor_phone or "",
-            status=request.status,
-            verification_status=request.verification_status,
-            reason=request.reason,
-            admin_notes=request.admin_notes,
-            created_at=request.created_at,
-            responded_at=request.responded_at,
-            verified_at=request.verified_at
-        ))
+        request_data = {
+            "id": request.id,
+            "requestor_id": request.requestor_id,
+            "requestor_first_name": requestor_first_name,
+            "requestor_last_name": requestor_last_name,
+            "requestor_phone": requestor_phone or "",
+            "guarantor_id": request.guarantor_id,
+            "guarantor_phone": guarantor_phone or "",
+            "status": request.status,
+            "verification_status": request.verification_status,
+            "reason": request.reason,
+            "admin_notes": request.admin_notes,
+            "created_at": request.created_at,
+            "responded_at": request.responded_at,
+            "verified_at": request.verified_at
+        }
+        
+        converted_data = convert_uuid_response_to_sid(request_data, ["requestor_id", "guarantor_id"])
+        result.append(GuarantorRequestAdminSchema(**converted_data))
     
     return result
 
@@ -969,7 +1023,7 @@ async def get_guarantor_relationships(
         Guarantor.is_active == True
     ).all()
     
-    return {
+    response_data = {
         "user_id": current_user.id,
         "user_phone": current_user.phone_number,
         "summary": {
@@ -1014,5 +1068,25 @@ async def get_guarantor_relationships(
             ]
         }
     }
+    
+    converted_data = convert_uuid_response_to_sid(response_data, ["user_id"])
+    
+    for sent_req in converted_data["details"]["sent_requests"]:
+        if sent_req.get("guarantor_id"):
+            sent_req["guarantor_id"] = uuid_to_sid(sent_req["guarantor_id"])
+    
+    for rec_req in converted_data["details"]["received_requests"]:
+        if rec_req.get("requestor_id"):
+            rec_req["requestor_id"] = uuid_to_sid(rec_req["requestor_id"])
+    
+    for client in converted_data["details"]["my_clients"]:
+        if client.get("client_id"):
+            client["client_id"] = uuid_to_sid(client["client_id"])
+    
+    for guarantor in converted_data["details"]["my_guarantors"]:
+        if guarantor.get("guarantor_id"):
+            guarantor["guarantor_id"] = uuid_to_sid(guarantor["guarantor_id"])
+    
+    return converted_data
 
 

@@ -49,8 +49,6 @@ class Guarantor(Base):
     guarantor_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)  # Кто является гарантом
     client_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)  # За кого отвечает
     request_id = Column(Integer, ForeignKey("guarantor_requests.id"), nullable=False)  # Ссылка на заявку
-    contract_signed = Column(Boolean, default=False)  # Подписан ли договор гаранта
-    sublease_contract_signed = Column(Boolean, default=False)  # Подписан ли договор субаренды
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     deactivated_at = Column(DateTime, nullable=True)
@@ -59,15 +57,4 @@ class Guarantor(Base):
     guarantor_user = relationship("User", foreign_keys=[guarantor_id], back_populates="guaranteeing_for")
     client_user = relationship("User", foreign_keys=[client_id], back_populates="guaranteed_by")
     original_request = relationship("GuarantorRequest")
-
-
-class ContractFile(Base):
-    """Файлы договоров"""
-    __tablename__ = "contract_files"
-
-    id = Column(Integer, primary_key=True, index=True)
-    contract_type = Column(String, nullable=False)  # "guarantor" или "sublease"
-    file_path = Column(String, nullable=False)
-    file_name = Column(String, nullable=False)
-    uploaded_at = Column(DateTime, default=datetime.utcnow)
-    is_active = Column(Boolean, default=True)
+    contract_signatures = relationship("UserContractSignature", foreign_keys="[UserContractSignature.guarantor_relationship_id]", back_populates="guarantor_relationship")

@@ -5,6 +5,7 @@ import enum
 import uuid
 from datetime import datetime
 from app.dependencies.database.database import Base
+from app.utils.short_id import uuid_to_sid
 
 
 # New model to store user actions on a rental
@@ -29,3 +30,8 @@ class RentalAction(Base):
 
     action_type = Column(Enum(ActionType), nullable=False)
     timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    @property
+    def sid(self) -> str:
+        """Короткий ID для использования в API"""
+        return uuid_to_sid(self.id)

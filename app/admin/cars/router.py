@@ -5,6 +5,7 @@ from datetime import datetime
 from sqlalchemy import or_, func
 import os
 import uuid
+from app.utils.short_id import safe_sid_to_uuid
 
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
@@ -706,7 +707,7 @@ async def get_car_trips_list(
 @cars_router.get("/{car_id}/history/trips/{rental_id}")
 async def get_trip_detail(
     car_id: int,
-    rental_id: uuid.UUID,
+    rental_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -714,7 +715,8 @@ async def get_trip_detail(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
-    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_id, RentalHistory.car_id == car_id).first()
+    rental_uuid = safe_sid_to_uuid(rental_id)
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid, RentalHistory.car_id == car_id).first()
     if not rental:
         raise HTTPException(status_code=404, detail="Поездка не найдена")
     car = db.query(Car).filter(Car.id == car_id).first()

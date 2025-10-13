@@ -3,22 +3,23 @@ import uuid
 from typing import Optional
 
 from pydantic import BaseModel, Field, validator, constr
+from app.schemas.base import SidMixin
 
 
 class LocaleUpdate(BaseModel):
     locale: str
 
 
-class SelfieUploadResponse(BaseModel):
+class SelfieUploadResponse(SidMixin):
     message: str = Field(..., description="Сообщение об успешной загрузке")
     selfie_url: str = Field(..., description="URL загруженного селфи")
-    user_id: uuid.UUID = Field(..., description="ID пользователя")
+    user_id: str = Field(..., description="ID пользователя")
     digital_signature: Optional[str] = Field(None, description="Цифровая подпись пользователя")
 
 
-class UserRegistrationInfoResponse(BaseModel):
+class UserRegistrationInfoResponse(SidMixin):
     """Схема ответа с информацией о пользователе после регистрации"""
-    user_id: uuid.UUID = Field(..., description="ID пользователя")
+    user_id: str = Field(..., description="ID пользователя")
     phone_number: str = Field(..., description="Номер телефона пользователя")
     first_name: Optional[str] = Field(None, description="Имя пользователя")
     last_name: Optional[str] = Field(None, description="Фамилия пользователя")

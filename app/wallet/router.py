@@ -8,6 +8,9 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
+from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
+from app.utils.sid_converter import convert_uuid_response_to_sid
+
 from app.auth.dependencies.get_current_user import get_current_user
 from app.dependencies.database.database import get_db
 from app.models.user_model import User, UserRole
@@ -102,7 +105,7 @@ def get_my_transactions(
     current_user: User = Depends(get_current_user),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    rental_id: Optional[uuid.UUID] = Query(None),
+    rental_sid: Optional[str] = Query(None),
     type: Optional[WalletTransactionType] = Query(None),
     date_from: Optional[datetime] = Query(None),
     date_to: Optional[datetime] = Query(None),
@@ -112,8 +115,12 @@ def get_my_transactions(
 ):
     q = db.query(WalletTransaction).filter(WalletTransaction.user_id == current_user.id)
 
-    if rental_id is not None:
-        q = q.filter(WalletTransaction.related_rental_id == rental_id)
+    if rental_sid is not None:
+        try:
+            rental_uuid = safe_sid_to_uuid(rental_sid)
+            q = q.filter(WalletTransaction.related_rental_id == rental_uuid)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Неверный формат rental_id")
     if type is not None:
         q = q.filter(WalletTransaction.transaction_type == type)
 
@@ -125,8 +132,8 @@ def get_my_transactions(
     return {
         "transactions": [
             WalletTransactionOut(
-                id=t.id,
-                user_id=t.user_id,
+                id=t.sid,
+                user_id=t.user.sid,
                 amount=float(t.amount),
                 type=t.transaction_type.value,
                 description=t.description,
@@ -279,22 +286,27 @@ def export_my_transactions_legacy_path(
     return StreamingResponse(_iter_csv(), media_type="text/csv", headers=headers)
 
 
-@WalletRouter.get("/transactions/{transaction_id}", response_model=WalletTransactionOut)
+@WalletRouter.get("/transactions/{transaction_sid}", response_model=WalletTransactionOut)
 def get_transaction_detail(
-    transaction_id: uuid.UUID,
+    transaction_sid: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    try:
+        transaction_uuid = safe_sid_to_uuid(transaction_sid)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Неверный формат ID")
+    
     tx = (
         db.query(WalletTransaction)
-        .filter(WalletTransaction.id == transaction_id, WalletTransaction.user_id == current_user.id)
+        .filter(WalletTransaction.id == transaction_uuid, WalletTransaction.user_id == current_user.id)
         .first()
     )
     if not tx:
         raise HTTPException(status_code=404, detail="Транзакция не найдена")
     return WalletTransactionOut(
-        id=tx.id,
-        user_id=tx.user_id,
+        id=tx.sid,
+        user_id=tx.user.sid,
         amount=float(tx.amount),
         type=tx.transaction_type.value,
         description=tx.description,
@@ -312,9 +324,9 @@ def _ensure_admin(user: User):
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
 
-@WalletRouter.get("/transactions/by-user/{user_id}", response_model=WalletTransactionsListOut)
+@WalletRouter.get("/transactions/by-user/{user_sid}", response_model=WalletTransactionsListOut)
 def get_transactions_by_user(
-    user_id: uuid.UUID,
+    user_sid: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     limit: int = Query(100, ge=1, le=1000),
@@ -327,7 +339,13 @@ def get_transactions_by_user(
     day: Optional[int] = Query(None),
 ):
     _ensure_admin(current_user)
-    q = db.query(WalletTransaction).filter(WalletTransaction.user_id == user_id)
+    
+    try:
+        user_uuid = safe_sid_to_uuid(user_sid)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Неверный формат ID")
+    
+    q = db.query(WalletTransaction).filter(WalletTransaction.user_id == user_uuid)
     if type is not None:
         q = q.filter(WalletTransaction.transaction_type == type)
     q = _apply_date_filters(q, date_from=date_from, date_to=date_to, year=year, month=month, day=day)
@@ -338,8 +356,8 @@ def get_transactions_by_user(
     return {
         "transactions": [
             WalletTransactionOut(
-                id=t.id,
-                user_id=t.user_id,
+                id=t.sid,
+                user_id=t.user.sid,
                 amount=float(t.amount),
                 type=t.transaction_type.value,
                 description=t.description,
@@ -356,9 +374,9 @@ def get_transactions_by_user(
     }
 
 
-@WalletRouter.get("/transactions/summary/by-user/{user_id}", response_model=WalletTransactionsSummaryOut)
+@WalletRouter.get("/transactions/summary/by-user/{user_sid}", response_model=WalletTransactionsSummaryOut)
 def get_transactions_summary_by_user(
-    user_id: uuid.UUID,
+    user_sid: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     type: Optional[WalletTransactionType] = Query(None),
@@ -369,7 +387,13 @@ def get_transactions_summary_by_user(
     day: Optional[int] = Query(None),
 ):
     _ensure_admin(current_user)
-    q = db.query(WalletTransaction).filter(WalletTransaction.user_id == user_id)
+    
+    try:
+        user_uuid = safe_sid_to_uuid(user_sid)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Неверный формат ID")
+    
+    q = db.query(WalletTransaction).filter(WalletTransaction.user_id == user_uuid)
     if type is not None:
         q = q.filter(WalletTransaction.transaction_type == type)
     q = _apply_date_filters(q, date_from=date_from, date_to=date_to, year=year, month=month, day=day)

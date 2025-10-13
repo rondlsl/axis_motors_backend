@@ -4,6 +4,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List, Dict, Any, Optional
+from app.utils.short_id import uuid_to_sid
 
 from app.auth.dependencies.get_current_user import get_current_mechanic
 from app.dependencies.database.database import get_db
@@ -588,9 +589,6 @@ def search_vehicles(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка поиска авто: {str(e)}")
 
-
-# ----------------------- ENDPOINTS для аренды (проверки автомобиля механиком) -----------------------
-
 @MechanicRouter.post("/check-car/{car_id}")
 async def check_car(
         car_id: int,
@@ -724,7 +722,7 @@ async def start_rental(
     # Для механика переводим автомобиль в состояние IN_USE
     car.status = CarStatus.IN_USE
     db.commit()
-    return {"message": "Проверка автомобиля запущена", "rental_id": rental.id}
+    return {"message": "Проверка автомобиля запущена", "rental_id": uuid_to_sid(rental.id)}
 
 
 @MechanicRouter.post("/cancel")
@@ -770,10 +768,6 @@ async def cancel_reservation(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Ошибка при отмене проверки: {str(e)}")
-
-
-# ----------------------- Эндпоинты для загрузки фотографий -----------------------
-
 
 @MechanicRouter.post("/upload-photos-before")
 async def upload_photos_before(
@@ -990,8 +984,6 @@ async def upload_photos_after_car(
         db.rollback()
         raise HTTPException(status_code=500, detail="Ошибка при загрузке внешних фото после проверки")
 
-
-# ----------------------- Завершение проверки (complete) -----------------------
 
 class RentalReviewInput(BaseModel):
     rating: conint(ge=1, le=5) = Field(..., description="Оценка от 1 до 5")

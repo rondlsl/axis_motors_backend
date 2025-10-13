@@ -13,6 +13,7 @@ from app.admin.guarantors.schemas import (
     AdminApproveGuarantorSchema, 
     AdminRejectGuarantorSchema
 )
+from app.utils.sid_converter import convert_uuid_response_to_sid
 
 guarantors_router = APIRouter(tags=["Admin Guarantors"])
 
@@ -40,19 +41,22 @@ async def get_guarantor_requests(
         requestor_name = f"{requestor.first_name or ''} {requestor.last_name or ''}".strip() if requestor else "Неизвестно"
         requestor_phone = requestor.phone_number if requestor else ""
         
-        result.append(GuarantorRequestAdminSchema(
-            id=request.id,
-            guarantor_id=request.guarantor_id,
-            requestor_id=request.requestor_id,
-            guarantor_name=guarantor_name,
-            guarantor_phone=guarantor_phone,
-            requestor_name=requestor_name,
-            requestor_phone=requestor_phone,
-            verification_status=request.verification_status,
-            created_at=request.created_at.isoformat(),
-            verified_at=request.verified_at.isoformat() if request.verified_at else None,
-            admin_notes=request.admin_notes
-        ))
+        request_data = {
+            "id": request.id,
+            "guarantor_id": request.guarantor_id,
+            "requestor_id": request.requestor_id,
+            "guarantor_name": guarantor_name,
+            "guarantor_phone": guarantor_phone,
+            "requestor_name": requestor_name,
+            "requestor_phone": requestor_phone,
+            "verification_status": request.verification_status,
+            "created_at": request.created_at.isoformat(),
+            "verified_at": request.verified_at.isoformat() if request.verified_at else None,
+            "admin_notes": request.admin_notes
+        }
+        
+        converted_data = convert_uuid_response_to_sid(request_data, ["guarantor_id", "requestor_id"])
+        result.append(GuarantorRequestAdminSchema(**converted_data))
     
     return result
 

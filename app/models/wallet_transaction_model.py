@@ -6,6 +6,7 @@ from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Numeric, E
 from sqlalchemy.orm import relationship
 
 from app.dependencies.database.database import Base
+from app.utils.short_id import uuid_to_sid
 
 
 class WalletTransactionType(enum.Enum):
@@ -55,5 +56,10 @@ class WalletTransaction(Base):
 
     user = relationship("User")
     rental = relationship("RentalHistory")
+    
+    @property
+    def sid(self) -> str:
+        """Короткий ID для использования в API"""
+        return uuid_to_sid(self.id)
 
 

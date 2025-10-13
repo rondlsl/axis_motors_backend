@@ -7,6 +7,9 @@ from typing import List, Optional, Dict, Any
 import httpx
 import uuid
 
+from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
+from app.utils.sid_converter import convert_uuid_response_to_sid
+
 from app.auth.dependencies.get_current_user import get_current_user
 from app.auth.dependencies.save_documents import save_file, validate_photos
 from app.dependencies.database.database import get_db
@@ -178,7 +181,7 @@ def get_trip_history(
                     fuel_fee_display = int(fuel_consumed * price_per_liter)
         
         result.append({
-            "history_id": rental.id,
+            "history_id": rental.sid,
             # Сдвиг +5 ч
             "date": apply_offset(rental.end_time),
             "car_name": car.name,
@@ -217,16 +220,21 @@ def get_trip_history(
     return {"trip_history": result}
 
 
-@RentRouter.get("/history/{history_id}")
+@RentRouter.get("/history/{history_sid}")
 async def get_trip_history_detail(
-        history_id: int,
+        history_sid: str,
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ) -> dict:
+    try:
+        history_uuid = safe_sid_to_uuid(history_sid)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Неверный формат ID")
+    
     rental = (
         db.query(RentalHistory)
         .filter(
-            RentalHistory.id == history_id,
+            RentalHistory.id == history_uuid,
             RentalHistory.user_id == current_user.id
         )
         .first()
@@ -237,8 +245,8 @@ async def get_trip_history_detail(
     car = db.query(Car).get(rental.car_id)
 
     rental_detail = {
-        "history_id": rental.id,
-        "user_id": rental.user_id,
+        "history_id": rental.sid,
+        "user_id": rental.user.sid,
         "car_id": rental.car_id,
         "rental_type": rental.rental_type.value,
         "duration": rental.duration,
@@ -514,7 +522,7 @@ async def reserve_car(
 
         return {
             "message": "Car reserved successfully (owner rental)",
-            "rental_id": rental.id,
+            "rental_id": uuid_to_sid(rental.id),
             "reservation_time": rental.reservation_time.isoformat()
         }
 
@@ -580,7 +588,7 @@ async def reserve_car(
 
     return {
         "message": "Car reserved successfully",
-        "rental_id": rental.id,
+        "rental_id": uuid_to_sid(rental.id),
         "reservation_time": rental.reservation_time.isoformat()
     }
 
@@ -741,7 +749,7 @@ async def reserve_delivery(
 
     return {
         "message": "Заказ доставки оформлен успешно",
-        "rental_id": rental.id,
+        "rental_id": uuid_to_sid(rental.id),
         "reservation_time": rental.reservation_time.isoformat(),
         "total_price": total_price
     }
@@ -1004,7 +1012,7 @@ async def start_rental(
         except Exception as e:
             print(f"Ошибка разблокировки двигателя при начале аренды (владелец): {e}")
         
-        return {"message": "Rental started successfully (owner rental)", "rental_id": rental.id}
+        return {"message": "Rental started successfully (owner rental)", "rental_id": uuid_to_sid(rental.id)}
     else:
         # Если аренда минутная или часовая, списываем с баланса open_price, вычисленный через get_open_price
         if rental.rental_type in [RentalType.MINUTES, RentalType.HOURS]:
@@ -1050,7 +1058,7 @@ async def start_rental(
         except Exception as e:
             print(f"Ошибка разблокировки двигателя при начале аренды: {e}")
 
-        return {"message": "Rental started successfully", "rental_id": rental.id}
+        return {"message": "Rental started successfully", "rental_id": uuid_to_sid(rental.id)}
 
 
 @RentRouter.post("/upload-photos-before")
@@ -1979,14 +1987,17 @@ async def create_advance_booking(
     
     db.commit()
 
-    return BookingResponse(
-        message="Автомобиль успешно забронирован заранее",
-        rental_id=rental.id,
-        reservation_time=rental.reservation_time.isoformat(),
-        scheduled_start_time=rental.scheduled_start_time.isoformat() if rental.scheduled_start_time else None,
-        scheduled_end_time=rental.scheduled_end_time.isoformat() if rental.scheduled_end_time else None,
-        is_advance_booking=True
-    )
+    response_data = {
+        "message": "Автомобиль успешно забронирован заранее",
+        "rental_id": rental.id,
+        "reservation_time": rental.reservation_time.isoformat(),
+        "scheduled_start_time": rental.scheduled_start_time.isoformat() if rental.scheduled_start_time else None,
+        "scheduled_end_time": rental.scheduled_end_time.isoformat() if rental.scheduled_end_time else None,
+        "is_advance_booking": True
+    }
+    
+    converted_data = convert_uuid_response_to_sid(response_data, ["rental_id"])
+    return BookingResponse(**converted_data)
 
 
 @RentRouter.get("/my-bookings", response_model=List[BookingListResponse])
@@ -2016,33 +2027,36 @@ async def get_my_bookings(
 
     result = []
     for rental, car in bookings:
-        result.append(BookingListResponse(
-            id=rental.id,
-            car_id=rental.car_id,
-            car_name=car.name,
-            car_plate_number=car.plate_number,
-            rental_type=rental.rental_type,
-            duration=rental.duration,
-            scheduled_start_time=rental.scheduled_start_time,
-            scheduled_end_time=rental.scheduled_end_time,
-            start_time=rental.start_time,
-            end_time=rental.end_time,
-            rental_status=rental.rental_status,
-            total_price=rental.total_price,
-            base_price=rental.base_price,
-            open_fee=rental.open_fee,
-            delivery_fee=rental.delivery_fee,
-            reservation_time=rental.reservation_time,
-            is_advance_booking=rental.is_advance_booking == "true",
-            car_photos=car.photos
-        ))
+        booking_data = {
+            "id": rental.id,
+            "car_id": rental.car_id,
+            "car_name": car.name,
+            "car_plate_number": car.plate_number,
+            "rental_type": rental.rental_type,
+            "duration": rental.duration,
+            "scheduled_start_time": rental.scheduled_start_time,
+            "scheduled_end_time": rental.scheduled_end_time,
+            "start_time": rental.start_time,
+            "end_time": rental.end_time,
+            "rental_status": rental.rental_status,
+            "total_price": rental.total_price,
+            "base_price": rental.base_price,
+            "open_fee": rental.open_fee,
+            "delivery_fee": rental.delivery_fee,
+            "reservation_time": rental.reservation_time,
+            "is_advance_booking": rental.is_advance_booking == "true",
+            "car_photos": car.photos
+        }
+        
+        converted_data = convert_uuid_response_to_sid(booking_data, ["id"])
+        result.append(BookingListResponse(**converted_data))
 
     return result
 
 
 @RentRouter.post("/cancel-booking/{rental_id}", response_model=CancelBookingResponse)
 async def cancel_booking(
-    rental_id: uuid.UUID,
+    rental_id: str,
     cancel_request: CancelBookingRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -2051,8 +2065,9 @@ async def cancel_booking(
     Отменить бронирование
     """
     # 1) Находим бронирование
+    rental_uuid = safe_sid_to_uuid(rental_id)
     rental = db.query(RentalHistory).filter(
-        RentalHistory.id == rental_id,
+        RentalHistory.id == rental_uuid,
         RentalHistory.user_id == current_user.id,
         RentalHistory.rental_status.in_([
             RentalStatus.RESERVED,
@@ -2087,11 +2102,14 @@ async def cancel_booking(
     
     db.commit()
 
-    return CancelBookingResponse(
-        message="Бронирование успешно отменено",
-        rental_id=rental.id,
-        refund_amount=refund_amount
-    )
+    response_data = {
+        "message": "Бронирование успешно отменено",
+        "rental_id": rental.id,
+        "refund_amount": refund_amount
+    }
+    
+    converted_data = convert_uuid_response_to_sid(response_data, ["rental_id"])
+    return CancelBookingResponse(**converted_data)
 
 
 @RentRouter.get("/available-cars")

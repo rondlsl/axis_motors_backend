@@ -2,13 +2,14 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 import uuid
 from app.models.user_model import UserRole, AutoClass
+from app.schemas.base import SidMixin
 
 
-class GuarantorRequestAdminSchema(BaseModel):
+class GuarantorRequestAdminSchema(SidMixin):
     """Схема заявки гаранта для админа"""
     id: int
-    guarantor_id: uuid.UUID
-    requestor_id: uuid.UUID
+    guarantor_id: str
+    requestor_id: str
     guarantor_name: str
     guarantor_phone: str
     requestor_name: str

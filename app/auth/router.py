@@ -30,6 +30,7 @@ from app.owner.utils import calculate_month_availability_minutes, ALMATY_TZ
 from app.core.config import logger
 from app.models.guarantor_model import Guarantor
 from app.utils.digital_signature import generate_digital_signature
+from app.utils.sid_converter import convert_uuid_response_to_sid
 import traceback
 
 Auth_router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -285,14 +286,17 @@ async def get_user_registration_info(
     if not full_name:
         full_name = "Не указано"
     
-    return UserRegistrationInfoResponse(
-        user_id=current_user.id,
-        phone_number=current_user.phone_number,
-        first_name=current_user.first_name,
-        last_name=current_user.last_name,
-        digital_signature=current_user.digital_signature,
-        message=f"ФИО клиента: {full_name}\nЛогин клиента: {current_user.phone_number}\nID клиента: {current_user.id}\nЭлектронная подпись: {current_user.digital_signature}"
-    )
+    user_data = {
+        "user_id": current_user.id,
+        "phone_number": current_user.phone_number,
+        "first_name": current_user.first_name,
+        "last_name": current_user.last_name,
+        "digital_signature": current_user.digital_signature,
+        "message": f"ФИО клиента: {full_name}\nЛогин клиента: {current_user.phone_number}\nID клиента: {current_user.id}\nЭлектронная подпись: {current_user.digital_signature}"
+    }
+    
+    converted_data = convert_uuid_response_to_sid(user_data, ["user_id"])
+    return UserRegistrationInfoResponse(**converted_data)
 
 
 @Auth_router.patch(
@@ -915,11 +919,14 @@ async def upload_selfie(
         db.commit()
         db.refresh(current_user)
         
-        return SelfieUploadResponse(
-            message="Селфи успешно загружено",
-            selfie_url=selfie_path,
-            user_id=current_user.id
-        )
+        response_data = {
+            "message": "Селфи успешно загружено",
+            "selfie_url": selfie_path,
+            "user_id": current_user.id
+        }
+        
+        converted_data = convert_uuid_response_to_sid(response_data, ["user_id"])
+        return SelfieUploadResponse(**converted_data)
         
     except Exception as e:
         db.rollback()

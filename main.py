@@ -43,6 +43,7 @@ from app.admin.router import admin_router
 from app.financier.router import FinancierRouter
 from app.mvd.router import MvdRouter  
 from app.wallet.router import WalletRouter
+from app.contracts.router import ContractsRouter
 
 # === APP ===
 app = FastAPI(
@@ -222,6 +223,7 @@ app.include_router(admin_router)
 app.include_router(FinancierRouter)
 app.include_router(MvdRouter) 
 app.include_router(WalletRouter)
+app.include_router(ContractsRouter)
 
 
 @app.get("/")

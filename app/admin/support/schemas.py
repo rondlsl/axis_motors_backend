@@ -1,10 +1,11 @@
 from pydantic import BaseModel
 from typing import List, Optional
 import uuid
+from app.schemas.base import SidMixin
 
 
-class SupportUserSchema(BaseModel):
-    id: uuid.UUID
+class SupportUserSchema(SidMixin):
+    id: str
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     phone_number: Optional[str] = None
@@ -12,12 +13,12 @@ class SupportUserSchema(BaseModel):
     digital_signature: Optional[str] = None
 
 
-class SupportActionItemSchema(BaseModel):
-    id: uuid.UUID
+class SupportActionItemSchema(SidMixin):
+    id: str
     user: SupportUserSchema
     action: str
     entity_type: Optional[str] = None
-    entity_id: Optional[uuid.UUID] = None
+    entity_id: Optional[str] = None
     created_at: str
 
 

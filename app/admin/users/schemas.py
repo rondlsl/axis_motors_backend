@@ -3,11 +3,12 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 import uuid
 from app.models.user_model import UserRole
+from app.schemas.base import SidMixin
 
 
-class UserProfileSchema(BaseModel):
+class UserProfileSchema(SidMixin):
     """Схема профиля пользователя"""
-    id: uuid.UUID
+    id: str
     phone_number: str
     email: Optional[str] = None
     first_name: Optional[str] = None
@@ -29,9 +30,9 @@ class UserProfileSchema(BaseModel):
     digital_signature: Optional[str] = None
 
 
-class UserCardSchema(BaseModel):
+class UserCardSchema(SidMixin):
     """Полная схема карточки пользователя для админ-панели"""
-    id: uuid.UUID
+    id: str
     phone_number: str
     email: Optional[str] = None
     first_name: Optional[str] = None
@@ -70,9 +71,9 @@ class UserCardSchema(BaseModel):
     owner_earnings_total: Optional[float] = None
 
 
-class UserListSchema(BaseModel):
+class UserListSchema(SidMixin):
     """Схема для списка пользователей"""
-    id: uuid.UUID
+    id: str
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     phone_number: str
@@ -86,9 +87,9 @@ class UserListSchema(BaseModel):
     current_rental_car: Optional[Dict[str, Any]] = None
 
 
-class UserMapPositionSchema(BaseModel):
+class UserMapPositionSchema(SidMixin):
     """Схема для позиций пользователей на карте"""
-    id: uuid.UUID
+    id: str
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     digital_signature: Optional[str] = None
@@ -118,9 +119,9 @@ class UserSearchFiltersSchema(BaseModel):
     mvd_approved: Optional[bool] = None
 
 
-class GuarantorInfoSchema(BaseModel):
+class GuarantorInfoSchema(SidMixin):
     """Схема информации о гаранте/клиенте"""
-    id: uuid.UUID
+    id: str
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     phone_number: str
@@ -136,9 +137,9 @@ class TripSummarySchema(BaseModel):
     total_trips: int = 0
 
 
-class TripListItemSchema(BaseModel):
+class TripListItemSchema(SidMixin):
     """Элемент списка поездок"""
-    id: uuid.UUID
+    id: str
     rental_type: str
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
@@ -148,9 +149,9 @@ class TripListItemSchema(BaseModel):
     car_plate_number: Optional[str] = None
 
 
-class TripDetailSchema(BaseModel):
+class TripDetailSchema(SidMixin):
     """Детальная информация о поездке"""
-    id: uuid.UUID
+    id: str
     rental_type: str
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
@@ -178,9 +179,9 @@ class TripDetailSchema(BaseModel):
     end_longitude: Optional[float] = None
 
 
-class OwnerCarListItemSchema(BaseModel):
+class OwnerCarListItemSchema(SidMixin):
     """Элемент списка автомобилей владельца"""
-    id: uuid.UUID
+    id: str
     name: str
     plate_number: str
     available_minutes: int = 0

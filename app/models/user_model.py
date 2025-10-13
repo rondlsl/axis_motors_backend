@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy.orm import relationship
 from app.dependencies.database.database import Base
+from app.utils.short_id import uuid_to_sid
 
 
 class UserRole(enum.Enum):
@@ -105,3 +106,11 @@ class User(Base):
     
     # Связь для комментариев к автомобилям
     car_comments = relationship("CarComment", back_populates="author", cascade="all, delete-orphan")
+    
+    # Связь для подписанных договоров
+    signed_contracts = relationship("UserContractSignature", back_populates="user", cascade="all, delete-orphan")
+    
+    @property
+    def sid(self) -> str:
+        """Короткий ID для использования в API"""
+        return uuid_to_sid(self.id)

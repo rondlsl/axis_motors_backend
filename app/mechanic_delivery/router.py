@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field, constr
 import uuid
+from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
 
 from app.auth.dependencies.get_current_user import get_current_mechanic
 from app.auth.dependencies.save_documents import validate_photos, save_file
@@ -90,7 +91,7 @@ def get_delivery_vehicles(
 
 @MechanicDeliveryRouter.post("/accept-delivery/{rental_id}")
 async def accept_delivery(
-        rental_id: uuid.UUID,
+        rental_id: str,
         db: Session = Depends(get_db),
         current_mechanic: User = Depends(get_current_mechanic)
 ) -> Dict[str, Any]:
@@ -109,8 +110,9 @@ async def accept_delivery(
     if existing:
         raise HTTPException(400, "У вас уже есть активный заказ доставки.")
 
+    rental_uuid = safe_sid_to_uuid(rental_id)
     rental = db.query(RentalHistory).filter(
-        RentalHistory.id == rental_id,
+        RentalHistory.id == rental_uuid,
         RentalHistory.rental_status == RentalStatus.DELIVERING
     ).first()
     if not rental:
@@ -197,7 +199,7 @@ async def start_delivery(
             "delivery_started"
         )
 
-    return {"message": "Доставка запущена", "rental_id": rental.id}
+    return {"message": "Доставка запущена", "rental_id": uuid_to_sid(rental.id)}
 
 
 @MechanicDeliveryRouter.post("/complete-delivery")

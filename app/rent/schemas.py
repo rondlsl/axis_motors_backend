@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Optional
 import uuid
 from app.models.history_model import RentalType, RentalStatus
+from app.schemas.base import SidMixin
 
 
 class AdvanceBookingRequest(BaseModel):
@@ -16,19 +17,19 @@ class AdvanceBookingRequest(BaseModel):
     delivery_longitude: Optional[float] = Field(None, description="Долгота доставки")
 
 
-class BookingResponse(BaseModel):
+class BookingResponse(SidMixin):
     """Схема ответа для бронирования"""
     message: str
-    rental_id: uuid.UUID
+    rental_id: str
     reservation_time: str
     scheduled_start_time: Optional[str] = None
     scheduled_end_time: Optional[str] = None
     is_advance_booking: bool = False
 
 
-class BookingListResponse(BaseModel):
+class BookingListResponse(SidMixin):
     """Схема ответа для списка бронирований"""
-    id: uuid.UUID
+    id: str
     car_id: int
     car_name: str
     car_plate_number: str
@@ -53,8 +54,8 @@ class CancelBookingRequest(BaseModel):
     reason: Optional[str] = Field(None, description="Причина отмены")
 
 
-class CancelBookingResponse(BaseModel):
+class CancelBookingResponse(SidMixin):
     """Схема ответа для отмены бронирования"""
     message: str
-    rental_id: uuid.UUID
+    rental_id: str
     refund_amount: Optional[int] = None

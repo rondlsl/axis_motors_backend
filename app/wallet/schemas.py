@@ -3,18 +3,19 @@ from typing import Optional, List, Dict
 import uuid
 
 from pydantic import BaseModel
+from app.schemas.base import SidMixin
 
 
-class WalletTransactionOut(BaseModel):
-    id: uuid.UUID
-    user_id: uuid.UUID
+class WalletTransactionOut(SidMixin):
+    id: str
+    user_id: str
     amount: float
     type: str
     description: Optional[str] = None
     balance_before: float
     balance_after: float
     created_at: datetime
-    related_rental_id: Optional[uuid.UUID] = None
+    related_rental_id: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     phone_number: Optional[str] = None
@@ -53,8 +54,8 @@ class WalletTransactionsSummaryOut(BaseModel):
     count: int
 
 
-class WalletUserBalanceItem(BaseModel):
-    id: uuid.UUID
+class WalletUserBalanceItem(SidMixin):
+    id: str
     phone_number: Optional[str]
     role: Optional[str]
     wallet_balance: float

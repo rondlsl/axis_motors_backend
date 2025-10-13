@@ -7,6 +7,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 from app.dependencies.database.database import Base
+from app.utils.short_id import uuid_to_sid
 
 
 class RentalType(enum.Enum):
@@ -123,6 +124,19 @@ class RentalHistory(Base):
         back_populates="rental",
         cascade="all, delete-orphan"
     )
+    
+    # Связь для подписанных договоров аренды
+    contract_signatures = relationship(
+        "UserContractSignature",
+        foreign_keys="[UserContractSignature.rental_id]",
+        back_populates="rental",
+        cascade="all, delete-orphan"
+    )
+    
+    @property
+    def sid(self) -> str:
+        """Короткий ID для использования в API"""
+        return uuid_to_sid(self.id)
 
 
 class RentalReview(Base):
@@ -153,3 +167,8 @@ class RentalReview(Base):
     @property
     def car(self):
         return self.rental.car if self.rental else None
+    
+    @property
+    def sid(self) -> str:
+        """Короткий ID для использования в API"""
+        return uuid_to_sid(self.id)

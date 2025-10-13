@@ -5,6 +5,9 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 import uuid
 
+from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
+from app.utils.sid_converter import convert_uuid_response_to_sid
+
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole
@@ -38,34 +41,37 @@ async def get_pending_users(
     
     result = []
     for user in users:
-        result.append(UserProfileSchema(
-            id=user.id,
-            email=user.email,
-            first_name=user.first_name,
-            last_name=user.last_name,
-            phone_number=user.phone_number,
-            role=user.role.value,
-            is_active=user.is_active,
-            is_verified_email=user.is_verified_email,
-            is_citizen_kz=user.is_citizen_kz,
-            documents_verified=user.documents_verified,
-            selfie_url=user.selfie_url,
-            selfie_with_license_url=user.selfie_with_license_url,
-            drivers_license_url=user.drivers_license_url,
-            id_card_front_url=user.id_card_front_url,
-            id_card_back_url=user.id_card_back_url,
-            psych_neurology_certificate_url=user.psych_neurology_certificate_url,
-            narcology_certificate_url=user.narcology_certificate_url,
-            pension_contributions_certificate_url=user.pension_contributions_certificate_url,
-            auto_class=user.auto_class or []
-        ))
+        user_data = {
+            "id": user.id,
+            "email": user.email,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "phone_number": user.phone_number,
+            "role": user.role.value,
+            "is_active": user.is_active,
+            "is_verified_email": user.is_verified_email,
+            "is_citizen_kz": user.is_citizen_kz,
+            "documents_verified": user.documents_verified,
+            "selfie_url": user.selfie_url,
+            "selfie_with_license_url": user.selfie_with_license_url,
+            "drivers_license_url": user.drivers_license_url,
+            "id_card_front_url": user.id_card_front_url,
+            "id_card_back_url": user.id_card_back_url,
+            "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
+            "narcology_certificate_url": user.narcology_certificate_url,
+            "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
+            "auto_class": user.auto_class or []
+        }
+        
+        converted_data = convert_uuid_response_to_sid(user_data, ["id"])
+        result.append(UserProfileSchema(**converted_data))
     
     return result
 
 
 @users_router.post("/{user_id}/approve")
 async def approve_or_reject_user(
-    user_id: uuid.UUID,
+    user_id: str,
     approved: bool,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -74,7 +80,8 @@ async def approve_or_reject_user(
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user = db.query(User).filter(User.id == user_id).first()
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
@@ -178,7 +185,7 @@ async def get_all_clients(
 
 @users_router.patch("/{user_id}/role")
 async def update_employee_role(
-    user_id: uuid.UUID,
+    user_id: str,
     role_data: UserRoleUpdateSchema,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -187,20 +194,20 @@ async def update_employee_role(
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user = db.query(User).filter(User.id == user_id).first()
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
-    user.role = role_data.role
     db.commit()
     
     return {"message": f"Роль пользователя изменена на {role_data.role.value}"}
 
 
 # === User Profile ===
-@users_router.get("/{user_id}/profile", response_model=UserProfileSchema)
+@users_router.get("/{user_sid}/profile", response_model=UserProfileSchema)
 async def get_user_profile(
-    user_id: uuid.UUID,
+    user_sid: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> UserProfileSchema:
@@ -208,7 +215,12 @@ async def get_user_profile(
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
-    user = db.query(User).filter(User.id == user_id).first()
+    try:
+        user_uuid = safe_sid_to_uuid(user_sid)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Неверный формат ID")
+
+    user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
 
@@ -224,7 +236,7 @@ async def get_user_profile(
             auto_class_list = [part.strip() for part in raw.split(",") if part.strip()]
 
     return UserProfileSchema(
-        id=user.id,
+        id=user.sid,
         email=user.email,
         phone_number=user.phone_number,
         first_name=user.first_name,
@@ -490,7 +502,7 @@ async def get_users_map_positions(
 
 @users_router.get("/{user_id}/card", response_model=UserCardSchema)
 async def get_user_card(
-    user_id: uuid.UUID,
+    user_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -498,7 +510,8 @@ async def get_user_card(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user = db.query(User).filter(User.id == user_id).first()
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
@@ -566,7 +579,7 @@ async def get_user_card(
 
 @users_router.patch("/{user_id}/comment")
 async def update_user_comment(
-    user_id: uuid.UUID,
+    user_id: str,
     comment_data: UserCommentUpdateSchema,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -575,7 +588,8 @@ async def update_user_comment(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user = db.query(User).filter(User.id == user_id).first()
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
@@ -588,7 +602,7 @@ async def update_user_comment(
 
 @users_router.get("/{user_id}/guarantors/he-is-guarantor", response_model=List[GuarantorInfoSchema])
 async def get_users_he_is_guarantor_for(
-    user_id: uuid.UUID,
+    user_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -596,7 +610,8 @@ async def get_users_he_is_guarantor_for(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user = db.query(User).filter(User.id == user_id).first()
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
@@ -628,7 +643,7 @@ async def get_users_he_is_guarantor_for(
 
 @users_router.get("/{user_id}/guarantors/his-guarantors", response_model=List[GuarantorInfoSchema])
 async def get_his_guarantors(
-    user_id: uuid.UUID,
+    user_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -636,7 +651,8 @@ async def get_his_guarantors(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user = db.query(User).filter(User.id == user_id).first()
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
@@ -668,7 +684,7 @@ async def get_his_guarantors(
 
 @users_router.get("/{user_id}/trips/summary", response_model=TripSummarySchema)
 async def get_user_trips_summary(
-    user_id: uuid.UUID,
+    user_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -676,7 +692,8 @@ async def get_user_trips_summary(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user = db.query(User).filter(User.id == user_id).first()
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
@@ -708,7 +725,7 @@ async def get_user_trips_summary(
 
 @users_router.get("/{user_id}/trips", response_model=List[TripListItemSchema])
 async def get_user_trips(
-    user_id: uuid.UUID,
+    user_id: str,
     month: Optional[int] = Query(None, description="Месяц (1-12). Если не указан, возвращается текущий месяц"),
     year: Optional[int] = Query(None, description="Год. Если не указан, возвращается текущий год"),
     current_user: User = Depends(get_current_user),
@@ -718,7 +735,8 @@ async def get_user_trips(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user = db.query(User).filter(User.id == user_id).first()
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
@@ -769,7 +787,7 @@ async def get_user_trips(
 
 @users_router.get("/{user_id}/trips/{trip_id}", response_model=TripDetailSchema)
 async def get_trip_detail(
-    user_id: uuid.UUID,
+    user_id: str,
     trip_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -778,7 +796,8 @@ async def get_trip_detail(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user = db.query(User).filter(User.id == user_id).first()
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
@@ -835,7 +854,7 @@ async def get_trip_detail(
 
 @users_router.get("/{user_id}/cars", response_model=List[OwnerCarListItemSchema])
 async def get_user_cars(
-    user_id: uuid.UUID,
+    user_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -843,7 +862,8 @@ async def get_user_cars(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user = db.query(User).filter(User.id == user_id).first()
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
@@ -865,7 +885,7 @@ async def get_user_cars(
         )
         
         # Рассчитываем заработок
-        earnings_data = _calculate_car_earnings(car.id, user_id, db, current_month_start)
+        earnings_data = _calculate_car_earnings(car.id, user_uuid, db, current_month_start)
         
         result.append(OwnerCarListItemSchema(
             id=car.id,
@@ -882,7 +902,7 @@ async def get_user_cars(
 
 @users_router.patch("/{user_id}/edit")
 async def edit_user(
-    user_id: uuid.UUID,
+    user_id: str,
     edit_data: UserEditSchema,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -891,7 +911,8 @@ async def edit_user(
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user = db.query(User).filter(User.id == user_id).first()
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
@@ -910,7 +931,7 @@ async def edit_user(
 
 @users_router.patch("/{user_id}/block")
 async def block_user(
-    user_id: uuid.UUID,
+    user_id: str,
     block_data: UserBlockSchema,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -919,7 +940,8 @@ async def block_user(
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user = db.query(User).filter(User.id == user_id).first()
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
@@ -948,16 +970,17 @@ def _calculate_month_availability_minutes(
     car_id: int,
     year: int,
     month: int,
-    owner_id: uuid.UUID,
+    owner_id: str,
     db: Session
 ) -> int:
     """Рассчитывает доступные минуты для автомобиля в месяце"""
     # Импортируем функцию из owner.utils
     from app.owner.utils import calculate_month_availability_minutes
-    return calculate_month_availability_minutes(car_id, year, month, owner_id, db)
+    owner_uuid = safe_sid_to_uuid(owner_id)
+    return calculate_month_availability_minutes(car_id, year, month, owner_uuid, db)
 
 
-def _calculate_car_earnings(car_id: int, owner_id: uuid.UUID, db: Session, month_start: datetime) -> Dict[str, float]:
+def _calculate_car_earnings(car_id: int, owner_id: str, db: Session, month_start: datetime) -> Dict[str, float]:
     """Рассчитывает заработок с автомобиля"""
     # Получаем поездки клиентов (исключаем поездки самого владельца)
     client_rentals = db.query(RentalHistory).filter(
