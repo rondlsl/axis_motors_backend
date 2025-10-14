@@ -6,13 +6,6 @@ from sqlalchemy import or_, func
 import os
 import uuid
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
-
-
-def get_car_by_sid(db: Session, car_sid: str) -> Car:
-    """Получить автомобиль по sid"""
-    car_uuid = safe_sid_to_uuid(car_sid)
-    return db.query(Car).filter(Car.id == car_uuid).first()
-
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.auth.dependencies.save_documents import save_file
@@ -32,6 +25,12 @@ from app.gps_api.utils.route_data import get_gps_route_data
 from app.models.support_action_model import SupportAction
 
 cars_router = APIRouter(tags=["Admin Cars"])
+
+
+def get_car_by_sid(db: Session, car_sid: str) -> Car:
+    """Получить автомобиль по sid"""
+    car_uuid = safe_sid_to_uuid(car_sid)
+    return db.query(Car).filter(Car.id == car_uuid).first()
 
 
 @cars_router.patch("/{car_sid}", response_model=CarDetailSchema)
