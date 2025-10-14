@@ -4,7 +4,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-from app.utils.short_id import uuid_to_sid
+from app.utils.short_id import uuid_to_sid, safe_sid_to_uuid
 
 from app.auth.dependencies.get_current_user import get_current_mechanic
 from app.dependencies.database.database import get_db
@@ -589,9 +589,9 @@ def search_vehicles(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка поиска авто: {str(e)}")
 
-@MechanicRouter.post("/check-car/{car_id}")
+@MechanicRouter.post("/check-car/{car_sid}")
 async def check_car(
-        car_id: int,
+        car_sid: str,
         db: Session = Depends(get_db),
         current_mechanic: Any = Depends(get_current_mechanic)
 ) -> Dict[str, Any]:
@@ -600,6 +600,7 @@ async def check_car(
     Аналогично резервированию, но без оплаты – всё бесплатно.
     При проверке статус машины меняется на SERVICE.
     """
+    car_uuid = safe_sid_to_uuid(car_sid)
     # Проверяем, нет ли у механика активной проверки (резервированной или в работе)
     active_rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_mechanic.id,
@@ -611,7 +612,7 @@ async def check_car(
             detail="У вас уже есть активная проверка автомобиля. Завершите её, прежде чем начать новую."
         )
     # Выбираем автомобиль если его статус PENDING или SERVICE
-    car = db.query(Car).filter(Car.id == car_id, Car.status.in_([CarStatus.PENDING, CarStatus.SERVICE])).first()
+    car = db.query(Car).filter(Car.id == car_uuid, Car.status.in_([CarStatus.PENDING, CarStatus.SERVICE])).first()
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден или недоступен для проверки")
     
@@ -663,9 +664,9 @@ async def check_car(
     }
 
 
-@MechanicRouter.post("/start/{car_id}")
+@MechanicRouter.post("/start/{car_sid}")
 async def start_rental(
-        car_id: int,
+        car_sid: str,
         db: Session = Depends(get_db),
         current_mechanic: Any = Depends(get_current_mechanic)
 ) -> Dict[str, Any]:
@@ -674,8 +675,9 @@ async def start_rental(
     Работает для машин со статусом SERVICE, закрепленных за текущим механиком.
     Всё бесплатно – списания не производится.
     """
+    car_uuid = safe_sid_to_uuid(car_sid)
     # Сначала проверяем, что машина существует и находится в статусе SERVICE
-    car = db.query(Car).filter(Car.id == car_id).first()
+    car = db.query(Car).filter(Car.id == car_uuid).first()
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
     
@@ -696,7 +698,7 @@ async def start_rental(
     rental = db.query(RentalHistory).filter(
         RentalHistory.mechanic_inspector_id == current_mechanic.id,
         RentalHistory.mechanic_inspection_status == "PENDING",
-        RentalHistory.car_id == car_id,
+        RentalHistory.car_id == car_uuid,
     ).first()
     
     if not rental:

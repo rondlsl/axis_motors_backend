@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD, RENTED_CARS_ENDPOINT_KEY
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
-from app.utils.short_id import uuid_to_sid
+from app.utils.short_id import uuid_to_sid, safe_sid_to_uuid
 from app.gps_api.schemas import RentedCar
 from app.models.car_model import Car, CarAutoClass, CarStatus
 from app.models.history_model import RentalHistory, RentalStatus
@@ -783,9 +783,9 @@ def get_rented_cars(
     return [RentedCar(name=name, plate_number=plate) for name, plate in rows]
 
 
-@Vehicle_Router.get("/telemetry/{car_id}", response_model=VehicleTelemetryResponse)
+@Vehicle_Router.get("/telemetry/{car_sid}", response_model=VehicleTelemetryResponse)
 async def get_vehicle_telemetry(
-    car_id: int,
+    car_sid: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -801,12 +801,13 @@ async def get_vehicle_telemetry(
     
     Если данных нет — возвращает ошибку "Нет данных"
     """
+    car_uuid = safe_sid_to_uuid(car_sid)
     # Проверяем права доступа - только для админов
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Только администраторы могут получать телеметрию")
     
     # Получаем информацию об автомобиле
-    car = db.query(Car).filter(Car.id == car_id).first()
+    car = db.query(Car).filter(Car.id == car_uuid).first()
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
     
@@ -820,7 +821,7 @@ async def get_vehicle_telemetry(
                 2: "866011056063951",  # Haval F7x  
                 3: "860803068139548",  # Hongqi e-qm5
             }
-            vehicle_imei = vehicle_imei_map.get(car_id)
+            vehicle_imei = vehicle_imei_map.get(car_uuid)
             
             if not vehicle_imei:
                 raise HTTPException(
@@ -828,8 +829,8 @@ async def get_vehicle_telemetry(
                     detail="IMEI устройства не найден для данного автомобиля"
                 )
         
-        logger.info(f"Getting telemetry for car_id={car_id}, IMEI={vehicle_imei}")
-        print(f"[TELEMETRY] Getting telemetry for car_id={car_id}, IMEI={vehicle_imei}")
+        logger.info(f"Getting telemetry for car_sid={car_sid}, IMEI={vehicle_imei}")
+        print(f"[TELEMETRY] Getting telemetry for car_sid={car_sid}, IMEI={vehicle_imei}")
         
         glonassoft_data = await glonassoft_client.get_vehicle_data(vehicle_imei)
         print(f"[TELEMETRY] Glonassoft response: {glonassoft_data}")
@@ -851,8 +852,8 @@ async def get_vehicle_telemetry(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting telemetry for car {car_id}: {e}")
-        print(f"[TELEMETRY ERROR] Error getting telemetry for car {car_id}: {e}")
+        logger.error(f"Error getting telemetry for car {car_sid}: {e}")
+        print(f"[TELEMETRY ERROR] Error getting telemetry for car {car_sid}: {e}")
         import traceback
         print(f"[TELEMETRY ERROR] Traceback: {traceback.format_exc()}")
         raise HTTPException(
@@ -863,18 +864,19 @@ async def get_vehicle_telemetry(
 
 # === УПРАВЛЕНИЕ АВТОМОБИЛЕМ ПО CAR_ID ===
 
-@Vehicle_Router.post("/{car_id}/open", summary="Открыть автомобиль")
+@Vehicle_Router.post("/{car_sid}/open", summary="Открыть автомобиль")
 async def open_vehicle_by_id(
-    car_id: int,
+    car_sid: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Открыть автомобиль по ID"""
+    car_uuid = safe_sid_to_uuid(car_sid)
     if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Только администраторы и механики могут управлять автомобилями")
     
     # Получаем информацию об автомобиле
-    car = db.query(Car).filter(Car.id == car_id).first()
+    car = db.query(Car).filter(Car.id == car_uuid).first()
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
     
@@ -892,18 +894,19 @@ async def open_vehicle_by_id(
         raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
 
 
-@Vehicle_Router.post("/{car_id}/close", summary="Закрыть автомобиль")
+@Vehicle_Router.post("/{car_sid}/close", summary="Закрыть автомобиль")
 async def close_vehicle_by_id(
-    car_id: int,
+    car_sid: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Закрыть автомобиль по ID"""
+    car_uuid = safe_sid_to_uuid(car_sid)
     if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Только администраторы и механики могут управлять автомобилями")
     
     # Получаем информацию об автомобиле
-    car = db.query(Car).filter(Car.id == car_id).first()
+    car = db.query(Car).filter(Car.id == car_uuid).first()
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
     
@@ -921,18 +924,19 @@ async def close_vehicle_by_id(
         raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
 
 
-@Vehicle_Router.post("/{car_id}/lock_engine", summary="Заблокировать двигатель")
+@Vehicle_Router.post("/{car_sid}/lock_engine", summary="Заблокировать двигатель")
 async def lock_engine_by_id(
-    car_id: int,
+    car_sid: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Заблокировать двигатель автомобиля по ID"""
+    car_uuid = safe_sid_to_uuid(car_sid)
     if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Только администраторы и механики могут управлять автомобилями")
     
     # Получаем информацию об автомобиле
-    car = db.query(Car).filter(Car.id == car_id).first()
+    car = db.query(Car).filter(Car.id == car_uuid).first()
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
     
@@ -950,18 +954,19 @@ async def lock_engine_by_id(
         raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
 
 
-@Vehicle_Router.post("/{car_id}/unlock_engine", summary="Разблокировать двигатель")
+@Vehicle_Router.post("/{car_sid}/unlock_engine", summary="Разблокировать двигатель")
 async def unlock_engine_by_id(
-    car_id: int,
+    car_sid: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Разблокировать двигатель автомобиля по ID"""
+    car_uuid = safe_sid_to_uuid(car_sid)
     if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Только администраторы и механики могут управлять автомобилями")
     
     # Получаем информацию об автомобиле
-    car = db.query(Car).filter(Car.id == car_id).first()
+    car = db.query(Car).filter(Car.id == car_uuid).first()
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
     
@@ -979,18 +984,19 @@ async def unlock_engine_by_id(
         raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
 
 
-@Vehicle_Router.post("/{car_id}/give_key", summary="Выдать ключ")
+@Vehicle_Router.post("/{car_sid}/give_key", summary="Выдать ключ")
 async def give_key_by_id(
-    car_id: int,
+    car_sid: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Выдать ключ автомобиля по ID"""
+    car_uuid = safe_sid_to_uuid(car_sid)
     if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Только администраторы и механики могут управлять автомобилями")
     
     # Получаем информацию об автомобиле
-    car = db.query(Car).filter(Car.id == car_id).first()
+    car = db.query(Car).filter(Car.id == car_uuid).first()
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
     
@@ -1008,12 +1014,13 @@ async def give_key_by_id(
         raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
 
 
-@Vehicle_Router.post("/{car_id}/take_key", summary="Забрать ключ")
+@Vehicle_Router.post("/{car_sid}/take_key", summary="Забрать ключ")
 async def take_key_by_id(
-    car_id: int,
+    car_sid: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    car_uuid = safe_sid_to_uuid(car_sid)
     """Забрать ключ автомобиля по ID
     
     Если двигатель не выключен, сначала заблокирует двигатель, затем заберет ключ
@@ -1022,7 +1029,7 @@ async def take_key_by_id(
         raise HTTPException(status_code=403, detail="Только администраторы и механики могут управлять автомобилями")
     
     # Получаем информацию об автомобиле
-    car = db.query(Car).filter(Car.id == car_id).first()
+    car = db.query(Car).filter(Car.id == car_uuid).first()
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
     
@@ -1040,7 +1047,7 @@ async def take_key_by_id(
             2: "866011056063951",  # Haval F7x  
             3: "860803068139548",  # Hongqi e-qm5
         }
-        vehicle_imei = vehicle_imei_map.get(car_id, car.gps_imei)
+        vehicle_imei = vehicle_imei_map.get(car_uuid, car.gps_imei)
         
         # Получаем телеметрию для проверки состояния двигателя
         glonassoft_data = await glonassoft_client.get_vehicle_data(vehicle_imei)

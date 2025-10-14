@@ -416,15 +416,16 @@ def apply_promo(body: ApplyPromoRequest,
     }
 
 
-@RentRouter.post("/reserve-car/{car_id}")
+@RentRouter.post("/reserve-car/{car_sid}")
 async def reserve_car(
-        car_id: int,
+        car_sid: str,
         rental_type: RentalType,
         duration: Optional[int] = None,
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user),
 ):
-    car_meta = db.query(Car.id, Car.owner_id, Car.status).filter(Car.id == car_id).first()
+    car_uuid = safe_sid_to_uuid(car_sid)
+    car_meta = db.query(Car.id, Car.owner_id, Car.status).filter(Car.id == car_uuid).first()
     if not car_meta:
         raise HTTPException(status_code=404, detail="Car not found")
 
@@ -448,7 +449,7 @@ async def reserve_car(
 
     # 2) Выбираем машину только если она доступна (status == "FREE")
     car = db.query(Car).filter(
-        Car.id == car_id,
+        Car.id == car_uuid,
         Car.status == CarStatus.FREE
     ).first()
     if not car:
@@ -593,9 +594,9 @@ async def reserve_car(
     }
 
 
-@RentRouter.post("/reserve-delivery/{car_id}")
+@RentRouter.post("/reserve-delivery/{car_sid}")
 async def reserve_delivery(
-        car_id: int,
+        car_sid: str,
         rental_type: RentalType,
         delivery_latitude: float = Query(..., description="Координата широты доставки"),
         delivery_longitude: float = Query(..., description="Координата долготы доставки"),
@@ -605,9 +606,10 @@ async def reserve_delivery(
 ) -> dict:
     """
     Резервирование машины с доставкой:
-    - car_id, rental_type, delivery координаты, опционально duration.
+    - car_sid, rental_type, delivery координаты, опционально duration.
     - Дополнительно списываем 10000₸ за услугу доставки, если арендатор не является владельцем.
     """
+    car_uuid = safe_sid_to_uuid(car_sid)
     # Запреты по ролям/верификации
     validate_user_can_rent(current_user, db)
 
@@ -628,7 +630,7 @@ async def reserve_delivery(
 
     # 2) Выбираем машину только если она доступна (status == "FREE")
     car = db.query(Car).filter(
-        Car.id == car_id,
+        Car.id == car_uuid,
         Car.status == CarStatus.FREE
     ).first()
     if not car:
@@ -922,19 +924,20 @@ async def cancel_delivery(
     return {"message": "Доставка отменена успешно"}
 
 
-@RentRouter.post("/start/{car_id}")
+@RentRouter.post("/start/{car_sid}")
 async def start_rental(
-        car_id: int,
+        car_sid: str,
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user),
 ):
+    car_uuid = safe_sid_to_uuid(car_sid)
     # Запреты по ролям/верификации (на случай, если обошли резервацию)
     validate_user_can_rent(current_user, db)
 
     # Получаем активную аренду пользователя по ID авто со статусом RESERVED
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,
-        RentalHistory.car_id == car_id,
+        RentalHistory.car_id == car_uuid,
         RentalHistory.rental_status == RentalStatus.RESERVED
     ).first()
 
