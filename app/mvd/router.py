@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 from app.dependencies.database.database import get_db
+from app.utils.short_id import uuid_to_sid
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole
 from app.models.application_model import Application, ApplicationStatus
@@ -55,7 +56,7 @@ async def get_pending_applications(
         user = app.user
         applications_data.append({
             "application_id": app.id,
-            "user_id": user.id,
+            "user_id": uuid_to_sid(user.id),
             "first_name": user.first_name,
             "last_name": user.last_name,
             "email": user.email,
@@ -123,7 +124,7 @@ async def get_approved_applications(
         user = app.user
         applications_data.append({
             "application_id": app.id,
-            "user_id": user.id,
+            "user_id": uuid_to_sid(user.id),
             "first_name": user.first_name,
             "last_name": user.last_name,
             "email": user.email,
@@ -192,7 +193,7 @@ async def get_rejected_applications(
         user = app.user
         applications_data.append({
             "application_id": app.id,
-            "user_id": user.id,
+            "user_id": uuid_to_sid(user.id),
             "first_name": user.first_name,
             "last_name": user.last_name,
             "email": user.email,
@@ -273,7 +274,7 @@ async def approve_application(
     return {
         "message": "Заявка одобрена",
         "application_id": application_id,
-        "user_id": application.user.id
+        "user_id": uuid_to_sid(application.user.id)
     }
 
 
@@ -328,6 +329,6 @@ async def reject_application(
     return {
         "message": "Заявка отклонена",
         "application_id": application_id,
-        "user_id": application.user.id,
+        "user_id": uuid_to_sid(application.user.id),
         "reason": application.reason
     }

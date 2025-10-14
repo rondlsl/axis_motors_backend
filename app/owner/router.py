@@ -7,6 +7,7 @@ import math
 
 from app.auth.dependencies.get_current_user import get_current_user
 from app.dependencies.database.database import get_db
+from app.utils.short_id import uuid_to_sid
 from app.models.user_model import User, UserRole
 from app.models.car_model import Car, CarStatus
 from app.models.history_model import RentalHistory, RentalStatus, RentalType, RentalReview
@@ -441,7 +442,7 @@ def get_trips_by_month(
                 "rental_type": trip.rental_type.value,
                 "start_time": apply_offset(trip.start_time),
                 "end_time": apply_offset(trip.end_time),
-                "user_id": trip.user_id
+                "user_id": uuid_to_sid(trip.user_id)
             }
             
             # Добавляем fuel_cost и delivery_cost только если это поездка владельца
@@ -677,7 +678,7 @@ async def get_trip_details(
         delivery_mechanic_info = None
         if delivery_mechanic:
             delivery_mechanic_info = {
-                "id": delivery_mechanic.id,
+                "id": uuid_to_sid(delivery_mechanic.id),
                 "first_name": delivery_mechanic.first_name or "",
                 "last_name": delivery_mechanic.last_name or "",
                 "phone_number": delivery_mechanic.phone_number or ""
@@ -702,7 +703,7 @@ async def get_trip_details(
         mechanic_info = None
         if mechanic:
             mechanic_info = {
-                "id": mechanic.id,
+                "id": uuid_to_sid(mechanic.id),
                 "first_name": mechanic.first_name or "",
                 "last_name": mechanic.last_name or "",
                 "phone_number": mechanic.phone_number or ""

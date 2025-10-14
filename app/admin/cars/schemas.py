@@ -14,7 +14,7 @@ class CarFilterSchema(BaseModel):
 
 class CarListItemSchema(BaseModel):
     """Схема элемента списка автомобилей"""
-    id: int
+    id: str
     name: str
     plate_number: str
     status: Optional[str] = None
@@ -36,7 +36,7 @@ class CarListItemSchema(BaseModel):
 
 class CarMapItemSchema(BaseModel):
     """Схема элемента карты автомобилей"""
-    id: int
+    id: str
     name: str
     plate_number: str
     status: Optional[str] = None
@@ -91,7 +91,7 @@ class CarCommentUpdateSchema(BaseModel):
 
 class CarAvailabilityTimerSchema(BaseModel):
     """Схема таймера доступности автомобиля"""
-    car_id: int
+    car_id: str
     available_minutes: int
     last_rental_end: Optional[str] = None
     current_status: str
@@ -105,7 +105,7 @@ class CarCurrentUserSchema(BaseModel):
 
 class CarDetailSchema(BaseModel):
     """Схема детальной информации об автомобиле"""
-    id: int
+    id: str
     name: str
     plate_number: str
     engine_volume: Optional[float] = None
@@ -157,8 +157,8 @@ class CarEditSchema(BaseModel):
 
 class CarCommentSchema(SidMixin):
     """Схема комментария к автомобилю"""
-    id: int
-    car_id: int
+    id: str
+    car_id: str
     author_id: str
     author_name: str
     author_role: str
@@ -183,7 +183,7 @@ class CarCommentUpdateSchema(BaseModel):
 
 class CarAvailabilityTimerSchema(BaseModel):
     """Схема таймера доступности автомобиля"""
-    car_id: int
+    car_id: str
     available_minutes: int
     last_rental_end: Optional[str] = None
     current_status: str

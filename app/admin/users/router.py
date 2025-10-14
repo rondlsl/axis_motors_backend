@@ -42,7 +42,7 @@ async def get_pending_users(
     result = []
     for user in users:
         user_data = {
-            "id": user.id,
+            "id": uuid_to_sid(user.id),
             "email": user.email,
             "first_name": user.first_name,
             "last_name": user.last_name,
@@ -121,7 +121,7 @@ async def get_all_users(
     result = []
     for user in users:
         user_data = {
-            "id": user.id,
+            "id": uuid_to_sid(user.id),
             "email": user.email,
             "first_name": user.first_name,
             "last_name": user.last_name,
@@ -162,7 +162,7 @@ async def get_all_clients(
     result = []
     for user in users:
         user_data = {
-            "id": user.id,
+            "id": uuid_to_sid(user.id),
             "email": user.email,
             "first_name": user.first_name,
             "last_name": user.last_name,
@@ -300,7 +300,7 @@ def _get_current_rental_car(user: User, db: Session) -> Optional[Dict[str, Any]]
         return None
     
     return {
-        "id": car.id,
+        "id": uuid_to_sid(car.id),
         "name": car.name,
         "plate_number": car.plate_number,
         "brand": car.name.split()[0] if car.name else "Unknown"
@@ -427,7 +427,7 @@ async def get_users_list(
                 auto_class_list = [part.strip() for part in raw.split(",") if part.strip()]
         
         user_data = {
-            "id": user.id,
+            "id": uuid_to_sid(user.id),
             "first_name": user.first_name,
             "last_name": user.last_name,
             "phone_number": user.phone_number,
@@ -496,7 +496,7 @@ async def get_users_map_positions(
             continue
         
         user_data = {
-            "id": user.id,
+            "id": uuid_to_sid(user.id),
             "first_name": user.first_name,
             "last_name": user.last_name,
             "selfie_url": user.selfie_url,
@@ -551,7 +551,7 @@ async def get_user_card(
             auto_class_list = [part.strip() for part in raw.split(",") if part.strip()]
     
     user_data = {
-        "id": user.id,
+        "id": uuid_to_sid(user.id),
         "digital_signature": user.digital_signature,
         "phone_number": user.phone_number,
         "email": user.email,
@@ -634,7 +634,7 @@ async def get_users_he_is_guarantor_for(
     from app.models.guarantor_model import Guarantor
     guarantor_relations = db.query(Guarantor).filter(
         and_(
-            Guarantor.guarantor_id == user_id,
+            Guarantor.guarantor_id == user_uuid,
             Guarantor.is_active == True
         )
     ).all()
@@ -644,7 +644,7 @@ async def get_users_he_is_guarantor_for(
         client = db.query(User).filter(User.id == relation.client_id).first()
         if client:
             client_data = {
-                "id": client.id,
+                "id": uuid_to_sid(client.id),
                 "first_name": client.first_name,
                 "last_name": client.last_name,
                 "phone_number": client.phone_number,
@@ -678,7 +678,7 @@ async def get_his_guarantors(
     from app.models.guarantor_model import Guarantor
     guarantor_relations = db.query(Guarantor).filter(
         and_(
-            Guarantor.client_id == user_id,
+            Guarantor.client_id == user_uuid,
             Guarantor.is_active == True
         )
     ).all()
@@ -688,7 +688,7 @@ async def get_his_guarantors(
         guarantor = db.query(User).filter(User.id == relation.guarantor_id).first()
         if guarantor:
             guarantor_data = {
-                "id": guarantor.id,
+                "id": uuid_to_sid(guarantor.id),
                 "first_name": guarantor.first_name,
                 "last_name": guarantor.last_name,
                 "phone_number": guarantor.phone_number,
@@ -721,7 +721,7 @@ async def get_user_trips_summary(
     # Получаем все завершенные поездки пользователя
     completed_trips = db.query(RentalHistory).filter(
         and_(
-            RentalHistory.user_id == user_id,
+            RentalHistory.user_id == user_uuid,
             RentalHistory.rental_status == RentalStatus.COMPLETED
         )
     ).all()
@@ -775,7 +775,7 @@ async def get_user_trips(
     # Получаем поездки за указанный месяц
     trips = db.query(RentalHistory).filter(
         and_(
-            RentalHistory.user_id == user_id,
+            RentalHistory.user_id == user_uuid,
             RentalHistory.rental_status == RentalStatus.COMPLETED,
             RentalHistory.end_time >= month_start,
             RentalHistory.end_time < month_end
@@ -809,7 +809,7 @@ async def get_user_trips(
 @users_router.get("/{user_sid}/trips/{trip_id}", response_model=TripDetailSchema)
 async def get_trip_detail(
     user_sid: str,
-    trip_id: int,
+    trip_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -818,6 +818,7 @@ async def get_trip_detail(
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
     user_uuid = safe_sid_to_uuid(user_sid)
+    trip_uuid = safe_sid_to_uuid(trip_id)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -825,8 +826,8 @@ async def get_trip_detail(
     # Получаем поездку
     trip = db.query(RentalHistory).filter(
         and_(
-            RentalHistory.id == trip_id,
-            RentalHistory.user_id == user_id
+            RentalHistory.id == trip_uuid,
+            RentalHistory.user_id == user_uuid
         )
     ).first()
     
@@ -889,7 +890,7 @@ async def get_user_cars(
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
     # Получаем автомобили владельца
-    cars = db.query(Car).filter(Car.owner_id == user_id).all()
+    cars = db.query(Car).filter(Car.owner_id == user_uuid).all()
     
     result = []
     now = datetime.now()
@@ -901,7 +902,7 @@ async def get_user_cars(
             car_id=car.id,
             year=now.year,
             month=now.month,
-            owner_id=user_id,
+            owner_id=user_uuid,
             db=db
         )
         
@@ -988,7 +989,7 @@ async def block_user(
 
 
 def _calculate_month_availability_minutes(
-    car_id: int,
+    car_id: str,
     year: int,
     month: int,
     owner_id: str,
@@ -1001,12 +1002,13 @@ def _calculate_month_availability_minutes(
     return calculate_month_availability_minutes(car_id, year, month, owner_uuid, db)
 
 
-def _calculate_car_earnings(car_id: int, owner_id: str, db: Session, month_start: datetime) -> Dict[str, float]:
+def _calculate_car_earnings(car_id: str, owner_id: str, db: Session, month_start: datetime) -> Dict[str, float]:
     """Рассчитывает заработок с автомобиля"""
+    car_uuid = safe_sid_to_uuid(car_id)
     # Получаем поездки клиентов (исключаем поездки самого владельца)
     client_rentals = db.query(RentalHistory).filter(
         and_(
-            RentalHistory.car_id == car_id,
+            RentalHistory.car_id == car_uuid,
             RentalHistory.rental_status == RentalStatus.COMPLETED,
             RentalHistory.user_id != owner_id
         )

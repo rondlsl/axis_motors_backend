@@ -7,7 +7,7 @@ from app.schemas.base import SidMixin
 
 class GuarantorRequestAdminSchema(SidMixin):
     """Схема заявки гаранта для админа"""
-    id: int
+    id: str
     guarantor_id: str
     requestor_id: str
     guarantor_name: str

@@ -1989,7 +1989,7 @@ async def create_advance_booking(
 
     response_data = {
         "message": "Автомобиль успешно забронирован заранее",
-        "rental_id": rental.id,
+        "rental_id": uuid_to_sid(rental.id),
         "reservation_time": rental.reservation_time.isoformat(),
         "scheduled_start_time": rental.scheduled_start_time.isoformat() if rental.scheduled_start_time else None,
         "scheduled_end_time": rental.scheduled_end_time.isoformat() if rental.scheduled_end_time else None,
@@ -2104,7 +2104,7 @@ async def cancel_booking(
 
     response_data = {
         "message": "Бронирование успешно отменено",
-        "rental_id": rental.id,
+        "rental_id": uuid_to_sid(rental.id),
         "refund_amount": refund_amount
     }
     

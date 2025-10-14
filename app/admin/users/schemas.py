@@ -158,7 +158,7 @@ class TripDetailSchema(SidMixin):
     duration_minutes: int = 0
     total_price: float = 0.0
     
-    car_id: int
+    car_id: str
     car_name: str
     car_plate_number: str
     

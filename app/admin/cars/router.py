@@ -5,7 +5,13 @@ from datetime import datetime
 from sqlalchemy import or_, func
 import os
 import uuid
-from app.utils.short_id import safe_sid_to_uuid
+from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
+
+
+def get_car_by_sid(db: Session, car_sid: str) -> Car:
+    """Получить автомобиль по sid"""
+    car_uuid = safe_sid_to_uuid(car_sid)
+    return db.query(Car).filter(Car.id == car_uuid).first()
 
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
@@ -28,9 +34,9 @@ from app.models.support_action_model import SupportAction
 cars_router = APIRouter(tags=["Admin Cars"])
 
 
-@cars_router.patch("/{car_id}", response_model=CarDetailSchema)
+@cars_router.patch("/{car_sid}", response_model=CarDetailSchema)
 async def edit_car(
-    car_id: int,
+    car_sid: str,
     body: CarEditSchema,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -39,7 +45,7 @@ async def edit_car(
     if current_user.role not in [UserRole.ADMIN]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
-    car = db.query(Car).filter(Car.id == car_id).first()
+    car = get_car_by_sid(db, car_sid)
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
@@ -56,9 +62,9 @@ async def edit_car(
     return car_to_detail_schema(car)
 
 
-@cars_router.get("/{car_id}/details", response_model=CarDetailSchema)
+@cars_router.get("/{car_sid}/details", response_model=CarDetailSchema)
 async def get_car_details(
-    car_id: int,
+    car_sid: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> CarDetailSchema:
@@ -66,22 +72,22 @@ async def get_car_details(
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
-    car = db.query(Car).filter(Car.id == car_id).first()
+    car = get_car_by_sid(db, car_sid)
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
     from app.owner.utils import calculate_month_availability_minutes, ALMATY_TZ
     now = datetime.now(ALMATY_TZ)
     available_minutes = calculate_month_availability_minutes(
-        car_id=car.id,
+        car_sid=uuid_to_sid(car.id),
         year=now.year,
         month=now.month,
-        owner_id=car.owner_id,
+        owner_id=uuid_to_sid(car.owner_id),
         db=db
     )
 
     return CarDetailSchema(
-        id=car.id,
+        id=uuid_to_sid(car.id),
         name=car.name,
         plate_number=car.plate_number,
         engine_volume=car.engine_volume,
@@ -105,7 +111,7 @@ async def get_car_details(
         price_per_minute=car.price_per_minute,
         price_per_hour=car.price_per_hour,
         price_per_day=car.price_per_day,
-        owner_id=car.owner_id,
+        owner_id=uuid_to_sid(car.owner_id),
         current_renter_id=car.current_renter_id,
         available_minutes=available_minutes,
         gps_id=car.gps_id,
@@ -151,7 +157,7 @@ async def get_all_cars_for_admin(
                 }
         
         vehicle_data = {
-            "id": car.id,
+            "id": uuid_to_sid(car.id),
             "name": car.name,
             "status": status_display,
             "lat": car.latitude or 0.0,
@@ -167,9 +173,9 @@ async def get_all_cars_for_admin(
     return {"cars": vehicles_data}
 
 
-@cars_router.patch("/{car_id}/status", summary="Изменить статус автомобиля")
+@cars_router.patch("/{car_sid}/status", summary="Изменить статус автомобиля")
 async def change_car_status(
-    car_id: int,
+    car_sid: str,
     new_status: CarStatus,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -178,7 +184,7 @@ async def change_car_status(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    car = db.query(Car).filter(Car.id == car_id).first()
+    car = get_car_by_sid(db, car_sid)
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
     
@@ -208,9 +214,9 @@ async def change_car_status(
         raise HTTPException(status_code=500, detail=f"Ошибка изменения статуса: {e}")
 
 
-@cars_router.get("/{car_id}/status", summary="Получить текущий статус автомобиля")
+@cars_router.get("/{car_sid}/status", summary="Получить текущий статус автомобиля")
 async def get_car_status(
-    car_id: int,
+    car_sid: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -218,12 +224,12 @@ async def get_car_status(
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Только администраторы могут получать статус автомобилей")
     
-    car = db.query(Car).filter(Car.id == car_id).first()
+    car = get_car_by_sid(db, car_sid)
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
     
     return {
-        "car_id": car.id,
+        "car_id": uuid_to_sid(car.id),
         "car_name": car.name,
         "plate_number": car.plate_number,
         "current_status": car.status.value if car.status else None,
@@ -231,9 +237,9 @@ async def get_car_status(
     }
 
 
-@cars_router.delete("/{car_id}", summary="Удалить автомобиль")
+@cars_router.delete("/{car_sid}", summary="Удалить автомобиль")
 async def delete_car(
-    car_id: int,
+    car_sid: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -241,14 +247,14 @@ async def delete_car(
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Только администраторы могут удалять автомобили")
     
-    car = db.query(Car).filter(Car.id == car_id).first()
+    car = get_car_by_sid(db, car_sid)
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
     
     try:
         # Проверяем, не используется ли автомобиль в активной аренде
         active_rental = db.query(RentalHistory).filter(
-            RentalHistory.car_id == car_id,
+            RentalHistory.car_sid == car_sid,
             RentalHistory.rental_status.in_([
                 RentalStatus.RESERVED,
                 RentalStatus.IN_USE,
@@ -266,7 +272,7 @@ async def delete_car(
             )
         
         car_info = {
-            "id": car.id,
+            "id": uuid_to_sid(car.id),
             "name": car.name,
             "plate_number": car.plate_number,
             "status": car.status.value if car.status else None
@@ -323,9 +329,9 @@ def _get_status_description(status: CarStatus) -> str:
     return descriptions.get(status, status.value)
 
 
-@cars_router.get("/{car_id}/comments", response_model=List[CarCommentSchema])
+@cars_router.get("/{car_sid}/comments", response_model=List[CarCommentSchema])
 async def get_car_comments(
-    car_id: int,
+    car_sid: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> List[CarCommentSchema]:
@@ -333,13 +339,13 @@ async def get_car_comments(
     if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
-    car = db.query(Car).filter(Car.id == car_id).first()
+    car = get_car_by_sid(db, car_sid)
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
     comments = (
         db.query(CarComment)
-        .filter(CarComment.car_id == car_id)
+        .filter(CarComment.car_sid == car_sid)
         .order_by(CarComment.created_at.desc())
         .all()
     )
@@ -348,7 +354,7 @@ async def get_car_comments(
     for comment in comments:
         result.append(CarCommentSchema(
             id=comment.id,
-            car_id=comment.car_id,
+            car_sid=comment.car_sid,
             author_id=comment.author_id,
             author_name=f"{comment.author.first_name or ''} {comment.author.last_name or ''}".strip() or comment.author.phone_number,
             author_role=comment.author.role.value,
@@ -360,9 +366,9 @@ async def get_car_comments(
     return result
 
 
-@cars_router.post("/{car_id}/comments", response_model=CarCommentSchema)
+@cars_router.post("/{car_sid}/comments", response_model=CarCommentSchema)
 async def create_car_comment(
-    car_id: int,
+    car_sid: str,
     comment_data: CarCommentCreateSchema,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -371,12 +377,12 @@ async def create_car_comment(
     if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
-    car = db.query(Car).filter(Car.id == car_id).first()
+    car = get_car_by_sid(db, car_sid)
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
     comment = CarComment(
-        car_id=car_id,
+        car_sid=car_sid,
         author_id=current_user.id,
         comment=comment_data.comment,
         is_internal=comment_data.is_internal
@@ -403,7 +409,7 @@ async def create_car_comment(
 
     return CarCommentSchema(
         id=comment.id,
-        car_id=comment.car_id,
+        car_sid=comment.car_sid,
         author_id=comment.author_id,
         author_name=author_name,
         author_role=current_user.role.value,
@@ -413,9 +419,9 @@ async def create_car_comment(
     )
 
 
-@cars_router.put("/{car_id}/comments/{comment_id}", response_model=CarCommentSchema)
+@cars_router.put("/{car_sid}/comments/{comment_id}", response_model=CarCommentSchema)
 async def update_car_comment(
-    car_id: int,
+    car_sid: str,
     comment_id: int,
     comment_data: CarCommentUpdateSchema,
     current_user: User = Depends(get_current_user),
@@ -425,9 +431,13 @@ async def update_car_comment(
     if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
+    car = get_car_by_sid(db, car_sid)
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
     comment = db.query(CarComment).filter(
         CarComment.id == comment_id,
-        CarComment.car_id == car_id,
+        CarComment.car_id == car.id,
         CarComment.author_id == current_user.id  # Только автор может редактировать
     ).first()
 
@@ -457,7 +467,7 @@ async def update_car_comment(
 
     return CarCommentSchema(
         id=comment.id,
-        car_id=comment.car_id,
+        car_sid=comment.car_sid,
         author_id=comment.author_id,
         author_name=author_name,
         author_role=current_user.role.value,
@@ -467,9 +477,9 @@ async def update_car_comment(
     )
 
 
-@cars_router.delete("/{car_id}/comments/{comment_id}")
+@cars_router.delete("/{car_sid}/comments/{comment_id}")
 async def delete_car_comment(
-    car_id: int,
+    car_sid: str,
     comment_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -478,9 +488,13 @@ async def delete_car_comment(
     if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
+    car = get_car_by_sid(db, car_sid)
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
     comment = db.query(CarComment).filter(
         CarComment.id == comment_id,
-        CarComment.car_id == car_id,
+        CarComment.car_id == car.id,
         CarComment.author_id == current_user.id  
     ).first()
 
@@ -504,9 +518,9 @@ async def delete_car_comment(
     return {"message": "Комментарий удален"}
 
 
-@cars_router.get("/{car_id}/current-user")
+@cars_router.get("/{car_sid}/current-user")
 async def get_car_current_user(
-    car_id: int,
+    car_sid: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -514,7 +528,7 @@ async def get_car_current_user(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
-    car = db.query(Car).filter(Car.id == car_id).first()
+    car = get_car_by_sid(db, car_sid)
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
@@ -526,7 +540,7 @@ async def get_car_current_user(
         return {
             "user_type": "owner",
             "user_info": {
-                "id": owner.id if owner else None,
+                "id": uuid_to_sid(owner.id) if owner else None,
                 "first_name": owner.first_name if owner else None,
                 "last_name": owner.last_name if owner else None,
                 "phone_number": owner.phone_number if owner else None,
@@ -538,7 +552,7 @@ async def get_car_current_user(
         return {
             "user_type": "renter",
             "user_info": {
-                "id": renter.id if renter else None,
+                "id": uuid_to_sid(renter.id) if renter else None,
                 "first_name": renter.first_name if renter else None,
                 "last_name": renter.last_name if renter else None,
                 "phone_number": renter.phone_number if renter else None,
@@ -549,9 +563,9 @@ async def get_car_current_user(
         return {"user_type": "none", "user_info": None}
 
 
-@cars_router.get("/{car_id}/availability-timer", response_model=CarAvailabilityTimerSchema)
+@cars_router.get("/{car_sid}/availability-timer", response_model=CarAvailabilityTimerSchema)
 async def get_car_availability_timer(
-    car_id: int,
+    car_sid: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> CarAvailabilityTimerSchema:
@@ -559,38 +573,37 @@ async def get_car_availability_timer(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
-    car = db.query(Car).filter(Car.id == car_id).first()
+    car = get_car_by_sid(db, car_sid)
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
     from app.owner.utils import calculate_month_availability_minutes, ALMATY_TZ
     now = datetime.now(ALMATY_TZ)
     available_minutes = calculate_month_availability_minutes(
-        car_id=car.id,
+            car_sid=uuid_to_sid(car.id),
         year=now.year,
         month=now.month,
-        owner_id=car.owner_id,
+        owner_id=uuid_to_sid(car.owner_id),
         db=db
     )
 
     last_rental = db.query(RentalHistory).filter(
-        RentalHistory.car_id == car_id,
+        RentalHistory.car_sid == car_sid,
         RentalHistory.rental_status == RentalStatus.COMPLETED,
         RentalHistory.end_time.isnot(None)
     ).order_by(RentalHistory.end_time.desc()).first()
 
     return CarAvailabilityTimerSchema(
-        car_id=car.id,
+            car_sid=uuid_to_sid(car.id),
         available_minutes=available_minutes,
         last_rental_end=last_rental.end_time.isoformat() if last_rental else None,
         current_status=car.status.value if car.status else "FREE"
     )
 
 
-# === Car History ===
-@cars_router.get("/{car_id}/history/summary")
+@cars_router.get("/{car_sid}/history/summary")
 async def get_car_history_summary(
-    car_id: int,
+    car_sid: str,
     month: Optional[int] = None,
     year: Optional[int] = None,
     current_user: User = Depends(get_current_user),
@@ -600,7 +613,7 @@ async def get_car_history_summary(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
-    car = db.query(Car).filter(Car.id == car_id).first()
+    car = get_car_by_sid(db, car_sid)
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
@@ -636,7 +649,7 @@ async def get_car_history_summary(
     total_available_seconds = int((now - period_from_dt).total_seconds()) if is_free_like and now > period_from_dt else 0
 
     return {
-        "car_id": car.id,
+        "car_sid": uuid_to_sid(car.id),
         "car_name": car.name,
         "plate_number": car.plate_number,
         "total_income": total_income,
@@ -647,9 +660,9 @@ async def get_car_history_summary(
     }
 
 
-@cars_router.get("/{car_id}/history/trips")
+@cars_router.get("/{car_sid}/history/trips")
 async def get_car_trips_list(
-    car_id: int,
+    car_sid: str,
     month: Optional[int] = None,
     year: Optional[int] = None,
     current_user: User = Depends(get_current_user),
@@ -658,7 +671,7 @@ async def get_car_trips_list(
     """Список поездок автомобиля"""
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
-    car = db.query(Car).filter(Car.id == car_id).first()
+    car = get_car_by_sid(db, car_sid)
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
@@ -687,14 +700,14 @@ async def get_car_trips_list(
         if r.start_time and r.end_time:
             duration_minutes = int((r.end_time - r.start_time).total_seconds() // 60)
         items.append({
-            "rental_id": r.id,
+            "rental_id": uuid_to_sid(r.id),
             "start_date": r.start_time.isoformat() if r.start_time else None,
             "end_date": r.end_time.isoformat() if r.end_time else None,
             "duration_minutes": duration_minutes,
             "tariff": r.rental_type.value,
             "total_price": r.total_price,
             "renter": {
-                "id": renter.id,
+                "id": uuid_to_sid(renter.id),
                 "first_name": renter.first_name,
                 "last_name": renter.last_name,
                 "phone_number": renter.phone_number,
@@ -704,9 +717,9 @@ async def get_car_trips_list(
     return {"trips": items}
 
 
-@cars_router.get("/{car_id}/history/trips/{rental_sid}")
+@cars_router.get("/{car_sid}/history/trips/{rental_sid}")
 async def get_trip_detail(
-    car_id: int,
+    car_sid: str,
     rental_sid: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -716,10 +729,10 @@ async def get_trip_detail(
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     rental_uuid = safe_sid_to_uuid(rental_sid)
-    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid, RentalHistory.car_id == car_id).first()
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid, RentalHistory.car_sid == car_sid).first()
     if not rental:
         raise HTTPException(status_code=404, detail="Поездка не найдена")
-    car = db.query(Car).filter(Car.id == car_id).first()
+    car = get_car_by_sid(db, car_sid)
     renter = db.query(User).filter(User.id == rental.user_id).first()
 
     # Группы фотографий
@@ -746,7 +759,7 @@ async def get_trip_detail(
         route_data = None
 
     result = {
-        "rental_id": rental.id,
+        "rental_id": uuid_to_sid(rental.id),
         "car_name": car.name,
         "plate_number": car.plate_number,
         "start_time": rental.start_time.isoformat() if rental.start_time else None,
@@ -754,7 +767,7 @@ async def get_trip_detail(
         "duration_minutes": int((rental.end_time - rental.start_time).total_seconds() // 60) if rental.start_time and rental.end_time else 0,
         "total_price": rental.total_price,
         "renter": {
-            "id": renter.id,
+            "id": uuid_to_sid(renter.id),
             "first_name": renter.first_name,
             "last_name": renter.last_name,
             "phone_number": renter.phone_number,
@@ -788,7 +801,6 @@ async def get_trip_detail(
     return result
 
 
-# === Car Lists and Statistics ===
 @cars_router.get("/map", response_model=CarMapResponseSchema)
 async def get_cars_map(
     status: Optional[CarStatus] = None,
@@ -843,7 +855,7 @@ async def get_cars_map(
                     "selfie": renter.selfie_with_license_url,
                 }
         items.append(CarMapItemSchema(
-            id=car.id,
+            id=uuid_to_sid(car.id),
             name=car.name,
             plate_number=car.plate_number,
             status=car.status,
@@ -915,7 +927,7 @@ async def get_cars_list(
                 current_renter_name = f"{renter.first_name or ''} {renter.last_name or ''}".strip() or renter.phone_number
 
         items.append(CarListItemSchema(
-            id=car.id,
+            id=uuid_to_sid(car.id),
             name=car.name,
             plate_number=car.plate_number,
             status=car.status,
@@ -975,10 +987,9 @@ async def get_cars_statistics(
     )
 
 
-# === Car Update ===
-@cars_router.put("/{car_id}")
+@cars_router.put("/{car_sid}")
 async def update_car(
-    car_id: int,
+    car_sid: str,
     car_data: CarEditSchema,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -987,7 +998,7 @@ async def update_car(
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
-    car = db.query(Car).filter(Car.id == car_id).first()
+    car = get_car_by_sid(db, car_sid)
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
@@ -1002,15 +1013,15 @@ async def update_car(
 
     return {
         "message": "Автомобиль успешно обновлен",
-        "car_id": car.id,
+        "car_sid": uuid_to_sid(car.id),
         "updated_fields": list(update_data.keys())
     }
 
 
-# === Car Photos ===
-@cars_router.post("/{car_id}/photos")
+
+@cars_router.post("/{car_sid}/photos")
 async def upload_car_photos(
-    car_id: int,
+    car_sid: str,
     photos: List[UploadFile] = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -1019,7 +1030,7 @@ async def upload_car_photos(
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
-    car = db.query(Car).filter(Car.id == car_id).first()
+    car = get_car_by_sid(db, car_sid)
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
@@ -1041,16 +1052,15 @@ async def upload_car_photos(
 
     return {
         "message": "Фотографии добавлены",
-        "car_id": car.id,
+        "car_sid": uuid_to_sid(car.id),
         "added": saved_paths,
         "total_photos": len(car.photos or [])
     }
 
 
-# === Car Status Update ===
-@cars_router.put("/{car_id}/status")
+@cars_router.put("/{car_sid}/status")
 async def update_car_status(
-    car_id: int,
+    car_sid: str,
     new_status: str,
     reason: Optional[str] = None,
     current_user: User = Depends(get_current_user),
@@ -1060,7 +1070,7 @@ async def update_car_status(
     if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
-    car = db.query(Car).filter(Car.id == car_id).first()
+    car = get_car_by_sid(db, car_sid)
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
@@ -1073,7 +1083,7 @@ async def update_car_status(
         active_rental = (
             db.query(RentalHistory)
             .filter(
-                RentalHistory.car_id == car_id,
+                RentalHistory.car_sid == car_sid,
                 RentalHistory.rental_status.in_([
                     RentalStatus.RESERVED,
                     RentalStatus.IN_USE,
@@ -1101,17 +1111,16 @@ async def update_car_status(
 
     return {
         "message": "Статус автомобиля изменен",
-        "car_id": car.id,
+        "car_sid": uuid_to_sid(car.id),
         "old_status": old_status,
         "new_status": new_status,
         "reason": reason
     }
 
 
-# === Car Rental History ===
-@cars_router.get("/{car_id}/rental-history")
+@cars_router.get("/{car_sid}/rental-history")
 async def get_car_rental_history(
-    car_id: int,
+    car_sid: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -1119,14 +1128,14 @@ async def get_car_rental_history(
     if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
-    car = db.query(Car).filter(Car.id == car_id).first()
+    car = get_car_by_sid(db, car_sid)
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
     # Получаем историю аренды
     rentals = (
         db.query(RentalHistory)
-        .filter(RentalHistory.car_id == car_id)
+        .filter(RentalHistory.car_sid == car_sid)
         .order_by(RentalHistory.reservation_time.desc())
         .all()
     )
@@ -1141,7 +1150,7 @@ async def get_car_rental_history(
         delivery_mechanic_info = None
         if delivery_mechanic:
             delivery_mechanic_info = {
-                "id": delivery_mechanic.id,
+                "id": uuid_to_sid(delivery_mechanic.id),
                 "first_name": delivery_mechanic.first_name or "",
                 "last_name": delivery_mechanic.last_name or "",
                 "phone_number": delivery_mechanic.phone_number or "",
@@ -1154,7 +1163,7 @@ async def get_car_rental_history(
             inspection_mechanic = db.query(User).filter(User.id == rental.mechanic_inspector_id).first()
             if inspection_mechanic:
                 inspection_mechanic_info = {
-                    "id": inspection_mechanic.id,
+                    "id": uuid_to_sid(inspection_mechanic.id),
                     "first_name": inspection_mechanic.first_name or "",
                     "last_name": inspection_mechanic.last_name or "",
                     "phone_number": inspection_mechanic.phone_number or "",
@@ -1165,7 +1174,7 @@ async def get_car_rental_history(
         renter_info = None
         if renter:
             renter_info = {
-                "id": renter.id,
+                "id": uuid_to_sid(renter.id),
                 "first_name": renter.first_name or "",
                 "last_name": renter.last_name or "",
                 "phone_number": renter.phone_number or "",
@@ -1175,9 +1184,9 @@ async def get_car_rental_history(
             }
 
         result.append({
-            "rental_id": rental.id,
-            "car_id": rental.car_id,
-            "user_id": rental.user_id,
+            "rental_id": uuid_to_sid(rental.id),
+            "car_sid": uuid_to_sid(rental.car_id),
+            "user_id": uuid_to_sid(rental.user_id),
             "renter": renter_info,
             "reservation_time": rental.reservation_time.isoformat() if rental.reservation_time else None,
             "start_time": rental.start_time.isoformat() if rental.start_time else None,
@@ -1207,7 +1216,7 @@ async def get_car_rental_history(
         })
 
     return {
-        "car_id": car.id,
+        "car_sid": uuid_to_sid(car.id),
         "car_name": car.name,
         "plate_number": car.plate_number,
         "rental_history": result,

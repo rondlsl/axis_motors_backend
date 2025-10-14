@@ -7,7 +7,6 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
 from app.utils.sid_converter import convert_uuid_response_to_sid
 
@@ -429,7 +428,7 @@ def get_users_balances(
     return {
         "users": [
             {
-                "id": u.id,
+                "id": uuid_to_sid(u.id),
                 "phone_number": u.phone_number,
                 "role": u.role.value if hasattr(u.role, "value") else str(u.role),
                 "wallet_balance": float(u.wallet_balance or 0),

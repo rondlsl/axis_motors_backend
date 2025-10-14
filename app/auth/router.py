@@ -288,7 +288,7 @@ async def get_user_registration_info(
         full_name = "Не указано"
     
     user_data = {
-        "user_id": current_user.id,
+        "user_id": uuid_to_sid(current_user.id),
         "phone_number": current_user.phone_number,
         "first_name": current_user.first_name,
         "last_name": current_user.last_name,
@@ -558,7 +558,7 @@ async def read_users_me(
         if rental.delivery_mechanic_id:
             mech = db.get(User, rental.delivery_mechanic_id)
             current_mechanic = {
-                "id": mech.id,
+                "id": uuid_to_sid(mech.id),
                 "first_name": mech.first_name,
                 "last_name": mech.last_name,
                 "phone_number": mech.phone_number
@@ -589,7 +589,7 @@ async def read_users_me(
             "open_price": get_open_price(car),
             "owned_car": car.owner_id == current_user.id,
             "description": car.description,
-            "current_renter_id": car.current_renter_id,
+            "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
         }
         
         # Для механиков добавляем поля статуса загрузки фотографий
@@ -661,7 +661,7 @@ async def read_users_me(
                 }
             
             # Добавляем rental_id для механиков
-            car_details["rental_id"] = rental.id
+            car_details["rental_id"] = uuid_to_sid(rental.id)
             
             # Добавляем last_client_review для механиков
             # Ищем последнюю завершенную аренду от обычного клиента (не механика)
@@ -754,7 +754,7 @@ async def read_users_me(
             "year": car.year,
             "photos": car.photos,
             "description": car.description,
-            "current_renter_id": car.current_renter_id,
+            "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
             "status": car.status,
             "price_per_minute": car.price_per_minute,
             "price_per_hour": car.price_per_hour,
@@ -788,7 +788,7 @@ async def read_users_me(
         guarantors = []
         for guarantor_relation, guarantor_user in guarantors_query:
             guarantors.append({
-                "id": guarantor_user.id,
+                "id": uuid_to_sid(guarantor_user.id),
                 "first_name": guarantor_user.first_name,
                 "last_name": guarantor_user.last_name,
                 "phone_number": guarantor_user.phone_number
@@ -801,7 +801,7 @@ async def read_users_me(
         role = getattr(current_user.role, "value", current_user.role) if current_user.role is not None else None
 
         return {
-            "id": current_user.id,
+            "id": uuid_to_sid(current_user.id),
             "user_id": uuid_to_sid(current_user.id),
             "phone_number": current_user.phone_number,
             "email": current_user.email,
@@ -924,7 +924,7 @@ async def upload_selfie(
         response_data = {
             "message": "Селфи успешно загружено",
             "selfie_url": selfie_path,
-            "user_id": current_user.id
+            "user_id": uuid_to_sid(current_user.id)
         }
         
         converted_data = convert_uuid_response_to_sid(response_data, ["user_id"])

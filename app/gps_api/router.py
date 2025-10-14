@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD, RENTED_CARS_ENDPOINT_KEY
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
+from app.utils.short_id import uuid_to_sid
 from app.gps_api.schemas import RentedCar
 from app.models.car_model import Car, CarAutoClass, CarStatus
 from app.models.history_model import RentalHistory, RentalStatus
@@ -257,8 +258,8 @@ def get_vehicle_info(
                 "body_type": car.body_type,
                 "auto_class": car.auto_class,
                 "photos": car.photos,
-                "owner_id": car.owner_id,
-                "current_renter_id": car.current_renter_id,
+                "owner_id": uuid_to_sid(car.owner_id),
+                "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
                 "status": car.status,
                 "open_price": get_open_price(car),
                 "owned_car": True if car.owner_id == current_user.id else False,
@@ -395,8 +396,8 @@ def search_vehicles(
                 "body_type": car.body_type,
                 "auto_class": car.auto_class,
                 "photos": car.photos,
-                "owner_id": car.owner_id,
-                "current_renter_id": car.current_renter_id,
+                "owner_id": uuid_to_sid(car.owner_id),
+                "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
                 "status": car.status,
                 "open_price": get_open_price(car),
                 "owned_car": True if car.owner_id == current_user.id else False,
@@ -520,8 +521,8 @@ def get_frequently_used_vehicles(
                     "body_type": car.body_type,
                     "auto_class": car.auto_class,
                     "photos": car.photos,
-                    "owner_id": car.owner_id,
-                    "current_renter_id": car.current_renter_id,
+                    "owner_id": uuid_to_sid(car.owner_id),
+                    "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
                     "status": car.status,
                     "open_price": get_open_price(car),
                     "owned_car": True if car.owner_id == current_user.id else False,
@@ -562,8 +563,8 @@ def get_frequently_used_vehicles(
                         "body_type": car.body_type,
                         "auto_class": car.auto_class,
                         "photos": car.photos,
-                        "owner_id": car.owner_id,
-                        "current_renter_id": car.current_renter_id,
+                        "owner_id": uuid_to_sid(car.owner_id),
+                        "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
                         "status": car.status.value,
                         "open_price": get_open_price(car),
                         "owned_car": car.owner_id == current_user.id,

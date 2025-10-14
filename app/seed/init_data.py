@@ -1052,7 +1052,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         db.commit()
 
 
-def get_car_photos(car_id: int) -> list[str]:
+def get_car_photos(car_id: str) -> list[str]:
     """Получает список фотографий автомобиля из папки uploads/cars/{car_id}"""
     photos_dir = os.path.join(os.path.dirname(__file__), "..", "..", "uploads", "cars", str(car_id))
     photos = []

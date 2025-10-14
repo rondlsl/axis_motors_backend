@@ -103,8 +103,8 @@ def get_all_vehicles_plain(
                 "auto_class": car.auto_class,
                 "photos": car.photos,
                 "description": car.description,
-                "owner_id": car.owner_id,
-                "current_renter_id": car.current_renter_id,
+                "owner_id": uuid_to_sid(car.owner_id),
+                "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
                 "status": car.status,
                 "open_price": get_open_price(car),
                 "owned_car": False,
@@ -137,7 +137,7 @@ def get_all_vehicles_plain(
                     .first()
                 )
                 if active:
-                    car_dict["rental_id"] = active.id
+                    car_dict["rental_id"] = uuid_to_sid(active.id)
 
             # если машина в использовании — добавляем детали арендатора
             if car.status == CarStatus.IN_USE and car.current_renter_id:
@@ -161,7 +161,7 @@ def get_all_vehicles_plain(
                         )
 
                     car_dict["current_renter_details"] = {
-                        "id": renter.id,
+                        "id": uuid_to_sid(renter.id),
                         "first_name": renter.first_name,
                         "last_name": renter.last_name,
                         "phone_number": renter.phone_number,
@@ -288,11 +288,11 @@ def get_pending_vehicles(
                     )
                     
                     last_client_info = {
-                        "id": last_client.id,
+                        "id": uuid_to_sid(last_client.id),
                         "first_name": last_client.first_name,
                         "last_name": last_client.last_name,
                         "phone_number": last_client.phone_number,
-                        "rental_id": last_rental.id,
+                        "rental_id": uuid_to_sid(last_rental.id),
                         "rental_start": last_rental.start_time.isoformat() if last_rental.start_time else None,
                         "rental_end": last_rental.end_time.isoformat() if last_rental.end_time else None,
                         "rental_status": last_rental.rental_status.value if last_rental.rental_status else None,
@@ -325,8 +325,8 @@ def get_pending_vehicles(
                 "body_type": car.body_type,
                 "auto_class": car.auto_class,
                 "photos": car.photos,
-                "owner_id": car.owner_id,
-                "current_renter_id": car.current_renter_id,
+                "owner_id": uuid_to_sid(car.owner_id),
+                "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
                 "status": car.status,
                 "open_price": get_open_price(car),
                 "owned_car": False,  # для механика это не имеет значения
@@ -378,8 +378,8 @@ def get_in_use_vehicles(
                 "body_type": car.body_type,
                 "auto_class": car.auto_class,
                 "photos": car.photos,
-                "owner_id": car.owner_id,
-                "current_renter_id": car.current_renter_id,
+                "owner_id": uuid_to_sid(car.owner_id),
+                "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
                 "status": car.status,
                 "open_price": get_open_price(car),
                 "owned_car": False
@@ -478,11 +478,11 @@ def get_service_vehicles(
                     )
                     
                     last_client_info = {
-                        "id": last_client.id,
+                        "id": uuid_to_sid(last_client.id),
                         "first_name": last_client.first_name,
                         "last_name": last_client.last_name,
                         "phone_number": last_client.phone_number,
-                        "rental_id": last_rental.id,
+                        "rental_id": uuid_to_sid(last_rental.id),
                         "client_rating": client_review.rating if client_review else None,
                         "client_comment": client_review.comment if client_review else None
                     }
@@ -505,8 +505,8 @@ def get_service_vehicles(
                 "body_type": car.body_type,
                 "auto_class": car.auto_class,
                 "photos": car.photos,
-                "owner_id": car.owner_id,
-                "current_renter_id": car.current_renter_id,
+                "owner_id": uuid_to_sid(car.owner_id),
+                "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
                 "status": car.status,
                 "open_price": get_open_price(car),
                 "owned_car": False,
@@ -563,8 +563,8 @@ def search_vehicles(
                 "body_type": car.body_type,
                 "auto_class": car.auto_class,
                 "photos": car.photos,
-                "owner_id": car.owner_id,
-                "current_renter_id": car.current_renter_id,
+                "owner_id": uuid_to_sid(car.owner_id),
+                "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
                 "status": car.status,
                 "open_price": get_open_price(car),
                 "owned_car": False
@@ -627,7 +627,7 @@ async def check_car(
             # Проверка уже существует, возвращаем информацию о ней
             return {
                 "message": "Проверка автомобиля уже инициирована",
-                "rental_id": rental.id,
+                "rental_id": uuid_to_sid(rental.id),
                 "inspection_start_time": rental.mechanic_inspection_start_time.isoformat() if rental.mechanic_inspection_start_time else None
             }
         else:
@@ -658,7 +658,7 @@ async def check_car(
     db.commit()
     return {
         "message": "Проверка автомобиля начата успешно",
-        "rental_id": rental.id,
+        "rental_id": uuid_to_sid(rental.id),
         "inspection_start_time": rental.mechanic_inspection_start_time.isoformat()
     }
 

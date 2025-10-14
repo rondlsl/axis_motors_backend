@@ -62,7 +62,7 @@ def get_delivery_vehicles(
         waiting_time_minutes = int((datetime.utcnow() - rental.reservation_time).total_seconds() / 60)
         
         vehicles_data.append({
-            "rental_id": rental.id,
+            "rental_id": uuid_to_sid(rental.id),
             "car_id": car.id,
             "car_name": car.name,
             "plate_number": car.plate_number,
@@ -145,7 +145,7 @@ async def accept_delivery(
 
     return {
         "message": "Заказ доставки успешно принят",
-        "rental_id": rental.id
+        "rental_id": uuid_to_sid(rental.id)
     }
 
 
@@ -300,7 +300,7 @@ async def complete_delivery(
 
     return {
         "message": "Доставка успешно завершена, статус автомобиля — RESERVED.",
-        "rental_id": rental.id
+        "rental_id": uuid_to_sid(rental.id)
     }
 
 
@@ -378,8 +378,8 @@ def current_delivery(
         )
 
     return {
-        "rental_id": rental.id,
-        "car_id": car.id,
+        "rental_id": uuid_to_sid(rental.id),
+        "car_id": uuid_to_sid(car.id),
         "car_name": car.name,
         "plate_number": car.plate_number,
         "fuel_level": car.fuel_level,

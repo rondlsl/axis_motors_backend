@@ -401,7 +401,7 @@ async def get_incoming_requests(
             
             request_data = {
                 "id": request.id,
-                "requestor_id": request.requestor_id,
+                "requestor_id": uuid_to_sid(request.requestor_id),
                 "requestor_first_name": requestor_first_name,
                 "requestor_last_name": requestor_last_name,
                 "requestor_phone": requestor.phone_number,
@@ -973,11 +973,11 @@ async def get_guarantor_requests(
         
         request_data = {
             "id": request.id,
-            "requestor_id": request.requestor_id,
+            "requestor_id": uuid_to_sid(request.requestor_id),
             "requestor_first_name": requestor_first_name,
             "requestor_last_name": requestor_last_name,
             "requestor_phone": requestor_phone or "",
-            "guarantor_id": request.guarantor_id,
+            "guarantor_id": uuid_to_sid(request.guarantor_id) if request.guarantor_id else None,
             "guarantor_phone": guarantor_phone or "",
             "status": request.status,
             "verification_status": request.verification_status,
@@ -1024,7 +1024,7 @@ async def get_guarantor_relationships(
     ).all()
     
     response_data = {
-        "user_id": current_user.id,
+        "user_id": uuid_to_sid(current_user.id),
         "user_phone": current_user.phone_number,
         "summary": {
             "requests_sent": len(my_requests),
@@ -1037,7 +1037,7 @@ async def get_guarantor_relationships(
                 {
                     "id": req.id,
                     "guarantor_phone": req.guarantor_phone,
-                    "guarantor_id": req.guarantor_id,
+                    "guarantor_id": uuid_to_sid(req.guarantor_id) if req.guarantor_id else None,
                     "status": req.status.value,
                     "created_at": req.created_at
                 } for req in my_requests
@@ -1045,7 +1045,7 @@ async def get_guarantor_relationships(
             "received_requests": [
                 {
                     "id": req.id,
-                    "requestor_id": req.requestor_id,
+                    "requestor_id": uuid_to_sid(req.requestor_id),
                     "status": req.status.value,
                     "created_at": req.created_at
                 } for req in guarantor_requests
@@ -1053,7 +1053,7 @@ async def get_guarantor_relationships(
             "my_clients": [
                 {
                     "id": rel.id,
-                    "client_id": rel.client_id,
+                    "client_id": uuid_to_sid(rel.client_id),
                     "created_at": rel.created_at,
                     "contract_signed": rel.contract_signed
                 } for rel in my_clients
@@ -1061,7 +1061,7 @@ async def get_guarantor_relationships(
             "my_guarantors": [
                 {
                     "id": rel.id,
-                    "guarantor_id": rel.guarantor_id,
+                    "guarantor_id": uuid_to_sid(rel.guarantor_id),
                     "created_at": rel.created_at,
                     "contract_signed": rel.contract_signed
                 } for rel in my_guarantors

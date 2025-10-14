@@ -7,6 +7,7 @@ from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole, AutoClass
 from app.models.guarantor_model import GuarantorRequest
+from app.utils.short_id import uuid_to_sid, safe_sid_to_uuid
 from app.guarantor.sms_utils import send_user_rejection_with_guarantor_sms, send_guarantor_approval_sms
 from app.admin.guarantors.schemas import (
     GuarantorRequestAdminSchema, 
@@ -42,9 +43,9 @@ async def get_guarantor_requests(
         requestor_phone = requestor.phone_number if requestor else ""
         
         request_data = {
-            "id": request.id,
-            "guarantor_id": request.guarantor_id,
-            "requestor_id": request.requestor_id,
+            "id": uuid_to_sid(request.id),
+            "guarantor_id": uuid_to_sid(request.guarantor_id) if request.guarantor_id else None,
+            "requestor_id": uuid_to_sid(request.requestor_id),
             "guarantor_name": guarantor_name,
             "guarantor_phone": guarantor_phone,
             "requestor_name": requestor_name,
@@ -63,7 +64,7 @@ async def get_guarantor_requests(
 
 @guarantors_router.post("/requests/{request_id}/approve")
 async def approve_guarantor_request(
-    request_id: int,
+    request_id: str,
     approval_data: AdminApproveGuarantorSchema,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -113,7 +114,7 @@ async def approve_guarantor_request(
 
 @guarantors_router.post("/requests/{request_id}/reject")
 async def reject_guarantor_request(
-    request_id: int,
+    request_id: str,
     rejection_data: AdminRejectGuarantorSchema,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)

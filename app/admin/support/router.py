@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import uuid
-from app.utils.short_id import safe_sid_to_uuid
+from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
 from app.utils.sid_converter import convert_uuid_response_to_sid
 
 from app.dependencies.database.database import get_db
@@ -56,9 +56,9 @@ async def list_support_actions(
     for it in items:
         u = users_map.get(it.user_id)
         action_data = {
-            "id": it.id,
+            "id": uuid_to_sid(it.id),
             "user": {
-                "id": u.id if u else it.user_id,
+                "id": uuid_to_sid(u.id) if u else uuid_to_sid(it.user_id),
                 "first_name": u.first_name if u else None,
                 "last_name": u.last_name if u else None,
                 "phone_number": u.phone_number if u else None,
@@ -99,7 +99,7 @@ async def get_support_user_profile(
         raise HTTPException(status_code=404, detail="Пользователь не найден")
 
     user_data = {
-        "id": u.id,
+        "id": uuid_to_sid(u.id),
         "first_name": u.first_name,
         "last_name": u.last_name,
         "phone_number": u.phone_number,
