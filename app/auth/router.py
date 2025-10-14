@@ -802,6 +802,7 @@ async def read_users_me(
 
         return {
             "id": current_user.id,
+            "user_id": uuid_to_sid(current_user.id),
             "phone_number": current_user.phone_number,
             "email": current_user.email,
             "first_name": first_name,
