@@ -42,7 +42,16 @@ async def send_push_notification_async(token: str, title: str, body: str):
             result = response.json()
             print(f'📊 Expo response JSON: {result}')
             
-            data = result.get('data', [{}])[0] if isinstance(result.get('data'), list) else result
+            # Expo returns different formats:
+            # Single: {"data": {"status": "ok", "id": "..."}}
+            # Batch:  {"data": [{"status": "ok", "id": "..."}, ...]}
+            response_data = result.get('data', {})
+            
+            # Handle both list and dict formats
+            if isinstance(response_data, list):
+                data = response_data[0] if response_data else {}
+            else:
+                data = response_data
             
             if data.get('status') == 'ok':
                 print(f'✅ Expo push sent successfully: {data.get("id", "no-id")}')
@@ -54,7 +63,7 @@ async def send_push_notification_async(token: str, title: str, body: str):
                 print(f'❌ Error details: {error_details}')
                 return False
             else:
-                print(f'❌ Expo push failed: {data}')
+                print(f'❌ Expo push unexpected response: {data}')
                 return False
         else:
             print(f'❌ Expo push HTTP error: {response.status_code} - {response.text}')
