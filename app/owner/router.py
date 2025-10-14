@@ -7,7 +7,7 @@ import math
 
 from app.auth.dependencies.get_current_user import get_current_user
 from app.dependencies.database.database import get_db
-from app.utils.short_id import uuid_to_sid
+from app.utils.short_id import uuid_to_sid, safe_sid_to_uuid
 from app.models.user_model import User, UserRole
 from app.models.car_model import Car, CarStatus
 from app.models.history_model import RentalHistory, RentalStatus, RentalType, RentalReview
@@ -197,7 +197,7 @@ def get_my_cars(
         )
         
         cars_response.append(CarOwnerResponse(
-            id=car.id,
+            id=uuid_to_sid(car.id),
             name=car.name,
             plate_number=car.plate_number,
             available_minutes=available_minutes
@@ -292,7 +292,7 @@ async def get_owner_cars_with_availability_timer(
         seconds = available_seconds % 60
 
         car_payload = {
-            "id": car.id,
+            "id": uuid_to_sid(car.id),
             "name": car.name,
             "plate_number": car.plate_number,
             "fuel_level": car.fuel_level,
@@ -346,13 +346,13 @@ async def get_owner_cars_with_availability_timer(
 
 
 @OwnerRouter.get(
-    "/{vehicle_id}",
+    "/{vehicle_sid}",
     response_model=TripsForMonthResponse,
     summary="Получить поездки по месяцам",
     description="Возвращает календарь поездок для конкретного автомобиля за указанный месяц"
 )
 def get_trips_by_month(
-        vehicle_id: int,
+        vehicle_sid: str,
         month: Optional[int] = Query(None, description="Месяц (1-12). Если не указан, возвращается текущий месяц"),
         year: Optional[int] = Query(None, description="Год. Если не указан, возвращается текущий год"),
         db: Session = Depends(get_db),
@@ -376,9 +376,10 @@ def get_trips_by_month(
     **Права доступа**: Только владелец автомобиля
     """
     try:
+        vehicle_uuid = safe_sid_to_uuid(vehicle_sid)
         # Проверяем, что автомобиль принадлежит пользователю
         car = db.query(Car).filter(
-            Car.id == vehicle_id,
+            Car.id == vehicle_uuid,
             Car.owner_id == current_user.id
         ).first()
 
@@ -401,7 +402,7 @@ def get_trips_by_month(
             db.query(RentalHistory)
             .join(User, RentalHistory.user_id == User.id)
             .filter(
-                RentalHistory.car_id == vehicle_id,
+                RentalHistory.car_id == vehicle_uuid,
                 RentalHistory.rental_status == RentalStatus.COMPLETED,
                 extract('year', RentalHistory.end_time) == target_year,
                 extract('month', RentalHistory.end_time) == target_month,
@@ -436,7 +437,7 @@ def get_trips_by_month(
 
             # Создаем базовый словарь для TripResponse
             trip_data = {
-                "id": trip.id,
+                "id": uuid_to_sid(trip.id),
                 "duration_minutes": duration_minutes,
                 "earnings": earnings,
                 "rental_type": trip.rental_type.value,
@@ -462,7 +463,7 @@ def get_trips_by_month(
             )
             .join(User, RentalHistory.user_id == User.id)
             .filter(
-                RentalHistory.car_id == vehicle_id,
+                RentalHistory.car_id == vehicle_uuid,
                 RentalHistory.rental_status == RentalStatus.COMPLETED,
                 RentalHistory.total_price.isnot(None),
                 User.role != UserRole.MECHANIC  # Исключаем поездки механиков
@@ -482,7 +483,7 @@ def get_trips_by_month(
         for i, row in enumerate(available_months_query):
             # Рассчитываем доступные минуты для каждого месяца
             available_minutes = calculate_month_availability_minutes(
-                car_id=vehicle_id,
+                car_id=vehicle_uuid,
                 year=int(row.year),
                 month=int(row.month),
                 owner_id=current_user.id,
@@ -494,7 +495,7 @@ def get_trips_by_month(
                 db.query(RentalHistory)
                 .join(User, RentalHistory.user_id == User.id)
                 .filter(
-                    RentalHistory.car_id == vehicle_id,
+                    RentalHistory.car_id == vehicle_uuid,
                     RentalHistory.rental_status == RentalStatus.COMPLETED,
                     extract('year', RentalHistory.end_time) == int(row.year),
                     extract('month', RentalHistory.end_time) == int(row.month),
@@ -520,7 +521,7 @@ def get_trips_by_month(
         
         # Заработок за текущий месяц и расчет доступных минут
         current_month_available_minutes = calculate_month_availability_minutes(
-            car_id=vehicle_id,
+            car_id=vehicle_uuid,
             year=target_year,
             month=target_month,
             owner_id=current_user.id,
@@ -538,7 +539,7 @@ def get_trips_by_month(
         # Создание финального ответа
         
         response = TripsForMonthResponse(
-            vehicle_id=vehicle_id,
+            vehicle_id=uuid_to_sid(vehicle_uuid),
             vehicle_name=car.name,
             vehicle_plate_number=car.plate_number,
             month_earnings=current_month_earnings,
@@ -555,14 +556,14 @@ def get_trips_by_month(
 
 
 @OwnerRouter.get(
-    "/{vehicle_id}/{trip_id}",
+    "/{vehicle_sid}/{trip_sid}",
     response_model=TripDetailResponse,
     summary="Детальная информация о поездке",
     description="Возвращает подробную информацию о конкретной поездке с фотографиями и маршрутом"
 )
 async def get_trip_details(
-        vehicle_id: int,
-        trip_id: int,
+        vehicle_sid: str,
+        trip_sid: str,
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ) -> TripDetailResponse:
@@ -584,9 +585,11 @@ async def get_trip_details(
     **Требует аутентификации**: Bearer token
     **Права доступа**: Только владелец автомобиля
     """
+    vehicle_uuid = safe_sid_to_uuid(vehicle_sid)
+    trip_uuid = safe_sid_to_uuid(trip_sid)
     # Проверяем, что автомобиль принадлежит пользователю
     car = db.query(Car).filter(
-        Car.id == vehicle_id,
+        Car.id == vehicle_uuid,
         Car.owner_id == current_user.id
     ).first()
 
@@ -598,8 +601,8 @@ async def get_trip_details(
 
     # Получаем завершённую поездку 
     trip = db.query(RentalHistory).join(Car, RentalHistory.car_id == Car.id).filter(
-        RentalHistory.id == trip_id,
-        RentalHistory.car_id == vehicle_id,
+        RentalHistory.id == trip_uuid,
+        RentalHistory.car_id == vehicle_uuid,
         RentalHistory.rental_status == RentalStatus.COMPLETED
     ).first()
 
@@ -726,8 +729,8 @@ async def get_trip_details(
 
     # Создаем базовый словарь для TripDetailResponse
     trip_detail_data = {
-        "id": trip.id,
-        "vehicle_id": vehicle_id,
+        "id": uuid_to_sid(trip.id),
+        "vehicle_id": uuid_to_sid(vehicle_uuid),
         "vehicle_name": car.name,
         "vehicle_plate_number": car.plate_number,
         "duration_minutes": duration_minutes,

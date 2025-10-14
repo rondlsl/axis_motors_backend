@@ -85,7 +85,7 @@ def get_all_vehicles_plain(
 
             # по умолчанию нет активной аренды
             car_dict: Dict[str, Any] = {
-                "id": car.id,
+                "id": uuid_to_sid(car.id),
                 "name": car.name,
                 "plate_number": car.plate_number,
                 "latitude": car.latitude,
@@ -308,7 +308,7 @@ def get_pending_vehicles(
                     }
             
             vehicle_data = {
-                "id": car.id,
+                "id": uuid_to_sid(car.id),
                 "name": car.name,
                 "plate_number": car.plate_number,
                 "latitude": car.latitude,
@@ -361,7 +361,7 @@ def get_in_use_vehicles(
 
         for car in cars:
             car_data = {
-                "id": car.id,
+                "id": uuid_to_sid(car.id),
                 "name": car.name,
                 "plate_number": car.plate_number,
                 "latitude": car.latitude,
@@ -488,7 +488,7 @@ def get_service_vehicles(
                     }
             
             car_data = {
-                "id": car.id,
+                "id": uuid_to_sid(car.id),
                 "name": car.name,
                 "plate_number": car.plate_number,
                 "latitude": car.latitude,
@@ -546,7 +546,7 @@ def search_vehicles(
         vehicles_data = []
         for car in cars:
             car_data = {
-                "id": car.id,
+                "id": uuid_to_sid(car.id),
                 "name": car.name,
                 "plate_number": car.plate_number,
                 "latitude": car.latitude,
@@ -1087,8 +1087,8 @@ def get_inspection_history(
                 continue
                 
             inspections_data.append({
-                "id": inspection.id,
-                "car_id": car.id,
+                "id": uuid_to_sid(inspection.id),
+                "car_id": uuid_to_sid(car.id),
                 "car_name": car.name,
                 "plate_number": car.plate_number,
                 "inspection_start_time": inspection.mechanic_inspection_start_time.isoformat() if inspection.mechanic_inspection_start_time else None,
