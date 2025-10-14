@@ -1,60 +1,55 @@
-import firebase_admin
-from firebase_admin import messaging, credentials
 import asyncio
 import uuid
+import httpx
 from app.models.user_model import User
 from app.translations.notifications import get_notification_text
 from sqlalchemy.orm import Session
 
-cred = credentials.Certificate("app/push/firebase-service-account.json")
-firebase_admin.initialize_app(cred)
-
 
 async def send_push_notification_async(token: str, title: str, body: str):
     """
-    Asynchronous version of send_push_notification
-    Runs the Firebase messaging operations in a thread pool
+    Send push notification via Expo Push Notification Service
+    Works with Expo Push Tokens (ExponentPushToken[...])
     """
     try:
-        # Android: sound and vibration (via channel)
-        android_config = messaging.AndroidConfig(
-            priority="high",
-            notification=messaging.AndroidNotification(
-                title=title,
-                body=body,
-                sound="default",  # Sound playback
-                channel_id="high_importance_channel",  # Channel should be configured for vibration
-            )
-        )
-        # iOS: sound
-        apns_config = messaging.APNSConfig(
-            payload=messaging.APNSPayload(
-                aps=messaging.Aps(
-                    alert=messaging.ApsAlert(
-                        title=title,
-                        body=body
-                    ),
-                    sound="default"  # Sound playback on iOS
-                )
-            )
-        )
-        message = messaging.Message(
-            android=android_config,
-            apns=apns_config,
-            token=token
-        )
-
-        # Run Firebase messaging in a thread pool since it's blocking
-        loop = asyncio.get_running_loop()
-        response = await loop.run_in_executor(
-            None,
-            lambda: messaging.send(message)
-        )
-
-        print('Successfully sent message:', response)
-        return True
+        # Expo Push API endpoint
+        url = "https://exp.host/--/api/v2/push/send"
+        
+        # Prepare message payload
+        message = {
+            "to": token,
+            "title": title,
+            "body": body,
+            "sound": "default",
+            "priority": "high",
+            "channelId": "default"
+        }
+        
+        # Send push notification
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(url, json=message)
+            
+        # Check response
+        if response.status_code == 200:
+            result = response.json()
+            data = result.get('data', [{}])[0] if isinstance(result.get('data'), list) else result
+            
+            if data.get('status') == 'ok':
+                print(f'✅ Expo push sent successfully: {data.get("id", "no-id")}')
+                return True
+            else:
+                error_msg = data.get('message', 'Unknown error')
+                print(f'❌ Expo push failed: {error_msg}')
+                return False
+        else:
+            print(f'❌ Expo push HTTP error: {response.status_code} - {response.text}')
+            return False
+            
+    except httpx.TimeoutException:
+        print('❌ Push error: Timeout while connecting to Expo Push Service')
+        return False
     except Exception as e:
-        print('Push error:', e)
+        print(f'❌ Push error: {e}')
         return False
 
 
