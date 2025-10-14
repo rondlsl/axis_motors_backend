@@ -18,6 +18,7 @@ from app.contracts.schemas import (
     ContractUploadByType,
     ContractFileResponse,
     SignContractRequest,
+    SignContractByTypeRequest,
     UserSignatureResponse,
     UserContractsResponse,
     ContractRequirements,
@@ -326,8 +327,104 @@ async def sign_contract(
         contract_file_id=sign_request.contract_file_id,
         rental_id=sign_request.rental_id,
         guarantor_relationship_id=sign_request.guarantor_relationship_id,
-        digital_signature=current_user.digital_signature,
-        contract_data=sign_request.contract_data
+        digital_signature=current_user.digital_signature
+    )
+    
+    db.add(signature)
+    db.commit()
+    db.refresh(signature)
+    
+    return UserSignatureResponse(
+        id=signature.id,
+        user_id=signature.user_id,
+        contract_file_id=signature.contract_file_id,
+        contract_type=contract_file.contract_type,
+        digital_signature=signature.digital_signature,
+        signed_at=signature.signed_at,
+        rental_id=signature.rental_id,
+        guarantor_relationship_id=signature.guarantor_relationship_id
+    )
+
+
+@ContractsRouter.post("/sign-by-type", response_model=UserSignatureResponse)
+async def sign_contract_by_type(
+    sign_request: SignContractByTypeRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Подписать договор по типу (автоматически найдет активный файл договора)
+    """
+    # Находим активный файл договора указанного типа
+    contract_file = db.query(ContractFile).filter(
+        ContractFile.contract_type == sign_request.contract_type,
+        ContractFile.is_active == True
+    ).first()
+    
+    if not contract_file:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Активный договор типа {sign_request.contract_type.value} не найден"
+        )
+    
+    # Проверяем, что у пользователя есть цифровая подпись
+    if not current_user.digital_signature:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="У пользователя отсутствует цифровая подпись"
+        )
+    
+    # Проверяем, не подписан ли уже этот договор
+    existing_signature = db.query(UserContractSignature).filter(
+        UserContractSignature.user_id == current_user.id,
+        UserContractSignature.contract_file_id == contract_file.id,
+        UserContractSignature.rental_id == sign_request.rental_id,
+        UserContractSignature.guarantor_relationship_id == sign_request.guarantor_relationship_id
+    ).first()
+    
+    if existing_signature:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Этот договор уже подписан"
+        )
+    
+    # Валидация для договоров аренды
+    if contract_file.contract_type in [ContractType.APPENDIX_7_START, ContractType.APPENDIX_7_END]:
+        if not sign_request.rental_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Для договоров аренды необходимо указать rental_id"
+            )
+        
+        rental = db.query(RentalHistory).filter(RentalHistory.id == sign_request.rental_id).first()
+        if not rental or rental.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Аренда не найдена или не принадлежит пользователю"
+            )
+    
+    # Валидация для договоров гаранта
+    if contract_file.contract_type in [ContractType.GUARANTOR_CONTRACT, ContractType.GUARANTOR_MAIN_CONTRACT]:
+        if not sign_request.guarantor_relationship_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Для договоров гаранта необходимо указать guarantor_relationship_id"
+            )
+        
+        guarantor_rel = db.query(Guarantor).filter(Guarantor.id == sign_request.guarantor_relationship_id).first()
+        if not guarantor_rel or guarantor_rel.guarantor_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Связь гарант-клиент не найдена или не принадлежит пользователю"
+            )
+    
+    # Создаем подпись
+    signature = UserContractSignature(
+        user_id=current_user.id,
+        contract_file_id=contract_file.id,
+        rental_id=sign_request.rental_id,
+        guarantor_relationship_id=sign_request.guarantor_relationship_id,
+        digital_signature=current_user.digital_signature
     )
     
     db.add(signature)
@@ -485,7 +582,7 @@ async def get_rental_contract_status(
     
     signatures = db.query(UserContractSignature).join(ContractFile).filter(
         UserContractSignature.user_id == current_user.id,
-        UserContractSignature.rental_id == rental_id
+        UserContractSignature.rental_id == rental_uuid
     ).all()
     
     appendix_7_start_signed = False
@@ -500,7 +597,7 @@ async def get_rental_contract_status(
                 appendix_7_end_signed = True
     
     return RentalContractStatus(
-        rental_id=rental_id,
+        rental_id=rental_uuid,
         appendix_7_start_signed=appendix_7_start_signed,
         appendix_7_end_signed=appendix_7_end_signed
     )

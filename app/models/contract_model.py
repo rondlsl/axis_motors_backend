@@ -64,9 +64,6 @@ class UserContractSignature(Base):
     digital_signature = Column(String, nullable=False)  # Цифровая подпись пользователя
     signed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     
-    # Дополнительная информация
-    contract_data = Column(String, nullable=True)  # JSON с данными, которые были в договоре на момент подписания
-    
     # Relationships
     user = relationship("User", back_populates="signed_contracts")
     contract_file = relationship("ContractFile", back_populates="signatures")
