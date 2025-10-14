@@ -12,6 +12,9 @@ async def send_push_notification_async(token: str, title: str, body: str):
     Works with Expo Push Tokens (ExponentPushToken[...])
     """
     try:
+        # Log token format for debugging
+        print(f'📱 Sending push to token: {token[:50]}...' if len(token) > 50 else f'📱 Sending push to token: {token}')
+        
         # Expo Push API endpoint
         url = "https://exp.host/--/api/v2/push/send"
         
@@ -25,21 +28,33 @@ async def send_push_notification_async(token: str, title: str, body: str):
             "channelId": "default"
         }
         
+        print(f'📤 Sending to Expo: {message}')
+        
         # Send push notification
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(url, json=message)
             
+        print(f'📥 Expo response status: {response.status_code}')
+        print(f'📥 Expo response body: {response.text}')
+            
         # Check response
         if response.status_code == 200:
             result = response.json()
+            print(f'📊 Expo response JSON: {result}')
+            
             data = result.get('data', [{}])[0] if isinstance(result.get('data'), list) else result
             
             if data.get('status') == 'ok':
                 print(f'✅ Expo push sent successfully: {data.get("id", "no-id")}')
                 return True
-            else:
+            elif data.get('status') == 'error':
                 error_msg = data.get('message', 'Unknown error')
-                print(f'❌ Expo push failed: {error_msg}')
+                error_details = data.get('details', {})
+                print(f'❌ Expo push error: {error_msg}')
+                print(f'❌ Error details: {error_details}')
+                return False
+            else:
+                print(f'❌ Expo push failed: {data}')
                 return False
         else:
             print(f'❌ Expo push HTTP error: {response.status_code} - {response.text}')
@@ -49,7 +64,9 @@ async def send_push_notification_async(token: str, title: str, body: str):
         print('❌ Push error: Timeout while connecting to Expo Push Service')
         return False
     except Exception as e:
-        print(f'❌ Push error: {e}')
+        print(f'❌ Push error: {type(e).__name__}: {e}')
+        import traceback
+        traceback.print_exc()
         return False
 
 
