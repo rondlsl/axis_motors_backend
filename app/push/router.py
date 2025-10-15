@@ -61,15 +61,20 @@ async def test_push_by_phone(
     """
     from app.models.user_model import UserRole
     
+    # Отладочный вывод для проверки роли
+    print(f"🔍 Current user: phone={current_user.phone_number}, role={current_user.role}, role_value={current_user.role.value if current_user.role else None}")
+    print(f"🔍 UserRole.ADMIN={UserRole.ADMIN}, UserRole.MECHANIC={UserRole.MECHANIC}")
+    print(f"🔍 Comparison: role == ADMIN: {current_user.role == UserRole.ADMIN}, role == MECHANIC: {current_user.role == UserRole.MECHANIC}")
+    
     # Проверяем права доступа (только админ и механик могут тестировать)
     if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
         raise HTTPException(
             status_code=403, 
-            detail="Only admins and mechanics can use test endpoints"
+            detail=f"Only admins and mechanics can use test endpoints. Your role: {current_user.role.value if current_user.role else None}"
         )
     
     # Находим пользователя по номеру телефона
-    target_user = db.query(User).filter(User.phone == payload.phone).first()
+    target_user = db.query(User).filter(User.phone_number == payload.phone).first()
     
     if not target_user:
         raise HTTPException(
@@ -81,7 +86,7 @@ async def test_push_by_phone(
     if not target_user.fcm_token:
         raise HTTPException(
             status_code=400, 
-            detail=f"User {target_user.phone} doesn't have FCM token. User needs to login to the app first."
+            detail=f"User {target_user.phone_number} doesn't have FCM token. User needs to login to the app first."
         )
     
     # Отправляем push-уведомление
@@ -91,12 +96,16 @@ async def test_push_by_phone(
         body=payload.body
     )
     
+    # Формируем полное имя
+    full_name = f"{target_user.first_name or ''} {target_user.last_name or ''}".strip() or "Не указано"
+    
     return {
         "success": success,
         "user": {
             "id": str(target_user.id),
-            "phone": target_user.phone,
-            "name": target_user.name,
+            "phone": target_user.phone_number,
+            "name": full_name,
+            "role": target_user.role.value if target_user.role else None,
             "fcm_token": target_user.fcm_token[:30] + "..." if len(target_user.fcm_token) > 30 else target_user.fcm_token
         },
         "message": "Push notification sent successfully" if success else "Failed to send push notification"
@@ -129,8 +138,8 @@ async def get_users_with_tokens(
         "users": [
             {
                 "id": str(user.id),
-                "phone": user.phone,
-                "name": user.name,
+                "phone": user.phone_number,
+                "name": f"{user.first_name or ''} {user.last_name or ''}".strip() or "Не указано",
                 "role": user.role.value if user.role else None,
                 "fcm_token_preview": user.fcm_token[:30] + "..." if len(user.fcm_token) > 30 else user.fcm_token,
                 "fcm_token": user.fcm_token  # Полный токен для копирования
