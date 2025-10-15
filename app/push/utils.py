@@ -6,77 +6,141 @@ from app.translations.notifications import get_notification_text
 from sqlalchemy.orm import Session
 
 
-async def send_push_notification_async(token: str, title: str, body: str):
+async def send_push_notification_async(token: str, title: str, body: str, max_retries: int = 3):
     """
     Send push notification via Expo Push Notification Service
     Works with Expo Push Tokens (ExponentPushToken[...])
+    
+    Args:
+        token: Expo push token
+        title: Notification title
+        body: Notification body
+        max_retries: Maximum number of retry attempts (default: 3)
     """
-    try:
-        # Log token format for debugging
-        print(f'📱 Sending push to token: {token[:50]}...' if len(token) > 50 else f'📱 Sending push to token: {token}')
-        
-        # Expo Push API endpoint
-        url = "https://exp.host/--/api/v2/push/send"
-        
-        # Prepare message payload
-        message = {
-            "to": token,
-            "title": title,
-            "body": body,
-            "sound": "default",
-            "priority": "high",
-            "channelId": "default"
-        }
-        
-        print(f'📤 Sending to Expo: {message}')
-        
-        # Send push notification
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(url, json=message)
-            
-        print(f'📥 Expo response status: {response.status_code}')
-        print(f'📥 Expo response body: {response.text}')
-            
-        # Check response
-        if response.status_code == 200:
-            result = response.json()
-            print(f'📊 Expo response JSON: {result}')
-            
-            # Expo returns different formats:
-            # Single: {"data": {"status": "ok", "id": "..."}}
-            # Batch:  {"data": [{"status": "ok", "id": "..."}, ...]}
-            response_data = result.get('data', {})
-            
-            # Handle both list and dict formats
-            if isinstance(response_data, list):
-                data = response_data[0] if response_data else {}
-            else:
-                data = response_data
-            
-            if data.get('status') == 'ok':
-                print(f'✅ Expo push sent successfully: {data.get("id", "no-id")}')
-                return True
-            elif data.get('status') == 'error':
-                error_msg = data.get('message', 'Unknown error')
-                error_details = data.get('details', {})
-                print(f'❌ Expo push error: {error_msg}')
-                print(f'❌ Error details: {error_details}')
+    # Log token format for debugging
+    print(f'📱 Sending push to token: {token[:50]}...' if len(token) > 50 else f'📱 Sending push to token: {token}')
+    
+    # Expo Push API endpoints (primary and fallback)
+    urls = [
+        "https://exp.host/--/api/v2/push/send",
+        "https://api.expo.dev/v2/push/send"  # Alternative endpoint
+    ]
+    
+    # Prepare message payload
+    message = {
+        "to": token,
+        "title": title,
+        "body": body,
+        "sound": "default",
+        "priority": "high",
+        "channelId": "default"
+    }
+    
+    print(f'📤 Sending to Expo: {message}')
+    
+    # Retry logic with exponential backoff
+    for attempt in range(max_retries):
+        for url_idx, url in enumerate(urls):
+            try:
+                # Увеличенный таймаут и настройки для лучшей работы в сети
+                timeout = httpx.Timeout(
+                    connect=30.0,  # Таймаут подключения
+                    read=30.0,     # Таймаут чтения
+                    write=30.0,    # Таймаут записи
+                    pool=30.0      # Таймаут пула
+                )
+                
+                # Настройки для обхода DNS и сетевых проблем
+                limits = httpx.Limits(
+                    max_keepalive_connections=5,
+                    max_connections=10,
+                    keepalive_expiry=30.0
+                )
+                
+                async with httpx.AsyncClient(
+                    timeout=timeout, 
+                    limits=limits,
+                    follow_redirects=True,
+                    http2=False  # Отключаем HTTP/2 для совместимости
+                ) as client:
+                    if attempt > 0 or url_idx > 0:
+                        print(f'🔄 Retry attempt {attempt + 1}/{max_retries}, endpoint {url_idx + 1}/{len(urls)}')
+                    
+                    response = await client.post(url, json=message)
+                    
+                print(f'📥 Expo response status: {response.status_code}')
+                print(f'📥 Expo response body: {response.text}')
+                
+                # Check response
+                if response.status_code == 200:
+                    result = response.json()
+                    print(f'📊 Expo response JSON: {result}')
+                    
+                    # Expo returns different formats:
+                    # Single: {"data": {"status": "ok", "id": "..."}}
+                    # Batch:  {"data": [{"status": "ok", "id": "..."}, ...]}
+                    response_data = result.get('data', {})
+                    
+                    # Handle both list and dict formats
+                    if isinstance(response_data, list):
+                        data = response_data[0] if response_data else {}
+                    else:
+                        data = response_data
+                    
+                    if data.get('status') == 'ok':
+                        print(f'✅ Expo push sent successfully: {data.get("id", "no-id")}')
+                        return True
+                    elif data.get('status') == 'error':
+                        error_msg = data.get('message', 'Unknown error')
+                        error_details = data.get('details', {})
+                        print(f'❌ Expo push error: {error_msg}')
+                        print(f'❌ Error details: {error_details}')
+                        return False
+                    else:
+                        print(f'❌ Expo push unexpected response: {data}')
+                        return False
+                else:
+                    print(f'❌ Expo push HTTP error: {response.status_code} - {response.text}')
+                    # Try next URL if available
+                    if url_idx < len(urls) - 1:
+                        continue
+                    return False
+                    
+            except (httpx.TimeoutException, httpx.ConnectTimeout, httpx.ReadTimeout) as e:
+                print(f'⏱️ Push timeout error (attempt {attempt + 1}/{max_retries}, endpoint {url_idx + 1}): {e}')
+                # Try next URL if available
+                if url_idx < len(urls) - 1:
+                    continue
+                # Exponential backoff before retry
+                if attempt < max_retries - 1:
+                    wait_time = (2 ** attempt) * 1  # 1, 2, 4 seconds
+                    print(f'⏳ Waiting {wait_time}s before retry...')
+                    await asyncio.sleep(wait_time)
+                    break  # Break inner loop to retry with first URL
+                    
+            except (httpx.ConnectError, httpx.NetworkError) as e:
+                print(f'🌐 Push network error (attempt {attempt + 1}/{max_retries}, endpoint {url_idx + 1}): {type(e).__name__}: {e}')
+                # Try next URL if available
+                if url_idx < len(urls) - 1:
+                    continue
+                # Exponential backoff before retry
+                if attempt < max_retries - 1:
+                    wait_time = (2 ** attempt) * 1
+                    print(f'⏳ Waiting {wait_time}s before retry...')
+                    await asyncio.sleep(wait_time)
+                    break  # Break inner loop to retry with first URL
+                    
+            except Exception as e:
+                print(f'❌ Push unexpected error (attempt {attempt + 1}/{max_retries}): {type(e).__name__}: {e}')
+                import traceback
+                traceback.print_exc()
+                # Try next URL if available
+                if url_idx < len(urls) - 1:
+                    continue
                 return False
-            else:
-                print(f'❌ Expo push unexpected response: {data}')
-                return False
-        else:
-            print(f'❌ Expo push HTTP error: {response.status_code} - {response.text}')
-            return False
-            
-    except httpx.TimeoutException:
-        print('❌ Push error: Timeout while connecting to Expo Push Service')
-        return False
-    except Exception as e:
-        print(f'❌ Push error: {type(e).__name__}: {e}')
-        import traceback
-        traceback.print_exc()
-        return False
+    
+    print(f'❌ Failed to send push after {max_retries} retries')
+    return False
 
 
 async def send_notification_to_all_mechanics_async(
