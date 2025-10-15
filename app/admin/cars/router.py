@@ -253,7 +253,7 @@ async def delete_car(
     try:
         # Проверяем, не используется ли автомобиль в активной аренде
         active_rental = db.query(RentalHistory).filter(
-            RentalHistory.car_id == car_uuid,
+            RentalHistory.car_id == car.id,
             RentalHistory.rental_status.in_([
                 RentalStatus.RESERVED,
                 RentalStatus.IN_USE,
@@ -418,10 +418,10 @@ async def create_car_comment(
     )
 
 
-@cars_router.put("/{car_id}/comments/{comment_sid}", response_model=CarCommentSchema)
+@cars_router.put("/{car_id}/comments/{comment_id}", response_model=CarCommentSchema)
 async def update_car_comment(
     car_id: str,
-    comment_sid: str,
+    comment_id: str,
     comment_data: CarCommentUpdateSchema,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -434,7 +434,7 @@ async def update_car_comment(
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
     
-    comment_uuid = safe_sid_to_uuid(comment_sid)
+    comment_uuid = safe_sid_to_uuid(comment_id)
     comment = db.query(CarComment).filter(
         CarComment.id == comment_uuid,
         CarComment.car_id == car.id,
@@ -477,10 +477,10 @@ async def update_car_comment(
     )
 
 
-@cars_router.delete("/{car_id}/comments/{comment_sid}")
+@cars_router.delete("/{car_id}/comments/{comment_id}")
 async def delete_car_comment(
     car_id: str,
-    comment_sid: str,
+    comment_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -492,7 +492,7 @@ async def delete_car_comment(
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
     
-    comment_uuid = safe_sid_to_uuid(comment_sid)
+    comment_uuid = safe_sid_to_uuid(comment_id)
     comment = db.query(CarComment).filter(
         CarComment.id == comment_uuid,
         CarComment.car_id == car.id,
@@ -589,7 +589,7 @@ async def get_car_availability_timer(
     )
 
     last_rental = db.query(RentalHistory).filter(
-        RentalHistory.car_id == car_uuid,
+        RentalHistory.car_id == car.id,
         RentalHistory.rental_status == RentalStatus.COMPLETED,
         RentalHistory.end_time.isnot(None)
     ).order_by(RentalHistory.end_time.desc()).first()
@@ -730,10 +730,10 @@ async def get_trip_detail(
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     rental_uuid = safe_sid_to_uuid(rental_id)
-    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid, RentalHistory.car_id == car_uuid).first()
+    car = get_car_by_id(db, car_id)
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid, RentalHistory.car_id == car.id).first()
     if not rental:
         raise HTTPException(status_code=404, detail="Поездка не найдена")
-    car = get_car_by_id(db, car_id)
     renter = db.query(User).filter(User.id == rental.user_id).first()
 
     # Группы фотографий
@@ -1084,7 +1084,7 @@ async def update_car_status(
         active_rental = (
             db.query(RentalHistory)
             .filter(
-                RentalHistory.car_id == car_uuid,
+                RentalHistory.car_id == car.id,
                 RentalHistory.rental_status.in_([
                     RentalStatus.RESERVED,
                     RentalStatus.IN_USE,

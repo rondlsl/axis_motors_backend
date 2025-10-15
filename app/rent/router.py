@@ -220,14 +220,14 @@ def get_trip_history(
     return {"trip_history": result}
 
 
-@RentRouter.get("/history/{history_sid}")
+@RentRouter.get("/history/{history_id}")
 async def get_trip_history_detail(
-        history_sid: str,
+        history_id: str,
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ) -> dict:
     try:
-        history_uuid = safe_sid_to_uuid(history_sid)
+        history_uuid = safe_sid_to_uuid(history_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Неверный формат ID")
     
@@ -245,9 +245,9 @@ async def get_trip_history_detail(
     car = db.query(Car).get(rental.car_id)
 
     rental_detail = {
-        "history_id": rental.sid,
-        "user_id": rental.user.sid,
-        "car_id": rental.car_id,
+        "history_id": uuid_to_sid(rental.id),
+        "user_id": uuid_to_sid(rental.user_id),
+        "car_id": uuid_to_sid(rental.car_id),
         "rental_type": rental.rental_type.value,
         "duration": rental.duration,
         # Применяем смещение к каждому временному полю

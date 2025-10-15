@@ -15,7 +15,7 @@ from starlette import status
 
 from app.auth.dependencies.get_current_user import get_current_user  # обновлённая версия — см. ниже
 from app.auth.dependencies.save_documents import save_file
-from app.auth.schemas import SendSmsRequest, VerifySmsRequest, DocumentUploadRequest, LocaleUpdate, SelfieUploadResponse, UserRegistrationInfoResponse, VerifySmsResponse
+from app.auth.schemas import SendSmsRequest, VerifySmsRequest, DocumentUploadRequest, LocaleUpdate, SelfieUploadResponse, UserRegistrationInfoResponse, VerifySmsResponse, ConsentDataProcessingUpdate, ContractReadUpdate
 from app.auth.security.auth_bearer import JWTBearer
 from app.auth.security.tokens import create_refresh_token, create_access_token
 from app.core.config import SMS_TOKEN
@@ -707,7 +707,7 @@ async def read_users_me(
         # Для механиков добавляем current_renter_details
         if current_user.role == UserRole.MECHANIC and car.current_renter_id:
             car_details["current_renter_details"] = {
-                "id": car.current_renter_id,
+                "id": uuid_to_sid(car.current_renter_id),
                 "phone_number": current_user.phone_number,
                 "first_name": current_user.first_name,
                 "last_name": current_user.last_name
@@ -990,6 +990,8 @@ async def refresh_token(db: Session = Depends(get_db), token: str = Depends(JWTB
 - drivers_license_expiry: Дата истечения прав в формате YYYY-MM-DD (будущая дата). Пример: "2029-08-20"
 - email: Электронная почта
 - is_citizen_kz: Гражданин Республики Казахстан (true/false). Если true, то справки обязательны
+- consent_to_data_processing: Согласие на обработку персональных данных (true/false)
+- contract_read: Подтверждение прочтения договора (true/false)
 
 После успешной загрузки статус пользователя изменится на PENDING (ожидает проверки).
                   """)
@@ -1016,6 +1018,8 @@ async def upload_documents(
         drivers_license_expiry: str = Form(...),
         email: str = Form(...),
         is_citizen_kz: bool = Form(False),
+        consent_to_data_processing: bool = Form(False),
+        contract_read: bool = Form(False),
 
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
@@ -1030,9 +1034,13 @@ async def upload_documents(
             detail="User not found or invalid"
         )
     
-    # Правильно обрабатываем is_citizen_kz (может прийти как строка из формы)
+    # Правильно обрабатываем boolean поля (могут прийти как строки из формы)
     if isinstance(is_citizen_kz, str):
         is_citizen_kz = is_citizen_kz.lower() in ('true', '1', 'yes', 'on')
+    if isinstance(consent_to_data_processing, str):
+        consent_to_data_processing = consent_to_data_processing.lower() in ('true', '1', 'yes', 'on')
+    if isinstance(contract_read, str):
+        contract_read = contract_read.lower() in ('true', '1', 'yes', 'on')
     
     # Обрабатываем пустые файлы
     if isinstance(psych_neurology_certificate, str) and not psych_neurology_certificate:
@@ -1137,6 +1145,8 @@ async def upload_documents(
         current_user.birth_date = datetime.strptime(document_data.birth_date, '%Y-%m-%d')
         current_user.email = email
         current_user.is_citizen_kz = document_data.is_citizen_kz
+        current_user.consent_to_data_processing = consent_to_data_processing
+        current_user.contract_read = contract_read
         # Сохраняем ИИН или паспорт
         current_user.iin = document_data.iin
         current_user.passport_number = document_data.passport_number
@@ -1278,6 +1288,8 @@ async def upload_documents(
                 "psych_neurology_certificate_url": current_user.psych_neurology_certificate_url,
                 "narcology_certificate_url": current_user.narcology_certificate_url,
                 "pension_contributions_certificate_url": current_user.pension_contributions_certificate_url,
+                "consent_to_data_processing": current_user.consent_to_data_processing,
+                "contract_read": current_user.contract_read,
             }
         }
 
@@ -1315,3 +1327,85 @@ async def delete_account(
     current_user.is_active = False
     db.commit()
     return {"message": "Аккаунт помечен как неактивный."}
+
+
+@Auth_router.patch(
+    "/user/consent-data-processing/",
+    summary="Обновить согласие на обработку персональных данных",
+    description="Позволяет пользователю изменить свое согласие на обработку персональных данных"
+)
+async def update_consent_data_processing(
+        payload: ConsentDataProcessingUpdate,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """
+    Обновляет согласие пользователя на обработку персональных данных.
+    
+    **Требования:**
+    - Пользователь должен быть авторизован
+    - Передать новое значение согласия (true/false)
+    
+    **Возвращает:**
+    - Сообщение об успешном обновлении
+    - Текущее значение согласия
+    """
+    try:
+        # Обновляем согласие пользователя
+        current_user.consent_to_data_processing = payload.consent_to_data_processing
+        db.add(current_user)
+        db.commit()
+        db.refresh(current_user)
+        
+        return {
+            "message": "Согласие на обработку персональных данных обновлено",
+            "consent_to_data_processing": current_user.consent_to_data_processing
+        }
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка при обновлении согласия: {str(e)}"
+        )
+
+
+@Auth_router.patch(
+    "/user/contract-read/",
+    summary="Обновить подтверждение прочтения договора",
+    description="Позволяет пользователю подтвердить или отменить прочтение договора"
+)
+async def update_contract_read(
+        payload: ContractReadUpdate,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """
+    Обновляет подтверждение пользователя о прочтении договора.
+    
+    **Требования:**
+    - Пользователь должен быть авторизован
+    - Передать новое значение подтверждения (true/false)
+    
+    **Возвращает:**
+    - Сообщение об успешном обновлении
+    - Текущее значение подтверждения
+    """
+    try:
+        # Обновляем подтверждение прочтения договора
+        current_user.contract_read = payload.contract_read
+        db.add(current_user)
+        db.commit()
+        db.refresh(current_user)
+        
+        return {
+            "message": "Подтверждение прочтения договора обновлено",
+            "contract_read": current_user.contract_read
+        }
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка при обновлении подтверждения: {str(e)}"
+        )

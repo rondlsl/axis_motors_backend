@@ -52,7 +52,7 @@ async def get_pending_applications(
     for app in applications:
         user = app.user
         applications_data.append({
-            "application_id": app.sid,
+            "application_id": uuid_to_sid(app.id),
             "user_id": uuid_to_sid(user.id),
             "first_name": user.first_name,
             "last_name": user.last_name,
@@ -115,7 +115,7 @@ async def get_approved_applications(
     for app in applications:
         user = app.user
         applications_data.append({
-            "application_id": app.sid,
+            "application_id": uuid_to_sid(app.id),
             "user_id": uuid_to_sid(user.id),
             "first_name": user.first_name,
             "last_name": user.last_name,
@@ -180,7 +180,7 @@ async def get_rejected_applications(
     for app in applications:
         user = app.user
         applications_data.append({
-            "application_id": app.sid,
+            "application_id": uuid_to_sid(app.id),
             "user_id": uuid_to_sid(user.id),
             "first_name": user.first_name,
             "last_name": user.last_name,
@@ -213,16 +213,16 @@ async def get_rejected_applications(
     return {"applications": applications_data}
 
 
-@FinancierRouter.post("/approve/{application_sid}", summary="Одобрить заявку")
+@FinancierRouter.post("/approve/{application_id}", summary="Одобрить заявку")
 async def approve_application(
-        application_sid: str,
+        application_id: str,
         auto_class: str = Query(..., description="Класс доступа: A или комбинации (например, A, B)"),
         db: Session = Depends(get_db),
         current_financier: User = Depends(get_current_financier)
 ) -> Dict[str, Any]:
     """Одобрить заявку и установить класс доступа к автомобилям"""
     
-    application_uuid = safe_sid_to_uuid(application_sid)
+    application_uuid = safe_sid_to_uuid(application_id)
     application = db.query(Application).options(
         joinedload(Application.user)
     ).filter(Application.id == application_uuid).first()
@@ -296,15 +296,15 @@ async def approve_application(
     
     return {
         "message": "Заявка одобрена",
-        "application_id": application_sid,
+        "application_id": uuid_to_sid(application_uuid),
         "auto_class": auto_class,
         "user_id": uuid_to_sid(user.id)
     }
 
 
-@FinancierRouter.post("/reject/{application_sid}", summary="Отклонить заявку")
+@FinancierRouter.post("/reject/{application_id}", summary="Отклонить заявку")
 async def reject_application(
-        application_sid: str,
+        application_id: str,
         reason: Optional[str] = Query(None, description="Причина отклонения"),
         reason_type: Optional[str] = Query(
             None,
@@ -315,7 +315,7 @@ async def reject_application(
 ) -> Dict[str, Any]:
     """Отклонить заявку"""
     
-    application_uuid = safe_sid_to_uuid(application_sid)
+    application_uuid = safe_sid_to_uuid(application_id)
     application = db.query(Application).filter(Application.id == application_uuid).first()
     
     if not application:
@@ -388,7 +388,7 @@ async def reject_application(
     
     return {
         "message": "Заявка отклонена",
-        "application_id": application_sid,
+        "application_id": uuid_to_sid(application_uuid),
         "user_id": uuid_to_sid(user.id),
         "reason": application.reason,
         "reason_type": reason_type

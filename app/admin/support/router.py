@@ -66,13 +66,11 @@ async def list_support_actions(
             },
             "action": it.action,
             "entity_type": it.entity_type,
-            "entity_id": it.entity_id,
+            "entity_id": uuid_to_sid(it.entity_id) if it.entity_id else None,
             "created_at": it.created_at.isoformat(),
         }
         
-        converted_data = convert_uuid_response_to_sid(action_data, ["id", "entity_id"])
-        user_data = convert_uuid_response_to_sid(converted_data["user"], ["id"])
-        converted_data["user"] = user_data
+        converted_data = action_data
         
         data.append(SupportActionItemSchema(**converted_data))
 

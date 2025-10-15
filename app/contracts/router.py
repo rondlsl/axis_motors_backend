@@ -316,7 +316,8 @@ async def sign_contract(
                 detail="Для договоров гаранта необходимо указать guarantor_relationship_id"
             )
         
-        guarantor_rel = db.query(Guarantor).filter(Guarantor.id == sign_request.guarantor_relationship_id).first()
+        guarantor_rel_uuid = safe_sid_to_uuid(sign_request.guarantor_relationship_id)
+        guarantor_rel = db.query(Guarantor).filter(Guarantor.id == guarantor_rel_uuid).first()
         if not guarantor_rel or guarantor_rel.guarantor_id != current_user.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -413,7 +414,8 @@ async def sign_contract_by_type(
                 detail="Для договоров гаранта необходимо указать guarantor_relationship_id"
             )
         
-        guarantor_rel = db.query(Guarantor).filter(Guarantor.id == sign_request.guarantor_relationship_id).first()
+        guarantor_rel_uuid = safe_sid_to_uuid(sign_request.guarantor_relationship_id)
+        guarantor_rel = db.query(Guarantor).filter(Guarantor.id == guarantor_rel_uuid).first()
         if not guarantor_rel or guarantor_rel.guarantor_id != current_user.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
