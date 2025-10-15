@@ -10,7 +10,7 @@ class PushPayload(BaseModel):
 
 
 class NotificationResponse(BaseModel):
-    id: int
+    id: str
     title: str
     body: str
     sent_at: str

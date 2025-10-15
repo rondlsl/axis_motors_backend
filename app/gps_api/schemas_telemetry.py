@@ -8,9 +8,9 @@ class VehicleTelemetryResponse(BaseModel):
     
     # Основная информация
     imei: str = Field(..., description="IMEI устройства")
-    vehicle_id: int = Field(..., description="ID автомобиля")
+    vehicle_id: int = Field(..., description="ID автомобиля (внешний)")
     car_name: str = Field(..., description="Название автомобиля")
-    device_type_id: int = Field(..., description="Тип устройства")
+    device_type_id: int = Field(..., description="Тип устройства (внешний)")
     last_active_time: datetime = Field(..., description="Время последней активности")
     is_online: bool = Field(..., description="Статус онлайн")
     is_moving: bool = Field(..., description="В движении")

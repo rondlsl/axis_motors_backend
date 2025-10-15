@@ -104,7 +104,7 @@ def get_upcoming_bookings(db: Session, user_id: uuid.UUID, limit: int = 10) -> l
 
 def check_booking_conflicts(
     db: Session, 
-    car_id: int, 
+    car_id: str, 
     start_time: datetime, 
     end_time: datetime,
     exclude_rental_id: uuid.UUID = None
@@ -112,8 +112,11 @@ def check_booking_conflicts(
     """
     Проверяет конфликты бронирования для автомобиля
     """
+    from app.utils.short_id import safe_sid_to_uuid
+    car_uuid = safe_sid_to_uuid(car_id)
+    
     query = db.query(RentalHistory).filter(
-        RentalHistory.car_id == car_id,
+        RentalHistory.car_id == car_uuid,
         RentalHistory.rental_status.in_([
             RentalStatus.RESERVED,
             RentalStatus.IN_USE,

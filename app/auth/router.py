@@ -568,7 +568,7 @@ async def read_users_me(
 
         # Для механиков добавляем current_renter_details
         car_details = {
-            "id": car.id,
+            "id": uuid_to_sid(car.id),
             "name": car.name,
             "plate_number": car.plate_number,
             "fuel_level": car.fuel_level,
@@ -731,7 +731,7 @@ async def read_users_me(
     for car in owned_cars_raw:
         # Рассчитываем доступные минуты для текущего месяца
         available_minutes = calculate_month_availability_minutes(
-            car_id=car.id,
+            car_id=uuid_to_sid(car.id),
             year=current_year,
             month=current_month,
             owner_id=current_user.id,
@@ -739,7 +739,7 @@ async def read_users_me(
         )
         
         owned_cars.append({
-            "id": car.id,
+            "id": uuid_to_sid(car.id),
             "name": car.name,
             "plate_number": car.plate_number,
             "fuel_level": car.fuel_level,

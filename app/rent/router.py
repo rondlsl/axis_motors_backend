@@ -416,15 +416,15 @@ def apply_promo(body: ApplyPromoRequest,
     }
 
 
-@RentRouter.post("/reserve-car/{car_sid}")
+@RentRouter.post("/reserve-car/{car_id}")
 async def reserve_car(
-        car_sid: str,
+        car_id: str,
         rental_type: RentalType,
         duration: Optional[int] = None,
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user),
 ):
-    car_uuid = safe_sid_to_uuid(car_sid)
+    car_uuid = safe_sid_to_uuid(car_id)
     car_meta = db.query(Car.id, Car.owner_id, Car.status).filter(Car.id == car_uuid).first()
     if not car_meta:
         raise HTTPException(status_code=404, detail="Car not found")
@@ -594,9 +594,9 @@ async def reserve_car(
     }
 
 
-@RentRouter.post("/reserve-delivery/{car_sid}")
+@RentRouter.post("/reserve-delivery/{car_id}")
 async def reserve_delivery(
-        car_sid: str,
+        car_id: str,
         rental_type: RentalType,
         delivery_latitude: float = Query(..., description="Координата широты доставки"),
         delivery_longitude: float = Query(..., description="Координата долготы доставки"),
@@ -606,10 +606,10 @@ async def reserve_delivery(
 ) -> dict:
     """
     Резервирование машины с доставкой:
-    - car_sid, rental_type, delivery координаты, опционально duration.
+    - car_id, rental_type, delivery координаты, опционально duration.
     - Дополнительно списываем 10000₸ за услугу доставки, если арендатор не является владельцем.
     """
-    car_uuid = safe_sid_to_uuid(car_sid)
+    car_uuid = safe_sid_to_uuid(car_id)
     # Запреты по ролям/верификации
     validate_user_can_rent(current_user, db)
 
@@ -924,13 +924,13 @@ async def cancel_delivery(
     return {"message": "Доставка отменена успешно"}
 
 
-@RentRouter.post("/start/{car_sid}")
+@RentRouter.post("/start/{car_id}")
 async def start_rental(
-        car_sid: str,
+        car_id: str,
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user),
 ):
-    car_uuid = safe_sid_to_uuid(car_sid)
+    car_uuid = safe_sid_to_uuid(car_id)
     # Запреты по ролям/верификации (на случай, если обошли резервацию)
     validate_user_can_rent(current_user, db)
 
@@ -2031,8 +2031,8 @@ async def get_my_bookings(
     result = []
     for rental, car in bookings:
         booking_data = {
-            "id": rental.id,
-            "car_id": rental.car_id,
+            "id": uuid_to_sid(rental.id),
+            "car_id": uuid_to_sid(rental.car_id),
             "car_name": car.name,
             "car_plate_number": car.plate_number,
             "rental_type": rental.rental_type,
@@ -2057,9 +2057,9 @@ async def get_my_bookings(
     return result
 
 
-@RentRouter.post("/cancel-booking/{rental_sid}", response_model=CancelBookingResponse)
+@RentRouter.post("/cancel-booking/{rental_id}", response_model=CancelBookingResponse)
 async def cancel_booking(
-    rental_sid: str,
+    rental_id: str,
     cancel_request: CancelBookingRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -2068,7 +2068,7 @@ async def cancel_booking(
     Отменить бронирование
     """
     # 1) Находим бронирование
-    rental_uuid = safe_sid_to_uuid(rental_sid)
+    rental_uuid = safe_sid_to_uuid(rental_id)
     rental = db.query(RentalHistory).filter(
         RentalHistory.id == rental_uuid,
         RentalHistory.user_id == current_user.id,
@@ -2145,7 +2145,7 @@ async def get_available_cars_for_booking(
     result = []
     for car in available_cars:
         result.append({
-            "id": car.id,
+            "id": uuid_to_sid(car.id),
             "name": car.name,
             "plate_number": car.plate_number,
             "price_per_minute": car.price_per_minute,

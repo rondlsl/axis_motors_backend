@@ -39,7 +39,7 @@ class ContractFile(Base):
     """Файлы договоров (шаблоны)"""
     __tablename__ = "contract_files"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     contract_type = Column(SQLEnum(ContractType), nullable=False)
     file_path = Column(String, nullable=False)
     file_name = Column(String, nullable=False)
@@ -50,6 +50,11 @@ class ContractFile(Base):
     # Relationships
     signatures = relationship("UserContractSignature", back_populates="contract_file")
 
+    @property
+    def sid(self) -> str:
+        from app.utils.short_id import uuid_to_sid
+        return uuid_to_sid(self.id)
+
 
 class UserContractSignature(Base):
     """Подписи пользователей на договорах"""
@@ -57,9 +62,9 @@ class UserContractSignature(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    contract_file_id = Column(Integer, ForeignKey("contract_files.id"), nullable=False)
+    contract_file_id = Column(UUID(as_uuid=True), ForeignKey("contract_files.id"), nullable=False)
     rental_id = Column(UUID(as_uuid=True), ForeignKey("rental_history.id"), nullable=True)  # Для договоров аренды
-    guarantor_relationship_id = Column(Integer, ForeignKey("guarantors.id"), nullable=True)  # Для договоров гаранта
+    guarantor_relationship_id = Column(UUID(as_uuid=True), ForeignKey("guarantors.id"), nullable=True)  # Для договоров гаранта
     
     digital_signature = Column(String, nullable=False)  # Цифровая подпись пользователя
     signed_at = Column(DateTime, default=datetime.utcnow, nullable=False)

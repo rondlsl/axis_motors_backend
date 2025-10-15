@@ -346,13 +346,13 @@ async def get_owner_cars_with_availability_timer(
 
 
 @OwnerRouter.get(
-    "/{vehicle_sid}",
+    "/{vehicle_id}",
     response_model=TripsForMonthResponse,
     summary="Получить поездки по месяцам",
     description="Возвращает календарь поездок для конкретного автомобиля за указанный месяц"
 )
 def get_trips_by_month(
-        vehicle_sid: str,
+        vehicle_id: str,
         month: Optional[int] = Query(None, description="Месяц (1-12). Если не указан, возвращается текущий месяц"),
         year: Optional[int] = Query(None, description="Год. Если не указан, возвращается текущий год"),
         db: Session = Depends(get_db),
@@ -376,7 +376,7 @@ def get_trips_by_month(
     **Права доступа**: Только владелец автомобиля
     """
     try:
-        vehicle_uuid = safe_sid_to_uuid(vehicle_sid)
+        vehicle_uuid = safe_sid_to_uuid(vehicle_id)
         # Проверяем, что автомобиль принадлежит пользователю
         car = db.query(Car).filter(
             Car.id == vehicle_uuid,
@@ -556,14 +556,14 @@ def get_trips_by_month(
 
 
 @OwnerRouter.get(
-    "/{vehicle_sid}/{trip_sid}",
+    "/{vehicle_id}/{trip_id}",
     response_model=TripDetailResponse,
     summary="Детальная информация о поездке",
     description="Возвращает подробную информацию о конкретной поездке с фотографиями и маршрутом"
 )
 async def get_trip_details(
-        vehicle_sid: str,
-        trip_sid: str,
+        vehicle_id: str,
+        trip_id: str,
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ) -> TripDetailResponse:
@@ -585,8 +585,8 @@ async def get_trip_details(
     **Требует аутентификации**: Bearer token
     **Права доступа**: Только владелец автомобиля
     """
-    vehicle_uuid = safe_sid_to_uuid(vehicle_sid)
-    trip_uuid = safe_sid_to_uuid(trip_sid)
+    vehicle_uuid = safe_sid_to_uuid(vehicle_id)
+    trip_uuid = safe_sid_to_uuid(trip_id)
     # Проверяем, что автомобиль принадлежит пользователю
     car = db.query(Car).filter(
         Car.id == vehicle_uuid,

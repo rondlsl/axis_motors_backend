@@ -1,4 +1,5 @@
 from enum import Enum
+import uuid
 from sqlalchemy import Column, Integer, String, DateTime, Enum as SAEnum, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -14,7 +15,7 @@ class ApplicationStatus(Enum):
 class Application(Base):
     __tablename__ = "applications"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     
     # Статус проверки финансистом
@@ -39,3 +40,9 @@ class Application(Base):
     user = relationship("User", foreign_keys=[user_id], back_populates="application")
     financier = relationship("User", foreign_keys=[financier_user_id])
     mvd_user = relationship("User", foreign_keys=[mvd_user_id])
+
+    @property
+    def sid(self) -> str:
+        """Short ID for API responses derived from UUID."""
+        from app.utils.short_id import uuid_to_sid
+        return uuid_to_sid(self.id)

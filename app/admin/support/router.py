@@ -84,16 +84,16 @@ async def list_support_actions(
     )
 
 
-@support_router.get("/users/{user_sid}", response_model=SupportUserSchema)
+@support_router.get("/users/{user_id}", response_model=SupportUserSchema)
 async def get_support_user_profile(
-    user_sid: str,
+    user_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> SupportUserSchema:
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
-    user_uuid = safe_sid_to_uuid(user_sid)
+    user_uuid = safe_sid_to_uuid(user_id)
     u = db.query(User).filter(User.id == user_uuid, User.role.in_([UserRole.ADMIN, UserRole.SUPPORT])).first()
     if not u:
         raise HTTPException(status_code=404, detail="Пользователь не найден")

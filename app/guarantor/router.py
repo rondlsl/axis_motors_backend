@@ -115,7 +115,7 @@ async def invite_guarantor(
         return {
             "message": "Пользователь не найден. SMS приглашение отправлено. Заявка создана.",
             "user_exists": False,
-            "request_id": pending_request.id,
+            "request_id": pending_request.sid,
             "sms_result": sms_result
         }
     
@@ -173,7 +173,7 @@ async def invite_guarantor(
     return {
         "message": "Заявка на гаранта создана успешно",
         "user_exists": True,
-        "request_id": new_request.id,
+        "request_id": new_request.sid,
     }
 
 
@@ -188,15 +188,16 @@ async def invite_guarantor(
     },
 )
 async def accept_guarantor_request(
-    id: int,
+    id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Принять заявку на роль гаранта"""
     
     # Находим заявку
+    request_uuid = safe_sid_to_uuid(id)
     guarantor_request = db.query(GuarantorRequest).filter(
-        GuarantorRequest.id == id,
+        GuarantorRequest.id == request_uuid,
         GuarantorRequest.guarantor_id == current_user.id,
         GuarantorRequest.status == GuarantorRequestStatus.PENDING
     ).first()
@@ -237,7 +238,7 @@ async def accept_guarantor_request(
     
     return {
         "message": "Заявка принята. Теперь вам необходимо подписать договор гаранта.",
-        "guarantor_relationship_id": guarantor_relationship.id
+        "guarantor_relationship_id": guarantor_relationship.sid
     }
 
 
@@ -251,15 +252,16 @@ async def accept_guarantor_request(
     },
 )
 async def reject_guarantor_request(
-    id: int,
+    id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Отклонить заявку на роль гаранта"""
     
     # Находим заявку
+    request_uuid = safe_sid_to_uuid(id)
     guarantor_request = db.query(GuarantorRequest).filter(
-        GuarantorRequest.id == id,
+        GuarantorRequest.id == request_uuid,
         GuarantorRequest.guarantor_id == current_user.id,
         GuarantorRequest.status == GuarantorRequestStatus.PENDING
     ).first()
@@ -314,7 +316,7 @@ async def get_my_guarantors(
             ).first() is not None
             
             result.append(SimpleGuarantorSchema(
-                id=relationship.id,
+                id=relationship.sid,
                 phone=guarantor_user.phone_number,
                 first_name=guarantor_user.first_name,
                 last_name=guarantor_user.last_name,
@@ -354,8 +356,8 @@ async def get_my_guarantor_requests(
                 guarantor_last_name = g_user.last_name
 
         items.append(ClientGuarantorRequestItemSchema(
-            id=req.id,
-            guarantor_id=req.guarantor_id,
+            id=req.sid,
+            guarantor_id=uuid_to_sid(req.guarantor_id) if req.guarantor_id else None,
             guarantor_phone=guarantor_phone,
             guarantor_first_name=guarantor_first_name,
             guarantor_last_name=guarantor_last_name,
@@ -400,7 +402,7 @@ async def get_incoming_requests(
             requestor_last_name = requestor.last_name
             
             request_data = {
-                "id": request.id,
+                "id": uuid_to_sid(request.id),
                 "requestor_id": uuid_to_sid(request.requestor_id),
                 "requestor_first_name": requestor_first_name,
                 "requestor_last_name": requestor_last_name,
@@ -450,7 +452,7 @@ async def get_my_clients(
             ).first() is not None
             
             result.append(SimpleClientSchema(
-                id=relationship.id,
+                id=relationship.sid,
                 first_name=client_user.first_name,
                 last_name=client_user.last_name,
                 phone=client_user.phone_number,
@@ -485,7 +487,7 @@ async def get_contracts(
     
     def format_contract(contract: ContractFile) -> ContractFileSchema:
         return ContractFileSchema(
-            id=contract.id,
+            id=contract.sid,
             contract_type=contract.contract_type,
             file_name=contract.file_name,
             file_path=contract.file_path,
@@ -699,7 +701,7 @@ async def get_guarantor_contract(
         file_url = f"https://api.azvmotors.kz/contracts/{contract.file_name}"
         
         return ContractDownloadSchema(
-            id=contract.id,
+            id=contract.sid,
             contract_type=contract.contract_type,
             file_name=contract.file_name,
             file_url=file_url,
@@ -776,7 +778,7 @@ async def get_guarantor_main_contract(
         file_url = f"https://api.azvmotors.kz/contracts/{contract.file_name}"
         
         return ContractDownloadSchema(
-            id=contract.id,
+            id=contract.sid,
             contract_type=contract.contract_type,
             file_name=contract.file_name,
             file_url=file_url,
@@ -863,8 +865,9 @@ async def sign_contract(
     """Подписание договора (только для принятых заявок)"""
     
     # Находим конкретную связь гарант-клиент по ID
+    relationship_uuid = safe_sid_to_uuid(sign_data.guarantor_relationship_id)
     relationship = db.query(Guarantor).filter(
-        Guarantor.id == sign_data.guarantor_relationship_id,
+        Guarantor.id == relationship_uuid,
         Guarantor.guarantor_id == current_user.id,
         Guarantor.is_active == True
     ).first()
@@ -910,7 +913,7 @@ async def sign_contract(
     existing_signature = db.query(UserContractSignature).filter(
         UserContractSignature.user_id == current_user.id,
         UserContractSignature.contract_file_id == contract_file.id,
-        UserContractSignature.guarantor_relationship_id == sign_data.guarantor_relationship_id
+        UserContractSignature.guarantor_relationship_id == relationship_uuid
     ).first()
     
     if existing_signature:
@@ -923,7 +926,7 @@ async def sign_contract(
     signature = UserContractSignature(
         user_id=current_user.id,
         contract_file_id=contract_file.id,
-        guarantor_relationship_id=sign_data.guarantor_relationship_id,
+        guarantor_relationship_id=relationship_uuid,
         digital_signature=current_user.digital_signature
     )
     
@@ -972,7 +975,7 @@ async def get_guarantor_requests(
                 guarantor_phone = guarantor.phone_number
         
         request_data = {
-            "id": request.id,
+            "id": uuid_to_sid(request.id),
             "requestor_id": uuid_to_sid(request.requestor_id),
             "requestor_first_name": requestor_first_name,
             "requestor_last_name": requestor_last_name,
@@ -1035,7 +1038,7 @@ async def get_guarantor_relationships(
         "details": {
             "sent_requests": [
                 {
-                    "id": req.id,
+                    "id": uuid_to_sid(req.id),
                     "guarantor_phone": req.guarantor_phone,
                     "guarantor_id": uuid_to_sid(req.guarantor_id) if req.guarantor_id else None,
                     "status": req.status.value,
@@ -1044,7 +1047,7 @@ async def get_guarantor_relationships(
             ],
             "received_requests": [
                 {
-                    "id": req.id,
+                    "id": uuid_to_sid(req.id),
                     "requestor_id": uuid_to_sid(req.requestor_id),
                     "status": req.status.value,
                     "created_at": req.created_at
@@ -1052,7 +1055,7 @@ async def get_guarantor_relationships(
             ],
             "my_clients": [
                 {
-                    "id": rel.id,
+                    "id": uuid_to_sid(rel.id),
                     "client_id": uuid_to_sid(rel.client_id),
                     "created_at": rel.created_at,
                     "contract_signed": rel.contract_signed
@@ -1060,7 +1063,7 @@ async def get_guarantor_relationships(
             ],
             "my_guarantors": [
                 {
-                    "id": rel.id,
+                    "id": uuid_to_sid(rel.id),
                     "guarantor_id": uuid_to_sid(rel.guarantor_id),
                     "created_at": rel.created_at,
                     "contract_signed": rel.contract_signed

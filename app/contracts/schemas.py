@@ -24,7 +24,7 @@ class ContractUploadByType(BaseModel):
 
 class ContractFileResponse(BaseModel):
     """Схема ответа с информацией о договоре"""
-    id: int
+    id: str
     contract_type: ContractType
     file_name: str
     is_active: bool
@@ -34,28 +34,28 @@ class ContractFileResponse(BaseModel):
 
 class SignContractRequest(BaseModel):
     """Схема для подписания договора"""
-    contract_file_id: int = Field(..., description="ID файла договора")
+    contract_file_id: str = Field(..., description="ID файла договора")
     rental_id: Optional[uuid.UUID] = Field(None, description="ID аренды (для договоров аренды)")
-    guarantor_relationship_id: Optional[int] = Field(None, description="ID связи гарант-клиент (для договоров гаранта)")
+    guarantor_relationship_id: Optional[str] = Field(None, description="ID связи гарант-клиент (для договоров гаранта)")
 
 
 class SignContractByTypeRequest(BaseModel):
     """Схема для подписания договора по типу"""
     contract_type: ContractType = Field(..., description="Тип договора")
     rental_id: Optional[uuid.UUID] = Field(None, description="ID аренды (для договоров аренды)")
-    guarantor_relationship_id: Optional[int] = Field(None, description="ID связи гарант-клиент (для договоров гаранта)")
+    guarantor_relationship_id: Optional[str] = Field(None, description="ID связи гарант-клиент (для договоров гаранта)")
 
 
 class UserSignatureResponse(BaseModel):
     """Схема ответа с информацией о подписи"""
-    id: uuid.UUID
-    user_id: uuid.UUID
-    contract_file_id: int
+    id: str
+    user_id: str
+    contract_file_id: str
     contract_type: ContractType
     digital_signature: str
     signed_at: datetime
-    rental_id: Optional[uuid.UUID] = None
-    guarantor_relationship_id: Optional[int] = None
+    rental_id: Optional[str] = None
+    guarantor_relationship_id: Optional[str] = None
 
 
 class UserContractsResponse(BaseModel):
@@ -67,7 +67,7 @@ class UserContractsResponse(BaseModel):
 
 class ContractRequirements(BaseModel):
     """Схема для проверки требований к подписанию договоров"""
-    user_id: uuid.UUID
+    user_id: str
     
     # Договоры при регистрации
     user_agreement_signed: bool = Field(..., description="Подписано ли пользовательское соглашение")
@@ -88,14 +88,14 @@ class ContractRequirements(BaseModel):
 
 class RentalContractStatus(BaseModel):
     """Схема для статуса договоров при аренде"""
-    rental_id: uuid.UUID
+    rental_id: str
     appendix_7_start_signed: bool = Field(..., description="Подписано ли приложение №7 (1) при начале")
     appendix_7_end_signed: bool = Field(..., description="Подписано ли приложение №7 (2) при завершении")
 
 
 class GuarantorContractStatus(BaseModel):
     """Схема для статуса договоров гаранта"""
-    guarantor_relationship_id: int
+    guarantor_relationship_id: str
     guarantor_contract_signed: bool = Field(..., description="Подписан ли договор гаранта")
     guarantor_main_contract_signed: bool = Field(..., description="Подписан ли основной договор для гаранта")
     can_guarantee: bool = Field(..., description="Может ли выступать гарантом")

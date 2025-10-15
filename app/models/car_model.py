@@ -1,4 +1,5 @@
 from enum import Enum
+import uuid
 
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, JSON, Text
 from sqlalchemy import Enum as SAEnum
@@ -47,7 +48,7 @@ class CarStatus(str, Enum):
 class Car(Base):
     __tablename__ = "cars"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     name = Column(String, nullable=False)
     plate_number = Column(String, nullable=False, unique=True)
     latitude = Column(Float)
@@ -96,3 +97,8 @@ class Car(Base):
     
     # Связь для комментариев
     comments = relationship("CarComment", back_populates="car", cascade="all, delete-orphan")
+
+    @property
+    def sid(self) -> str:
+        from app.utils.short_id import uuid_to_sid
+        return uuid_to_sid(self.id)

@@ -47,7 +47,7 @@ class GuarantorInfoSchema(BaseModel):
 
 class ClientGuarantorRequestItemSchema(SidMixin):
     """Список заявок клиента с детальным статусом"""
-    id: int = Field(..., description="ID заявки")
+    id: str = Field(..., description="ID заявки")
     guarantor_id: Optional[str] = Field(None, description="ID гаранта, если зарегистрирован")
     guarantor_phone: Optional[str] = Field(None, description="Телефон гаранта")
     guarantor_first_name: Optional[str] = Field(None, description="Имя гаранта", example="Петр")
@@ -81,7 +81,7 @@ class GuarantorRequestResponseSchema(BaseModel):
 
 class GuarantorRequestSchema(SidMixin):
     """Схема заявки на гаранта"""
-    id: int
+    id: str
     requestor_id: str
     guarantor_id: str
     status: GuarantorRequestStatusSchema
@@ -103,7 +103,7 @@ class GuarantorRequestSchema(SidMixin):
 
 class GuarantorSchema(SidMixin):
     """Схема активного гаранта"""
-    id: int
+    id: str
     guarantor_id: str
     client_id: str
     contract_signed: bool
@@ -141,7 +141,7 @@ class UserGuarantorInfoSchema(BaseModel):
 class ContractSignSchema(BaseModel):
     """Схема для подписания договора"""
     contract_type: str = Field(..., description="Тип договора для подписания", example="guarantor_contract", enum=["guarantor_contract", "guarantor_main_contract"])
-    guarantor_relationship_id: int = Field(..., description="ID связи гарант-клиент из списка my_clients", example=8)
+    guarantor_relationship_id: str = Field(..., description="ID связи гарант-клиент из списка my_clients", example="abc123def")
 
 
 class ContractUploadSchema(BaseModel):
@@ -152,7 +152,7 @@ class ContractUploadSchema(BaseModel):
 
 class ContractDownloadSchema(BaseModel):
     """Схема для просмотра договора"""
-    id: int = Field(..., description="ID договора", example=1)
+    id: str = Field(..., description="ID договора", example=1)
     contract_type: str = Field(..., description="Тип договора", example="guarantor_contract")
     file_name: str = Field(..., description="Имя файла", example="guarantor_contract.pdf")
     file_url: str = Field(..., description="Прямая ссылка на файл", example="https://api.azvmotors.kz/contracts/guarantor_a1b2c3d4.pdf")
@@ -162,7 +162,7 @@ class ContractDownloadSchema(BaseModel):
 
 class ContractFileSchema(BaseModel):
     """Схема файла договора"""
-    id: int
+    id: str
     contract_type: str
     file_name: str
     file_path: str
@@ -204,7 +204,7 @@ class UserEligibilityResultSchema(SidMixin):
 
 class SimpleGuarantorSchema(BaseModel):
     """Упрощенная схема для активного гаранта"""
-    id: int = Field(..., description="ID связи гарант-клиент", example=1)
+    id: str = Field(..., description="ID связи гарант-клиент", example=1)
     phone: str = Field(..., description="Номер телефона гаранта", example="7777654321")
     first_name: Optional[str] = Field(None, description="Имя гаранта", example="Петр")
     last_name: Optional[str] = Field(None, description="Фамилия гаранта", example="Иванов")
@@ -215,7 +215,7 @@ class SimpleGuarantorSchema(BaseModel):
 
 class SimpleClientSchema(BaseModel):
     """Упрощенная схема для клиента"""
-    id: int = Field(..., description="ID связи гарант-клиент", example=1)
+    id: str = Field(..., description="ID связи гарант-клиент", example=1)
     first_name: Optional[str] = Field(None, description="Имя клиента", example="Петр")
     last_name: Optional[str] = Field(None, description="Фамилия клиента", example="Иванов")
     phone: str = Field(..., description="Номер телефона клиента", example="7771234567")
@@ -226,7 +226,7 @@ class SimpleClientSchema(BaseModel):
 
 class IncomingRequestSchema(SidMixin):
     """Схема входящей заявки для 'Я гарант'"""
-    id: int = Field(..., description="ID заявки", example=123)
+    id: str = Field(..., description="ID заявки", example=123)
     requestor_id: str = Field(..., description="ID пользователя, который просит быть гарантом", example="VQ6EAOKbQdSnFkRmVUQAAA")
     requestor_first_name: Optional[str] = Field(None, description="Имя пользователя", example="Иван")
     requestor_last_name: Optional[str] = Field(None, description="Фамилия пользователя", example="Петров")
@@ -248,7 +248,7 @@ class AdminRejectGuarantorSchema(BaseModel):
 
 class GuarantorRequestAdminSchema(SidMixin):
     """Схема заявки гаранта для администратора"""
-    id: int = Field(..., description="ID заявки", example=123)
+    id: str = Field(..., description="ID заявки", example=123)
     requestor_id: str = Field(..., description="ID запрашивающего", example="VQ6EAOKbQdSnFkRmVUQAAA")
     requestor_first_name: Optional[str] = Field(None, description="Имя запрашивающего", example="Петр")
     requestor_last_name: Optional[str] = Field(None, description="Фамилия запрашивающего", example="Иванов")
@@ -272,13 +272,13 @@ class GuarantorRequestAdminSchema(SidMixin):
 class InviteGuarantorResponseSchema(BaseModel):
     message: str = Field(..., description="Сообщение о результате", example="Заявка на гаранта создана успешно")
     user_exists: bool = Field(..., description="Существует ли пользователь в системе", example=True)
-    request_id: int = Field(..., description="ID созданной заявки", example=123)
+    request_id: str = Field(..., description="ID созданной заявки (sid)", example="abc123def")
     sms_result: Optional[dict] = Field(None, description="Результат отправки SMS", example={"status": "sent", "message_id": "12345"})
 
 
 class AcceptGuarantorResponseSchema(BaseModel):
     message: str = Field(..., description="Сообщение о результате", example="Заявка принята. Теперь вам необходимо подписать договор гаранта.")
-    guarantor_relationship_id: int = Field(..., description="ID созданной связи гарант-клиент", example=1)
+    guarantor_relationship_id: str = Field(..., description="ID созданной связи гарант-клиент", example="abc123def")
 
 
 class MessageResponseSchema(BaseModel):
@@ -291,7 +291,7 @@ class LinkPendingRequestsResponseSchema(BaseModel):
 
 
 class GuarantorRelationshipItemSchema(BaseModel):
-    id: int = Field(..., description="ID связи гарант-клиент", example=1)
+    id: str = Field(..., description="ID связи гарант-клиент", example=1)
     created_at: datetime = Field(..., description="Дата создания связи", example="2024-01-15T10:30:00Z")
     contract_signed: bool = Field(..., description="Подписан ли договор гаранта", example=True)
     client_id: Optional[str] = Field(None, description="ID клиента", example="VQ6EAOKbQdSnFkRmVUQAAA")
@@ -309,14 +309,14 @@ class GuarantorRelationshipsSchema(SidMixin):
         active_guarantors: int = Field(..., description="Количество активных гарантов", example=1)
 
     class SentRequestItemSchema(BaseModel):
-        id: int = Field(..., description="ID заявки", example=123)
+        id: str = Field(..., description="ID заявки", example=123)
         guarantor_phone: Optional[str] = Field(None, description="Номер телефона гаранта", example="7777654321")
         guarantor_id: Optional[str] = Field(None, description="ID гаранта", example="VQ6EAOKbQdSnFkRmVUQAAA")
         status: str = Field(..., description="Статус заявки", example="pending")
         created_at: datetime = Field(..., description="Дата создания заявки", example="2024-01-15T10:30:00Z")
 
     class ReceivedRequestItemSchema(BaseModel):
-        id: int = Field(..., description="ID заявки", example=124)
+        id: str = Field(..., description="ID заявки", example=124)
         requestor_id: str = Field(..., description="ID запрашивающего", example="VQ6EAOKbQdSnFkRmVUQAAA")
         status: str = Field(..., description="Статус заявки", example="accepted")
         created_at: datetime = Field(..., description="Дата создания заявки", example="2024-01-15T10:30:00Z")

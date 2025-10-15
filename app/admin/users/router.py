@@ -69,9 +69,9 @@ async def get_pending_users(
     return result
 
 
-@users_router.post("/{user_sid}/approve")
+@users_router.post("/{user_id}/approve")
 async def approve_or_reject_user(
-    user_sid: str,
+    user_id: str,
     approved: bool,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -80,7 +80,7 @@ async def approve_or_reject_user(
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user_uuid = safe_sid_to_uuid(user_sid)
+    user_uuid = safe_sid_to_uuid(user_id)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -189,9 +189,9 @@ async def get_all_clients(
     return result
 
 
-@users_router.patch("/{user_sid}/role")
+@users_router.patch("/{user_id}/role")
 async def update_employee_role(
-    user_sid: str,
+    user_id: str,
     role_data: UserRoleUpdateSchema,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -200,7 +200,7 @@ async def update_employee_role(
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user_uuid = safe_sid_to_uuid(user_sid)
+    user_uuid = safe_sid_to_uuid(user_id)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -211,9 +211,9 @@ async def update_employee_role(
 
 
 # === User Profile ===
-@users_router.get("/{user_sid}/profile", response_model=UserProfileSchema)
+@users_router.get("/{user_id}/profile", response_model=UserProfileSchema)
 async def get_user_profile(
-    user_sid: str,
+    user_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> UserProfileSchema:
@@ -222,7 +222,7 @@ async def get_user_profile(
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     try:
-        user_uuid = safe_sid_to_uuid(user_sid)
+        user_uuid = safe_sid_to_uuid(user_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Неверный формат ID")
 
@@ -512,9 +512,9 @@ async def get_users_map_positions(
     return result
 
 
-@users_router.get("/{user_sid}/card", response_model=UserCardSchema)
+@users_router.get("/{user_id}/card", response_model=UserCardSchema)
 async def get_user_card(
-    user_sid: str,
+    user_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -522,7 +522,7 @@ async def get_user_card(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user_uuid = safe_sid_to_uuid(user_sid)
+    user_uuid = safe_sid_to_uuid(user_id)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -592,9 +592,9 @@ async def get_user_card(
     return UserCardSchema(**converted_data)
 
 
-@users_router.patch("/{user_sid}/comment")
+@users_router.patch("/{user_id}/comment")
 async def update_user_comment(
-    user_sid: str,
+    user_id: str,
     comment_data: UserCommentUpdateSchema,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -603,7 +603,7 @@ async def update_user_comment(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user_uuid = safe_sid_to_uuid(user_sid)
+    user_uuid = safe_sid_to_uuid(user_id)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -615,9 +615,9 @@ async def update_user_comment(
     return {"message": "Комментарий обновлен", "admin_comment": comment_data.admin_comment}
 
 
-@users_router.get("/{user_sid}/guarantors/he-is-guarantor", response_model=List[GuarantorInfoSchema])
+@users_router.get("/{user_id}/guarantors/he-is-guarantor", response_model=List[GuarantorInfoSchema])
 async def get_users_he_is_guarantor_for(
-    user_sid: str,
+    user_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -625,7 +625,7 @@ async def get_users_he_is_guarantor_for(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user_uuid = safe_sid_to_uuid(user_sid)
+    user_uuid = safe_sid_to_uuid(user_id)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -659,9 +659,9 @@ async def get_users_he_is_guarantor_for(
     return result
 
 
-@users_router.get("/{user_sid}/guarantors/his-guarantors", response_model=List[GuarantorInfoSchema])
+@users_router.get("/{user_id}/guarantors/his-guarantors", response_model=List[GuarantorInfoSchema])
 async def get_his_guarantors(
-    user_sid: str,
+    user_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -669,7 +669,7 @@ async def get_his_guarantors(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user_uuid = safe_sid_to_uuid(user_sid)
+    user_uuid = safe_sid_to_uuid(user_id)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -703,9 +703,9 @@ async def get_his_guarantors(
     return result
 
 
-@users_router.get("/{user_sid}/trips/summary", response_model=TripSummarySchema)
+@users_router.get("/{user_id}/trips/summary", response_model=TripSummarySchema)
 async def get_user_trips_summary(
-    user_sid: str,
+    user_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -713,7 +713,7 @@ async def get_user_trips_summary(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user_uuid = safe_sid_to_uuid(user_sid)
+    user_uuid = safe_sid_to_uuid(user_id)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -744,9 +744,9 @@ async def get_user_trips_summary(
     )
 
 
-@users_router.get("/{user_sid}/trips", response_model=List[TripListItemSchema])
+@users_router.get("/{user_id}/trips", response_model=List[TripListItemSchema])
 async def get_user_trips(
-    user_sid: str,
+    user_id: str,
     month: Optional[int] = Query(None, description="Месяц (1-12). Если не указан, возвращается текущий месяц"),
     year: Optional[int] = Query(None, description="Год. Если не указан, возвращается текущий год"),
     current_user: User = Depends(get_current_user),
@@ -756,7 +756,7 @@ async def get_user_trips(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user_uuid = safe_sid_to_uuid(user_sid)
+    user_uuid = safe_sid_to_uuid(user_id)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -793,7 +793,7 @@ async def get_user_trips(
         car = db.query(Car).filter(Car.id == trip.car_id).first()
         
         result.append(TripListItemSchema(
-            id=trip.id,
+            id=uuid_to_sid(trip.id),
             rental_type=trip.rental_type.value,
             start_date=trip.start_time,
             end_date=trip.end_time,
@@ -806,9 +806,9 @@ async def get_user_trips(
     return result
 
 
-@users_router.get("/{user_sid}/trips/{trip_id}", response_model=TripDetailSchema)
+@users_router.get("/{user_id}/trips/{trip_id}", response_model=TripDetailSchema)
 async def get_trip_detail(
-    user_sid: str,
+    user_id: str,
     trip_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -817,7 +817,7 @@ async def get_trip_detail(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user_uuid = safe_sid_to_uuid(user_sid)
+    user_uuid = safe_sid_to_uuid(user_id)
     trip_uuid = safe_sid_to_uuid(trip_id)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
@@ -850,13 +850,13 @@ async def get_trip_detail(
     review = db.query(RentalReview).filter(RentalReview.rental_id == trip.id).first()
     
     return TripDetailSchema(
-        id=trip.id,
+        id=uuid_to_sid(trip.id),
         rental_type=trip.rental_type.value,
         start_date=trip.start_time,
         end_date=trip.end_time,
         duration_minutes=duration_minutes,
         total_price=float(trip.total_price or 0),
-        car_id=car.id,
+        car_id=uuid_to_sid(car.id),
         car_name=car.name,
         car_plate_number=car.plate_number,
         photos_before=trip.photos_before or [],
@@ -874,9 +874,9 @@ async def get_trip_detail(
     )
 
 
-@users_router.get("/{user_sid}/cars", response_model=List[OwnerCarListItemSchema])
+@users_router.get("/{user_id}/cars", response_model=List[OwnerCarListItemSchema])
 async def get_user_cars(
-    user_sid: str,
+    user_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -884,7 +884,7 @@ async def get_user_cars(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user_uuid = safe_sid_to_uuid(user_sid)
+    user_uuid = safe_sid_to_uuid(user_id)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -910,7 +910,7 @@ async def get_user_cars(
         earnings_data = _calculate_car_earnings(car.id, user_uuid, db, current_month_start)
         
         result.append(OwnerCarListItemSchema(
-            id=car.id,
+            id=uuid_to_sid(car.id),
             name=car.name,
             plate_number=car.plate_number,
             available_minutes=available_minutes,
@@ -922,9 +922,9 @@ async def get_user_cars(
     return result
 
 
-@users_router.patch("/{user_sid}/edit")
+@users_router.patch("/{user_id}/edit")
 async def edit_user(
-    user_sid: str,
+    user_id: str,
     edit_data: UserEditSchema,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -933,7 +933,7 @@ async def edit_user(
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user_uuid = safe_sid_to_uuid(user_sid)
+    user_uuid = safe_sid_to_uuid(user_id)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -951,9 +951,9 @@ async def edit_user(
     return {"message": "Пользователь обновлен"}
 
 
-@users_router.patch("/{user_sid}/block")
+@users_router.patch("/{user_id}/block")
 async def block_user(
-    user_sid: str,
+    user_id: str,
     block_data: UserBlockSchema,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -962,7 +962,7 @@ async def block_user(
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    user_uuid = safe_sid_to_uuid(user_sid)
+    user_uuid = safe_sid_to_uuid(user_id)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")

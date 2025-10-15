@@ -5,7 +5,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 from app.dependencies.database.database import get_db
-from app.utils.short_id import uuid_to_sid
+from app.utils.short_id import uuid_to_sid, safe_sid_to_uuid
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole
 from app.models.application_model import Application, ApplicationStatus
@@ -55,7 +55,7 @@ async def get_pending_applications(
     for app in applications:
         user = app.user
         applications_data.append({
-            "application_id": app.id,
+            "application_id": app.sid,
             "user_id": uuid_to_sid(user.id),
             "first_name": user.first_name,
             "last_name": user.last_name,
@@ -123,7 +123,7 @@ async def get_approved_applications(
     for app in applications:
         user = app.user
         applications_data.append({
-            "application_id": app.id,
+            "application_id": app.sid,
             "user_id": uuid_to_sid(user.id),
             "first_name": user.first_name,
             "last_name": user.last_name,
@@ -192,7 +192,7 @@ async def get_rejected_applications(
     for app in applications:
         user = app.user
         applications_data.append({
-            "application_id": app.id,
+            "application_id": app.sid,
             "user_id": uuid_to_sid(user.id),
             "first_name": user.first_name,
             "last_name": user.last_name,
@@ -227,17 +227,18 @@ async def get_rejected_applications(
     return {"applications": applications_data}
 
 
-@MvdRouter.post("/approve/{application_id}", summary="Одобрить заявку")
+@MvdRouter.post("/approve/{application_sid}", summary="Одобрить заявку")
 async def approve_application(
-        application_id: int,
+        application_sid: str,
         db: Session = Depends(get_db),
         current_mvd: User = Depends(get_current_mvd_user)
 ) -> Dict[str, Any]:
     """Одобрить заявку в МВД"""
     
+    application_uuid = safe_sid_to_uuid(application_sid)
     application = db.query(Application).options(
         joinedload(Application.user)
-    ).filter(Application.id == application_id).first()
+    ).filter(Application.id == application_uuid).first()
     
     if not application:
         raise HTTPException(status_code=404, detail="Заявка не найдена")
@@ -273,23 +274,24 @@ async def approve_application(
     
     return {
         "message": "Заявка одобрена",
-        "application_id": application_id,
+        "application_id": application_sid,
         "user_id": uuid_to_sid(application.user.id)
     }
 
 
-@MvdRouter.post("/reject/{application_id}", summary="Отклонить заявку")
+@MvdRouter.post("/reject/{application_sid}", summary="Отклонить заявку")
 async def reject_application(
-        application_id: int,
+        application_sid: str,
         reason: Optional[str] = Query(None, description="Причина отклонения"),
         db: Session = Depends(get_db),
         current_mvd: User = Depends(get_current_mvd_user)
 ) -> Dict[str, Any]:
     """Отклонить заявку в МВД"""
     
+    application_uuid = safe_sid_to_uuid(application_sid)
     application = db.query(Application).options(
         joinedload(Application.user)
-    ).filter(Application.id == application_id).first()
+    ).filter(Application.id == application_uuid).first()
     
     if not application:
         raise HTTPException(status_code=404, detail="Заявка не найдена")
@@ -328,7 +330,7 @@ async def reject_application(
 
     return {
         "message": "Заявка отклонена",
-        "application_id": application_id,
+        "application_id": application_sid,
         "user_id": uuid_to_sid(application.user.id),
         "reason": application.reason
     }

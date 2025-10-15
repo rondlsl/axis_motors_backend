@@ -8,7 +8,7 @@ from app.schemas.base import SidMixin
 
 class AdvanceBookingRequest(BaseModel):
     """Схема для запроса бронирования заранее"""
-    car_id: int = Field(..., description="ID автомобиля")
+    car_id: str = Field(..., description="ID автомобиля")
     rental_type: RentalType = Field(..., description="Тип аренды")
     duration: Optional[int] = Field(None, description="Продолжительность (обязательна для часов и дней)")
     scheduled_start_time: datetime = Field(..., description="Запланированное время начала аренды")
@@ -30,7 +30,7 @@ class BookingResponse(SidMixin):
 class BookingListResponse(SidMixin):
     """Схема ответа для списка бронирований"""
     id: str
-    car_id: int
+    car_id: str
     car_name: str
     car_plate_number: str
     rental_type: RentalType

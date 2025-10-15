@@ -74,7 +74,8 @@ async def approve_guarantor_request(
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    request = db.query(GuarantorRequest).filter(GuarantorRequest.id == request_id).first()
+    request_uuid = safe_sid_to_uuid(request_id)
+    request = db.query(GuarantorRequest).filter(GuarantorRequest.id == request_uuid).first()
     if not request:
         raise HTTPException(status_code=404, detail="Заявка не найдена")
     
@@ -124,7 +125,8 @@ async def reject_guarantor_request(
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    request = db.query(GuarantorRequest).filter(GuarantorRequest.id == request_id).first()
+    request_uuid = safe_sid_to_uuid(request_id)
+    request = db.query(GuarantorRequest).filter(GuarantorRequest.id == request_uuid).first()
     if not request:
         raise HTTPException(status_code=404, detail="Заявка не найдена")
     

@@ -1,4 +1,5 @@
 from datetime import datetime
+import uuid
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Enum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -10,7 +11,7 @@ class Notification(Base):
     __tablename__ = "notifications"
 
     # Уникальный айди уведомления
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     # Для какого пользователя
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     # Заголовок и тело
@@ -24,3 +25,8 @@ class Notification(Base):
     status = Column(Enum(NotificationStatus), nullable=True)
 
     user = relationship("User", back_populates="notifications")
+
+    @property
+    def sid(self) -> str:
+        from app.utils.short_id import uuid_to_sid
+        return uuid_to_sid(self.id)

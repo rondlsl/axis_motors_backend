@@ -104,7 +104,7 @@ def get_my_transactions(
     current_user: User = Depends(get_current_user),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    rental_sid: Optional[str] = Query(None),
+    rental_id: Optional[str] = Query(None),
     type: Optional[WalletTransactionType] = Query(None),
     date_from: Optional[datetime] = Query(None),
     date_to: Optional[datetime] = Query(None),
@@ -114,9 +114,9 @@ def get_my_transactions(
 ):
     q = db.query(WalletTransaction).filter(WalletTransaction.user_id == current_user.id)
 
-    if rental_sid is not None:
+    if rental_id is not None:
         try:
-            rental_uuid = safe_sid_to_uuid(rental_sid)
+            rental_uuid = safe_sid_to_uuid(rental_id)
             q = q.filter(WalletTransaction.related_rental_id == rental_uuid)
         except ValueError:
             raise HTTPException(status_code=400, detail="Неверный формат rental_id")
@@ -285,14 +285,14 @@ def export_my_transactions_legacy_path(
     return StreamingResponse(_iter_csv(), media_type="text/csv", headers=headers)
 
 
-@WalletRouter.get("/transactions/{transaction_sid}", response_model=WalletTransactionOut)
+@WalletRouter.get("/transactions/{transaction_id}", response_model=WalletTransactionOut)
 def get_transaction_detail(
-    transaction_sid: str,
+    transaction_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     try:
-        transaction_uuid = safe_sid_to_uuid(transaction_sid)
+        transaction_uuid = safe_sid_to_uuid(transaction_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Неверный формат ID")
     
@@ -323,9 +323,9 @@ def _ensure_admin(user: User):
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
 
-@WalletRouter.get("/transactions/by-user/{user_sid}", response_model=WalletTransactionsListOut)
+@WalletRouter.get("/transactions/by-user/{user_id}", response_model=WalletTransactionsListOut)
 def get_transactions_by_user(
-    user_sid: str,
+    user_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     limit: int = Query(100, ge=1, le=1000),
@@ -340,7 +340,7 @@ def get_transactions_by_user(
     _ensure_admin(current_user)
     
     try:
-        user_uuid = safe_sid_to_uuid(user_sid)
+        user_uuid = safe_sid_to_uuid(user_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Неверный формат ID")
     
@@ -373,9 +373,9 @@ def get_transactions_by_user(
     }
 
 
-@WalletRouter.get("/transactions/summary/by-user/{user_sid}", response_model=WalletTransactionsSummaryOut)
+@WalletRouter.get("/transactions/summary/by-user/{user_id}", response_model=WalletTransactionsSummaryOut)
 def get_transactions_summary_by_user(
-    user_sid: str,
+    user_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     type: Optional[WalletTransactionType] = Query(None),
@@ -388,7 +388,7 @@ def get_transactions_summary_by_user(
     _ensure_admin(current_user)
     
     try:
-        user_uuid = safe_sid_to_uuid(user_sid)
+        user_uuid = safe_sid_to_uuid(user_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Неверный формат ID")
     

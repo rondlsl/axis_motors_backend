@@ -135,7 +135,7 @@ def calculate_total_unavailable_seconds(intervals: List[Tuple[datetime, Optional
 
 
 def calculate_month_availability_minutes(
-    car_id: int,
+    car_id: str,
     year: int,
     month: int,
     owner_id: uuid.UUID,
@@ -184,10 +184,13 @@ def calculate_month_availability_minutes(
     calculation_end_naive = calculation_end.replace(tzinfo=None)
     month_start_naive = month_start.replace(tzinfo=None)
     
+    from app.utils.short_id import safe_sid_to_uuid
+    car_uuid = safe_sid_to_uuid(car_id)
+    
     all_rentals = (
         db.query(RentalHistory)
         .filter(
-            RentalHistory.car_id == car_id,
+            RentalHistory.car_id == car_uuid,
             RentalHistory.rental_status != RentalStatus.CANCELLED,
             RentalHistory.reservation_time < calculation_end_naive,
             or_(RentalHistory.end_time == None, RentalHistory.end_time > month_start_naive),

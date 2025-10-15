@@ -8,6 +8,7 @@ from app.models.notification_model import Notification
 from app.models.user_model import User
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
+from app.utils.short_id import uuid_to_sid, safe_sid_to_uuid
 from app.push.schemas import PushPayload, NotificationListResponse
 from app.push.utils import send_push_notification_async
 from app.push.enums import NotificationStatus
@@ -52,7 +53,7 @@ async def list_notifications(
     unread = sum(1 for n in notifs if not n.is_read)
 
     data = [{
-        "id": n.id,
+        "id": uuid_to_sid(n.id),
         "title": n.title,
         "body": n.body,
         "sent_at": n.sent_at.isoformat(),
@@ -65,17 +66,18 @@ async def list_notifications(
 
 @router.patch("/{notif_id}/read", response_model=dict)
 async def mark_as_read(
-        notif_id: int,
+        notif_id: str,
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
     """
     Помечает одно уведомление как прочитанное.
     """
+    notif_uuid = safe_sid_to_uuid(notif_id)
     notif = (
         db.query(Notification)
         .filter(
-            Notification.id == notif_id,
+            Notification.id == notif_uuid,
             Notification.user_id == current_user.id
         )
         .first()
@@ -85,4 +87,4 @@ async def mark_as_read(
 
     notif.is_read = True
     db.commit()
-    return {"success": True, "id": notif.id}
+    return {"success": True, "id": notif_id}

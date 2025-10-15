@@ -4,7 +4,7 @@ from typing import List
 import base64
 import os
 import uuid
-from app.utils.short_id import safe_sid_to_uuid
+from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
 from datetime import datetime
 
 from app.dependencies.database.database import get_db
@@ -89,12 +89,12 @@ async def upload_contract(
     db.refresh(contract_file)
     
     return ContractFileResponse(
-        id=contract_file.id,
+        id=uuid_to_sid(contract_file.id),
         contract_type=contract_file.contract_type,
         file_name=contract_file.file_name,
         is_active=contract_file.is_active,
         uploaded_at=contract_file.uploaded_at,
-        file_url=f"/contracts/download/{contract_file.id}"
+        file_url=f"/contracts/download/{uuid_to_sid(contract_file.id)}"
     )
 
 
@@ -202,12 +202,12 @@ async def get_available_contracts(
     
     return [
         ContractFileResponse(
-            id=contract.id,
+            id=uuid_to_sid(contract.id),
             contract_type=contract.contract_type,
             file_name=contract.file_name,
             is_active=contract.is_active,
             uploaded_at=contract.uploaded_at,
-            file_url=f"/contracts/download/{contract.id}"
+            file_url=f"/contracts/download/{uuid_to_sid(contract.id)}"
         )
         for contract in contracts
     ]
@@ -215,14 +215,15 @@ async def get_available_contracts(
 
 @ContractsRouter.get("/download/{contract_id}")
 async def download_contract(
-    contract_id: int,
+    contract_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     Скачать договор
     """
-    contract = db.query(ContractFile).filter(ContractFile.id == contract_id).first()
+    contract_uuid = safe_sid_to_uuid(contract_id)
+    contract = db.query(ContractFile).filter(ContractFile.id == contract_uuid).first()
     
     if not contract:
         raise HTTPException(
@@ -259,8 +260,9 @@ async def sign_contract(
     Подписать договор
     """
     # Проверяем существование договора
+    contract_file_uuid = safe_sid_to_uuid(sign_request.contract_file_id)
     contract_file = db.query(ContractFile).filter(
-        ContractFile.id == sign_request.contract_file_id,
+        ContractFile.id == contract_file_uuid,
         ContractFile.is_active == True
     ).first()
     
@@ -280,7 +282,7 @@ async def sign_contract(
     # Проверяем, не подписан ли уже этот договор
     existing_signature = db.query(UserContractSignature).filter(
         UserContractSignature.user_id == current_user.id,
-        UserContractSignature.contract_file_id == sign_request.contract_file_id,
+        UserContractSignature.contract_file_id == contract_file_uuid,
         UserContractSignature.rental_id == sign_request.rental_id,
         UserContractSignature.guarantor_relationship_id == sign_request.guarantor_relationship_id
     ).first()
@@ -324,9 +326,9 @@ async def sign_contract(
     # Создаем подпись
     signature = UserContractSignature(
         user_id=current_user.id,
-        contract_file_id=sign_request.contract_file_id,
+        contract_file_id=contract_file_uuid,
         rental_id=sign_request.rental_id,
-        guarantor_relationship_id=sign_request.guarantor_relationship_id,
+        guarantor_relationship_id=guarantor_rel_uuid if contract_file.contract_type in [ContractType.GUARANTOR_CONTRACT, ContractType.GUARANTOR_MAIN_CONTRACT] else None,
         digital_signature=current_user.digital_signature
     )
     
@@ -337,12 +339,12 @@ async def sign_contract(
     return UserSignatureResponse(
         id=signature.id,
         user_id=signature.user_id,
-        contract_file_id=signature.contract_file_id,
+        contract_file_id=uuid_to_sid(signature.contract_file_id),
         contract_type=contract_file.contract_type,
         digital_signature=signature.digital_signature,
         signed_at=signature.signed_at,
         rental_id=signature.rental_id,
-        guarantor_relationship_id=signature.guarantor_relationship_id
+        guarantor_relationship_id=uuid_to_sid(signature.guarantor_relationship_id) if signature.guarantor_relationship_id else None
     )
 
 
@@ -423,7 +425,7 @@ async def sign_contract_by_type(
         user_id=current_user.id,
         contract_file_id=contract_file.id,
         rental_id=sign_request.rental_id,
-        guarantor_relationship_id=sign_request.guarantor_relationship_id,
+        guarantor_relationship_id=guarantor_rel_uuid if contract_file.contract_type in [ContractType.GUARANTOR_CONTRACT, ContractType.GUARANTOR_MAIN_CONTRACT] else None,
         digital_signature=current_user.digital_signature
     )
     
@@ -434,12 +436,12 @@ async def sign_contract_by_type(
     return UserSignatureResponse(
         id=signature.id,
         user_id=signature.user_id,
-        contract_file_id=signature.contract_file_id,
+        contract_file_id=uuid_to_sid(signature.contract_file_id),
         contract_type=contract_file.contract_type,
         digital_signature=signature.digital_signature,
         signed_at=signature.signed_at,
         rental_id=signature.rental_id,
-        guarantor_relationship_id=signature.guarantor_relationship_id
+        guarantor_relationship_id=uuid_to_sid(signature.guarantor_relationship_id) if signature.guarantor_relationship_id else None
     )
 
 
@@ -463,14 +465,14 @@ async def get_my_contracts(
         contract_file = db.query(ContractFile).filter(ContractFile.id == sig.contract_file_id).first()
         
         response = UserSignatureResponse(
-            id=sig.id,
-            user_id=sig.user_id,
-            contract_file_id=sig.contract_file_id,
+            id=uuid_to_sid(sig.id),
+            user_id=uuid_to_sid(sig.user_id),
+            contract_file_id=uuid_to_sid(sig.contract_file_id),
             contract_type=contract_file.contract_type if contract_file else None,
             digital_signature=sig.digital_signature,
             signed_at=sig.signed_at,
-            rental_id=sig.rental_id,
-            guarantor_relationship_id=sig.guarantor_relationship_id
+            rental_id=uuid_to_sid(sig.rental_id) if sig.rental_id else None,
+            guarantor_relationship_id=uuid_to_sid(sig.guarantor_relationship_id) if sig.guarantor_relationship_id else None
         )
         
         if contract_file:
@@ -542,7 +544,7 @@ async def get_contract_requirements(
     )
     
     return ContractRequirements(
-        user_id=current_user.id,
+        user_id=uuid_to_sid(current_user.id),
         user_agreement_signed=user_agreement_signed,
         main_contract_signed=main_contract_signed,
         appendix_1_signed=appendix_1_signed,
@@ -556,16 +558,16 @@ async def get_contract_requirements(
     )
 
 
-@ContractsRouter.get("/rental/{rental_sid}/status", response_model=RentalContractStatus)
+@ContractsRouter.get("/rental/{rental_id}/status", response_model=RentalContractStatus)
 async def get_rental_contract_status(
-    rental_sid: str,
+    rental_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     Проверить статус договоров для конкретной аренды
     """
-    rental_uuid = safe_sid_to_uuid(rental_sid)
+    rental_uuid = safe_sid_to_uuid(rental_id)
     rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
     
     if not rental:
@@ -597,7 +599,7 @@ async def get_rental_contract_status(
                 appendix_7_end_signed = True
     
     return RentalContractStatus(
-        rental_id=rental_uuid,
+        rental_id=uuid_to_sid(rental_uuid),
         appendix_7_start_signed=appendix_7_start_signed,
         appendix_7_end_signed=appendix_7_end_signed
     )
@@ -605,14 +607,15 @@ async def get_rental_contract_status(
 
 @ContractsRouter.get("/guarantor/{guarantor_relationship_id}/status", response_model=GuarantorContractStatus)
 async def get_guarantor_contract_status(
-    guarantor_relationship_id: int,
+    guarantor_relationship_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     Проверить статус договоров гаранта
     """
-    guarantor_rel = db.query(Guarantor).filter(Guarantor.id == guarantor_relationship_id).first()
+    guarantor_rel_uuid = safe_sid_to_uuid(guarantor_relationship_id)
+    guarantor_rel = db.query(Guarantor).filter(Guarantor.id == guarantor_rel_uuid).first()
     
     if not guarantor_rel:
         raise HTTPException(
@@ -628,7 +631,7 @@ async def get_guarantor_contract_status(
     
     signatures = db.query(UserContractSignature).join(ContractFile).filter(
         UserContractSignature.user_id == current_user.id,
-        UserContractSignature.guarantor_relationship_id == guarantor_relationship_id
+        UserContractSignature.guarantor_relationship_id == guarantor_rel_uuid
     ).all()
     
     guarantor_contract_signed = False
