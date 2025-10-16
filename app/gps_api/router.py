@@ -818,7 +818,11 @@ async def get_vehicle_telemetry(
     
     # Получаем данные от Глонассофт
     try:
-        vehicle_imei = getattr(car, 'imei', None) or getattr(car, 'vehicle_imei', None)
+        vehicle_imei = (
+            getattr(car, 'gps_imei', None)
+            or getattr(car, 'imei', None)
+            or getattr(car, 'vehicle_imei', None)
+        )
         
         if not vehicle_imei:
             vehicle_imei_map = {
