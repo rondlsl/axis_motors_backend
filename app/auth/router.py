@@ -1143,7 +1143,23 @@ async def upload_documents(
         current_user.first_name = document_data.first_name
         current_user.last_name = document_data.last_name
         current_user.birth_date = datetime.strptime(document_data.birth_date, '%Y-%m-%d')
-        current_user.email = email
+        normalized_email = (email or "").strip().lower()
+        if normalized_email:
+            existing_with_email = (
+                db.query(User)
+                .filter(
+                    User.email == normalized_email,
+                    User.id != current_user.id,
+                    User.is_active == True
+                )
+                .first()
+            )
+            if existing_with_email:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Этот email уже используется другим пользователем"
+                )
+        current_user.email = normalized_email or None
         current_user.is_citizen_kz = document_data.is_citizen_kz
         current_user.consent_to_data_processing = consent_to_data_processing
         current_user.contract_read = contract_read
