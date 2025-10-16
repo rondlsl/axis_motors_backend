@@ -189,7 +189,7 @@ def get_my_cars(
     for car in cars_with_history:
         # Рассчитываем доступные минуты для текущего месяца
         available_minutes = calculate_month_availability_minutes(
-            car_id=car.id,
+            car_id=uuid_to_sid(car.id),
             year=current_year,
             month=current_month,
             owner_id=current_user.id,
@@ -483,7 +483,7 @@ def get_trips_by_month(
         for i, row in enumerate(available_months_query):
             # Рассчитываем доступные минуты для каждого месяца
             available_minutes = calculate_month_availability_minutes(
-                car_id=vehicle_uuid,
+                car_id=uuid_to_sid(vehicle_uuid),
                 year=int(row.year),
                 month=int(row.month),
                 owner_id=current_user.id,
@@ -521,7 +521,7 @@ def get_trips_by_month(
         
         # Заработок за текущий месяц и расчет доступных минут
         current_month_available_minutes = calculate_month_availability_minutes(
-            car_id=vehicle_uuid,
+            car_id=uuid_to_sid(vehicle_uuid),
             year=target_year,
             month=target_month,
             owner_id=current_user.id,
