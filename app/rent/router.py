@@ -1,4 +1,5 @@
 from math import floor, ceil
+import asyncio
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, status, Query
 from pydantic import BaseModel, constr, Field, conint
 from sqlalchemy.orm import Session
@@ -1115,7 +1116,9 @@ async def upload_photos_before(
                 if car.plate_number == '666AZV02':
                     # MERCEDES sequence: give_key -> open -> take_key; engine remains locked
                     await send_give_key(car.gps_imei, auth_token)
+                    await asyncio.sleep(1.0)
                     await send_open(car.gps_imei, auth_token)
+                    await asyncio.sleep(1.0)
                     await send_take_key(car.gps_imei, auth_token)
                 else:
                     # Default behavior: just open locks
@@ -1172,6 +1175,7 @@ async def upload_photos_before_interior(
                 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
                 auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
                 await send_give_key(car.gps_imei, auth_token)
+                await asyncio.sleep(1.0)
                 await send_unlock_engine(car.gps_imei, auth_token)
         except Exception as e:
             print(f"Ошибка выдачи ключа/разблокировки двигателя после загрузки интерьера: {e}")
