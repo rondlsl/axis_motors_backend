@@ -297,9 +297,14 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
         alarm_active = alarm_unreg.lower() == "true"
     
     ignition_on = False
-    ignition_unreg = extract_first_match(unregs, ["CanSafetyFlags_ignition"])
-    if ignition_unreg:
-        ignition_on = ignition_unreg.lower() == "true"
+
+    ignition_reg = extract_first_match(regs, ["Зажигание (can45)", "Зажигание"])  
+    if ignition_reg:
+        ignition_on = ignition_reg.lower().startswith("вкл")
+    else:
+        ignition_unreg = extract_first_match(unregs, ["CanSafetyFlags_ignition"])
+        if ignition_unreg:
+            ignition_on = ignition_unreg.lower() == "true"
     
     # Связь
     gsm_signal = None

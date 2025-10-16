@@ -15,16 +15,15 @@ from app.models.history_model import RentalHistory
 from app.models.guarantor_model import Guarantor
 from app.contracts.schemas import (
     ContractFileUpload,
-    ContractUploadByType,
     ContractFileResponse,
     SignContractRequest,
-    SignContractByTypeRequest,
     UserSignatureResponse,
     UserContractsResponse,
     ContractRequirements,
     RentalContractStatus,
     GuarantorContractStatus
 )
+from app.contracts.utils import decode_file_content_and_extension
 
 ContractsRouter = APIRouter(prefix="/contracts", tags=["Contracts"])
 
@@ -48,23 +47,12 @@ async def upload_contract(
     contracts_dir = "uploads/contracts"
     os.makedirs(contracts_dir, exist_ok=True)
     
-    # Обрабатываем base64
-    file_content = contract_data.file_content
-    if file_content.startswith("data:"):
-        # Убираем data URL prefix
-        file_content = file_content.split(",")[1]
-    
-    # Декодируем base64
     try:
-        file_bytes = base64.b64decode(file_content)
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Ошибка декодирования файла: {str(e)}"
-        )
-    
+        file_bytes, file_extension = decode_file_content_and_extension(contract_data.file_content)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
     # Генерируем имя файла
-    file_extension = os.path.splitext(contract_data.file_name)[1]
     unique_filename = f"{contract_data.contract_type.value}_{uuid.uuid4()}{file_extension}"
     file_path = os.path.join(contracts_dir, unique_filename)
     
@@ -78,11 +66,10 @@ async def upload_contract(
         ContractFile.is_active == True
     ).update({"is_active": False})
     
-    # Создаем запись в БД
     contract_file = ContractFile(
         contract_type=contract_data.contract_type,
         file_path=file_path,
-        file_name=contract_data.file_name
+        file_name=unique_filename
     )
     db.add(contract_file)
     db.commit()
@@ -98,90 +85,6 @@ async def upload_contract(
     )
 
 
-@ContractsRouter.post("/upload-by-type", response_model=dict)
-async def upload_contract_by_type(
-    contract_data: ContractUploadByType,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Загрузить договор по типу (только для админа)
-    """
-    if current_user.role != UserRole.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Только администратор может загружать договоры"
-        )
-    
-    try:
-        # Обрабатываем data URL или обычный base64
-        file_content_str = contract_data.file_content
-        file_extension = ".pdf"  # По умолчанию
-        
-        if file_content_str.startswith("data:"):
-            # Обрабатываем data URL: data:application/pdf;base64,...
-            header, base64_data = file_content_str.split(",", 1)
-            
-            # Извлекаем MIME type для определения расширения
-            if "application/pdf" in header:
-                file_extension = ".pdf"
-            elif "application/msword" in header or "application/vnd.openxmlformats-officedocument.wordprocessingml.document" in header:
-                file_extension = ".docx"
-            elif "text/plain" in header:
-                file_extension = ".txt"
-            elif "image/jpeg" in header:
-                file_extension = ".jpg"
-            elif "image/png" in header:
-                file_extension = ".png"
-            elif "image/gif" in header:
-                file_extension = ".gif"
-            else:
-                file_extension = ".pdf"  # По умолчанию
-            
-            file_content = base64.b64decode(base64_data)
-        else:
-            # Обычный base64
-            file_content = base64.b64decode(file_content_str)
-        
-        # Создаем директорию для договоров если её нет
-        contracts_dir = "uploads/contracts"
-        os.makedirs(contracts_dir, exist_ok=True)
-        
-        # Генерируем случайное имя файла с правильным расширением
-        unique_filename = f"{contract_data.contract_type.value}_{uuid.uuid4()}{file_extension}"
-        file_path = os.path.join(contracts_dir, unique_filename)
-        
-        # Сохраняем файл
-        with open(file_path, "wb") as f:
-            f.write(file_content)
-        
-        # Деактивируем старые договоры этого типа
-        old_contracts = db.query(ContractFile).filter(
-            ContractFile.contract_type == contract_data.contract_type,
-            ContractFile.is_active == True
-        ).all()
-    
-        for old_contract in old_contracts:
-            old_contract.is_active = False
-        
-        # Создаем новую запись в БД
-        new_contract = ContractFile(
-            contract_type=contract_data.contract_type,
-            file_name=unique_filename,
-            file_path=file_path,
-            is_active=True
-        )
-        
-        db.add(new_contract)
-        db.commit()
-    
-        return {"message": f"Договор {contract_data.contract_type.value} успешно загружен"}
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Ошибка при загрузке файла: {str(e)}"
-        )
 
 
 @ContractsRouter.get("/available", response_model=List[ContractFileResponse])
@@ -292,6 +195,21 @@ async def sign_contract(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Этот договор уже подписан"
         )
+
+    # 2) Проверка: уже подписан активный файл того же типа в нужном контексте
+    same_type_active = db.query(UserContractSignature).join(ContractFile).filter(
+        UserContractSignature.user_id == current_user.id,
+        ContractFile.contract_type == contract_file.contract_type,
+        ContractFile.is_active == True,
+        UserContractSignature.rental_id == sign_request.rental_id,
+        UserContractSignature.guarantor_relationship_id == sign_request.guarantor_relationship_id
+    ).first()
+
+    if same_type_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Этот тип договора уже подписан"
+        )
     
     # Валидация для договоров аренды
     if contract_file.contract_type in [ContractType.APPENDIX_7_START, ContractType.APPENDIX_7_END]:
@@ -349,102 +267,6 @@ async def sign_contract(
     )
 
 
-@ContractsRouter.post("/sign-by-type", response_model=UserSignatureResponse)
-async def sign_contract_by_type(
-    sign_request: SignContractByTypeRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Подписать договор по типу (автоматически найдет активный файл договора)
-    """
-    # Находим активный файл договора указанного типа
-    contract_file = db.query(ContractFile).filter(
-        ContractFile.contract_type == sign_request.contract_type,
-        ContractFile.is_active == True
-    ).first()
-    
-    if not contract_file:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Активный договор типа {sign_request.contract_type.value} не найден"
-        )
-    
-    # Проверяем, что у пользователя есть цифровая подпись
-    if not current_user.digital_signature:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="У пользователя отсутствует цифровая подпись"
-        )
-    
-    # Проверяем, не подписан ли уже этот договор
-    existing_signature = db.query(UserContractSignature).filter(
-        UserContractSignature.user_id == current_user.id,
-        UserContractSignature.contract_file_id == contract_file.id,
-        UserContractSignature.rental_id == sign_request.rental_id,
-        UserContractSignature.guarantor_relationship_id == sign_request.guarantor_relationship_id
-    ).first()
-    
-    if existing_signature:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Этот договор уже подписан"
-        )
-    
-    # Валидация для договоров аренды
-    if contract_file.contract_type in [ContractType.APPENDIX_7_START, ContractType.APPENDIX_7_END]:
-        if not sign_request.rental_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Для договоров аренды необходимо указать rental_id"
-            )
-        
-        rental = db.query(RentalHistory).filter(RentalHistory.id == sign_request.rental_id).first()
-        if not rental or rental.user_id != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Аренда не найдена или не принадлежит пользователю"
-            )
-    
-    # Валидация для договоров гаранта
-    if contract_file.contract_type in [ContractType.GUARANTOR_CONTRACT, ContractType.GUARANTOR_MAIN_CONTRACT]:
-        if not sign_request.guarantor_relationship_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Для договоров гаранта необходимо указать guarantor_relationship_id"
-            )
-        
-        guarantor_rel_uuid = safe_sid_to_uuid(sign_request.guarantor_relationship_id)
-        guarantor_rel = db.query(Guarantor).filter(Guarantor.id == guarantor_rel_uuid).first()
-        if not guarantor_rel or guarantor_rel.guarantor_id != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Связь гарант-клиент не найдена или не принадлежит пользователю"
-            )
-    
-    # Создаем подпись
-    signature = UserContractSignature(
-        user_id=current_user.id,
-        contract_file_id=contract_file.id,
-        rental_id=sign_request.rental_id,
-        guarantor_relationship_id=guarantor_rel_uuid if contract_file.contract_type in [ContractType.GUARANTOR_CONTRACT, ContractType.GUARANTOR_MAIN_CONTRACT] else None,
-        digital_signature=current_user.digital_signature
-    )
-    
-    db.add(signature)
-    db.commit()
-    db.refresh(signature)
-    
-    return UserSignatureResponse(
-        id=signature.id,
-        user_id=signature.user_id,
-        contract_file_id=uuid_to_sid(signature.contract_file_id),
-        contract_type=contract_file.contract_type,
-        digital_signature=signature.digital_signature,
-        signed_at=signature.signed_at,
-        rental_id=signature.rental_id,
-        guarantor_relationship_id=uuid_to_sid(signature.guarantor_relationship_id) if signature.guarantor_relationship_id else None
-    )
 
 
 @ContractsRouter.get("/my-contracts", response_model=UserContractsResponse)

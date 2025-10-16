@@ -1047,17 +1047,16 @@ async def start_rental(
         db.commit()
 
         # Автоматическая разблокировка двигателя при начале аренды
+        # Исключение: для автомобиля с plate_number == '666AZV02' не разблокируем на этом этапе
         try:
-            from app.gps_api.utils.auth_api import get_auth_token
-            from app.gps_api.utils.car_data import send_unlock_engine
-            
-            # Получаем токен для GPS API
-            from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
-            auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-            
-            # Разблокируем двигатель
-            await send_unlock_engine(car.gps_imei, auth_token)
-            print(f"Двигатель автомобиля {car.name} разблокирован при начале аренды")
+            car = db.query(Car).get(rental.car_id)
+            if car and car.plate_number != '666AZV02':
+                from app.gps_api.utils.auth_api import get_auth_token
+                from app.gps_api.utils.car_data import send_unlock_engine
+                from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
+                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                await send_unlock_engine(car.gps_imei, auth_token)
+                print(f"Двигатель автомобиля {car.name} разблокирован при начале аренды")
         except Exception as e:
             print(f"Ошибка разблокировки двигателя при начале аренды: {e}")
 
@@ -1109,11 +1108,18 @@ async def upload_photos_before(
             car = db.query(Car).get(rental.car_id)
             if car and car.gps_imei:
                 from app.gps_api.utils.auth_api import get_auth_token
-                from app.gps_api.utils.car_data import send_open
+                from app.gps_api.utils.car_data import send_open, send_give_key, send_take_key
                 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
                 
                 auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-                open_result = await send_open(car.gps_imei, auth_token)
+                if car.plate_number == '666AZV02':
+                    # MERCEDES sequence: give_key -> open -> take_key; engine remains locked
+                    await send_give_key(car.gps_imei, auth_token)
+                    await send_open(car.gps_imei, auth_token)
+                    await send_take_key(car.gps_imei, auth_token)
+                else:
+                    # Default behavior: just open locks
+                    await send_open(car.gps_imei, auth_token)
         except Exception as e:
             print(f"Ошибка открытия замков после загрузки фото: {e}")
         
@@ -1157,6 +1163,18 @@ async def upload_photos_before_interior(
             urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/interior/"))
         rental.photos_before = urls
         db.commit()
+        # MERCEDES: after interior photos, give key and unlock engine
+        try:
+            car = db.query(Car).get(rental.car_id)
+            if car and car.gps_imei and car.plate_number == '666AZV02':
+                from app.gps_api.utils.auth_api import get_auth_token
+                from app.gps_api.utils.car_data import send_give_key, send_unlock_engine
+                from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
+                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                await send_give_key(car.gps_imei, auth_token)
+                await send_unlock_engine(car.gps_imei, auth_token)
+        except Exception as e:
+            print(f"Ошибка выдачи ключа/разблокировки двигателя после загрузки интерьера: {e}")
         return {"message": "Photos before (interior) uploaded", "photo_count": len(interior_photos)}
     except Exception:
         db.rollback()
@@ -1213,6 +1231,17 @@ async def upload_photos_after(
     if vehicle_status.get("errors"):
         error_message = "Перед завершением аренды:\n" + "\n".join(vehicle_status["errors"])
         raise HTTPException(status_code=400, detail=error_message)
+    
+    # Доп. проверка для MERCEDES: зажигание должно быть выключено
+    try:
+        if car and car.plate_number == '666AZV02':
+            vehicle = vehicle_status.get("vehicle") or {}
+            if vehicle.get("is_ignition_on", False):
+                raise HTTPException(status_code=400, detail="Для завершения аренды пожалуйста выключите зажигание")
+    except HTTPException:
+        raise
+    except Exception:
+        pass
 
     try:
         # Сохраняем фотографии
@@ -1224,16 +1253,17 @@ async def upload_photos_after(
         rental.photos_after = urls
         db.commit()
         
-        # Автоматическая блокировка и закрытие замков после успешной загрузки фото
+        # После загрузки фото: забрать ключ, заблокировать двигатель, закрыть замки
         try:
             car = db.query(Car).get(rental.car_id)
             if car and car.gps_imei:
                 auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-                
-                # Закрываем замки, блокируем двигатель и забираем ключ
-                lock_result = await auto_lock_vehicle_after_rental(car.gps_imei, auth_token)
+                from app.gps_api.utils.car_data import send_take_key, send_lock_engine, send_close
+                await send_take_key(car.gps_imei, auth_token)
+                await send_lock_engine(car.gps_imei, auth_token)
+                await send_close(car.gps_imei, auth_token)
         except Exception as e:
-            print(f"Ошибка блокировки/закрытия после загрузки фото: {e}")
+            print(f"Ошибка последовательности завершения аренды (take_key/lock_engine/close): {e}")
         
         return {"message": "Photos after (selfie+interior) uploaded", "photo_count": len(interior_photos) + 1}
     except Exception:

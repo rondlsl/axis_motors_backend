@@ -13,14 +13,6 @@ class ContractFileUpload(BaseModel):
     """Схема для загрузки договора (админ)"""
     contract_type: ContractType = Field(..., description="Тип договора")
     file_content: str = Field(..., description="Содержимое файла в base64 или data URL")
-    file_name: str = Field(..., description="Название файла", example="user_agreement_v1.pdf")
-
-
-class ContractUploadByType(BaseModel):
-    """Схема для загрузки договора по типу"""
-    contract_type: ContractType = Field(..., description="Тип договора")
-    file_content: str = Field(..., description="Data URL файла (data:application/pdf;base64,...) или base64")
-
 
 class ContractFileResponse(BaseModel):
     """Схема ответа с информацией о договоре"""
