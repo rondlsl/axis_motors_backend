@@ -801,7 +801,12 @@ async def get_vehicle_telemetry(
     
     Если данных нет — возвращает ошибку "Нет данных"
     """
-    car_uuid = safe_sid_to_uuid(car_id)
+    try:
+        car_uuid = safe_sid_to_uuid(car_id)
+        logger.info(f"[TELEMETRY] SID->UUID: {car_id} -> {car_uuid}")
+    except Exception as e:
+        logger.warning(f"[TELEMETRY] Failed to convert SID to UUID: {car_id} ({e})")
+        raise
     # Проверяем права доступа - только для админов
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Только администраторы могут получать телеметрию")
