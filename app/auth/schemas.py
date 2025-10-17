@@ -27,6 +27,7 @@ class UserRegistrationInfoResponse(SidMixin):
     last_name: Optional[str] = Field(None, description="Фамилия пользователя")
     middle_name: Optional[str] = Field(None, description="Отчество пользователя")
     digital_signature: Optional[str] = Field(None, description="Цифровая подпись пользователя")
+    upload_document_at: Optional[str] = Field(None, description="Время загрузки документов (ISO format)")
     message: str = Field(..., description="Сообщение для пользователя")
 
 

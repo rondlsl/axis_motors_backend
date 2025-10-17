@@ -74,6 +74,7 @@ class User(Base):
     # Дополнительные поля для админ-панели
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     last_activity_at = Column(DateTime, nullable=True)
+    upload_document_at = Column(DateTime, nullable=True) 
     admin_comment = Column(String, nullable=True)  # Комментарий админа/поддержки/механика
 
     rental_history = relationship("RentalHistory", back_populates="user",

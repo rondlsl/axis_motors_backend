@@ -200,7 +200,9 @@ def get_my_cars(
             id=uuid_to_sid(car.id),
             name=car.name,
             plate_number=car.plate_number,
-            available_minutes=available_minutes
+            available_minutes=available_minutes,
+            vin=car.vin,
+            color=car.color
         ))
 
     return MyAutosResponse(cars=cars_response)

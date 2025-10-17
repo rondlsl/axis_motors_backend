@@ -115,6 +115,8 @@ async def get_car_details(
         available_minutes=available_minutes,
         gps_id=car.gps_id,
         gps_imei=car.gps_imei,
+        vin=car.vin,
+        color=car.color,
     )
 
 
@@ -165,7 +167,9 @@ async def get_all_cars_for_admin(
             "plate": car.plate_number,
             "photos": car.photos or [],
             "course": car.course or 0,
-            "user": current_renter_details
+            "user": current_renter_details,
+            "vin": car.vin,
+            "color": car.color
         }
         vehicles_data.append(vehicle_data)
     
@@ -867,6 +871,8 @@ async def get_cars_map(
             course=car.course,
             photos=car.photos or [],
             current_renter=renter_info,
+            vin=car.vin,
+            color=car.color,
         ))
 
     return CarMapResponseSchema(cars=items, total_count=len(items))
@@ -943,6 +949,8 @@ async def get_cars_list(
             owner_name=owner_name,
             current_renter_name=current_renter_name,
             photos=car.photos or [],
+            vin=car.vin,
+            color=car.color,
         ))
 
     return CarListResponseSchema(

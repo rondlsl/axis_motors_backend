@@ -199,6 +199,8 @@ class OwnerCarListItemSchema(SidMixin):
     earnings_current_month: float = 0.0
     earnings_total: float = 0.0
     photos: Optional[List[str]] = None
+    vin: Optional[str] = None
+    color: Optional[str] = None
 
 
 class UserEditSchema(BaseModel):

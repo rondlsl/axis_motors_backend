@@ -11,6 +11,8 @@ class CarOwnerResponse(BaseModel):
     name: str = Field(..., description="Название автомобиля", example="HAVAL F7x")
     plate_number: str = Field(..., description="Государственный номер", example="422ABK02")
     available_minutes: int = Field(..., description="Доступные минуты в текущем месяце", example=38400)
+    vin: Optional[str] = Field(None, description="VIN номер автомобиля", example="1HGBH41JXMN109186")
+    color: Optional[str] = Field(None, description="Цвет автомобиля", example="Красный")
     
     class Config:
         from_attributes = True

@@ -77,6 +77,8 @@ def get_delivery_vehicles(
             "year": car.year,
             "photos": car.photos,
             "status": car.status,
+            "vin": car.vin,
+            "color": car.color,
             "delivery_coordinates": {
                 "latitude": rental.delivery_latitude,
                 "longitude": rental.delivery_longitude,

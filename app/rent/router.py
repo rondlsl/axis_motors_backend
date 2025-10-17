@@ -201,6 +201,9 @@ def get_trip_history(
             # Фото клиента: до/после
             "client_photos_before": rental.photos_before or [],
             "client_photos_after": rental.photos_after or [],
+            # Данные автомобиля
+            "car_vin": car.vin,
+            "car_color": car.color,
             # Фото механика при осмотре: до/после
             "mechanic_photos_before": rental.mechanic_photos_before or [],
             "mechanic_photos_after": rental.mechanic_photos_after or [],
@@ -292,6 +295,8 @@ async def get_trip_history_detail(
             "auto_class": car.auto_class,
             "year": car.year,
             "status": car.status,
+            "vin": car.vin,
+            "color": car.color,
         }
 
     rental_detail["action_history"] = [
@@ -2082,7 +2087,9 @@ async def get_my_bookings(
             "delivery_fee": rental.delivery_fee,
             "reservation_time": rental.reservation_time,
             "is_advance_booking": rental.is_advance_booking == "true",
-            "car_photos": car.photos
+            "car_photos": car.photos,
+            "car_vin": car.vin,
+            "car_color": car.color
         }
         
         converted_data = convert_uuid_response_to_sid(booking_data, ["id"])
@@ -2189,7 +2196,9 @@ async def get_available_cars_for_booking(
             "body_type": car.body_type,
             "transmission_type": car.transmission_type,
             "photos": car.photos,
-            "description": car.description
+            "description": car.description,
+            "vin": car.vin,
+            "color": car.color
         })
 
     return {

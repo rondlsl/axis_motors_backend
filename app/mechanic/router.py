@@ -384,7 +384,9 @@ def get_in_use_vehicles(
                 "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
                 "status": car.status,
                 "open_price": get_open_price(car),
-                "owned_car": False
+                "owned_car": False,
+                "vin": car.vin,
+                "color": car.color
             }
 
             # --- данные арендатора + селфи перед арендой -------------------
@@ -571,7 +573,9 @@ def search_vehicles(
                 "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
                 "status": car.status,
                 "open_price": get_open_price(car),
-                "owned_car": False
+                "owned_car": False,
+                "vin": car.vin,
+                "color": car.color
             }
             if car.status == CarStatus.IN_USE and car.current_renter_id:
                 current_renter = db.query(User).filter(User.id == car.current_renter_id).first()

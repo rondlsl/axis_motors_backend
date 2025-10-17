@@ -79,6 +79,8 @@ def create_cars(db: Session, owner: User) -> None:
             "course": 90,
             "description": "Машина в идеальном состоянии.",
             "photos": get_car_photos(1),
+            "vin": "1HGBH41JXMN109186",
+            "color": "Белый",
         },
         {
             "name": "MB CLA45s",
@@ -99,6 +101,8 @@ def create_cars(db: Session, owner: User) -> None:
             "auto_class": CarAutoClass.B,
             "description": "Разбита левая передняя фара. Разбит задний правый фонарь. Вмятина и царапина на правой задней двери.",
             "photos": get_car_photos(2),
+            "vin": "WDD2050461A123456",
+            "color": "Серый",
         },
         {
             "name": "Hongqi e-qm5",
@@ -119,6 +123,8 @@ def create_cars(db: Session, owner: User) -> None:
             "course": 0,
             "description": "Электромобиль в отличном состоянии.",
             "photos": get_car_photos(3),
+            "vin": "LSGBF53E8EH123456",
+            "color": "Черный",
         },
     ]
 
@@ -238,7 +244,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.C,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,  # Занят - не отображается
-            description="Роскошный седан Bentley в отличном состоянии."
+            description="Роскошный седан Bentley в отличном состоянии.",
+            vin="1HGBH41JXMN109186",
+            color="Черный"
         )
         car4.photos = get_car_photos(4)
         mock_cars_to_create.append(("Bentley Flying Spur", car4))
@@ -266,7 +274,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.A,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,
-            description="Просторный внедорожник Hyundai для всей семьи."
+            description="Просторный внедорожник Hyundai для всей семьи.",
+            vin="KM8J33CA2LU123456",
+            color="Белый"
         )
         car5.photos = get_car_photos(5)
         mock_cars_to_create.append(("Hyundai Palisade", car5))
@@ -294,7 +304,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.B,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,
-            description="Спортивный седан Mercedes с мощным двигателем."
+            description="Спортивный седан Mercedes с мощным двигателем.",
+            vin="WDD2050461A654321",
+            color="Красный"
         )
         car6.photos = get_car_photos(6)
         mock_cars_to_create.append(("Mercedes CLA 45s", car6))
@@ -322,7 +334,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.A,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,
-            description="Современный электромобиль ZEEKR с передовыми технологиями."
+            description="Современный электромобиль ZEEKR с передовыми технологиями.",
+            vin="LSGBF53E8EH789012",
+            color="Синий"
         )
         car7.photos = get_car_photos(7)
         mock_cars_to_create.append(("ZEEKR 001", car7))
@@ -350,7 +364,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.A,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,
-            description="Новейший электромобиль Hongqi 2025 года."
+            description="Новейший электромобиль Hongqi 2025 года.",
+            vin="LSGBF53E8EH345678",
+            color="Серый"
         )
         car8.photos = get_car_photos(8)
         mock_cars_to_create.append(("Hongqi E-QM5", car8))
@@ -378,7 +394,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.A,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,
-            description="Надежный внедорожник Toyota для любых дорог."
+            description="Надежный внедорожник Toyota для любых дорог.",
+            vin="JTEBU5JR2M5123456",
+            color="Белый"
         )
         car9.photos = get_car_photos(9)
         mock_cars_to_create.append(("Toyota Land Cruiser Prado", car9))
@@ -406,7 +424,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.A,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,
-            description="Премиальный внедорожник Range Rover Sport."
+            description="Премиальный внедорожник Range Rover Sport.",
+            vin="SALGS2SE6HA123456",
+            color="Черный"
         )
         car10.photos = get_car_photos(10)
         mock_cars_to_create.append(("Range Rover Sport", car10))
@@ -434,7 +454,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.B,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,
-            description="Спортивный седан Mercedes e63s."
+            description="Спортивный седан Mercedes e63s.",
+            vin="WDD2050461A987654",
+            color="Серый"
         )
         car11.photos = get_car_photos(11)
         mock_cars_to_create.append(("Mercedes e63s", car11))
@@ -462,7 +484,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.A,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,
-            description="Надежный седан Toyota Camry."
+            description="Надежный седан Toyota Camry.",
+            vin="JTNKARFU0L3123456",
+            color="Серый"
         )
         car12.photos = get_car_photos(12)
         mock_cars_to_create.append(("Toyota Camry 2020", car12))
@@ -490,7 +514,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.B,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,
-            description="Спортивный седан BMW m5."
+            description="Спортивный седан BMW m5.",
+            vin="WBSFV9C50LC123456",
+            color="Черный"
         )
         car13.photos = get_car_photos(13)
         mock_cars_to_create.append(("BMW m5", car13))
@@ -518,7 +544,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.A,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,
-            description="Просторный кроссовер Toyota Highlander."
+            description="Просторный кроссовер Toyota Highlander.",
+            vin="JTEBU5JR2M5234567",
+            color="Белый"
         )
         car14.photos = get_car_photos(14)
         mock_cars_to_create.append(("Toyota Highlander", car14))
@@ -546,7 +574,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.B,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,
-            description="Премиальный седан Lexus es 350."
+            description="Премиальный седан Lexus es 350.",
+            vin="JTHBE1D25N5123456",
+            color="Серый"
         )
         car15.photos = get_car_photos(15)
         mock_cars_to_create.append(("Lexus es 350", car15))
@@ -574,7 +604,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.A,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,
-            description="Новейший седан Toyota Camry 2024."
+            description="Новейший седан Toyota Camry 2024.",
+            vin="JTNKARFU0L4123456",
+            color="Белый"
         )
         car16.photos = get_car_photos(16)
         mock_cars_to_create.append(("Toyota Camry 2024", car16))
@@ -602,7 +634,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.B,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,
-            description="Спортивный седан BMW 540i."
+            description="Спортивный седан BMW 540i.",
+            vin="WBAFR9C50LC123456",
+            color="Серый"
         )
         car17.photos = get_car_photos(17)
         mock_cars_to_create.append(("BMW 540i 2018", car17))
@@ -630,7 +664,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.A,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,
-            description="Гибридный кроссовер Lexus rx 350h."
+            description="Гибридный кроссовер Lexus rx 350h.",
+            vin="JTHBE1D25N5234567",
+            color="Белый"
         )
         car18.photos = get_car_photos(18)
         mock_cars_to_create.append(("Lexus rx 350h", car18))
@@ -658,7 +694,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.A,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,
-            description="Компактный седан Changan uni-v."
+            description="Компактный седан Changan uni-v.",
+            vin="LSGBF53E8EH567890",
+            color="Красный"
         )
         car19.photos = get_car_photos(19)
         mock_cars_to_create.append(("Changan uni-v", car19))
@@ -686,7 +724,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.B,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,
-            description="Гибридный седан Lexus es 300h."
+            description="Гибридный седан Lexus es 300h.",
+            vin="JTHBE1D25N5345678",
+            color="Серый"
         )
         car20.photos = get_car_photos(20)
         mock_cars_to_create.append(("Lexus es 300h", car20))
@@ -714,7 +754,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.A,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,
-            description="Премиальный седан Kia k8."
+            description="Премиальный седан Kia k8.",
+            vin="KNDJT2A26N7123456",
+            color="Черный"
         )
         car21.photos = get_car_photos(21)
         mock_cars_to_create.append(("Kia k8", car21))
@@ -742,7 +784,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.A,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,
-            description="Новейший седан Toyota Camry 2024 (второй)."
+            description="Новейший седан Toyota Camry 2024 (второй).",
+            vin="JTNKARFU0L4223456",
+            color="Серый"
         )
         car22.photos = get_car_photos(22)
         mock_cars_to_create.append(("Toyota Camry 2024 второй", car22))
@@ -770,7 +814,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.A,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,
-            description="Просторный внедорожник Hyundai Palisade."
+            description="Просторный внедорожник Hyundai Palisade.",
+            vin="KM8J33CA2LU234567",
+            color="Белый"
         )
         car23.photos = get_car_photos(23)
         mock_cars_to_create.append(("Hyundai Palisade", car23))
@@ -798,7 +844,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.A,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,
-            description="Элегантный седан Mercedes e200."
+            description="Элегантный седан Mercedes e200.",
+            vin="WDD2050461A234567",
+            color="Серый"
         )
         car24.photos = get_car_photos(24)
         mock_cars_to_create.append(("Mercedes e200", car24))
@@ -826,7 +874,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.C,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,
-            description="Роскошный седан Mercedes s63."
+            description="Роскошный седан Mercedes s63.",
+            vin="WDD2211741A345678",
+            color="Черный"
         )
         car25.photos = get_car_photos(25)
         mock_cars_to_create.append(("Mercedes s63", car25))
@@ -854,7 +904,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.A,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,
-            description="Современный кроссовер Hyundai Tucson."
+            description="Современный кроссовер Hyundai Tucson.",
+            vin="KM8J33CA2LU345678",
+            color="Белый"
         )
         car26.photos = get_car_photos(26)
         mock_cars_to_create.append(("Hyundai Tucson", car26))
@@ -882,7 +934,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.A,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,
-            description="Компактный кроссовер Changan uni-k."
+            description="Компактный кроссовер Changan uni-k.",
+            vin="LSGBF53E8EH456789",
+            color="Синий"
         )
         car27.photos = get_car_photos(27)
         mock_cars_to_create.append(("Changan uni-k", car27))
@@ -910,7 +964,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.A,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,
-            description="Современный электромобиль ZEEKR 001 (второй)."
+            description="Современный электромобиль ZEEKR 001 (второй).",
+            vin="LSGBF53E8EH567890",
+            color="Белый"
         )
         car28.photos = get_car_photos(28)
         mock_cars_to_create.append(("ZEEKR 001 второй", car28))
@@ -938,7 +994,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.B,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,
-            description="Легендарный внедорожник Toyota Land Cruiser."
+            description="Легендарный внедорожник Toyota Land Cruiser.",
+            vin="JTEBU5JR2M5345678",
+            color="Белый"
         )
         car29.photos = get_car_photos(29)
         mock_cars_to_create.append(("Toyota Land Cruiser 2018", car29))
@@ -966,7 +1024,9 @@ def create_mock_cars(db: Session, owner: User) -> None:
             auto_class=CarAutoClass.B,
             owner_id=owner.id,
             status=CarStatus.OCCUPIED,
-            description="Спортивный седан BMW 540i 2024."
+            description="Спортивный седан BMW 540i 2024.",
+            vin="WBAFR9C50LC234567",
+            color="Серый"
         )
         car30.photos = get_car_photos(30)
         mock_cars_to_create.append(("BMW 540i 2024", car30))

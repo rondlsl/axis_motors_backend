@@ -29,6 +29,8 @@ class CarListItemSchema(BaseModel):
     owner_name: Optional[str] = None
     current_renter_name: Optional[str] = None
     photos: Optional[List[str]] = None
+    vin: Optional[str] = None
+    color: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -47,6 +49,8 @@ class CarMapItemSchema(BaseModel):
     course: Optional[int] = None
     photos: Optional[List[str]] = None
     current_renter: Optional[dict] = None
+    vin: Optional[str] = None
+    color: Optional[str] = None
 
 
 class CarStatusUpdateSchema(BaseModel):
@@ -134,6 +138,8 @@ class CarDetailSchema(BaseModel):
     available_minutes: Optional[int] = None
     gps_id: Optional[str] = None
     gps_imei: Optional[str] = None
+    vin: Optional[str] = None
+    color: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -153,6 +159,8 @@ class CarEditSchema(BaseModel):
     price_per_hour: Optional[int] = None
     price_per_day: Optional[int] = None
     auto_class: Optional[str] = None
+    vin: Optional[str] = None
+    color: Optional[str] = None
 
 
 class CarCommentSchema(SidMixin):

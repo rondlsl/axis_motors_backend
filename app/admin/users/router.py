@@ -922,7 +922,9 @@ async def get_user_cars(
             available_minutes=available_minutes,
             earnings_current_month=earnings_data["current_month"],
             earnings_total=earnings_data["total"],
-            photos=car.photos if car.photos else []
+            photos=car.photos if car.photos else [],
+            vin=car.vin,
+            color=car.color
         ))
     
     return result

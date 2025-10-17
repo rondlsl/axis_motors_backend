@@ -317,6 +317,7 @@ async def get_user_registration_info(
         "last_name": current_user.last_name,
         "middle_name": current_user.middle_name,
         "digital_signature": current_user.digital_signature,
+        "upload_document_at": current_user.upload_document_at.isoformat() if current_user.upload_document_at else None,
         "message": f"ФИО клиента: {full_name}\nЛогин клиента: {current_user.phone_number}\nID клиента: {current_user.id}\nЭлектронная подпись: {current_user.digital_signature}"
     }
     
@@ -614,6 +615,8 @@ async def read_users_me(
             "owned_car": car.owner_id == current_user.id,
             "description": car.description,
             "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
+            "vin": car.vin,
+            "color": car.color,
         }
         
         # Для механиков добавляем поля статуса загрузки фотографий
@@ -872,7 +875,8 @@ async def read_users_me(
             },
             "is_consent_to_data_processing": current_user.is_consent_to_data_processing,
             "is_contract_read": current_user.is_contract_read,
-            "is_user_agreement": current_user.is_user_agreement
+            "is_user_agreement": current_user.is_user_agreement,
+            "upload_document_at": current_user.upload_document_at.isoformat() if current_user.upload_document_at else None
         }
     except Exception as e:
         from app.core.config import logger
@@ -1304,6 +1308,8 @@ async def upload_documents(
             # Не блокируем основной флоу из-за ошибок записи кода
             pass
 
+        current_user.upload_document_at = datetime.utcnow()
+
         db.commit()
 
         return {
@@ -1328,6 +1334,7 @@ async def upload_documents(
                 "is_consent_to_data_processing": current_user.is_consent_to_data_processing,
                 "is_contract_read": current_user.is_contract_read,
                 "is_user_agreement": current_user.is_user_agreement,
+                "upload_document_at": current_user.upload_document_at.isoformat() if current_user.upload_document_at else None,
             }
         }
 

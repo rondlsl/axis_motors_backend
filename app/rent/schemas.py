@@ -47,6 +47,8 @@ class BookingListResponse(SidMixin):
     reservation_time: datetime
     is_advance_booking: bool
     car_photos: Optional[list] = None
+    car_vin: Optional[str] = None
+    car_color: Optional[str] = None
 
 
 class CancelBookingRequest(BaseModel):

@@ -53,6 +53,8 @@ def car_to_detail_schema(car: Car) -> CarDetailSchema:
         available_minutes=None,  # Будет рассчитано отдельно
         gps_id=car.gps_id,
         gps_imei=car.gps_imei,
+        vin=car.vin,
+        color=car.color,
     )
 
 

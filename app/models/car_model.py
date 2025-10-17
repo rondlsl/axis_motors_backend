@@ -82,8 +82,9 @@ class Car(Base):
         nullable=False
     )
 
+    vin = Column(String, nullable=True) 
+    color = Column(String, nullable=True)
     photos = Column(JSON, nullable=True)
-
     description = Column(Text, nullable=True)
 
     owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
