@@ -11,7 +11,6 @@ class LocaleUpdate(BaseModel):
     locale: str
 
 
-from app.models.contract_model import ContractType as AgreementType
 
 class SelfieUploadResponse(SidMixin):
     message: str = Field(..., description="Сообщение об успешной загрузке")

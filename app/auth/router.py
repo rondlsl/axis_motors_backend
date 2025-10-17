@@ -13,10 +13,9 @@ from app.utils.short_id import uuid_to_sid
 
 from starlette import status
 
-from app.auth.dependencies.get_current_user import get_current_user  # обновлённая версия — см. ниже
+from app.auth.dependencies.get_current_user import get_current_user  
 from app.auth.dependencies.save_documents import save_file
 from app.auth.schemas import SendSmsRequest, VerifySmsRequest, DocumentUploadRequest, LocaleUpdate, SelfieUploadResponse, UserRegistrationInfoResponse, VerifySmsResponse
-from app.models.contract_model import ContractType as AgreementType
 from app.auth.security.auth_bearer import JWTBearer
 from app.auth.security.tokens import create_refresh_token, create_access_token
 from app.core.config import SMS_TOKEN
