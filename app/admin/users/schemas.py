@@ -60,8 +60,9 @@ class UserCardSchema(SidMixin):
     pension_contributions_certificate_url: Optional[str] = None
     auto_class: List[str] = []
     digital_signature: Optional[str] = None
-    consent_to_data_processing: bool = False
-    contract_read: bool = False
+    is_consent_to_data_processing: bool = False
+    is_contract_read: bool = False
+    is_user_agreement: bool = False
     wallet_balance: float = 0.0
     created_at: Optional[datetime] = None
     last_activity_at: Optional[datetime] = None
@@ -87,8 +88,9 @@ class UserListSchema(SidMixin):
     role: str
     auto_class: List[str] = []
     digital_signature: Optional[str] = None
-    consent_to_data_processing: bool = False
-    contract_read: bool = False
+    is_consent_to_data_processing: bool = False
+    is_contract_read: bool = False
+    is_user_agreement: bool = False
     selfie_url: Optional[str] = None
     is_blocked: bool = False
     current_rental_car: Optional[Dict[str, Any]] = None

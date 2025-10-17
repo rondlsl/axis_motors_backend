@@ -869,7 +869,10 @@ async def read_users_me(
                     "expiry": current_user.id_card_expiry.isoformat()
                     if current_user.id_card_expiry else None,
                 }
-            }
+            },
+            "is_consent_to_data_processing": current_user.is_consent_to_data_processing,
+            "is_contract_read": current_user.is_contract_read,
+            "is_user_agreement": current_user.is_user_agreement
         }
     except Exception as e:
         from app.core.config import logger
@@ -1016,8 +1019,6 @@ async def refresh_token(db: Session = Depends(get_db), token: str = Depends(JWTB
 - drivers_license_expiry: Дата истечения прав в формате YYYY-MM-DD (будущая дата). Пример: "2029-08-20"
 - email: Электронная почта
 - is_citizen_kz: Гражданин Республики Казахстан (true/false). Если true, то справки обязательны
-- consent_to_data_processing: Согласие на обработку персональных данных (true/false)
-- contract_read: Подтверждение прочтения договора (true/false)
 
 После успешной загрузки статус пользователя изменится на PENDING (ожидает проверки).
                   """)
@@ -1045,8 +1046,6 @@ async def upload_documents(
         drivers_license_expiry: str = Form(...),
         email: str = Form(...),
         is_citizen_kz: bool = Form(False),
-        consent_to_data_processing: bool = Form(False),
-        contract_read: bool = Form(False),
 
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
@@ -1064,10 +1063,6 @@ async def upload_documents(
     # Правильно обрабатываем boolean поля (могут прийти как строки из формы)
     if isinstance(is_citizen_kz, str):
         is_citizen_kz = is_citizen_kz.lower() in ('true', '1', 'yes', 'on')
-    if isinstance(consent_to_data_processing, str):
-        consent_to_data_processing = consent_to_data_processing.lower() in ('true', '1', 'yes', 'on')
-    if isinstance(contract_read, str):
-        contract_read = contract_read.lower() in ('true', '1', 'yes', 'on')
     
     # Обрабатываем пустые файлы
     if isinstance(psych_neurology_certificate, str) and not psych_neurology_certificate:
@@ -1189,8 +1184,6 @@ async def upload_documents(
                 )
         current_user.email = normalized_email or None
         current_user.is_citizen_kz = document_data.is_citizen_kz
-        current_user.consent_to_data_processing = consent_to_data_processing
-        current_user.contract_read = contract_read
         # Сохраняем ИИН или паспорт
         current_user.iin = document_data.iin
         current_user.passport_number = document_data.passport_number
@@ -1332,8 +1325,9 @@ async def upload_documents(
                 "psych_neurology_certificate_url": current_user.psych_neurology_certificate_url,
                 "narcology_certificate_url": current_user.narcology_certificate_url,
                 "pension_contributions_certificate_url": current_user.pension_contributions_certificate_url,
-                "consent_to_data_processing": current_user.consent_to_data_processing,
-                "contract_read": current_user.contract_read,
+                "is_consent_to_data_processing": current_user.is_consent_to_data_processing,
+                "is_contract_read": current_user.is_contract_read,
+                "is_user_agreement": current_user.is_user_agreement,
             }
         }
 
@@ -1396,14 +1390,14 @@ async def update_consent_data_processing(
     """
     try:
         # Обновляем согласие пользователя
-        current_user.consent_to_data_processing = payload.consent_to_data_processing
+        current_user.is_consent_to_data_processing = payload.is_consent_to_data_processing
         db.add(current_user)
         db.commit()
         db.refresh(current_user)
         
         return {
             "message": "Согласие на обработку персональных данных обновлено",
-            "consent_to_data_processing": current_user.consent_to_data_processing
+            "is_consent_to_data_processing": current_user.is_consent_to_data_processing
         }
         
     except Exception as e:
@@ -1437,14 +1431,14 @@ async def update_contract_read(
     """
     try:
         # Обновляем подтверждение прочтения договора
-        current_user.contract_read = payload.contract_read
+        current_user.is_contract_read = payload.is_contract_read
         db.add(current_user)
         db.commit()
         db.refresh(current_user)
         
         return {
             "message": "Подтверждение прочтения договора обновлено",
-            "contract_read": current_user.contract_read
+            "is_contract_read": current_user.is_contract_read
         }
         
     except Exception as e:
@@ -1452,4 +1446,45 @@ async def update_contract_read(
         raise HTTPException(
             status_code=500,
             detail=f"Ошибка при обновлении подтверждения: {str(e)}"
+        )
+
+
+@Auth_router.patch(
+    "/user/agreement/",
+    summary="Обновить пользовательское соглашение",
+    description="Позволяет пользователю подтвердить или отменить пользовательское соглашение"
+)
+async def update_user_agreement(
+        payload: UserAgreementUpdate,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """
+    Обновляет пользовательское соглашение.
+    
+    **Требования:**
+    - Пользователь должен быть авторизован
+    - Передать новое значение соглашения (true/false)
+    
+    **Возвращает:**
+    - Сообщение об успешном обновлении
+    - Текущее значение соглашения
+    """
+    try:
+        # Обновляем пользовательское соглашение
+        current_user.is_user_agreement = payload.is_user_agreement
+        db.add(current_user)
+        db.commit()
+        db.refresh(current_user)
+        
+        return {
+            "message": "Пользовательское соглашение обновлено",
+            "is_user_agreement": current_user.is_user_agreement
+        }
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка при обновлении пользовательского соглашения: {str(e)}"
         )

@@ -67,8 +67,9 @@ class User(Base):
     locale = Column(String, nullable=False, server_default=text("'ru'"))
     auto_class = Column(ARRAY(String), nullable=True)  # Доступные классы авто (может быть несколько): A, B, C
     digital_signature = Column(String, nullable=True, unique=True)  # Уникальная электронная подпись пользователя
-    consent_to_data_processing = Column(Boolean, default=False, nullable=False, server_default="false")  # Согласие на обработку персональных данных
-    contract_read = Column(Boolean, default=False, nullable=False, server_default="false")  # Подтверждение прочтения договора
+    is_consent_to_data_processing = Column(Boolean, default=False, nullable=False, server_default="false")  # Согласие на обработку персональных данных
+    is_contract_read = Column(Boolean, default=False, nullable=False, server_default="false")  # Подтверждение прочтения договора
+    is_user_agreement = Column(Boolean, default=False, nullable=False, server_default="false")  # Пользовательское соглашение
     
     # Дополнительные поля для админ-панели
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
