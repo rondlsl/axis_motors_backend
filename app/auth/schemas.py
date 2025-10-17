@@ -1,5 +1,6 @@
 from datetime import datetime
 import uuid
+import enum
 from typing import Optional
 
 from pydantic import BaseModel, Field, validator, constr
@@ -10,20 +11,7 @@ class LocaleUpdate(BaseModel):
     locale: str
 
 
-class ConsentDataProcessingUpdate(BaseModel):
-    """Схема для обновления согласия на обработку персональных данных"""
-    is_consent_to_data_processing: bool = Field(..., description="Согласие на обработку персональных данных")
-
-
-class ContractReadUpdate(BaseModel):
-    """Схема для обновления подтверждения прочтения договора"""
-    is_contract_read: bool = Field(..., description="Подтверждение прочтения договора")
-
-
-class UserAgreementUpdate(BaseModel):
-    """Схема для обновления пользовательского соглашения"""
-    is_user_agreement: bool = Field(..., description="Пользовательское соглашение")
-
+from app.models.contract_model import ContractType as AgreementType
 
 class SelfieUploadResponse(SidMixin):
     message: str = Field(..., description="Сообщение об успешной загрузке")

@@ -13,26 +13,14 @@ from app.dependencies.database.base import Base
 
 class ContractType(str, enum.Enum):
     """Типы договоров"""
-    # Основные договоры при регистрации
-    USER_AGREEMENT = "user_agreement"  # Пользовательское соглашение
-    MAIN_CONTRACT = "main_contract"  # Договор присоединения
-    
-    # Приложения (1-7)
-    APPENDIX_1 = "appendix_1"
-    APPENDIX_2 = "appendix_2"
-    APPENDIX_3 = "appendix_3"
-    APPENDIX_4 = "appendix_4"
-    APPENDIX_5 = "appendix_5"
-    APPENDIX_6 = "appendix_6"
-    APPENDIX_7 = "appendix_7"
-    
-    # Договоры при аренде
-    APPENDIX_7_START = "appendix_7_start"  # Приложение №7 (1) - при начале аренды
-    APPENDIX_7_END = "appendix_7_end"  # Приложение №7 (2) - при завершении аренды
-    
-    # Договоры гаранта
+    # Основные договоры
     GUARANTOR_CONTRACT = "guarantor_contract"  # Договор гаранта
-    GUARANTOR_MAIN_CONTRACT = "guarantor_main_contract"  # Основной договор для гаранта
+    GUARANTOR_MAIN_CONTRACT = "guarantor_main_contract"  # Основной договор гаранта
+    USER_AGREEMENT = "user_agreement"  # Пользовательское соглашение
+    CONSENT_TO_DATA_PROCESSING = "consent_to_data_processing"  # Обработка персональных данных
+    MAIN_CONTRACT = "main_contract"  # Договор присоединения
+    APPENDIX_7_1 = "appendix_7_1"  # Приложение 7.1
+    APPENDIX_7_2 = "appendix_7_2"  # Приложение 7.2
 
 
 class ContractFile(Base):

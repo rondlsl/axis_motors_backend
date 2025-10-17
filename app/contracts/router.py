@@ -161,18 +161,26 @@ async def sign_contract(
 ):
     """
     Подписать договор
+    
+    Все договоры подписываются через файлы (ContractFile) и сохраняются в user_contract_signatures.
+    При подписании определенных типов также обновляются поля в таблице users.
     """
-    # Проверяем существование договора
-    contract_file_uuid = safe_sid_to_uuid(sign_request.contract_file_id)
+    
+    user_field_mapping = {
+        ContractType.USER_AGREEMENT: "is_user_agreement",
+        ContractType.CONSENT_TO_DATA_PROCESSING: "is_consent_to_data_processing", 
+        ContractType.MAIN_CONTRACT: "is_contract_read"
+    }
+    
     contract_file = db.query(ContractFile).filter(
-        ContractFile.id == contract_file_uuid,
+        ContractFile.contract_type == sign_request.contract_type,
         ContractFile.is_active == True
     ).first()
     
     if not contract_file:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Договор не найден"
+            detail=f"Активный файл договора типа {sign_request.contract_type} не найден"
         )
     
     # Проверяем, что у пользователя есть цифровая подпись
@@ -185,7 +193,7 @@ async def sign_contract(
     # Проверяем, не подписан ли уже этот договор
     existing_signature = db.query(UserContractSignature).filter(
         UserContractSignature.user_id == current_user.id,
-        UserContractSignature.contract_file_id == contract_file_uuid,
+        UserContractSignature.contract_file_id == contract_file.id,
         UserContractSignature.rental_id == sign_request.rental_id,
         UserContractSignature.guarantor_relationship_id == sign_request.guarantor_relationship_id
     ).first()
@@ -199,7 +207,7 @@ async def sign_contract(
     # 2) Проверка: уже подписан активный файл того же типа в нужном контексте
     same_type_active = db.query(UserContractSignature).join(ContractFile).filter(
         UserContractSignature.user_id == current_user.id,
-        ContractFile.contract_type == contract_file.contract_type,
+        ContractFile.contract_type == sign_request.contract_type,
         ContractFile.is_active == True,
         UserContractSignature.rental_id == sign_request.rental_id,
         UserContractSignature.guarantor_relationship_id == sign_request.guarantor_relationship_id
@@ -227,7 +235,7 @@ async def sign_contract(
             )
     
     # Валидация для договоров гаранта
-    if contract_file.contract_type in [ContractType.GUARANTOR_CONTRACT, ContractType.GUARANTOR_MAIN_CONTRACT]:
+    if sign_request.contract_type in [ContractType.GUARANTOR_CONTRACT, ContractType.GUARANTOR_MAIN_CONTRACT]:
         if not sign_request.guarantor_relationship_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -245,9 +253,9 @@ async def sign_contract(
     # Создаем подпись
     signature = UserContractSignature(
         user_id=current_user.id,
-        contract_file_id=contract_file_uuid,
+        contract_file_id=contract_file.id,
         rental_id=sign_request.rental_id,
-        guarantor_relationship_id=guarantor_rel_uuid if contract_file.contract_type in [ContractType.GUARANTOR_CONTRACT, ContractType.GUARANTOR_MAIN_CONTRACT] else None,
+        guarantor_relationship_id=guarantor_rel_uuid if sign_request.contract_type in [ContractType.GUARANTOR_CONTRACT, ContractType.GUARANTOR_MAIN_CONTRACT] else None,
         digital_signature=current_user.digital_signature
     )
     
@@ -255,19 +263,23 @@ async def sign_contract(
     db.commit()
     db.refresh(signature)
     
+    # Обновляем поля пользователя для определенных типов договоров
+    if sign_request.contract_type in user_field_mapping:
+        field_name = user_field_mapping[sign_request.contract_type]
+        setattr(current_user, field_name, True)
+        db.add(current_user)
+        db.commit()
+    
     return UserSignatureResponse(
         id=signature.id,
         user_id=signature.user_id,
         contract_file_id=uuid_to_sid(signature.contract_file_id),
-        contract_type=contract_file.contract_type,
+        contract_type=sign_request.contract_type,
         digital_signature=signature.digital_signature,
         signed_at=signature.signed_at,
         rental_id=signature.rental_id,
         guarantor_relationship_id=uuid_to_sid(signature.guarantor_relationship_id) if signature.guarantor_relationship_id else None
     )
-
-
-
 
 @ContractsRouter.get("/my-contracts", response_model=UserContractsResponse)
 async def get_my_contracts(
