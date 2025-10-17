@@ -13,6 +13,7 @@ class UserProfileSchema(SidMixin):
     email: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    middle_name: Optional[str] = None
     role: str
     is_active: bool
     is_verified_email: bool
@@ -37,6 +38,7 @@ class UserCardSchema(SidMixin):
     email: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    middle_name: Optional[str] = None
     iin: Optional[str] = None
     passport_number: Optional[str] = None
     birth_date: Optional[datetime] = None
@@ -78,6 +80,7 @@ class UserListSchema(SidMixin):
     id: str
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    middle_name: Optional[str] = None
     phone_number: str
     iin: Optional[str] = None
     passport_number: Optional[str] = None
@@ -96,6 +99,7 @@ class UserMapPositionSchema(SidMixin):
     id: str
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    middle_name: Optional[str] = None
     digital_signature: Optional[str] = None
     selfie_url: Optional[str] = None
     last_rental_end_latitude: Optional[float] = None
@@ -128,6 +132,7 @@ class GuarantorInfoSchema(SidMixin):
     id: str
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    middle_name: Optional[str] = None
     phone_number: str
     iin: Optional[str] = None
     passport_number: Optional[str] = None

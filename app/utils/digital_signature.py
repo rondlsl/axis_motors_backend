@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Optional
 
 
-def generate_digital_signature(user_id: str, phone_number: str, first_name: str, last_name: str) -> str:
+def generate_digital_signature(user_id: str, phone_number: str, first_name: str, last_name: str, middle_name: str = None) -> str:
     """
     Генерирует уникальную цифровую подпись для пользователя
     
@@ -16,12 +16,13 @@ def generate_digital_signature(user_id: str, phone_number: str, first_name: str,
         phone_number: Номер телефона пользователя
         first_name: Имя пользователя
         last_name: Фамилия пользователя
+        middle_name: Отчество пользователя (необязательно)
     
     Returns:
         Уникальная цифровая подпись в формате: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
     """
     # Создаем уникальную строку на основе данных пользователя
-    user_data = f"{user_id}_{phone_number}_{first_name}_{last_name}_{datetime.utcnow().isoformat()}"
+    user_data = f"{user_id}_{phone_number}_{first_name}_{middle_name or ''}_{last_name}_{datetime.utcnow().isoformat()}"
     
     # Генерируем хеш
     hash_object = hashlib.sha256(user_data.encode())

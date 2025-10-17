@@ -61,6 +61,7 @@ async def list_support_actions(
                 "id": uuid_to_sid(u.id) if u else uuid_to_sid(it.user_id),
                 "first_name": u.first_name if u else None,
                 "last_name": u.last_name if u else None,
+                "middle_name": u.middle_name if u else None,
                 "phone_number": u.phone_number if u else None,
                 "role": u.role.value if u and u.role else None,
             },
@@ -100,6 +101,7 @@ async def get_support_user_profile(
         "id": uuid_to_sid(u.id),
         "first_name": u.first_name,
         "last_name": u.last_name,
+        "middle_name": u.middle_name,
         "phone_number": u.phone_number,
         "role": u.role.value,
     }

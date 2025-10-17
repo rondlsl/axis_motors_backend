@@ -34,12 +34,12 @@ async def get_guarantor_requests(
     for request in requests:
         # Получаем данные гаранта
         guarantor = db.query(User).filter(User.id == request.guarantor_id).first()
-        guarantor_name = f"{guarantor.first_name or ''} {guarantor.last_name or ''}".strip() if guarantor else "Неизвестно"
+        guarantor_name = f"{guarantor.first_name or ''} {guarantor.last_name or ''} {guarantor.middle_name or ''}".strip() if guarantor else "Неизвестно"
         guarantor_phone = guarantor.phone_number if guarantor else ""
         
         # Получаем данные заявителя
         requestor = db.query(User).filter(User.id == request.requestor_id).first()
-        requestor_name = f"{requestor.first_name or ''} {requestor.last_name or ''}".strip() if requestor else "Неизвестно"
+        requestor_name = f"{requestor.first_name or ''} {requestor.last_name or ''} {requestor.middle_name or ''}".strip() if requestor else "Неизвестно"
         requestor_phone = requestor.phone_number if requestor else ""
         
         request_data = {
@@ -102,7 +102,8 @@ async def approve_guarantor_request(
             await send_guarantor_approval_sms(
                 guarantor_phone=guarantor.phone_number,
                 client_first_name=requestor.first_name,
-                client_last_name=requestor.last_name
+                client_last_name=requestor.last_name,
+                client_middle_name=requestor.middle_name
             )
         except Exception as e:
             print(f"Failed to send SMS to guarantor: {e}")
@@ -145,7 +146,7 @@ async def reject_guarantor_request(
         try:
             await send_user_rejection_with_guarantor_sms(
                 user_phone=requestor.phone_number,
-                user_name=f"{requestor.first_name or ''} {requestor.last_name or ''}".strip(),
+                user_name=f"{requestor.first_name or ''} {requestor.last_name or ''} {requestor.middle_name or ''}".strip(),
                 rejection_reason=rejection_data.rejection_reason
             )
         except Exception as e:

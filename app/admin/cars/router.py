@@ -355,7 +355,7 @@ async def get_car_comments(
             id=comment.sid,
             car_id=uuid_to_sid(comment.car_id),
             author_id=comment.author_id,
-            author_name=f"{comment.author.first_name or ''} {comment.author.last_name or ''}".strip() or comment.author.phone_number,
+            author_name=f"{comment.author.first_name or ''} {comment.author.last_name or ''} {comment.author.middle_name or ''}".strip() or comment.author.phone_number,
             author_role=comment.author.role.value,
             comment=comment.comment,
             created_at=comment.created_at.isoformat(),
@@ -402,7 +402,7 @@ async def create_car_comment(
         db.add(sa)
         db.commit()
 
-    author_name = f"{current_user.first_name or ''} {current_user.last_name or ''}".strip()
+    author_name = f"{current_user.first_name or ''} {current_user.last_name or ''} {current_user.middle_name or ''}".strip()
     if not author_name:
         author_name = current_user.phone_number
 
@@ -461,7 +461,7 @@ async def update_car_comment(
         db.add(sa)
         db.commit()
 
-    author_name = f"{current_user.first_name or ''} {current_user.last_name or ''}".strip()
+    author_name = f"{current_user.first_name or ''} {current_user.last_name or ''} {current_user.middle_name or ''}".strip()
     if not author_name:
         author_name = current_user.phone_number
 
@@ -920,12 +920,12 @@ async def get_cars_list(
         if car.owner_id:
             owner = db.query(User).filter(User.id == car.owner_id).first()
             if owner:
-                owner_name = f"{owner.first_name or ''} {owner.last_name or ''}".strip() or owner.phone_number
+                owner_name = f"{owner.first_name or ''} {owner.last_name or ''} {owner.middle_name or ''}".strip() or owner.phone_number
         current_renter_name = None
         if car.current_renter_id:
             renter = db.query(User).filter(User.id == car.current_renter_id).first()
             if renter:
-                current_renter_name = f"{renter.first_name or ''} {renter.last_name or ''}".strip() or renter.phone_number
+                current_renter_name = f"{renter.first_name or ''} {renter.last_name or ''} {renter.middle_name or ''}".strip() or renter.phone_number
 
         items.append(CarListItemSchema(
             id=uuid_to_sid(car.id),

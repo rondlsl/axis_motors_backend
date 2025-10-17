@@ -33,6 +33,7 @@ class UserRegistrationInfoResponse(SidMixin):
     phone_number: str = Field(..., description="Номер телефона пользователя")
     first_name: Optional[str] = Field(None, description="Имя пользователя")
     last_name: Optional[str] = Field(None, description="Фамилия пользователя")
+    middle_name: Optional[str] = Field(None, description="Отчество пользователя")
     digital_signature: Optional[str] = Field(None, description="Цифровая подпись пользователя")
     message: str = Field(..., description="Сообщение для пользователя")
 
@@ -69,6 +70,12 @@ class SendSmsRequest(BaseModel):
         max_length=50,
         description="Фамилия пользователя (обязательно только для новых пользователей). Пример: 'Иванов'"
     )
+    middle_name: Optional[str] = Field(
+        None,
+        min_length=1,
+        max_length=50,
+        description="Отчество пользователя (необязательно). Пример: 'Иванович'"
+    )
 
 
 class VerifySmsRequest(BaseModel):
@@ -88,6 +95,12 @@ class DocumentUploadRequest(BaseModel):
         min_length=1,
         max_length=50,
         description="Фамилия пользователя. Пример: 'Иванов'"
+    )
+    middle_name: Optional[str] = Field(
+        None,
+        min_length=1,
+        max_length=50,
+        description="Отчество пользователя (необязательно). Пример: 'Иванович'"
     )
     birth_date: str = Field(
         ...,

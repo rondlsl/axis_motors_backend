@@ -109,9 +109,10 @@ async def invite_guarantor(
         
         # Формируем имя для SMS
         requestor_first_name = current_user.first_name or "Пользователь"
+        requestor_middle_name = current_user.middle_name
         requestor_last_name = current_user.last_name
         
-        sms_result = await send_guarantor_invitation_sms(guarantor_phone, requestor_first_name, requestor_last_name)
+        sms_result = await send_guarantor_invitation_sms(guarantor_phone, requestor_first_name, requestor_last_name, requestor_middle_name)
         return {
             "message": "Пользователь не найден. SMS приглашение отправлено. Заявка создана.",
             "user_exists": False,
@@ -320,6 +321,7 @@ async def get_my_guarantors(
                 phone=guarantor_user.phone_number,
                 first_name=guarantor_user.first_name,
                 last_name=guarantor_user.last_name,
+                middle_name=guarantor_user.middle_name,
                 contract_signed=contract_signed,
                 main_contract_signed=main_contract_signed,
                 created_at=relationship.created_at
@@ -399,12 +401,14 @@ async def get_incoming_requests(
         if requestor:
             # Приоритет: сначала User.first_name/last_name, иначе null
             requestor_first_name = requestor.first_name
+            requestor_middle_name = requestor.middle_name
             requestor_last_name = requestor.last_name
             
             request_data = {
                 "id": uuid_to_sid(request.id),
                 "requestor_id": uuid_to_sid(request.requestor_id),
                 "requestor_first_name": requestor_first_name,
+                "requestor_middle_name": requestor_middle_name,
                 "requestor_last_name": requestor_last_name,
                 "requestor_phone": requestor.phone_number,
                 "reason": request.reason,

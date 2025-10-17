@@ -164,6 +164,7 @@ def get_all_vehicles_plain(
                         "id": uuid_to_sid(renter.id),
                         "first_name": renter.first_name,
                         "last_name": renter.last_name,
+                        "middle_name": renter.middle_name,
                         "phone_number": renter.phone_number,
                         "selfie_url": renter.selfie_with_license_url,
                         "rent_selfie_url": rent_selfie_url,
@@ -291,6 +292,7 @@ def get_pending_vehicles(
                         "id": uuid_to_sid(last_client.id),
                         "first_name": last_client.first_name,
                         "last_name": last_client.last_name,
+                        "middle_name": last_client.middle_name,
                         "phone_number": last_client.phone_number,
                         "rental_id": uuid_to_sid(last_rental.id),
                         "rental_start": last_rental.start_time.isoformat() if last_rental.start_time else None,
@@ -419,6 +421,7 @@ def get_in_use_vehicles(
                     renter_info = {
                         "first_name": current_renter.first_name,
                         "last_name": current_renter.last_name,
+                        "middle_name": current_renter.middle_name,
                         "phone_number": current_renter.phone_number,
                         "selfie_url": current_renter.selfie_with_license_url,
                         "rent_selfie_url": rent_selfie_url,
@@ -481,6 +484,7 @@ def get_service_vehicles(
                         "id": uuid_to_sid(last_client.id),
                         "first_name": last_client.first_name,
                         "last_name": last_client.last_name,
+                        "middle_name": last_client.middle_name,
                         "phone_number": last_client.phone_number,
                         "rental_id": uuid_to_sid(last_rental.id),
                         "client_rating": client_review.rating if client_review else None,
@@ -575,6 +579,7 @@ def search_vehicles(
                     car_data["current_renter_details"] = {
                         "first_name": current_renter.first_name,
                         "last_name": current_renter.last_name,
+                        "middle_name": current_renter.middle_name,
                         "phone_number": current_renter.phone_number,
                         "selfie_url": current_renter.selfie_with_license_url
                     }

@@ -172,8 +172,21 @@ async def send_sms_mobizon(recipient: str, sms_text: str, api_key: str):
 async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
     """
     Отправка смс по номеру телефона:
-    - Если активного аккаунта по номеру не существует, создаётся новый.
-    - Если имеется активный аккаунт, для него обновляется sms-код.
+    - Если активного аккаунта по номеру не существует, создаётся новый (обязательно указать first_name и last_name).
+    - Если имеется активный аккаунт, для него обновляется sms-код (только phone_number).
+    
+    Для новых пользователей:
+    {
+        "phone_number": "77771234567",
+        "first_name": "Иван",
+        "last_name": "Иванов",
+        "middle_name": "Петрович"  // опционально
+    }
+    
+    Для существующих пользователей:
+    {
+        "phone_number": "77771234567"
+    }
     """
     totp = pyotp.TOTP(
         pyotp.random_base32(),
@@ -215,6 +228,7 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
             phone_number=phone_number,
             first_name=request.first_name,
             last_name=request.last_name,
+            middle_name=request.middle_name,
             role=UserRole.CLIENT,  # Новым пользователям даём роль CLIENT
             last_sms_code=sms_code,
             sms_code_valid_until=current_time + timedelta(hours=1),
@@ -228,10 +242,18 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
             user_id=str(user.id),
             phone_number=phone_number,
             first_name=request.first_name,
-            last_name=request.last_name
+            last_name=request.last_name,
+            middle_name=request.middle_name
         )
         user.digital_signature = digital_signature
     else:
+        # Существующий пользователь - проверяем, что не переданы лишние поля
+        if request.first_name or request.last_name or request.middle_name:
+            raise HTTPException(
+                status_code=400,
+                detail="Пользователь с таким номером телефона уже существует."
+            )
+        
         # Обновляем смс-код активного аккаунта
         user.last_sms_code = sms_code
         user.sms_code_valid_until = current_time + timedelta(hours=1)
@@ -246,12 +268,13 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
             user_id=str(user.id),
             phone_number=phone_number,
             first_name=user.first_name or "",
-            last_name=user.last_name or ""
+            last_name=user.last_name or "",
+            middle_name=user.middle_name or ""
         )
         db.commit()
     
     # Получаем ФИО пользователя
-    full_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
+    full_name = f"{user.first_name or ''} {user.last_name or ''} {user.middle_name or ''}".strip()
     if not full_name:
         full_name = "Не указано"
     
@@ -283,7 +306,7 @@ async def get_user_registration_info(
     Включает цифровую подпись и другие данные для подписания документов
     """
     # Получаем ФИО пользователя
-    full_name = f"{current_user.first_name or ''} {current_user.last_name or ''}".strip()
+    full_name = f"{current_user.first_name or ''} {current_user.last_name or ''} {current_user.middle_name or ''}".strip()
     if not full_name:
         full_name = "Не указано"
     
@@ -292,6 +315,7 @@ async def get_user_registration_info(
         "phone_number": current_user.phone_number,
         "first_name": current_user.first_name,
         "last_name": current_user.last_name,
+        "middle_name": current_user.middle_name,
         "digital_signature": current_user.digital_signature,
         "message": f"ФИО клиента: {full_name}\nЛогин клиента: {current_user.phone_number}\nID клиента: {current_user.id}\nЭлектронная подпись: {current_user.digital_signature}"
     }
@@ -423,7 +447,7 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
         linked_count = 0
 
     # Получаем ФИО пользователя
-    full_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
+    full_name = f"{user.first_name or ''} {user.last_name or ''} {user.middle_name or ''}".strip()
     if not full_name:
         full_name = "Не указано"
     
@@ -791,6 +815,7 @@ async def read_users_me(
                 "id": uuid_to_sid(guarantor_user.id),
                 "first_name": guarantor_user.first_name,
                 "last_name": guarantor_user.last_name,
+                "middle_name": guarantor_user.middle_name,
                 "phone_number": guarantor_user.phone_number
             })
         
@@ -807,6 +832,7 @@ async def read_users_me(
             "email": current_user.email,
             "first_name": first_name,
             "last_name": last_name,
+            "middle_name": current_user.middle_name,
             "iin": current_user.iin,
             "passport_number": current_user.passport_number,
             "birth_date": current_user.birth_date.isoformat() if current_user.birth_date else None,
@@ -1011,6 +1037,7 @@ async def upload_documents(
         # Данные формы
         first_name: str = Form(..., min_length=1, max_length=50),
         last_name: str = Form(..., min_length=1, max_length=50),
+        middle_name: Optional[str] = Form(None, min_length=1, max_length=50),
         birth_date: str = Form(...),
         iin: Optional[str] = Form(None),
         passport_number: Optional[str] = Form(None),
@@ -1142,6 +1169,7 @@ async def upload_documents(
         # Обновление данных пользователя
         current_user.first_name = document_data.first_name
         current_user.last_name = document_data.last_name
+        current_user.middle_name = middle_name
         current_user.birth_date = datetime.strptime(document_data.birth_date, '%Y-%m-%d')
         normalized_email = (email or "").strip().lower()
         if normalized_email:

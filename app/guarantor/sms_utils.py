@@ -15,13 +15,15 @@ async def send_sms_mobizon(recipient: str, sms_text: str, api_key: str):
         return response.text
 
 
-async def send_guarantor_invitation_sms(guarantor_phone: str, requestor_first_name: str, requestor_last_name: str = None):
+async def send_guarantor_invitation_sms(guarantor_phone: str, requestor_first_name: str, requestor_last_name: str = None, requestor_middle_name: str = None):
     """Отправка SMS приглашения гаранту"""
     # Формируем имя для SMS
+    name_parts = [requestor_first_name]
+    if requestor_middle_name:
+        name_parts.append(requestor_middle_name)
     if requestor_last_name:
-        requestor_display_name = f"{requestor_first_name} {requestor_last_name}"
-    else:
-        requestor_display_name = requestor_first_name
+        name_parts.append(requestor_last_name)
+    requestor_display_name = " ".join(name_parts)
     
     sms_text = f"""Здравствуйте!
 
@@ -66,9 +68,14 @@ async def send_user_rejection_with_guarantor_sms(user_phone: str, user_name: str
         return {"message": "SMS sending failed", "error": str(e)}
 
 
-async def send_guarantor_approval_sms(guarantor_phone: str, client_first_name: str, client_last_name: str):
+async def send_guarantor_approval_sms(guarantor_phone: str, client_first_name: str, client_last_name: str, client_middle_name: str = None):
     """Отправка SMS гаранту при одобрении заявки администратором"""
-    client_full_name = f"{client_first_name} {client_last_name}"
+    name_parts = [client_first_name]
+    if client_middle_name:
+        name_parts.append(client_middle_name)
+    if client_last_name:
+        name_parts.append(client_last_name)
+    client_full_name = " ".join(name_parts)
     
     sms_text = f"""Здравствуйте!
 

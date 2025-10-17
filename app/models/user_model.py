@@ -39,6 +39,7 @@ class User(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     first_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)
+    middle_name = Column(String(100), nullable=True)
     phone_number = Column(String, nullable=False, unique=False)
     email = Column(String, nullable=True)
     birth_date = Column(DateTime, nullable=True)

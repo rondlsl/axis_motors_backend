@@ -97,7 +97,7 @@ async def test_push_by_phone(
     )
     
     # Формируем полное имя
-    full_name = f"{target_user.first_name or ''} {target_user.last_name or ''}".strip() or "Не указано"
+    full_name = f"{target_user.first_name or ''} {target_user.last_name or ''} {target_user.middle_name or ''}".strip() or "Не указано"
     
     return {
         "success": success,
@@ -139,7 +139,7 @@ async def get_users_with_tokens(
             {
                 "id": str(user.id),
                 "phone": user.phone_number,
-                "name": f"{user.first_name or ''} {user.last_name or ''}".strip() or "Не указано",
+                "name": f"{user.first_name or ''} {user.last_name or ''} {user.middle_name or ''}".strip() or "Не указано",
                 "role": user.role.value if user.role else None,
                 "fcm_token_preview": user.fcm_token[:30] + "..." if len(user.fcm_token) > 30 else user.fcm_token,
                 "fcm_token": user.fcm_token  # Полный токен для копирования

@@ -208,6 +208,7 @@ class SimpleGuarantorSchema(BaseModel):
     phone: str = Field(..., description="Номер телефона гаранта", example="7777654321")
     first_name: Optional[str] = Field(None, description="Имя гаранта", example="Петр")
     last_name: Optional[str] = Field(None, description="Фамилия гаранта", example="Иванов")
+    middle_name: Optional[str] = Field(None, description="Отчество гаранта", example="Петрович")
     contract_signed: bool = Field(..., description="Подписан ли договор гаранта", example=True)
     main_contract_signed: bool = Field(..., description="Подписан ли основной договор гаранта", example=False)
     created_at: datetime = Field(..., description="Дата создания связи", example="2024-01-15T10:30:00Z")

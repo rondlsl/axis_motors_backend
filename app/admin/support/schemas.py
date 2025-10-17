@@ -8,6 +8,7 @@ class SupportUserSchema(SidMixin):
     id: str
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    middle_name: Optional[str] = None
     phone_number: Optional[str] = None
     role: Optional[str] = None
     digital_signature: Optional[str] = None
