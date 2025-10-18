@@ -282,13 +282,13 @@ async def sign_contract(
         db.commit()
     
     return UserSignatureResponse(
-        id=signature.id,
-        user_id=signature.user_id,
+        id=uuid_to_sid(signature.id),
+        user_id=uuid_to_sid(signature.user_id),
         contract_file_id=uuid_to_sid(signature.contract_file_id),
         contract_type=sign_request.contract_type,
         digital_signature=signature.digital_signature,
         signed_at=signature.signed_at,
-        rental_id=signature.rental_id,
+        rental_id=uuid_to_sid(signature.rental_id) if signature.rental_id else None,
         guarantor_relationship_id=uuid_to_sid(signature.guarantor_relationship_id) if signature.guarantor_relationship_id else None
     )
 
