@@ -56,7 +56,7 @@ async def upload_contract(
             detail="Поддерживаются только файлы PDF, DOC, DOCX"
         )
     
-    contracts_dir = "uploads/contracts"
+    contracts_dir = "contracts"
     os.makedirs(contracts_dir, exist_ok=True)
     
     file_content = await file.read()
@@ -65,6 +65,12 @@ async def upload_contract(
     
     with open(file_path, "wb") as f:
         f.write(file_content)
+    
+    if not os.path.exists(file_path):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ошибка сохранения файла"
+        )
     
     db.query(ContractFile).filter(
         ContractFile.contract_type == contract_type,
