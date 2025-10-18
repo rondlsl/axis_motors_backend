@@ -1952,6 +1952,7 @@ async def complete_rental(
 
     return {
         "message": "Rental completed successfully",
+        "rental_id": uuid_to_sid(rental.id),
         "rental_details": {
             "total_duration_minutes": rounded_minutes,
             "total_price": rental.total_price,

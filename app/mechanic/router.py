@@ -1112,6 +1112,7 @@ async def complete_rental(
         
         return {
             "message": "Проверка автомобиля успешно завершена",
+            "rental_id": uuid_to_sid(rental.id),
             "rental_details": {
                 "total_duration_minutes": int((now - rental.start_time).total_seconds() / 60),
                 "final_total_price": rental.total_price
