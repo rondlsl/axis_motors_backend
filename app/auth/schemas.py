@@ -91,7 +91,7 @@ class DocumentUploadRequest(BaseModel):
     )
     middle_name: Optional[str] = Field(
         None,
-        min_length=1,
+        min_length=0,
         max_length=50,
         description="Отчество пользователя (необязательно). Пример: 'Иванович'"
     )

@@ -1042,7 +1042,7 @@ async def upload_documents(
         # Данные формы
         first_name: str = Form(..., min_length=1, max_length=50),
         last_name: str = Form(..., min_length=1, max_length=50),
-        middle_name: Optional[str] = Form(None, min_length=1, max_length=50),
+        middle_name: Optional[str] = Form(None, min_length=0, max_length=50),
         birth_date: str = Form(...),
         iin: Optional[str] = Form(None),
         passport_number: Optional[str] = Form(None),
