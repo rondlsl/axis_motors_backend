@@ -66,15 +66,6 @@ class ContractRequirements(BaseModel):
     user_agreement_signed: bool = Field(..., description="Подписано ли пользовательское соглашение")
     main_contract_signed: bool = Field(..., description="Подписан ли договор присоединения")
     
-    # Приложения 1-7
-    appendix_1_signed: bool = False
-    appendix_2_signed: bool = False
-    appendix_3_signed: bool = False
-    appendix_4_signed: bool = False
-    appendix_5_signed: bool = False
-    appendix_6_signed: bool = False
-    appendix_7_signed: bool = False
-    
     # Статус регистрации
     can_proceed_to_rental: bool = Field(..., description="Может ли пользователь перейти к аренде")
 
@@ -82,8 +73,8 @@ class ContractRequirements(BaseModel):
 class RentalContractStatus(BaseModel):
     """Схема для статуса договоров при аренде"""
     rental_id: str
-    appendix_7_start_signed: bool = Field(..., description="Подписано ли приложение №7 (1) при начале")
-    appendix_7_end_signed: bool = Field(..., description="Подписано ли приложение №7 (2) при завершении")
+    appendix_7_1_signed: bool = Field(..., description="Подписано ли приложение 7.1")
+    appendix_7_2_signed: bool = Field(..., description="Подписано ли приложение 7.2")
 
 
 class GuarantorContractStatus(BaseModel):

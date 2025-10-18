@@ -220,7 +220,7 @@ async def sign_contract(
         )
     
     # Валидация для договоров аренды
-    if contract_file.contract_type in [ContractType.APPENDIX_7_START, ContractType.APPENDIX_7_END]:
+    if contract_file.contract_type in [ContractType.APPENDIX_7_1, ContractType.APPENDIX_7_2]:
         if not sign_request.rental_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -315,16 +315,10 @@ async def get_my_contracts(
             if contract_file.contract_type in [
                 ContractType.USER_AGREEMENT,
                 ContractType.MAIN_CONTRACT,
-                ContractType.APPENDIX_1,
-                ContractType.APPENDIX_2,
-                ContractType.APPENDIX_3,
-                ContractType.APPENDIX_4,
-                ContractType.APPENDIX_5,
-                ContractType.APPENDIX_6,
-                ContractType.APPENDIX_7
+                ContractType.CONSENT_TO_DATA_PROCESSING
             ]:
                 registration_contracts.append(response)
-            elif contract_file.contract_type in [ContractType.APPENDIX_7_START, ContractType.APPENDIX_7_END]:
+            elif contract_file.contract_type in [ContractType.APPENDIX_7_1, ContractType.APPENDIX_7_2]:
                 rental_contracts.append(response)
             elif contract_file.contract_type in [ContractType.GUARANTOR_CONTRACT, ContractType.GUARANTOR_MAIN_CONTRACT]:
                 guarantor_contracts.append(response)
@@ -357,39 +351,19 @@ async def get_contract_requirements(
     
     user_agreement_signed = ContractType.USER_AGREEMENT in signed_types
     main_contract_signed = ContractType.MAIN_CONTRACT in signed_types
+    consent_to_data_processing_signed = ContractType.CONSENT_TO_DATA_PROCESSING in signed_types
     
-    appendix_1_signed = ContractType.APPENDIX_1 in signed_types
-    appendix_2_signed = ContractType.APPENDIX_2 in signed_types
-    appendix_3_signed = ContractType.APPENDIX_3 in signed_types
-    appendix_4_signed = ContractType.APPENDIX_4 in signed_types
-    appendix_5_signed = ContractType.APPENDIX_5 in signed_types
-    appendix_6_signed = ContractType.APPENDIX_6 in signed_types
-    appendix_7_signed = ContractType.APPENDIX_7 in signed_types
-    
-    # Для возможности аренды нужны все основные договоры и все приложения
+    # Для возможности аренды нужны основные договоры
     can_proceed_to_rental = (
         user_agreement_signed and
         main_contract_signed and
-        appendix_1_signed and
-        appendix_2_signed and
-        appendix_3_signed and
-        appendix_4_signed and
-        appendix_5_signed and
-        appendix_6_signed and
-        appendix_7_signed
+        consent_to_data_processing_signed
     )
     
     return ContractRequirements(
         user_id=uuid_to_sid(current_user.id),
         user_agreement_signed=user_agreement_signed,
         main_contract_signed=main_contract_signed,
-        appendix_1_signed=appendix_1_signed,
-        appendix_2_signed=appendix_2_signed,
-        appendix_3_signed=appendix_3_signed,
-        appendix_4_signed=appendix_4_signed,
-        appendix_5_signed=appendix_5_signed,
-        appendix_6_signed=appendix_6_signed,
-        appendix_7_signed=appendix_7_signed,
         can_proceed_to_rental=can_proceed_to_rental
     )
 
@@ -423,21 +397,21 @@ async def get_rental_contract_status(
         UserContractSignature.rental_id == rental_uuid
     ).all()
     
-    appendix_7_start_signed = False
-    appendix_7_end_signed = False
+    appendix_7_1_signed = False
+    appendix_7_2_signed = False
     
     for sig in signatures:
         contract_file = db.query(ContractFile).filter(ContractFile.id == sig.contract_file_id).first()
         if contract_file:
-            if contract_file.contract_type == ContractType.APPENDIX_7_START:
-                appendix_7_start_signed = True
-            elif contract_file.contract_type == ContractType.APPENDIX_7_END:
-                appendix_7_end_signed = True
+            if contract_file.contract_type == ContractType.APPENDIX_7_1:
+                appendix_7_1_signed = True
+            elif contract_file.contract_type == ContractType.APPENDIX_7_2:
+                appendix_7_2_signed = True
     
     return RentalContractStatus(
         rental_id=uuid_to_sid(rental_uuid),
-        appendix_7_start_signed=appendix_7_start_signed,
-        appendix_7_end_signed=appendix_7_end_signed
+        appendix_7_1_signed=appendix_7_1_signed,
+        appendix_7_2_signed=appendix_7_2_signed
     )
 
 
