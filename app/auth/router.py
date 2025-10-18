@@ -1168,7 +1168,7 @@ async def upload_documents(
         # Обновление данных пользователя
         current_user.first_name = document_data.first_name
         current_user.last_name = document_data.last_name
-        current_user.middle_name = middle_name
+        current_user.middle_name = middle_name if middle_name and middle_name.strip() else None
         current_user.birth_date = datetime.strptime(document_data.birth_date, '%Y-%m-%d')
         normalized_email = (email or "").strip().lower()
         if normalized_email:
