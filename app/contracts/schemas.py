@@ -24,15 +24,15 @@ class ContractFileResponse(BaseModel):
 class SignContractRequest(BaseModel):
     """Схема для подписания договора"""
     contract_type: ContractType = Field(..., description="Тип договора")
-    rental_id: Optional[uuid.UUID] = Field(None, description="ID аренды (для договоров аренды)")
-    guarantor_relationship_id: Optional[str] = Field(None, description="ID связи гарант-клиент (для договоров гаранта)")
+    rental_id: Optional[str] = Field(None, description="SID аренды (для договоров аренды)")
+    guarantor_relationship_id: Optional[str] = Field(None, description="SID связи гарант-клиент (для договоров гаранта)")
 
 
 class SignContractByTypeRequest(BaseModel):
     """Схема для подписания договора по типу"""
     contract_type: ContractType = Field(..., description="Тип договора")
-    rental_id: Optional[uuid.UUID] = Field(None, description="ID аренды (для договоров аренды)")
-    guarantor_relationship_id: Optional[str] = Field(None, description="ID связи гарант-клиент (для договоров гаранта)")
+    rental_id: Optional[str] = Field(None, description="SID аренды (для договоров аренды)")
+    guarantor_relationship_id: Optional[str] = Field(None, description="SID связи гарант-клиент (для договоров гаранта)")
 
 
 class UserSignatureResponse(BaseModel):

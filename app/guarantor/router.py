@@ -868,8 +868,13 @@ async def sign_contract(
 ):
     """Подписание договора (только для принятых заявок)"""
     
-    # Находим конкретную связь гарант-клиент по ID
-    relationship_uuid = safe_sid_to_uuid(sign_data.guarantor_relationship_id)
+    try:
+        relationship_uuid = safe_sid_to_uuid(sign_data.guarantor_relationship_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Неверный формат guarantor_relationship_id: {str(e)}"
+        )
     relationship = db.query(Guarantor).filter(
         Guarantor.id == relationship_uuid,
         Guarantor.guarantor_id == current_user.id,
@@ -882,7 +887,6 @@ async def sign_contract(
             detail="Связь гарант-клиент не найдена или не принадлежит вам"
         )
     
-    # Проверяем, что заявка была принята
     original_request = db.query(GuarantorRequest).filter(
         GuarantorRequest.id == relationship.request_id,
         GuarantorRequest.status == GuarantorRequestStatus.ACCEPTED
@@ -894,14 +898,12 @@ async def sign_contract(
             detail="Заявка не была принята. Сначала примите заявку на роль гаранта."
         )
     
-    # Проверяем, что у пользователя есть цифровая подпись
     if not current_user.digital_signature:
         raise HTTPException(
             status_code=400,
             detail="У пользователя отсутствует цифровая подпись"
         )
     
-    # Получаем файл договора
     contract_file = db.query(ContractFile).filter(
         ContractFile.contract_type == sign_data.contract_type,
         ContractFile.is_active == True
@@ -926,7 +928,6 @@ async def sign_contract(
             detail="Этот договор уже подписан"
         )
     
-    # Создаем подпись в таблице user_contract_signatures
     signature = UserContractSignature(
         user_id=current_user.id,
         contract_file_id=contract_file.id,

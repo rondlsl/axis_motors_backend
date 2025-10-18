@@ -194,19 +194,38 @@ async def sign_contract(
             detail=f"Активный файл договора типа {sign_request.contract_type} не найден"
         )
     
-    # Проверяем, что у пользователя есть цифровая подпись
     if not current_user.digital_signature:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="У пользователя отсутствует цифровая подпись"
         )
     
-    # Проверяем, не подписан ли уже этот договор
+    rental_uuid = None
+    guarantor_rel_uuid = None
+    
+    if sign_request.rental_id:
+        try:
+            rental_uuid = safe_sid_to_uuid(sign_request.rental_id)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Неверный формат rental_id: {str(e)}"
+            )
+    
+    if sign_request.guarantor_relationship_id:
+        try:
+            guarantor_rel_uuid = safe_sid_to_uuid(sign_request.guarantor_relationship_id)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Неверный формат guarantor_relationship_id: {str(e)}"
+            )
+    
     existing_signature = db.query(UserContractSignature).filter(
         UserContractSignature.user_id == current_user.id,
         UserContractSignature.contract_file_id == contract_file.id,
-        UserContractSignature.rental_id == sign_request.rental_id,
-        UserContractSignature.guarantor_relationship_id == sign_request.guarantor_relationship_id
+        UserContractSignature.rental_id == rental_uuid,
+        UserContractSignature.guarantor_relationship_id == guarantor_rel_uuid
     ).first()
     
     if existing_signature:
@@ -215,13 +234,12 @@ async def sign_contract(
             detail="Этот договор уже подписан"
         )
 
-    # 2) Проверка: уже подписан активный файл того же типа в нужном контексте
     same_type_active = db.query(UserContractSignature).join(ContractFile).filter(
         UserContractSignature.user_id == current_user.id,
         ContractFile.contract_type == sign_request.contract_type,
         ContractFile.is_active == True,
-        UserContractSignature.rental_id == sign_request.rental_id,
-        UserContractSignature.guarantor_relationship_id == sign_request.guarantor_relationship_id
+        UserContractSignature.rental_id == rental_uuid,
+        UserContractSignature.guarantor_relationship_id == guarantor_rel_uuid
     ).first()
 
     if same_type_active:
@@ -230,7 +248,6 @@ async def sign_contract(
             detail="Этот тип договора уже подписан"
         )
     
-    # Валидация для договоров аренды
     if contract_file.contract_type in [ContractType.APPENDIX_7_1, ContractType.APPENDIX_7_2]:
         if not sign_request.rental_id:
             raise HTTPException(
@@ -238,14 +255,13 @@ async def sign_contract(
                 detail="Для договоров аренды необходимо указать rental_id"
             )
         
-        rental = db.query(RentalHistory).filter(RentalHistory.id == sign_request.rental_id).first()
+        rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
         if not rental or rental.user_id != current_user.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Аренда не найдена или не принадлежит пользователю"
             )
     
-    # Валидация для договоров гаранта
     if sign_request.contract_type in [ContractType.GUARANTOR_CONTRACT, ContractType.GUARANTOR_MAIN_CONTRACT]:
         if not sign_request.guarantor_relationship_id:
             raise HTTPException(
@@ -253,7 +269,6 @@ async def sign_contract(
                 detail="Для договоров гаранта необходимо указать guarantor_relationship_id"
             )
         
-        guarantor_rel_uuid = safe_sid_to_uuid(sign_request.guarantor_relationship_id)
         guarantor_rel = db.query(Guarantor).filter(Guarantor.id == guarantor_rel_uuid).first()
         if not guarantor_rel or guarantor_rel.guarantor_id != current_user.id:
             raise HTTPException(
@@ -261,11 +276,10 @@ async def sign_contract(
                 detail="Связь гарант-клиент не найдена или не принадлежит пользователю"
             )
     
-    # Создаем подпись
     signature = UserContractSignature(
         user_id=current_user.id,
         contract_file_id=contract_file.id,
-        rental_id=sign_request.rental_id,
+        rental_id=rental_uuid if contract_file.contract_type in [ContractType.APPENDIX_7_1, ContractType.APPENDIX_7_2] else None,
         guarantor_relationship_id=guarantor_rel_uuid if sign_request.contract_type in [ContractType.GUARANTOR_CONTRACT, ContractType.GUARANTOR_MAIN_CONTRACT] else None,
         digital_signature=current_user.digital_signature
     )
@@ -274,7 +288,6 @@ async def sign_contract(
     db.commit()
     db.refresh(signature)
     
-    # Обновляем поля пользователя для определенных типов договоров
     if sign_request.contract_type in user_field_mapping:
         field_name = user_field_mapping[sign_request.contract_type]
         setattr(current_user, field_name, True)
@@ -388,7 +401,13 @@ async def get_rental_contract_status(
     """
     Проверить статус договоров для конкретной аренды
     """
-    rental_uuid = safe_sid_to_uuid(rental_id)
+    try:
+        rental_uuid = safe_sid_to_uuid(rental_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Неверный формат rental_id: {str(e)}"
+        )
     rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
     
     if not rental:
@@ -435,7 +454,13 @@ async def get_guarantor_contract_status(
     """
     Проверить статус договоров гаранта
     """
-    guarantor_rel_uuid = safe_sid_to_uuid(guarantor_relationship_id)
+    try:
+        guarantor_rel_uuid = safe_sid_to_uuid(guarantor_relationship_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Неверный формат guarantor_relationship_id: {str(e)}"
+        )
     guarantor_rel = db.query(Guarantor).filter(Guarantor.id == guarantor_rel_uuid).first()
     
     if not guarantor_rel:
