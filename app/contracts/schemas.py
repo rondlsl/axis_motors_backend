@@ -9,10 +9,7 @@ import uuid
 from app.models.contract_model import ContractType
 
 
-class ContractFileUpload(BaseModel):
-    """Схема для загрузки договора (админ)"""
-    contract_type: ContractType = Field(..., description="Тип договора")
-    file_content: str = Field(..., description="Содержимое файла в base64 или data URL")
+# ContractFileUpload удалена - теперь используется multipart/form-data
 
 class ContractFileResponse(BaseModel):
     """Схема ответа с информацией о договоре"""

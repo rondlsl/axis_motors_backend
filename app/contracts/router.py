@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import List
 import base64
@@ -14,7 +14,6 @@ from app.models.contract_model import ContractFile, ContractType, UserContractSi
 from app.models.history_model import RentalHistory
 from app.models.guarantor_model import Guarantor
 from app.contracts.schemas import (
-    ContractFileUpload,
     ContractFileResponse,
     SignContractRequest,
     UserSignatureResponse,
@@ -23,14 +22,15 @@ from app.contracts.schemas import (
     RentalContractStatus,
     GuarantorContractStatus
 )
-from app.contracts.utils import decode_file_content_and_extension
+# decode_file_content_and_extension больше не используется
 
 ContractsRouter = APIRouter(prefix="/contracts", tags=["Contracts"])
 
 
 @ContractsRouter.post("/upload", response_model=ContractFileResponse)
 async def upload_contract(
-    contract_data: ContractFileUpload,
+    file: UploadFile = File(..., description="Файл договора"),
+    contract_type: ContractType = Form(..., description="Тип договора"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -43,31 +43,36 @@ async def upload_contract(
             detail="Только администратор может загружать договоры"
         )
     
-    # Создаем директорию для договоров если её нет
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Файл не выбран"
+        )
+    
+    file_extension = os.path.splitext(file.filename)[1].lower()
+    if file_extension not in ['.pdf', '.doc', '.docx']:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Поддерживаются только файлы PDF, DOC, DOCX"
+        )
+    
     contracts_dir = "uploads/contracts"
     os.makedirs(contracts_dir, exist_ok=True)
     
-    try:
-        file_bytes, file_extension = decode_file_content_and_extension(contract_data.file_content)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-
-    # Генерируем имя файла
-    unique_filename = f"{contract_data.contract_type.value}_{uuid.uuid4()}{file_extension}"
+    file_content = await file.read()
+    unique_filename = f"{contract_type.value}_{uuid.uuid4()}{file_extension}"
     file_path = os.path.join(contracts_dir, unique_filename)
     
-    # Сохраняем файл
     with open(file_path, "wb") as f:
-        f.write(file_bytes)
+        f.write(file_content)
     
-    # Деактивируем предыдущие версии этого типа договора
     db.query(ContractFile).filter(
-        ContractFile.contract_type == contract_data.contract_type,
+        ContractFile.contract_type == contract_type,
         ContractFile.is_active == True
     ).update({"is_active": False})
     
     contract_file = ContractFile(
-        contract_type=contract_data.contract_type,
+        contract_type=contract_type,
         file_path=file_path,
         file_name=unique_filename
     )
