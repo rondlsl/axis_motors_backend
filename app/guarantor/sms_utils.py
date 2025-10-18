@@ -96,3 +96,73 @@ Google Play: Скоро будет доступно
     except Exception as e:
         print(f"SMS sending error: {e}")
         return {"message": "SMS sending failed", "error": str(e)}
+
+
+async def send_rental_start_sms(
+    client_phone: str, 
+    rent_id: str, 
+    full_name: str, 
+    login: str, 
+    client_id: str, 
+    digital_signature: str, 
+    car_id: str, 
+    plate_number: str, 
+    car_name: str
+):
+    """Отправка SMS при начале аренды"""
+    sms_text = f"""Поездка c {rent_id} успешно начата! 
+
+ФИО Клиента: {full_name}
+Логин Клиента: {login}
+ID Клиента: {client_id}
+Электронная подпись: {digital_signature} 
+ID аренды: {rent_id}
+ID машины: {car_id}
+Госномер машины: {plate_number}
+Модель машины: {car_name}"""
+    
+    if SMS_TOKEN == "6666":
+        print(f"TEST SMS to {client_phone}: {sms_text}")
+        return {"message": "TEST SMS sent successfully"}
+    
+    try:
+        result = await send_sms_mobizon(client_phone, sms_text, SMS_TOKEN)
+        return {"message": "SMS sent successfully", "result": result}
+    except Exception as e:
+        print(f"SMS sending error: {e}")
+        return {"message": "SMS sending failed", "error": str(e)}
+
+
+async def send_rental_complete_sms(
+    client_phone: str, 
+    rent_id: str, 
+    full_name: str, 
+    login: str, 
+    client_id: str, 
+    digital_signature: str, 
+    car_id: str, 
+    plate_number: str, 
+    car_name: str
+):
+    """Отправка SMS при завершении аренды"""
+    sms_text = f"""Поездка c {rent_id} успешно завершена! 
+
+ФИО Клиента: {full_name}
+Логин Клиента: {login}
+ID Клиента: {client_id}
+Электронная подпись: {digital_signature} 
+ID аренды: {rent_id}
+ID машины: {car_id}
+Госномер машины: {plate_number}
+Модель машины: {car_name}"""
+    
+    if SMS_TOKEN == "6666":
+        print(f"TEST SMS to {client_phone}: {sms_text}")
+        return {"message": "TEST SMS sent successfully"}
+    
+    try:
+        result = await send_sms_mobizon(client_phone, sms_text, SMS_TOKEN)
+        return {"message": "SMS sent successfully", "result": result}
+    except Exception as e:
+        print(f"SMS sending error: {e}")
+        return {"message": "SMS sending failed", "error": str(e)}

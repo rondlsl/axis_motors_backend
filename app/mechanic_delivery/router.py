@@ -22,6 +22,7 @@ from app.models.user_model import User
 from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
 from app.wallet.utils import record_wallet_transaction
 from app.models.wallet_transaction_model import WalletTransactionType
+from app.guarantor.sms_utils import send_rental_start_sms, send_rental_complete_sms
 
 class DeliveryReviewInput(BaseModel):
     """Схема для отзыва механика доставки"""
@@ -201,6 +202,33 @@ async def start_delivery(
             "delivery_started"
         )
 
+    try:
+        name_parts = []
+        if current_mechanic.first_name:
+            name_parts.append(current_mechanic.first_name)
+        if current_mechanic.middle_name:
+            name_parts.append(current_mechanic.middle_name)
+        if current_mechanic.last_name:
+            name_parts.append(current_mechanic.last_name)
+        full_name = " ".join(name_parts) if name_parts else "Не указано"
+        
+        login = current_mechanic.phone_number or "Не указан"
+        
+        await send_rental_start_sms(
+            client_phone=current_mechanic.phone_number,
+            rent_id=str(rental.id),
+            full_name=full_name,
+            login=login,
+            client_id=str(current_mechanic.id),
+            digital_signature=current_mechanic.digital_signature or "Не указана",
+            car_id=str(car.id),
+            plate_number=car.plate_number,
+            car_name=car.name
+        )
+        print(f"SMS отправлена доставщику {current_mechanic.phone_number} при начале доставки")
+    except Exception as e:
+        print(f"Ошибка отправки SMS при начале доставки: {e}")
+
     return {"message": "Доставка запущена", "rental_id": uuid_to_sid(rental.id)}
 
 
@@ -299,6 +327,33 @@ async def complete_delivery(
             "delivery_completed",
             "car_delivered"
         )
+
+    try:
+        name_parts = []
+        if current_mechanic.first_name:
+            name_parts.append(current_mechanic.first_name)
+        if current_mechanic.middle_name:
+            name_parts.append(current_mechanic.middle_name)
+        if current_mechanic.last_name:
+            name_parts.append(current_mechanic.last_name)
+        full_name = " ".join(name_parts) if name_parts else "Не указано"
+        
+        login = current_mechanic.phone_number or "Не указан"
+        
+        await send_rental_complete_sms(
+            client_phone=current_mechanic.phone_number,
+            rent_id=str(rental.id),
+            full_name=full_name,
+            login=login,
+            client_id=str(current_mechanic.id),
+            digital_signature=current_mechanic.digital_signature or "Не указана",
+            car_id=str(car.id),
+            plate_number=car.plate_number,
+            car_name=car.name
+        )
+        print(f"SMS отправлена доставщику {current_mechanic.phone_number} при завершении доставки")
+    except Exception as e:
+        print(f"Ошибка отправки SMS при завершении доставки: {e}")
 
     return {
         "message": "Доставка успешно завершена, статус автомобиля — RESERVED.",

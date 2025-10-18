@@ -18,6 +18,7 @@ from app.rent.utils.calculate_price import get_open_price
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.car_data import auto_lock_vehicle_after_rental
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
+from app.guarantor.sms_utils import send_rental_start_sms, send_rental_complete_sms
 
 MechanicRouter = APIRouter(tags=["Mechanic"], prefix="/mechanic")
 
@@ -733,6 +734,34 @@ async def start_rental(
     # Для механика переводим автомобиль в состояние IN_USE
     car.status = CarStatus.IN_USE
     db.commit()
+    
+    try:
+        name_parts = []
+        if current_mechanic.first_name:
+            name_parts.append(current_mechanic.first_name)
+        if current_mechanic.middle_name:
+            name_parts.append(current_mechanic.middle_name)
+        if current_mechanic.last_name:
+            name_parts.append(current_mechanic.last_name)
+        full_name = " ".join(name_parts) if name_parts else "Не указано"
+        
+        login = current_mechanic.phone_number or "Не указан"
+        
+        await send_rental_start_sms(
+            client_phone=current_mechanic.phone_number,
+            rent_id=str(rental.id),
+            full_name=full_name,
+            login=login,
+            client_id=str(current_mechanic.id),
+            digital_signature=current_mechanic.digital_signature or "Не указана",
+            car_id=str(car.id),
+            plate_number=car.plate_number,
+            car_name=car.name
+        )
+        print(f"SMS отправлена механику {current_mechanic.phone_number} при начале проверки")
+    except Exception as e:
+        print(f"Ошибка отправки SMS при начале проверки механиком: {e}")
+    
     return {"message": "Проверка автомобиля запущена", "rental_id": uuid_to_sid(rental.id)}
 
 
@@ -1053,6 +1082,34 @@ async def complete_rental(
     add_review_if_exists(db, rental.id, review_input)
     try:
         db.commit()
+        
+        try:
+            name_parts = []
+            if current_mechanic.first_name:
+                name_parts.append(current_mechanic.first_name)
+            if current_mechanic.middle_name:
+                name_parts.append(current_mechanic.middle_name)
+            if current_mechanic.last_name:
+                name_parts.append(current_mechanic.last_name)
+            full_name = " ".join(name_parts) if name_parts else "Не указано"
+            
+            login = current_mechanic.phone_number or "Не указан"
+            
+            await send_rental_complete_sms(
+                client_phone=current_mechanic.phone_number,
+                rent_id=str(rental.id),
+                full_name=full_name,
+                login=login,
+                client_id=str(current_mechanic.id),
+                digital_signature=current_mechanic.digital_signature or "Не указана",
+                car_id=str(car.id),
+                plate_number=car.plate_number,
+                car_name=car.name
+            )
+            print(f"SMS отправлена механику {current_mechanic.phone_number} при завершении проверки")
+        except Exception as e:
+            print(f"Ошибка отправки SMS при завершении проверки механиком: {e}")
+        
         return {
             "message": "Проверка автомобиля успешно завершена",
             "rental_details": {

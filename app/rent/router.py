@@ -28,6 +28,7 @@ from app.gps_api.utils.route_data import get_gps_route_data
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.car_data import auto_lock_vehicle_after_rental
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
+from app.guarantor.sms_utils import send_rental_start_sms, send_rental_complete_sms
 from app.owner.schemas import RouteData, RouteMapData
 from app.rent.schemas import (
     AdvanceBookingRequest, 
@@ -1021,7 +1022,7 @@ async def start_rental(
         except Exception as e:
             print(f"Ошибка разблокировки двигателя при начале аренды (владелец): {e}")
         
-        return {"message": "Rental started successfully (owner rental)", "rental_id": uuid_to_sid(rental.id)}
+        is_owner_rental = True
     else:
         # Если аренда минутная или часовая, списываем с баланса open_price, вычисленный через get_open_price
         if rental.rental_type in [RentalType.MINUTES, RentalType.HOURS]:
@@ -1066,6 +1067,38 @@ async def start_rental(
         except Exception as e:
             print(f"Ошибка разблокировки двигателя при начале аренды: {e}")
 
+        is_owner_rental = False
+
+    try:
+        name_parts = []
+        if current_user.first_name:
+            name_parts.append(current_user.first_name)
+        if current_user.middle_name:
+            name_parts.append(current_user.middle_name)
+        if current_user.last_name:
+            name_parts.append(current_user.last_name)
+        full_name = " ".join(name_parts) if name_parts else "Не указано"
+        
+        login = current_user.phone_number or "Не указан"
+        
+        await send_rental_start_sms(
+            client_phone=current_user.phone_number,
+            rent_id=str(rental.id),
+            full_name=full_name,
+            login=login,
+            client_id=str(current_user.id),
+            digital_signature=current_user.digital_signature or "Не указана",
+            car_id=str(car.id),
+            plate_number=car.plate_number,
+            car_name=car.name
+        )
+        print(f"SMS отправлена клиенту {current_user.phone_number} при начале аренды")
+    except Exception as e:
+        print(f"Ошибка отправки SMS при начале аренды: {e}")
+
+    if is_owner_rental:
+        return {"message": "Rental started successfully (owner rental)", "rental_id": uuid_to_sid(rental.id)}
+    else:
         return {"message": "Rental started successfully", "rental_id": uuid_to_sid(rental.id)}
 
 
@@ -1889,6 +1922,33 @@ async def complete_rental(
         )
     except Exception as e:
         print(e)
+
+    try:
+        name_parts = []
+        if current_user.first_name:
+            name_parts.append(current_user.first_name)
+        if current_user.middle_name:
+            name_parts.append(current_user.middle_name)
+        if current_user.last_name:
+            name_parts.append(current_user.last_name)
+        full_name = " ".join(name_parts) if name_parts else "Не указано"
+        
+        login = current_user.phone_number or "Не указан"
+        
+        await send_rental_complete_sms(
+            client_phone=current_user.phone_number,
+            rent_id=str(rental.id),
+            full_name=full_name,
+            login=login,
+            client_id=str(current_user.id),
+            digital_signature=current_user.digital_signature or "Не указана",
+            car_id=str(car.id),
+            plate_number=car.plate_number,
+            car_name=car.name
+        )
+        print(f"SMS отправлена клиенту {current_user.phone_number} при завершении аренды")
+    except Exception as e:
+        print(f"Ошибка отправки SMS при завершении аренды: {e}")
 
     return {
         "message": "Rental completed successfully",
