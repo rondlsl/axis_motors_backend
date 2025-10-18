@@ -56,7 +56,7 @@ async def upload_contract(
             detail="Поддерживаются только файлы PDF, DOC, DOCX"
         )
     
-    contracts_dir = "contracts"
+    contracts_dir = "uploads/contracts"
     os.makedirs(contracts_dir, exist_ok=True)
     
     file_content = await file.read()
@@ -92,7 +92,7 @@ async def upload_contract(
         file_name=contract_file.file_name,
         is_active=contract_file.is_active,
         uploaded_at=contract_file.uploaded_at,
-        file_url=f"/contracts/{contract_file.file_name}"
+        file_url=f"/uploads/contracts/{contract_file.file_name}"
     )
 
 
@@ -121,7 +121,7 @@ async def get_available_contracts(
             file_name=contract.file_name,
             is_active=contract.is_active,
             uploaded_at=contract.uploaded_at,
-            file_url=f"/contracts/{contract.file_name}"
+            file_url=f"/uploads/contracts/{contract.file_name}"
         )
         for contract in contracts
     ]

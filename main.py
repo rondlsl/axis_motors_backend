@@ -224,8 +224,6 @@ app.include_router(MvdRouter)
 app.include_router(WalletRouter)
 app.include_router(ContractsRouter)
 
-app.mount("/contracts", StaticFiles(directory="contracts"), name="contracts")
-
 @app.get("/")
 async def root(db: Session = Depends(get_db)):
     return {"message": "salam?"}
