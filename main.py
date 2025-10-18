@@ -59,7 +59,6 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 # Создаем папку contracts если не существует
 import os
 os.makedirs("contracts", exist_ok=True)
-app.mount("/contracts", StaticFiles(directory="contracts"), name="contracts")
 
 
 def run_migrations():
@@ -225,6 +224,7 @@ app.include_router(MvdRouter)
 app.include_router(WalletRouter)
 app.include_router(ContractsRouter)
 
+app.mount("/contracts", StaticFiles(directory="contracts"), name="contracts")
 
 @app.get("/")
 async def root(db: Session = Depends(get_db)):
