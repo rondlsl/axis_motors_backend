@@ -187,7 +187,7 @@ async def invite_guarantor(
         requestor_full_name = " ".join(name_parts)
         push_title = "Приглашение стать гарантом"
         push_body = (
-            f"Пользователь {requestor_full_name} выбрал вас гарантом. "
+            f"Пользователь {requestor_full_name}, {current_user.phone_number} выбрал вас гарантом. "
             f"Откройте приложение, чтобы принять или отклонить заявку."
         )
         await send_push_to_user_by_id(db, guarantor_user.id, push_title, push_body)
@@ -974,7 +974,7 @@ async def sign_contract(
 
         title_for_guarantor = "Подтверждение роли гаранта"
         body_for_guarantor = (
-            f"Вы, {guarantor_full_name}, стали гарантом для пользователя {client_full_name}. "
+            f"Вы, {guarantor_full_name}, стали гарантом для пользователя {client_full_name}, {client_user.phone_number if client_user else 'неизвестно'}. "
             f"Спасибо за подтверждение ответственности. Договор успешно подписан."
         )
         await send_push_to_user_by_id(db, current_user.id, title_for_guarantor, body_for_guarantor)
@@ -982,7 +982,7 @@ async def sign_contract(
         if client_user:
             title_for_client = "Гарант подтвержден"
             body_for_client = (
-                f"Пользователь {guarantor_full_name} подтвердил статус гаранта для вас. "
+                f"Пользователь {guarantor_full_name}, {current_user.phone_number} подтвердил статус гаранта для вас. "
                 f"Договор успешно подписан."
             )
             await send_push_to_user_by_id(db, client_user.id, title_for_client, body_for_client)
