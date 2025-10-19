@@ -209,7 +209,7 @@ async def sign_contract(
     
     if sign_request.rental_id:
         try:
-            rental_uuid = safe_sid_to_uuid(sign_request.rental_id)
+            rental_uuid = uuid.UUID(sign_request.rental_id)
         except ValueError as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -218,7 +218,7 @@ async def sign_contract(
     
     if sign_request.guarantor_relationship_id:
         try:
-            guarantor_rel_uuid = safe_sid_to_uuid(sign_request.guarantor_relationship_id)
+            guarantor_rel_uuid = uuid.UUID(sign_request.guarantor_relationship_id)
         except ValueError as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -317,8 +317,8 @@ async def sign_contract(
         contract_type=sign_request.contract_type,
         digital_signature=signature.digital_signature,
         signed_at=signature.signed_at,
-        rental_id=uuid_to_sid(signature.rental_id) if signature.rental_id else None,
-        guarantor_relationship_id=uuid_to_sid(signature.guarantor_relationship_id) if signature.guarantor_relationship_id else None
+        rental_id=str(signature.rental_id) if signature.rental_id else None,
+        guarantor_relationship_id=str(signature.guarantor_relationship_id) if signature.guarantor_relationship_id else None
     )
 
 @ContractsRouter.get("/my-contracts", response_model=UserContractsResponse)
