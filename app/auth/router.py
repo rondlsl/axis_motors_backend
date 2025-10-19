@@ -535,6 +535,7 @@ async def read_users_me(
             if rental.mechanic_inspector_id == current_user.id:
                 # Это осмотр
                 rental_details = {
+                    "rental_id": uuid_to_sid(rental.id),
                     "reservation_time": rental.mechanic_inspection_start_time.isoformat() if rental.mechanic_inspection_start_time else None,
                     "start_time": rental.mechanic_inspection_start_time.isoformat() if rental.mechanic_inspection_start_time else None,
                     "rental_type": rental.rental_type.value if rental.rental_type else "minutes",
@@ -545,6 +546,7 @@ async def read_users_me(
             else:
                 # Это доставка
                 rental_details = {
+                    "rental_id": uuid_to_sid(rental.id),
                     "reservation_time": rental.delivery_start_time.isoformat() if rental.delivery_start_time else None,
                     "start_time": rental.delivery_start_time.isoformat() if rental.delivery_start_time else None,
                     "rental_type": rental.rental_type.value if rental.rental_type else "minutes",
@@ -554,6 +556,7 @@ async def read_users_me(
                 }
         else:
             rental_details = {
+                "rental_id": uuid_to_sid(rental.id),
                 "reservation_time": rental.reservation_time.isoformat() if rental.reservation_time else None,
                 "start_time": rental.start_time.isoformat() if rental.start_time else None,
                 "rental_type": rental.rental_type.value,

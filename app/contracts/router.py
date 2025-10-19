@@ -13,6 +13,10 @@ from app.models.user_model import User, UserRole
 from app.models.contract_model import ContractFile, ContractType, UserContractSignature
 from app.models.history_model import RentalHistory
 from app.models.guarantor_model import Guarantor
+from app.models.car_model import Car
+from app.gps_api.utils.auth_api import get_auth_token
+from app.gps_api.utils.car_data import send_unlock_engine
+from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.contracts.schemas import (
     ContractFileResponse,
     SignContractRequest,
@@ -293,6 +297,18 @@ async def sign_contract(
         setattr(current_user, field_name, True)
         db.add(current_user)
         db.commit()
+    
+    if sign_request.contract_type == ContractType.APPENDIX_7_1 and rental_uuid:
+        try:
+            rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+            if rental:
+                car = db.query(Car).filter(Car.id == rental.car_id).first()
+                if car and car.gps_imei:
+                    auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                    await send_unlock_engine(car.gps_imei, auth_token)
+                    print(f"Двигатель автомобиля {car.name} разблокирован после подписания аппендикса 7.1")
+        except Exception as e:
+            print(f"Ошибка разблокировки двигателя после подписания аппендикса 7.1: {e}")
     
     return UserSignatureResponse(
         id=uuid_to_sid(signature.id),
