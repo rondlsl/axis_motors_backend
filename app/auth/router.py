@@ -899,7 +899,7 @@ async def read_users_me(
             })
 
         # Проверяем активную аренду и не подписан ли аппендикс 7.1
-        if current_rental and current_user.role == UserRole.USER:
+        if current_rental and current_user.role in [UserRole.USER, UserRole.ADMIN, UserRole.MECHANIC]:
             rental_id = current_rental["rental_details"].get("rental_id") if "rental_details" in current_rental else None
             if rental_id:
                 appendix_7_1_signed = db.query(UserContractSignature).join(ContractFile).filter(
@@ -936,7 +936,7 @@ async def read_users_me(
                     })
 
         # Проверяем завершенную аренду и не подписан ли аппендикс 7.2
-        if current_user.role == UserRole.USER:
+        if current_user.role in [UserRole.USER, UserRole.ADMIN, UserRole.MECHANIC]:
             last_completed_rental = db.query(RentalHistory).filter(
                 RentalHistory.user_id == current_user.id,
                 RentalHistory.rental_status == RentalStatus.COMPLETED
