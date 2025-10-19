@@ -40,6 +40,7 @@ from app.guarantor.schemas import (
     VerificationStatusSchema
 )
 from app.guarantor.sms_utils import send_guarantor_invitation_sms
+from app.push.utils import send_push_to_user_by_id
 
 guarantor_router = APIRouter(prefix="/guarantor", tags=["Guarantor"])
 
@@ -171,10 +172,33 @@ async def invite_guarantor(
     db.commit()
     db.refresh(new_request)
     
+    try:
+        requestor_first_name = current_user.first_name or "Пользователь"
+        requestor_middle_name = current_user.middle_name
+        requestor_last_name = current_user.last_name
+        sms_result = await send_guarantor_invitation_sms(
+            guarantor_user.phone_number,
+            requestor_first_name,
+            requestor_last_name,
+            requestor_middle_name,
+        )
+
+        name_parts = [p for p in [requestor_first_name, requestor_middle_name, requestor_last_name] if p]
+        requestor_full_name = " ".join(name_parts)
+        push_title = "Приглашение стать гарантом"
+        push_body = (
+            f"Пользователь {requestor_full_name} выбрал вас гарантом. "
+            f"Откройте приложение, чтобы принять или отклонить заявку."
+        )
+        await send_push_to_user_by_id(db, guarantor_user.id, push_title, push_body)
+    except Exception as _e:
+        sms_result = {"message": "SMS/Push sending failed", "error": str(_e)}
+    
     return {
-        "message": "Заявка на гаранта создана успешно",
+        "message": "Заявка на гаранта создана успешно. Уведомления отправлены гаранту.",
         "user_exists": True,
         "request_id": new_request.sid,
+        "sms_result": sms_result,
     }
 
 
