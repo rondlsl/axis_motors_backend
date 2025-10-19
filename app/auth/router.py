@@ -1245,6 +1245,23 @@ async def upload_documents(
                 detail=f"Как гражданин Республики Казахстан, вы обязаны предоставить все сертификаты. Отсутствуют: {', '.join(missing_certificates)}"
             )
 
+    normalized_email = (email or "").strip().lower()
+    if normalized_email:
+        existing_with_email = (
+            db.query(User)
+            .filter(
+                User.email == normalized_email,
+                User.id != current_user.id,
+                User.is_active == True
+            )
+            .first()
+        )
+        if existing_with_email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Этот email уже используется другим пользователем. Пожалуйста, используйте другой email."
+            )
+
     try:
         # Сохранение обязательных файлов
         id_front_path = await save_file(id_front, current_user.id, "uploads/documents")
@@ -1273,22 +1290,6 @@ async def upload_documents(
         current_user.last_name = document_data.last_name
         current_user.middle_name = middle_name if middle_name and middle_name.strip() else None
         current_user.birth_date = datetime.strptime(document_data.birth_date, '%Y-%m-%d')
-        normalized_email = (email or "").strip().lower()
-        if normalized_email:
-            existing_with_email = (
-                db.query(User)
-                .filter(
-                    User.email == normalized_email,
-                    User.id != current_user.id,
-                    User.is_active == True
-                )
-                .first()
-            )
-            if existing_with_email:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Этот email уже используется другим пользователем"
-                )
         current_user.email = normalized_email or None
         current_user.is_citizen_kz = document_data.is_citizen_kz
         # Сохраняем ИИН или паспорт
