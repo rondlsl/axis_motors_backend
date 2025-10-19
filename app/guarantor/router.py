@@ -183,7 +183,7 @@ async def invite_guarantor(
             requestor_middle_name,
         )
 
-        name_parts = [p for p in [requestor_first_name, requestor_middle_name, requestor_last_name] if p]
+        name_parts = [p for p in [requestor_first_name, requestor_last_name, requestor_middle_name] if p]
         requestor_full_name = " ".join(name_parts)
         push_title = "Приглашение стать гарантом"
         push_body = (
@@ -961,7 +961,34 @@ async def sign_contract(
     
     db.add(signature)
     db.commit()
-    
+
+    # Отправляем push-уведомления после подписания договора
+    try:
+        client_user = db.query(User).filter(User.id == relationship.client_id).first()
+
+        guarantor_name_parts = [p for p in [current_user.first_name, current_user.last_name, current_user.middle_name] if p]
+        guarantor_full_name = " ".join(guarantor_name_parts) or "Гарант"
+
+        client_name_parts = [p for p in [client_user.first_name if client_user else None, client_user.last_name if client_user else None, client_user.middle_name if client_user else None] if p]
+        client_full_name = " ".join(client_name_parts) or "Клиент"
+
+        title_for_guarantor = "Подтверждение роли гаранта"
+        body_for_guarantor = (
+            f"Вы, {guarantor_full_name}, стали гарантом для пользователя {client_full_name}. "
+            f"Спасибо за подтверждение ответственности. Договор успешно подписан."
+        )
+        await send_push_to_user_by_id(db, current_user.id, title_for_guarantor, body_for_guarantor)
+
+        if client_user:
+            title_for_client = "Гарант подтвержден"
+            body_for_client = (
+                f"Пользователь {guarantor_full_name} подтвердил статус гаранта для вас. "
+                f"Договор успешно подписан."
+            )
+            await send_push_to_user_by_id(db, client_user.id, title_for_client, body_for_client)
+    except Exception:
+        pass
+
     return {"message": f"Договор {sign_data.contract_type} успешно подписан"}
 
 @guarantor_router.get(
