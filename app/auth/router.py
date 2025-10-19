@@ -9,7 +9,10 @@ import smtplib
 from email.mime.text import MIMEText
 import os
 import random
-from app.utils.short_id import uuid_to_sid
+from app.utils.short_id import uuid_to_sid, safe_sid_to_uuid
+from app.models.contract_model import UserContractSignature, ContractFile, ContractType
+from app.models.history_model import RentalHistory, RentalStatus
+from app.models.car_model import Car
 
 from starlette import status
 
@@ -828,7 +831,7 @@ async def read_users_me(
         last_name = current_user.last_name if isinstance(current_user.last_name, str) else None
         role = getattr(current_user.role, "value", current_user.role) if current_user.role is not None else None
 
-        return {
+        response_data = {
             "id": uuid_to_sid(current_user.id),
             "user_id": uuid_to_sid(current_user.id),
             "phone_number": current_user.phone_number,
@@ -850,7 +853,6 @@ async def read_users_me(
             "guarantors_count": guarantors_count,
             "guarantors": guarantors,
             "auto_class": current_user.auto_class or [],
-            "digital_signature": current_user.digital_signature,
             "application": {
                 "reason": getattr(user_application, "reason", None) if user_application else None,
             },
@@ -878,6 +880,104 @@ async def read_users_me(
             "is_user_agreement": current_user.is_user_agreement,
             "upload_document_at": current_user.upload_document_at.isoformat() if current_user.upload_document_at else None
         }
+
+        if not current_user.is_contract_read:
+            full_name_parts = []
+            if first_name:
+                full_name_parts.append(first_name)
+            if last_name:
+                full_name_parts.append(last_name)
+            if current_user.middle_name:
+                full_name_parts.append(current_user.middle_name)
+            full_name = " ".join(full_name_parts) if full_name_parts else None
+            
+            response_data.update({
+                "full_name": full_name,
+                "login": current_user.phone_number, 
+                "client_uuid": str(current_user.id),  
+                "digital_signature": current_user.digital_signature
+            })
+
+        # Проверяем активную аренду и не подписан ли аппендикс 7.1
+        if current_rental and current_user.role == UserRole.USER:
+            rental_id = current_rental["rental_details"].get("rental_id") if "rental_details" in current_rental else None
+            if rental_id:
+                appendix_7_1_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                    UserContractSignature.user_id == current_user.id,
+                    UserContractSignature.rental_id == safe_sid_to_uuid(rental_id),
+                    ContractFile.contract_type == ContractType.APPENDIX_7_1
+                ).first() is not None
+                
+                if not appendix_7_1_signed:
+                    car_details = current_rental.get("car_details", {})
+                    
+                    if 'full_name' not in locals():
+                        full_name_parts = []
+                        if first_name:
+                            full_name_parts.append(first_name)
+                        if last_name:
+                            full_name_parts.append(last_name)
+                        if current_user.middle_name:
+                            full_name_parts.append(current_user.middle_name)
+                        full_name = " ".join(full_name_parts) if full_name_parts else None
+                    
+                    response_data.update({
+                        "full_name": full_name,
+                        "login": current_user.phone_number,
+                        "client_uuid": str(current_user.id),
+                        "digital_signature": current_user.digital_signature,
+                        "rent_uuid": str(safe_sid_to_uuid(rental_id)),
+                        "plate_number": car_details.get("plate_number"),
+                        "car_uuid": str(safe_sid_to_uuid(car_details.get("id"))),
+                        "car_year": car_details.get("year"),
+                        "body_type": car_details.get("body_type"),
+                        "vin": car_details.get("vin"),
+                        "color": car_details.get("color")
+                    })
+
+        # Проверяем завершенную аренду и не подписан ли аппендикс 7.2
+        if current_user.role == UserRole.USER:
+            last_completed_rental = db.query(RentalHistory).filter(
+                RentalHistory.user_id == current_user.id,
+                RentalHistory.rental_status == RentalStatus.COMPLETED
+            ).order_by(RentalHistory.end_time.desc()).first()
+            
+            if last_completed_rental:
+                appendix_7_2_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                    UserContractSignature.user_id == current_user.id,
+                    UserContractSignature.rental_id == last_completed_rental.id,
+                    ContractFile.contract_type == ContractType.APPENDIX_7_2
+                ).first() is not None
+                
+                if not appendix_7_2_signed:
+                    car = db.query(Car).filter(Car.id == last_completed_rental.car_id).first()
+                    
+                    if car:
+                        if 'full_name' not in locals():
+                            full_name_parts = []
+                            if first_name:
+                                full_name_parts.append(first_name)
+                            if last_name:
+                                full_name_parts.append(last_name)
+                            if current_user.middle_name:
+                                full_name_parts.append(current_user.middle_name)
+                            full_name = " ".join(full_name_parts) if full_name_parts else None
+                        
+                        response_data.update({
+                            "full_name": full_name,
+                            "login": current_user.phone_number,
+                            "client_uuid": str(current_user.id),
+                            "digital_signature": current_user.digital_signature,
+                            "rent_uuid": str(last_completed_rental.id),
+                            "plate_number": car.plate_number,
+                            "car_uuid": str(car.id),
+                            "car_year": car.year,
+                            "body_type": car.body_type,
+                            "vin": car.vin,
+                            "color": car.color
+                        })
+
+        return response_data
     except Exception as e:
         from app.core.config import logger
         import traceback

@@ -34,7 +34,8 @@ async def get_pending_applications(
     ).filter(
         and_(
             Application.financier_status == ApplicationStatus.APPROVED,  # Только одобренные финансистом
-            Application.mvd_status == ApplicationStatus.PENDING
+            Application.mvd_status == ApplicationStatus.PENDING,
+            User.is_verified_email == True
         )
     )
     
@@ -103,7 +104,8 @@ async def get_approved_applications(
     ).filter(
         and_(
             Application.financier_status == ApplicationStatus.APPROVED,
-            Application.mvd_status == ApplicationStatus.APPROVED
+            Application.mvd_status == ApplicationStatus.APPROVED,
+            User.is_verified_email == True
         )
     )
     
@@ -173,7 +175,8 @@ async def get_rejected_applications(
     ).filter(
         and_(
             Application.financier_status == ApplicationStatus.APPROVED,
-            Application.mvd_status == ApplicationStatus.REJECTED
+            Application.mvd_status == ApplicationStatus.REJECTED,
+            User.is_verified_email == True
         )
     )
     

@@ -32,7 +32,10 @@ async def get_pending_applications(
     query = db.query(Application).options(
         joinedload(Application.user)
     ).filter(
-        Application.financier_status == ApplicationStatus.PENDING
+        and_(
+            Application.financier_status == ApplicationStatus.PENDING,
+            User.is_verified_email == True
+        )
     )
     
     # Поиск по имени, телефону, ИИН или номеру паспорта
@@ -95,7 +98,10 @@ async def get_approved_applications(
     query = db.query(Application).options(
         joinedload(Application.user)
     ).filter(
-        Application.financier_status == ApplicationStatus.APPROVED
+        and_(
+            Application.financier_status == ApplicationStatus.APPROVED,
+            User.is_verified_email == True
+        )
     )
     
     # Поиск по имени, телефону, ИИН или номеру паспорта
@@ -160,7 +166,10 @@ async def get_rejected_applications(
     query = db.query(Application).options(
         joinedload(Application.user)
     ).filter(
-        Application.financier_status == ApplicationStatus.REJECTED
+        and_(
+            Application.financier_status == ApplicationStatus.REJECTED,
+            User.is_verified_email == True
+        )
     )
     
     # Поиск по имени, телефону, ИИН или номеру паспорта
