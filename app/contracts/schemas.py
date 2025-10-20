@@ -70,6 +70,7 @@ class ContractRequirements(BaseModel):
 class RentalContractStatus(BaseModel):
     """Схема для статуса договоров при аренде"""
     rental_id: str
+    rental_main_contract_signed: bool = Field(..., description="Подписан ли основной договор аренды")
     appendix_7_1_signed: bool = Field(..., description="Подписано ли приложение 7.1")
     appendix_7_2_signed: bool = Field(..., description="Подписано ли приложение 7.2")
 

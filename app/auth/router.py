@@ -841,11 +841,18 @@ async def read_users_me(
             ContractFile.contract_type == ContractType.MAIN_CONTRACT
         ).first() is not None
 
-        # 2. Акт приема (APPENDIX_7_1) - проверяем для текущей аренды
+        # 2. Основной договор аренды (RENTAL_MAIN_CONTRACT) - проверяем для текущей аренды
+        rental_main_contract_signed = False
         appendix_7_1_signed = False
         if current_rental:
             rental_id = current_rental["rental_details"].get("rental_id") if "rental_details" in current_rental else None
             if rental_id:
+                rental_main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                    UserContractSignature.user_id == current_user.id,
+                    UserContractSignature.rental_id == safe_sid_to_uuid(rental_id),
+                    ContractFile.contract_type == ContractType.RENTAL_MAIN_CONTRACT
+                ).first() is not None
+                
                 appendix_7_1_signed = db.query(UserContractSignature).join(ContractFile).filter(
                     UserContractSignature.user_id == current_user.id,
                     UserContractSignature.rental_id == safe_sid_to_uuid(rental_id),
@@ -902,6 +909,7 @@ async def read_users_me(
             "upload_document_at": current_user.upload_document_at.isoformat() if current_user.upload_document_at else None,
             # Информация о подписанных договорах для аренды
             "main_contract_signed": main_contract_signed,  # Договор о присоединении
+            "rental_main_contract_signed": rental_main_contract_signed,  # Основной договор аренды (только для активной аренды)
             "appendix_7_1_signed": appendix_7_1_signed,  # Акт приема (только для активной аренды)
         }
 
@@ -922,17 +930,40 @@ async def read_users_me(
                 "digital_signature": current_user.digital_signature
             })
 
-        # Проверяем активную аренду и не подписан ли аппендикс 7.1
+        # Проверяем активную аренду и не подписан ли основной договор аренды или аппендикс 7.1
         if current_rental and current_user.role in [UserRole.USER, UserRole.ADMIN, UserRole.MECHANIC]:
             rental_id = current_rental["rental_details"].get("rental_id") if "rental_details" in current_rental else None
             if rental_id:
-                appendix_7_1_signed = db.query(UserContractSignature).join(ContractFile).filter(
-                    UserContractSignature.user_id == current_user.id,
-                    UserContractSignature.rental_id == safe_sid_to_uuid(rental_id),
-                    ContractFile.contract_type == ContractType.APPENDIX_7_1
-                ).first() is not None
+                # Сначала проверяем основной договор аренды
+                if not rental_main_contract_signed:
+                    car_details = current_rental.get("car_details", {})
+                    
+                    if 'full_name' not in locals():
+                        full_name_parts = []
+                        if first_name:
+                            full_name_parts.append(first_name)
+                        if last_name:
+                            full_name_parts.append(last_name)
+                        if current_user.middle_name:
+                            full_name_parts.append(current_user.middle_name)
+                        full_name = " ".join(full_name_parts) if full_name_parts else None
+                    
+                    response_data.update({
+                        "full_name": full_name,
+                        "login": current_user.phone_number,
+                        "client_uuid": str(current_user.id),
+                        "digital_signature": current_user.digital_signature,
+                        "rent_uuid": str(safe_sid_to_uuid(rental_id)),
+                        "plate_number": car_details.get("plate_number"),
+                        "car_uuid": str(safe_sid_to_uuid(car_details.get("id"))),
+                        "car_year": car_details.get("year"),
+                        "body_type": car_details.get("body_type"),
+                        "vin": car_details.get("vin"),
+                        "color": car_details.get("color")
+                    })
                 
-                if not appendix_7_1_signed:
+                # Затем проверяем приложение 7.1 (только если основной договор аренды подписан)
+                elif not appendix_7_1_signed:
                     car_details = current_rental.get("car_details", {})
                     
                     if 'full_name' not in locals():

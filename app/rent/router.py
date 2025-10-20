@@ -953,6 +953,21 @@ async def start_rental(
 
     if rental.rental_status != RentalStatus.RESERVED:
         raise HTTPException(status_code=400, detail="Rental is not in reserved status")
+    
+    # Проверяем, что основной договор аренды подписан
+    from app.models.contract_model import UserContractSignature, ContractFile, ContractType
+    
+    rental_main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+        UserContractSignature.user_id == current_user.id,
+        UserContractSignature.rental_id == rental.id,
+        ContractFile.contract_type == ContractType.RENTAL_MAIN_CONTRACT
+    ).first() is not None
+    
+    if not rental_main_contract_signed:
+        raise HTTPException(
+            status_code=400, 
+            detail="Необходимо подписать основной договор аренды перед началом аренды"
+        )
 
     # Получаем машину по аренде
     car = db.query(Car).filter(Car.id == rental.car_id).first()
