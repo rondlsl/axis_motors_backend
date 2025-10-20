@@ -10,10 +10,22 @@ from sqlalchemy.exc import SQLAlchemyError
 def reset_migrations():
     """Сброс состояния миграций"""
     
-    # Получаем URL базы данных из переменных окружения
+    # Получаем URL базы данных из переменных окружения или используем значения по умолчанию
     database_url = os.getenv('DATABASE_URL')
+    
     if not database_url:
-        print("Ошибка: DATABASE_URL не установлена")
+        # Собираем URL из отдельных переменных
+        host = os.getenv('POSTGRES_HOST', '195.93.152.69')
+        port = os.getenv('POSTGRES_PORT', '5432')
+        user = os.getenv('POSTGRES_USER', 'postgres')
+        password = os.getenv('POSTGRES_PASSWORD', 'postgres')
+        db_name = os.getenv('POSTGRES_DB', 'azv_motors_backend_v2')
+        
+        database_url = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{db_name}"
+        print(f"Используем URL: {database_url}")
+    
+    if not database_url:
+        print("Ошибка: Не удалось определить URL базы данных")
         return False
     
     try:
