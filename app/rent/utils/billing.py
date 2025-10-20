@@ -111,6 +111,11 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
     telegram_alerts: list[str] = []
     lock_requests: list[tuple[str, str, uuid.UUID]] = []  # (imei, car_name, user_id)
 
+    rental_count = db.query(RentalHistory).count()
+    if rental_count == 0:
+        print("ℹ️ Таблица rental_history пуста, пропускаем billing_job")
+        return [], [], []
+    
     rentals = (
         db.query(RentalHistory)
         .join(User, RentalHistory.user_id == User.id)
