@@ -18,7 +18,7 @@ from starlette import status
 
 from app.auth.dependencies.get_current_user import get_current_user  
 from app.auth.dependencies.save_documents import save_file
-from app.auth.schemas import SendSmsRequest, VerifySmsRequest, DocumentUploadRequest, LocaleUpdate, SelfieUploadResponse, UserRegistrationInfoResponse, VerifySmsResponse
+from app.auth.schemas import SendSmsRequest, VerifySmsRequest, DocumentUploadRequest, LocaleUpdate, SelfieUploadResponse, UserRegistrationInfoResponse, VerifySmsResponse, ChangeEmailRequest, VerifyEmailChangeRequest, ChangeEmailResponse
 from app.auth.security.auth_bearer import JWTBearer
 from app.auth.security.tokens import create_refresh_token, create_access_token
 from app.core.config import SMS_TOKEN
@@ -1453,6 +1453,152 @@ async def upload_documents(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while uploading documents and data"
         )
+
+
+@Auth_router.post("/change_email/request", response_model=ChangeEmailResponse)
+async def request_change_email(
+    request: ChangeEmailRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Запрос на изменение email адреса.
+    Отправляет код подтверждения на новый email адрес.
+    """
+    new_email = request.new_email.strip().lower()
+    
+    # Проверяем, что новый email отличается от текущего
+    if current_user.email and current_user.email.lower() == new_email:
+        raise HTTPException(
+            status_code=400,
+            detail="Новый email совпадает с текущим"
+        )
+    
+    # Проверяем, что email не используется другим пользователем
+    existing_user = db.query(User).filter(
+        User.email == new_email,
+        User.id != current_user.id,
+        User.is_active == True
+    ).first()
+    
+    if existing_user:
+        raise HTTPException(
+            status_code=400,
+            detail="Этот email уже используется другим пользователем"
+        )
+    
+    # Генерируем код подтверждения
+    code = generate_email_verification_code()
+    
+    # Сохраняем код в базу данных с указанием purpose = "email_change"
+    record = VerificationCode(
+        phone_number=None,
+        email=new_email,
+        code=code,
+        purpose="email_change",
+        is_used=False,
+        expires_at=datetime.utcnow() + timedelta(minutes=15),
+    )
+    db.add(record)
+    
+    # Отправляем письмо с кодом
+    try:
+        smtp_host = os.getenv("SMTP_HOST")
+        smtp_port = int(os.getenv("SMTP_PORT", "587"))
+        smtp_user = os.getenv("SMTP_USER")
+        smtp_pass = os.getenv("SMTP_PASSWORD")
+        smtp_from = os.getenv("SMTP_FROM", smtp_user or "no-reply@example.com")
+        
+        if smtp_host and smtp_user and smtp_pass:
+            msg = MIMEText(f"Ваш код для подтверждения изменения email: {code}")
+            msg["Subject"] = "AZV Motors - Изменение email"
+            msg["From"] = smtp_from
+            msg["To"] = new_email
+            
+            with smtplib.SMTP(smtp_host, smtp_port) as server:
+                server.starttls()
+                server.login(smtp_user, smtp_pass)
+                server.send_message(msg)
+        else:
+            try:
+                from app.core.config import logger
+                logger.warning(f"SMTP not configured; verification code for {new_email}: {code}")
+            except Exception:
+                pass
+    except Exception as e:
+        try:
+            from app.core.config import logger
+            logger.error(f"Failed to send email: {e}")
+        except Exception:
+            pass
+    
+    try:
+        from app.core.config import logger
+        logger.warning(f"Email change verification code for {new_email}: {code}")
+    except Exception:
+        pass
+    
+    db.commit()
+    
+    return ChangeEmailResponse(
+        message="Код подтверждения отправлен на новый email адрес",
+        email=new_email
+    )
+
+
+@Auth_router.post("/change_email/verify", response_model=ChangeEmailResponse)
+async def verify_change_email(
+    request: VerifyEmailChangeRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Подтверждение изменения email адреса с помощью кода.
+    После успешной верификации email будет изменен.
+    """
+    new_email = request.new_email.strip().lower()
+    
+    # Ищем неиспользованный и неистекший код
+    vc = db.query(VerificationCode).filter(
+        VerificationCode.email == new_email,
+        VerificationCode.code == request.code,
+        VerificationCode.purpose == "email_change",
+        VerificationCode.is_used == False,
+        VerificationCode.expires_at >= datetime.utcnow(),
+    ).order_by(VerificationCode.id.desc()).first()
+    
+    if not vc:
+        raise HTTPException(
+            status_code=400,
+            detail="Неверный код подтверждения или код истек"
+        )
+    
+    # Проверяем еще раз, что email не занят (могло измениться за время верификации)
+    existing_user = db.query(User).filter(
+        User.email == new_email,
+        User.id != current_user.id,
+        User.is_active == True
+    ).first()
+    
+    if existing_user:
+        raise HTTPException(
+            status_code=400,
+            detail="Этот email уже используется другим пользователем"
+        )
+    
+    # Отмечаем код использованным
+    vc.is_used = True
+    
+    # Обновляем email пользователя
+    current_user.email = new_email
+    current_user.is_verified_email = True
+    
+    db.commit()
+    
+    return ChangeEmailResponse(
+        message="Email успешно изменен",
+        email=new_email
+    )
 
 
 @Auth_router.delete("/delete_account/")
