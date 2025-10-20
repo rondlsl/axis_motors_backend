@@ -630,13 +630,35 @@ async def read_users_me(
             # Проверяем, это осмотр или доставка
             if rental.mechanic_inspector_id == current_user.id:
                 # Это осмотр - используем mechanic_photos_before/after
-                car_details["photo_before_selfie_uploaded"] = bool(rental.mechanic_photos_before and len(rental.mechanic_photos_before) > 0)
-                car_details["photo_before_car_uploaded"] = bool(rental.mechanic_photos_before and len(rental.mechanic_photos_before) > 1)
-                car_details["photo_before_interior_uploaded"] = bool(rental.mechanic_photos_before and len(rental.mechanic_photos_before) > 2)
+                # Проверяем по содержимому путей (аналогично /mechanic/start)
+                before_photos = rental.mechanic_photos_before or []
+                car_details["photo_before_selfie_uploaded"] = any(
+                    ("/mechanic/before/selfie/" in p) or ("\\mechanic\\before\\selfie\\" in p) 
+                    for p in before_photos
+                )
+                car_details["photo_before_car_uploaded"] = any(
+                    ("/mechanic/before/car/" in p) or ("\\mechanic\\before\\car\\" in p) 
+                    for p in before_photos
+                )
+                car_details["photo_before_interior_uploaded"] = any(
+                    ("/mechanic/before/interior/" in p) or ("\\mechanic\\before\\interior\\" in p) 
+                    for p in before_photos
+                )
                 
-                car_details["photo_after_selfie_uploaded"] = bool(rental.mechanic_photos_after and len(rental.mechanic_photos_after) > 0)
-                car_details["photo_after_car_uploaded"] = bool(rental.mechanic_photos_after and len(rental.mechanic_photos_after) > 1)
-                car_details["photo_after_interior_uploaded"] = bool(rental.mechanic_photos_after and len(rental.mechanic_photos_after) > 2)
+                # Проверяем фото ПОСЛЕ по содержимому путей
+                after_photos = rental.mechanic_photos_after or []
+                car_details["photo_after_selfie_uploaded"] = any(
+                    ("/mechanic/after/selfie/" in p) or ("\\mechanic\\after\\selfie\\" in p) 
+                    for p in after_photos
+                )
+                car_details["photo_after_car_uploaded"] = any(
+                    ("/mechanic/after/car/" in p) or ("\\mechanic\\after\\car\\" in p) 
+                    for p in after_photos
+                )
+                car_details["photo_after_interior_uploaded"] = any(
+                    ("/mechanic/after/interior/" in p) or ("\\mechanic\\after\\interior\\" in p) 
+                    for p in after_photos
+                )
             else:
                 # Это доставка - используем delivery_photos_before/after
                 # Проверяем флаги загрузки фото ПЕРЕД доставкой по содержимому путей
