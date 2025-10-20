@@ -51,9 +51,8 @@ def create_enums():
                 'admin', 'user', 'rejected', 'client', 'pending', 'mechanic', 'GARANT', 
                 'financier', 'mvd', 'SUPPORT', 'PENDINGTOFIRST', 'PENDINGTOSECOND', 
                 'REJECTFIRSTDOC', 'REJECTFIRSTCERT', 'REJECTFIRST', 'REJECTSECOND',
-                'ADMIN', 'USER', 'REJECTED', 'CLIENT', 'PENDING', 'MECHANIC', 'GARANT', 
-                'FINANCIER', 'MVD', 'SUPPORT', 'PENDINGTOFIRST', 'PENDINGTOSECOND', 
-                'REJECTFIRSTDOC', 'REJECTFIRSTCERT', 'REJECTFIRST', 'REJECTSECOND'
+                'ADMIN', 'USER', 'REJECTED', 'CLIENT', 'PENDING', 'MECHANIC', 
+                'FINANCIER', 'MVD'
             );
         EXCEPTION
             WHEN duplicate_object THEN null;
@@ -263,7 +262,7 @@ def create_users_table():
         sa.Column('narcology_certificate_url', sa.String(), nullable=True),
         sa.Column('pension_contributions_certificate_url', sa.String(), nullable=True),
         sa.Column('documents_verified', sa.Boolean(), nullable=False, server_default='false'),
-        sa.Column('role', postgresql.ENUM('admin', 'user', 'rejected', 'client', 'pending', 'mechanic', 'GARANT', 'financier', 'mvd', 'SUPPORT', 'PENDINGTOFIRST', 'PENDINGTOSECOND', 'REJECTFIRSTDOC', 'REJECTFIRSTCERT', 'REJECTFIRST', 'REJECTSECOND', name='userrole', create_type=False), nullable=False, server_default='client'),
+        sa.Column('role', postgresql.ENUM('admin', 'user', 'rejected', 'client', 'pending', 'mechanic', 'GARANT', 'financier', 'mvd', 'SUPPORT', 'PENDINGTOFIRST', 'PENDINGTOSECOND', 'REJECTFIRSTDOC', 'REJECTFIRSTCERT', 'REJECTFIRST', 'REJECTSECOND', 'ADMIN', 'USER', 'REJECTED', 'CLIENT', 'PENDING', 'MECHANIC', 'FINANCIER', 'MVD', name='userrole', create_type=False), nullable=False, server_default='client'),
         sa.Column('last_sms_code', sa.String(), nullable=True),
         sa.Column('sms_code_valid_until', sa.DateTime(), nullable=True),
         sa.Column('is_active', sa.Boolean(), nullable=False, server_default='true'),
