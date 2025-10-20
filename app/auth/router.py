@@ -737,6 +737,53 @@ async def read_users_me(
             else:
                 car_details["last_client_review"] = None
         
+        if current_user.role == UserRole.USER:
+            photo_before_selfie_uploaded = False
+            photo_before_car_uploaded = False
+            photo_before_interior_uploaded = False
+            
+            if rental.photos_before:
+                photos_before = rental.photos_before
+                photo_before_selfie_uploaded = any(
+                    ("/before/selfie/" in photo) or ("\\before\\selfie\\" in photo) 
+                    for photo in photos_before
+                )
+                photo_before_car_uploaded = any(
+                    ("/before/car/" in photo) or ("\\before\\car\\" in photo) 
+                    for photo in photos_before
+                )
+                photo_before_interior_uploaded = any(
+                    ("/before/interior/" in photo) or ("\\before\\interior\\" in photo) 
+                    for photo in photos_before
+                )
+            
+            car_details["photo_before_selfie_uploaded"] = photo_before_selfie_uploaded
+            car_details["photo_before_car_uploaded"] = photo_before_car_uploaded
+            car_details["photo_before_interior_uploaded"] = photo_before_interior_uploaded
+            
+            photo_after_selfie_uploaded = False
+            photo_after_car_uploaded = False
+            photo_after_interior_uploaded = False
+            
+            if rental.photos_after:
+                photos_after = rental.photos_after
+                photo_after_selfie_uploaded = any(
+                    ("/after/selfie/" in photo) or ("\\after\\selfie\\" in photo) 
+                    for photo in photos_after
+                )
+                photo_after_car_uploaded = any(
+                    ("/after/car/" in photo) or ("\\after\\car\\" in photo) 
+                    for photo in photos_after
+                )
+                photo_after_interior_uploaded = any(
+                    ("/after/interior/" in photo) or ("\\after\\interior\\" in photo) 
+                    for photo in photos_after
+                )
+            
+            car_details["photo_after_selfie_uploaded"] = photo_after_selfie_uploaded
+            car_details["photo_after_car_uploaded"] = photo_after_car_uploaded
+            car_details["photo_after_interior_uploaded"] = photo_after_interior_uploaded
+        
         # Для механиков добавляем current_renter_details
         if current_user.role == UserRole.MECHANIC and car.current_renter_id:
             car_details["current_renter_details"] = {
