@@ -277,14 +277,22 @@ async def sign_contract(
         print(f"   - rental.mechanic_id: {rental.mechanic_id}")
         print(f"   - current_user.id: {current_user.id}")
         print(f"   - current_user.role: {current_user.role}")
+        print(f"   - rental.mechanic_id is None: {rental.mechanic_id is None}")
+        print(f"   - rental.mechanic_id == current_user.id: {rental.mechanic_id == current_user.id}")
         
         # Для механиков разрешаем подписание договоров для аренд, с которыми они работают
         if current_user.role == UserRole.MECHANIC:
             print(f"🔧 Проверка для механика: rental.mechanic_id == current_user.id")
             print(f"   - {rental.mechanic_id} == {current_user.id} = {rental.mechanic_id == current_user.id}")
             # Механик может подписывать договоры для аренд, где он назначен механиком
-            if rental.mechanic_id != current_user.id:
-                print(f"❌ Механик не назначен для данной аренды")
+            if rental.mechanic_id is None:
+                print(f"❌ Механик не назначен для данной аренды (mechanic_id is None)")
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Механик не назначен для данной аренды"
+                )
+            elif rental.mechanic_id != current_user.id:
+                print(f"❌ Механик не назначен для данной аренды (другой механик)")
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Механик не назначен для данной аренды"
