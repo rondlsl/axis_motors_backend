@@ -78,7 +78,7 @@ def create_cars(db: Session, owner: User) -> None:
             "auto_class": CarAutoClass.A,
             "course": 90,
             "description": "Машина в идеальном состоянии.",
-            "photos": get_car_photos(1),
+            "photos": get_car_photos("422ABK02"),
             "vin": "1HGBH41JXMN109186",
             "color": "Белый",
         },
@@ -100,7 +100,7 @@ def create_cars(db: Session, owner: User) -> None:
             "body_type": CarBodyType.SEDAN,
             "auto_class": CarAutoClass.B,
             "description": "Разбита левая передняя фара. Разбит задний правый фонарь. Вмятина и царапина на правой задней двери.",
-            "photos": get_car_photos(2),
+            "photos": get_car_photos("666AZV02"),
             "vin": "WDD2050461A123456",
             "color": "Серый",
         },
@@ -122,7 +122,7 @@ def create_cars(db: Session, owner: User) -> None:
             "auto_class": CarAutoClass.A,
             "course": 0,
             "description": "Электромобиль в отличном состоянии.",
-            "photos": get_car_photos(3),
+            "photos": get_car_photos("890AVB09"),
             "vin": "LSGBF53E8EH123456",
             "color": "Черный",
         },
@@ -248,7 +248,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="1HGBH41JXMN109186",
             color="Черный"
         )
-        car4.photos = get_car_photos(4)
+        car4.photos = get_car_photos("x4")
         mock_cars_to_create.append(("Bentley Flying Spur", car4))
     else:
         print("ℹ️ Bentley Flying Spur уже существует")
@@ -278,7 +278,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="KM8J33CA2LU123456",
             color="Белый"
         )
-        car5.photos = get_car_photos(5)
+        car5.photos = get_car_photos("x5")
         mock_cars_to_create.append(("Hyundai Palisade", car5))
     else:
         print("ℹ️ Hyundai Palisade уже существует")
@@ -308,7 +308,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="WDD2050461A654321",
             color="Красный"
         )
-        car6.photos = get_car_photos(6)
+        car6.photos = get_car_photos("x6")
         mock_cars_to_create.append(("Mercedes CLA 45s", car6))
     else:
         print("ℹ️ Mercedes CLA 45s уже существует")
@@ -338,7 +338,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="LSGBF53E8EH789012",
             color="Синий"
         )
-        car7.photos = get_car_photos(7)
+        car7.photos = get_car_photos("x7")
         mock_cars_to_create.append(("ZEEKR 001", car7))
     else:
         print("ℹ️ ZEEKR 001 уже существует")
@@ -368,7 +368,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="LSGBF53E8EH345678",
             color="Серый"
         )
-        car8.photos = get_car_photos(8)
+        car8.photos = get_car_photos("x8")
         mock_cars_to_create.append(("Hongqi E-QM5", car8))
     else:
         print("ℹ️ Hongqi E-QM5 уже существует")
@@ -398,7 +398,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="JTEBU5JR2M5123456",
             color="Белый"
         )
-        car9.photos = get_car_photos(9)
+        car9.photos = get_car_photos("x9")
         mock_cars_to_create.append(("Toyota Land Cruiser Prado", car9))
     else:
         print("ℹ️ Toyota Land Cruiser Prado уже существует")
@@ -428,7 +428,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="SALGS2SE6HA123456",
             color="Черный"
         )
-        car10.photos = get_car_photos(10)
+        car10.photos = get_car_photos("x10")
         mock_cars_to_create.append(("Range Rover Sport", car10))
     else:
         print("ℹ️ Range Rover Sport уже существует")
@@ -458,7 +458,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="WDD2050461A987654",
             color="Серый"
         )
-        car11.photos = get_car_photos(11)
+        car11.photos = get_car_photos("x11")
         mock_cars_to_create.append(("Mercedes e63s", car11))
     else:
         print("ℹ️ Mercedes e63s уже существует")
@@ -488,7 +488,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="JTNKARFU0L3123456",
             color="Серый"
         )
-        car12.photos = get_car_photos(12)
+        car12.photos = get_car_photos("x12")
         mock_cars_to_create.append(("Toyota Camry 2020", car12))
     else:
         print("ℹ️ Toyota Camry 2020 уже существует")
@@ -518,7 +518,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="WBSFV9C50LC123456",
             color="Черный"
         )
-        car13.photos = get_car_photos(13)
+        car13.photos = get_car_photos("x13")
         mock_cars_to_create.append(("BMW m5", car13))
     else:
         print("ℹ️ BMW m5 уже существует")
@@ -548,7 +548,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="JTEBU5JR2M5234567",
             color="Белый"
         )
-        car14.photos = get_car_photos(14)
+        car14.photos = get_car_photos("x14")
         mock_cars_to_create.append(("Toyota Highlander", car14))
     else:
         print("ℹ️ Toyota Highlander уже существует")
@@ -578,7 +578,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="JTHBE1D25N5123456",
             color="Серый"
         )
-        car15.photos = get_car_photos(15)
+        car15.photos = get_car_photos("x15")
         mock_cars_to_create.append(("Lexus es 350", car15))
     else:
         print("ℹ️ Lexus es 350 уже существует")
@@ -608,7 +608,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="JTNKARFU0L4123456",
             color="Белый"
         )
-        car16.photos = get_car_photos(16)
+        car16.photos = get_car_photos("x16")
         mock_cars_to_create.append(("Toyota Camry 2024", car16))
     else:
         print("ℹ️ Toyota Camry 2024 уже существует")
@@ -638,7 +638,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="WBAFR9C50LC123456",
             color="Серый"
         )
-        car17.photos = get_car_photos(17)
+        car17.photos = get_car_photos("x17")
         mock_cars_to_create.append(("BMW 540i 2018", car17))
     else:
         print("ℹ️ BMW 540i 2018 уже существует")
@@ -668,7 +668,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="JTHBE1D25N5234567",
             color="Белый"
         )
-        car18.photos = get_car_photos(18)
+        car18.photos = get_car_photos("x18")
         mock_cars_to_create.append(("Lexus rx 350h", car18))
     else:
         print("ℹ️ Lexus rx 350h уже существует")
@@ -698,7 +698,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="LSGBF53E8EH567890",
             color="Красный"
         )
-        car19.photos = get_car_photos(19)
+        car19.photos = get_car_photos("x19")
         mock_cars_to_create.append(("Changan uni-v", car19))
     else:
         print("ℹ️ Changan uni-v уже существует")
@@ -728,7 +728,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="JTHBE1D25N5345678",
             color="Серый"
         )
-        car20.photos = get_car_photos(20)
+        car20.photos = get_car_photos("x20")
         mock_cars_to_create.append(("Lexus es 300h", car20))
     else:
         print("ℹ️ Lexus es 300h уже существует")
@@ -758,7 +758,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="KNDJT2A26N7123456",
             color="Черный"
         )
-        car21.photos = get_car_photos(21)
+        car21.photos = get_car_photos("x21")
         mock_cars_to_create.append(("Kia k8", car21))
     else:
         print("ℹ️ Kia k8 уже существует")
@@ -788,7 +788,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="JTNKARFU0L4223456",
             color="Серый"
         )
-        car22.photos = get_car_photos(22)
+        car22.photos = get_car_photos("x22")
         mock_cars_to_create.append(("Toyota Camry 2024 второй", car22))
     else:
         print("ℹ️ Toyota Camry 2024 второй уже существует")
@@ -818,7 +818,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="KM8J33CA2LU234567",
             color="Белый"
         )
-        car23.photos = get_car_photos(23)
+        car23.photos = get_car_photos("x23")
         mock_cars_to_create.append(("Hyundai Palisade", car23))
     else:
         print("ℹ️ Hyundai Palisade уже существует")
@@ -848,7 +848,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="WDD2050461A234567",
             color="Серый"
         )
-        car24.photos = get_car_photos(24)
+        car24.photos = get_car_photos("x24")
         mock_cars_to_create.append(("Mercedes e200", car24))
     else:
         print("ℹ️ Mercedes e200 уже существует")
@@ -878,7 +878,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="WDD2211741A345678",
             color="Черный"
         )
-        car25.photos = get_car_photos(25)
+        car25.photos = get_car_photos("x25")
         mock_cars_to_create.append(("Mercedes s63", car25))
     else:
         print("ℹ️ Mercedes s63 уже существует")
@@ -908,7 +908,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="KM8J33CA2LU345678",
             color="Белый"
         )
-        car26.photos = get_car_photos(26)
+        car26.photos = get_car_photos("x26")
         mock_cars_to_create.append(("Hyundai Tucson", car26))
     else:
         print("ℹ️ Hyundai Tucson уже существует")
@@ -938,7 +938,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="LSGBF53E8EH456789",
             color="Синий"
         )
-        car27.photos = get_car_photos(27)
+        car27.photos = get_car_photos("x27")
         mock_cars_to_create.append(("Changan uni-k", car27))
     else:
         print("ℹ️ Changan uni-k уже существует")
@@ -968,7 +968,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="LSGBF53E8EH567890",
             color="Белый"
         )
-        car28.photos = get_car_photos(28)
+        car28.photos = get_car_photos("x28")
         mock_cars_to_create.append(("ZEEKR 001 второй", car28))
     else:
         print("ℹ️ ZEEKR 001 второй уже существует")
@@ -998,7 +998,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="JTEBU5JR2M5345678",
             color="Белый"
         )
-        car29.photos = get_car_photos(29)
+        car29.photos = get_car_photos("x29")
         mock_cars_to_create.append(("Toyota Land Cruiser 2018", car29))
     else:
         print("ℹ️ Toyota Land Cruiser 2018 уже существует")
@@ -1028,7 +1028,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
             vin="WBAFR9C50LC234567",
             color="Серый"
         )
-        car30.photos = get_car_photos(30)
+        car30.photos = get_car_photos("x30")
         mock_cars_to_create.append(("BMW 540i 2024", car30))
     else:
         print("ℹ️ BMW 540i 2024 уже существует")
@@ -1041,14 +1041,19 @@ def create_mock_cars(db: Session, owner: User) -> None:
         db.commit()
 
 
-def get_car_photos(car_id: str) -> list[str]:
-    """Получает список фотографий автомобиля из папки uploads/cars/{car_id}"""
-    photos_dir = os.path.join(os.path.dirname(__file__), "..", "..", "uploads", "cars", str(car_id))
+def get_car_photos(plate_number: str) -> list[str]:
+    """Получает список фотографий автомобиля из папки uploads/cars/{plate_number}"""
+    if plate_number.startswith("x") and plate_number[1:].isdigit():
+        folder_name = plate_number.upper()  
+    else:
+        folder_name = plate_number
+    
+    photos_dir = os.path.join(os.path.dirname(__file__), "..", "..", "uploads", "cars", folder_name)
     photos = []
     
     if os.path.isdir(photos_dir):
         for fname in sorted(os.listdir(photos_dir)):
             if os.path.isfile(os.path.join(photos_dir, fname)):
-                photos.append(f"/uploads/cars/{car_id}/{fname}")
+                photos.append(f"/uploads/cars/{folder_name}/{fname}")
     
     return photos
