@@ -19,6 +19,7 @@ from app.models.promo_codes_model import PromoCode, UserPromoCode, UserPromoStat
 from app.models.user_model import User, UserRole
 from app.models.application_model import Application, ApplicationStatus
 from app.models.car_model import Car, CarStatus
+from app.models.contract_model import UserContractSignature, ContractFile, ContractType
 from app.push.utils import send_notification_to_all_mechanics_async, send_push_to_user_by_id, send_localized_notification_to_user, send_localized_notification_to_all_mechanics
 from app.rent.exceptions import InsufficientBalanceException
 from app.wallet.utils import record_wallet_transaction
@@ -439,6 +440,18 @@ async def reserve_car(
     # Запреты по ролям/верификации для НЕ владельцев
     if car_meta.owner_id != current_user.id:
         validate_user_can_rent(current_user, db)
+        
+        # Проверяем подписание договора о присоединении (MAIN_CONTRACT)
+        main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+            UserContractSignature.user_id == current_user.id,
+            ContractFile.contract_type == ContractType.MAIN_CONTRACT
+        ).first() is not None
+        
+        if not main_contract_signed:
+            raise HTTPException(
+                status_code=403,
+                detail="Необходимо подписать договор о присоединении перед бронированием автомобиля"
+            )
 
     # 1) Проверяем, нет ли у пользователя уже активной аренды
     active_rental = db.query(RentalHistory).filter(
@@ -619,6 +632,21 @@ async def reserve_delivery(
     car_uuid = safe_sid_to_uuid(car_id)
     # Запреты по ролям/верификации
     validate_user_can_rent(current_user, db)
+    
+    # Получаем информацию о машине для проверки владельца
+    car_check = db.query(Car).filter(Car.id == car_uuid).first()
+    if car_check and car_check.owner_id != current_user.id:
+        # Проверяем подписание договора о присоединении (MAIN_CONTRACT) для не-владельцев
+        main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+            UserContractSignature.user_id == current_user.id,
+            ContractFile.contract_type == ContractType.MAIN_CONTRACT
+        ).first() is not None
+        
+        if not main_contract_signed:
+            raise HTTPException(
+                status_code=403,
+                detail="Необходимо подписать договор о присоединении перед бронированием автомобиля с доставкой"
+            )
 
     # 1) Проверяем, нет ли у пользователя активной аренды (RESERVED, IN_USE или DELIVERING)
     active_rental = db.query(RentalHistory).filter(
@@ -976,6 +1004,33 @@ async def start_rental(
 
     # Проверяем, является ли пользователь владельцем автомобиля
     is_owner = car.owner_id == current_user.id
+
+    # Проверяем подписание обязательных договоров (только для не-владельцев)
+    if not is_owner:
+        # 1. Проверяем договор о присоединении (MAIN_CONTRACT)
+        main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+            UserContractSignature.user_id == current_user.id,
+            ContractFile.contract_type == ContractType.MAIN_CONTRACT
+        ).first() is not None
+        
+        if not main_contract_signed:
+            raise HTTPException(
+                status_code=403,
+                detail="Необходимо подписать договор о присоединении перед началом аренды"
+            )
+        
+        # 2. Проверяем акт приема (APPENDIX_7_1) для текущей аренды
+        appendix_7_1_signed = db.query(UserContractSignature).join(ContractFile).filter(
+            UserContractSignature.user_id == current_user.id,
+            UserContractSignature.rental_id == rental.id,
+            ContractFile.contract_type == ContractType.APPENDIX_7_1
+        ).first() is not None
+        
+        if not appendix_7_1_signed:
+            raise HTTPException(
+                status_code=403,
+                detail="Необходимо подписать акт приема автомобиля перед началом аренды"
+            )
     
     existing_before = rental.photos_before or []
     has_selfie_before = any(("/before/selfie/" in p) or ("\\before\\selfie\\" in p) for p in existing_before)

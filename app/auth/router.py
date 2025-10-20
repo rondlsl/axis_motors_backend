@@ -860,6 +860,7 @@ async def read_users_me(
                     ContractFile.contract_type == ContractType.APPENDIX_7_1
                 ).first() is not None
                 
+                # 3. Акт возврата (APPENDIX_7_2) - проверяем для текущей аренды
                 appendix_7_2_signed = db.query(UserContractSignature).join(ContractFile).filter(
                     UserContractSignature.user_id == current_user.id,
                     UserContractSignature.rental_id == safe_sid_to_uuid(rental_id),
@@ -918,7 +919,7 @@ async def read_users_me(
             "main_contract_signed": main_contract_signed,  # Договор о присоединении
             "rental_main_contract_signed": rental_main_contract_signed,  # Основной договор аренды (только для активной аренды)
             "appendix_7_1_signed": appendix_7_1_signed,  # Акт приема (только для активной аренды)
-            "appendix_7_2_signed": appendix_7_2_signed,  # Приложение 7.2 (только для активной аренды)
+            "appendix_7_2_signed": appendix_7_2_signed,  # Акт возврата (только для активной аренды)
         }
 
         if not current_user.is_contract_read:
