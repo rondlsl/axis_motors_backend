@@ -18,7 +18,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Create all enum types
+    # Create all enum types first
     create_enums()
     
     # Create all tables
@@ -45,125 +45,191 @@ def create_enums():
     """Create all enum types"""
     
     # UserRole enum
-    user_role_enum = postgresql.ENUM(
-        'admin', 'user', 'rejected', 'client', 'pending', 'mechanic', 'GARANT', 
-        'financier', 'mvd', 'SUPPORT', 'PENDINGTOFIRST', 'PENDINGTOSECOND', 
-        'REJECTFIRSTDOC', 'REJECTFIRSTCERT', 'REJECTFIRST', 'REJECTSECOND',
-        name='userrole'
-    )
-    user_role_enum.create(op.get_bind(), checkfirst=True)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE userrole AS ENUM (
+                'admin', 'user', 'rejected', 'client', 'pending', 'mechanic', 'GARANT', 
+                'financier', 'mvd', 'SUPPORT', 'PENDINGTOFIRST', 'PENDINGTOSECOND', 
+                'REJECTFIRSTDOC', 'REJECTFIRSTCERT', 'REJECTFIRST', 'REJECTSECOND'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
     
     # AutoClass enum
-    auto_class_enum = postgresql.ENUM('A', 'B', 'C', name='autoclass')
-    auto_class_enum.create(op.get_bind(), checkfirst=True)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE autoclass AS ENUM ('A', 'B', 'C');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
     
     # CarBodyType enum
-    car_body_type_enum = postgresql.ENUM(
-        'SEDAN', 'SUV', 'CROSSOVER', 'COUPE', 'HATCHBACK', 'CONVERTIBLE', 
-        'WAGON', 'MINIBUS', 'ELECTRIC',
-        name='carbodytype'
-    )
-    car_body_type_enum.create(op.get_bind(), checkfirst=True)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE carbodytype AS ENUM (
+                'SEDAN', 'SUV', 'CROSSOVER', 'COUPE', 'HATCHBACK', 'CONVERTIBLE', 
+                'WAGON', 'MINIBUS', 'ELECTRIC'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
     
     # CarAutoClass enum
-    car_auto_class_enum = postgresql.ENUM('A', 'B', 'C', name='carautoclass')
-    car_auto_class_enum.create(op.get_bind(), checkfirst=True)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE carautoclass AS ENUM ('A', 'B', 'C');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
     
     # TransmissionType enum
-    transmission_type_enum = postgresql.ENUM(
-        'manual', 'automatic', 'cvt', 'semi_automatic',
-        name='transmissiontype'
-    )
-    transmission_type_enum.create(op.get_bind(), checkfirst=True)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE transmissiontype AS ENUM (
+                'manual', 'automatic', 'cvt', 'semi_automatic'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
     
     # CarStatus enum
-    car_status_enum = postgresql.ENUM(
-        'FREE', 'PENDING', 'IN_USE', 'DELIVERING', 'SERVICE', 
-        'RESERVED', 'SCHEDULED', 'OWNER', 'OCCUPIED',
-        name='carstatus'
-    )
-    car_status_enum.create(op.get_bind(), checkfirst=True)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE carstatus AS ENUM (
+                'FREE', 'PENDING', 'IN_USE', 'DELIVERING', 'SERVICE', 
+                'RESERVED', 'SCHEDULED', 'OWNER', 'OCCUPIED'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
     
     # ApplicationStatus enum
-    application_status_enum = postgresql.ENUM(
-        'pending', 'approved', 'rejected',
-        name='applicationstatus'
-    )
-    application_status_enum.create(op.get_bind(), checkfirst=True)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE applicationstatus AS ENUM (
+                'pending', 'approved', 'rejected'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
     
     # GuarantorRequestStatus enum
-    guarantor_request_status_enum = postgresql.ENUM(
-        'pending', 'accepted', 'rejected', 'expired',
-        name='guarantorrequeststatus'
-    )
-    guarantor_request_status_enum.create(op.get_bind(), checkfirst=True)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE guarantorrequeststatus AS ENUM (
+                'pending', 'accepted', 'rejected', 'expired'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
     
     # VerificationStatus enum
-    verification_status_enum = postgresql.ENUM(
-        'not_verified', 'verified', 'rejected',
-        name='verificationstatus'
-    )
-    verification_status_enum.create(op.get_bind(), checkfirst=True)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE verificationstatus AS ENUM (
+                'not_verified', 'verified', 'rejected'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
     
     # RentalType enum
-    rental_type_enum = postgresql.ENUM(
-        'minutes', 'hours', 'days',
-        name='rentaltype'
-    )
-    rental_type_enum.create(op.get_bind(), checkfirst=True)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE rentaltype AS ENUM (
+                'minutes', 'hours', 'days'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
     
     # RentalStatus enum
-    rental_status_enum = postgresql.ENUM(
-        'reserved', 'in_use', 'completed', 'delivering', 'delivering_in_progress',
-        'delivery_reserved', 'cancelled', 'scheduled',
-        name='rentalstatus'
-    )
-    rental_status_enum.create(op.get_bind(), checkfirst=True)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE rentalstatus AS ENUM (
+                'reserved', 'in_use', 'completed', 'delivering', 'delivering_in_progress',
+                'delivery_reserved', 'cancelled', 'scheduled'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
     
     # ActionType enum
-    action_type_enum = postgresql.ENUM(
-        'open_vehicle', 'close_vehicle', 'give_key', 'take_key', 
-        'lock_engine', 'unlock_engine',
-        name='actiontype'
-    )
-    action_type_enum.create(op.get_bind(), checkfirst=True)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE actiontype AS ENUM (
+                'open_vehicle', 'close_vehicle', 'give_key', 'take_key', 
+                'lock_engine', 'unlock_engine'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
     
     # ContractType enum
-    contract_type_enum = postgresql.ENUM(
-        'guarantor_contract', 'guarantor_main_contract', 'user_agreement',
-        'consent_to_data_processing', 'main_contract', 'appendix_7_1', 'appendix_7_2',
-        name='contracttype'
-    )
-    contract_type_enum.create(op.get_bind(), checkfirst=True)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE contracttype AS ENUM (
+                'guarantor_contract', 'guarantor_main_contract', 'user_agreement',
+                'consent_to_data_processing', 'main_contract', 'appendix_7_1', 'appendix_7_2'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
     
     # NotificationStatus enum
-    notification_status_enum = postgresql.ENUM(
-        'mechanic_assigned', 'car_delivered', 'delivery_new_order', 'delivery_started',
-        'new_car_for_inspection', 'paid_waiting_soon', 'paid_waiting_started',
-        'low_balance', 'basic_tariff_ending_soon', 'out_of_tariff_charges',
-        'delivery_cancelled', 'balance_exhausted', 'delivery_delay_penalty',
-        'application_rejected_financier', 'application_rejected_mvd',
-        'application_approved_financier', 'application_approved_mvd',
-        name='notificationstatus'
-    )
-    notification_status_enum.create(op.get_bind(), checkfirst=True)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE notificationstatus AS ENUM (
+                'mechanic_assigned', 'car_delivered', 'delivery_new_order', 'delivery_started',
+                'new_car_for_inspection', 'paid_waiting_soon', 'paid_waiting_started',
+                'low_balance', 'basic_tariff_ending_soon', 'out_of_tariff_charges',
+                'delivery_cancelled', 'balance_exhausted', 'delivery_delay_penalty',
+                'application_rejected_financier', 'application_rejected_mvd',
+                'application_approved_financier', 'application_approved_mvd'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
     
     # UserPromoStatus enum
-    user_promo_status_enum = postgresql.ENUM(
-        'activated', 'used',
-        name='userpromostatus'
-    )
-    user_promo_status_enum.create(op.get_bind(), checkfirst=True)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE userpromostatus AS ENUM (
+                'activated', 'used'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
     
     # WalletTransactionType enum
-    wallet_transaction_type_enum = postgresql.ENUM(
-        'deposit', 'promo_bonus', 'refund', 'rent_open_fee', 'rent_waiting_fee',
-        'rent_minute_charge', 'rent_overtime_fee', 'rent_distance_fee',
-        'rent_base_charge', 'rent_fuel_fee', 'delivery_fee', 'delivery_penalty',
-        'manual_adjustment', 'damage_penalty', 'fine_penalty',
-        name='wallettransactiontype'
-    )
-    wallet_transaction_type_enum.create(op.get_bind(), checkfirst=True)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE wallettransactiontype AS ENUM (
+                'deposit', 'promo_bonus', 'refund', 'rent_open_fee', 'rent_waiting_fee',
+                'rent_minute_charge', 'rent_overtime_fee', 'rent_distance_fee',
+                'rent_base_charge', 'rent_fuel_fee', 'delivery_fee', 'delivery_penalty',
+                'manual_adjustment', 'damage_penalty', 'fine_penalty'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
 
 
 def create_users_table():
