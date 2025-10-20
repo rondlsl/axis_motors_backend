@@ -179,6 +179,11 @@ async def sign_contract(
     Все договоры подписываются через файлы (ContractFile) и сохраняются в user_contract_signatures.
     При подписании определенных типов также обновляются поля в таблице users.
     """
+    print(f"📝 Начало подписания договора:")
+    print(f"   - contract_type: {sign_request.contract_type}")
+    print(f"   - rental_id: {sign_request.rental_id}")
+    print(f"   - current_user.id: {current_user.id}")
+    print(f"   - current_user.role: {current_user.role}")
     
     user_field_mapping = {
         ContractType.USER_AGREEMENT: "is_user_agreement",
@@ -260,26 +265,42 @@ async def sign_contract(
         
         rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
         if not rental:
+            print(f"❌ Аренда не найдена: rental_uuid={rental_uuid}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Аренда не найдена"
             )
         
+        print(f"🔍 Проверка доступа к аренде:")
+        print(f"   - rental_id: {rental_uuid}")
+        print(f"   - rental.user_id: {rental.user_id}")
+        print(f"   - rental.mechanic_id: {rental.mechanic_id}")
+        print(f"   - current_user.id: {current_user.id}")
+        print(f"   - current_user.role: {current_user.role}")
+        
         # Для механиков разрешаем подписание договоров для аренд, с которыми они работают
         if current_user.role == UserRole.MECHANIC:
+            print(f"🔧 Проверка для механика: rental.mechanic_id == current_user.id")
+            print(f"   - {rental.mechanic_id} == {current_user.id} = {rental.mechanic_id == current_user.id}")
             # Механик может подписывать договоры для аренд, где он назначен механиком
             if rental.mechanic_id != current_user.id:
+                print(f"❌ Механик не назначен для данной аренды")
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Механик не назначен для данной аренды"
                 )
+            print(f"✅ Механик имеет доступ к аренде")
         else:
+            print(f"👤 Проверка для обычного пользователя: rental.user_id == current_user.id")
+            print(f"   - {rental.user_id} == {current_user.id} = {rental.user_id == current_user.id}")
             # Для обычных пользователей проверяем, что аренда принадлежит им
             if rental.user_id != current_user.id:
+                print(f"❌ Аренда не принадлежит пользователю")
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Аренда не принадлежит пользователю"
                 )
+            print(f"✅ Пользователь имеет доступ к аренде")
     
     if sign_request.contract_type in [ContractType.GUARANTOR_CONTRACT, ContractType.GUARANTOR_MAIN_CONTRACT]:
         if not sign_request.guarantor_relationship_id:
@@ -307,11 +328,18 @@ async def sign_contract(
     db.commit()
     db.refresh(signature)
     
+    print(f"✅ Договор успешно подписан:")
+    print(f"   - signature.id: {signature.id}")
+    print(f"   - contract_type: {sign_request.contract_type}")
+    print(f"   - rental_id: {signature.rental_id}")
+    print(f"   - user_id: {signature.user_id}")
+    
     if sign_request.contract_type in user_field_mapping:
         field_name = user_field_mapping[sign_request.contract_type]
         setattr(current_user, field_name, True)
         db.add(current_user)
         db.commit()
+        print(f"✅ Обновлено поле пользователя: {field_name} = True")
     
     
     return UserSignatureResponse(
@@ -436,20 +464,35 @@ async def get_rental_contract_status(
             detail="Аренда не найдена"
         )
     
+    print(f"🔍 Проверка доступа к статусу договоров аренды:")
+    print(f"   - rental_id: {rental_uuid}")
+    print(f"   - rental.user_id: {rental.user_id}")
+    print(f"   - rental.mechanic_id: {rental.mechanic_id}")
+    print(f"   - current_user.id: {current_user.id}")
+    print(f"   - current_user.role: {current_user.role}")
+    
     # Для механиков разрешаем доступ к арендам, с которыми они работают
     if current_user.role == UserRole.MECHANIC:
+        print(f"🔧 Проверка для механика: rental.mechanic_id == current_user.id")
+        print(f"   - {rental.mechanic_id} == {current_user.id} = {rental.mechanic_id == current_user.id}")
         if rental.mechanic_id != current_user.id:
+            print(f"❌ Механик не назначен для данной аренды")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Механик не назначен для данной аренды"
             )
+        print(f"✅ Механик имеет доступ к статусу договоров аренды")
     else:
+        print(f"👤 Проверка для обычного пользователя: rental.user_id == current_user.id")
+        print(f"   - {rental.user_id} == {current_user.id} = {rental.user_id == current_user.id}")
         # Для обычных пользователей проверяем, что аренда принадлежит им
         if rental.user_id != current_user.id:
+            print(f"❌ Аренда не принадлежит пользователю")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Доступ запрещен"
             )
+        print(f"✅ Пользователь имеет доступ к статусу договоров аренды")
     
     signatures = db.query(UserContractSignature).join(ContractFile).filter(
         UserContractSignature.user_id == current_user.id,
