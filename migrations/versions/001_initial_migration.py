@@ -50,6 +50,9 @@ def create_enums():
             CREATE TYPE userrole AS ENUM (
                 'admin', 'user', 'rejected', 'client', 'pending', 'mechanic', 'GARANT', 
                 'financier', 'mvd', 'SUPPORT', 'PENDINGTOFIRST', 'PENDINGTOSECOND', 
+                'REJECTFIRSTDOC', 'REJECTFIRSTCERT', 'REJECTFIRST', 'REJECTSECOND',
+                'ADMIN', 'USER', 'REJECTED', 'CLIENT', 'PENDING', 'MECHANIC', 'GARANT', 
+                'FINANCIER', 'MVD', 'SUPPORT', 'PENDINGTOFIRST', 'PENDINGTOSECOND', 
                 'REJECTFIRSTDOC', 'REJECTFIRSTCERT', 'REJECTFIRST', 'REJECTSECOND'
             );
         EXCEPTION
@@ -103,7 +106,9 @@ def create_enums():
         DO $$ BEGIN
             CREATE TYPE carstatus AS ENUM (
                 'FREE', 'PENDING', 'IN_USE', 'DELIVERING', 'SERVICE', 
-                'RESERVED', 'SCHEDULED', 'OWNER', 'OCCUPIED'
+                'RESERVED', 'SCHEDULED', 'OWNER', 'OCCUPIED',
+                'free', 'pending', 'in_use', 'delivering', 'service', 
+                'reserved', 'scheduled', 'owner', 'occupied'
             );
         EXCEPTION
             WHEN duplicate_object THEN null;
@@ -159,7 +164,9 @@ def create_enums():
         DO $$ BEGIN
             CREATE TYPE rentalstatus AS ENUM (
                 'reserved', 'in_use', 'completed', 'delivering', 'delivering_in_progress',
-                'delivery_reserved', 'cancelled', 'scheduled'
+                'delivery_reserved', 'cancelled', 'scheduled', 'RESERVED', 'IN_USE', 
+                'COMPLETED', 'DELIVERING', 'DELIVERING_IN_PROGRESS', 'DELIVERY_RESERVED', 
+                'CANCELLED', 'SCHEDULED'
             );
         EXCEPTION
             WHEN duplicate_object THEN null;
@@ -307,7 +314,7 @@ def create_cars_table():
         sa.Column('description', sa.Text(), nullable=True),
         sa.Column('owner_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=True),
         sa.Column('current_renter_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=True),
-        sa.Column('status', postgresql.ENUM('FREE', 'PENDING', 'IN_USE', 'DELIVERING', 'SERVICE', 'RESERVED', 'SCHEDULED', 'OWNER', 'OCCUPIED', name='carstatus', create_type=False), nullable=True, server_default='FREE')
+        sa.Column('status', postgresql.ENUM('FREE', 'PENDING', 'IN_USE', 'DELIVERING', 'SERVICE', 'RESERVED', 'SCHEDULED', 'OWNER', 'OCCUPIED', 'free', 'pending', 'in_use', 'delivering', 'service', 'reserved', 'scheduled', 'owner', 'occupied', name='carstatus', create_type=False), nullable=True, server_default='FREE')
     )
 
 
@@ -392,7 +399,7 @@ def create_rental_history_table():
         sa.Column('mileage_after', sa.Integer(), nullable=True),
         sa.Column('already_payed', sa.Integer(), nullable=True),
         sa.Column('total_price', sa.Integer(), nullable=True),
-        sa.Column('rental_status', postgresql.ENUM('reserved', 'in_use', 'completed', 'delivering', 'delivering_in_progress', 'delivery_reserved', 'cancelled', 'scheduled', name='rentalstatus', create_type=False), nullable=False, server_default='reserved'),
+        sa.Column('rental_status', postgresql.ENUM('reserved', 'in_use', 'completed', 'delivering', 'delivering_in_progress', 'delivery_reserved', 'cancelled', 'scheduled', 'RESERVED', 'IN_USE', 'COMPLETED', 'DELIVERING', 'DELIVERING_IN_PROGRESS', 'DELIVERY_RESERVED', 'CANCELLED', 'SCHEDULED', name='rentalstatus', create_type=False), nullable=False, server_default='reserved'),
         sa.Column('delivery_latitude', sa.Float(), nullable=True),
         sa.Column('delivery_longitude', sa.Float(), nullable=True),
         sa.Column('delivery_mechanic_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=True),
