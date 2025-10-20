@@ -23,7 +23,6 @@ from app.auth.security.auth_bearer import JWTBearer
 from app.auth.security.tokens import create_refresh_token, create_access_token
 from app.core.config import SMS_TOKEN
 from app.dependencies.database.database import get_db
-from app.models.car_model import Car
 from app.models.history_model import RentalHistory, RentalStatus, RentalReview
 from app.models.user_model import UserRole, User
 from app.models.verification_code_model import VerificationCode
