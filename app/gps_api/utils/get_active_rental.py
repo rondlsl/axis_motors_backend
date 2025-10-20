@@ -47,3 +47,28 @@ def get_active_rental_car(db: Session, current_user: User) -> Car:
     if not car or not car.gps_id:
         raise HTTPException(status_code=404, detail="Car or GPS ID not found")
     return car
+
+
+def get_active_rental_by_car_id(db: Session, car_id: uuid.UUID) -> RentalHistory:
+    """
+    Находит активную аренду для конкретного автомобиля.
+    """
+    rental = (
+        db.query(RentalHistory)
+        .filter(
+            RentalHistory.car_id == car_id,
+            RentalHistory.rental_status.in_([
+                RentalStatus.IN_USE,
+                RentalStatus.DELIVERING_IN_PROGRESS,
+                RentalStatus.DELIVERING
+            ])
+        )
+        .order_by(RentalHistory.start_time.desc())
+        .first()
+    )
+    if not rental:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Активная аренда для данного автомобиля не найдена"
+        )
+    return rental

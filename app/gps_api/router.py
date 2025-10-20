@@ -20,7 +20,7 @@ from app.models.rental_actions_model import ActionType, RentalAction
 from app.models.user_model import User, UserRole
 from app.models.application_model import Application, ApplicationStatus
 from app.gps_api.utils.auth_api import get_auth_token
-from app.gps_api.utils.get_active_rental import get_active_rental_car, get_active_rental
+from app.gps_api.utils.get_active_rental import get_active_rental_car, get_active_rental, get_active_rental_by_car_id
 from app.gps_api.utils.car_data import send_command_to_terminal, send_open, send_close, send_give_key, send_take_key, send_lock_engine, send_unlock_engine
 from app.rent.utils.calculate_price import get_open_price
 from app.gps_api.schemas_telemetry import VehicleTelemetryResponse
@@ -888,6 +888,13 @@ async def open_vehicle_by_id(
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
     
+    # Находим активную аренду для данного автомобиля
+    try:
+        rental = get_active_rental_by_car_id(db, car_uuid)
+    except HTTPException:
+        # Если нет активной аренды, все равно выполняем команду (для админов/механиков)
+        rental = None
+    
     global AUTH_TOKEN
     if not AUTH_TOKEN:
         try:
@@ -897,6 +904,17 @@ async def open_vehicle_by_id(
     
     try:
         cmd = await send_open(car.gps_imei, AUTH_TOKEN)
+        
+        # Записываем действие в rental_actions если есть активная аренда
+        if rental:
+            action = RentalAction(
+                rental_id=rental.id,
+                user_id=current_user.id,
+                action_type=ActionType.OPEN_VEHICLE
+            )
+            db.add(action)
+            db.commit()
+        
         return {"message": "Команда открытия отправлена", "car_name": car.name, "result": cmd}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
@@ -918,6 +936,13 @@ async def close_vehicle_by_id(
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
     
+    # Находим активную аренду для данного автомобиля
+    try:
+        rental = get_active_rental_by_car_id(db, car_uuid)
+    except HTTPException:
+        # Если нет активной аренды, все равно выполняем команду (для админов/механиков)
+        rental = None
+    
     global AUTH_TOKEN
     if not AUTH_TOKEN:
         try:
@@ -927,6 +952,17 @@ async def close_vehicle_by_id(
     
     try:
         cmd = await send_close(car.gps_imei, AUTH_TOKEN)
+        
+        # Записываем действие в rental_actions если есть активная аренда
+        if rental:
+            action = RentalAction(
+                rental_id=rental.id,
+                user_id=current_user.id,
+                action_type=ActionType.CLOSE_VEHICLE
+            )
+            db.add(action)
+            db.commit()
+        
         return {"message": "Команда закрытия отправлена", "car_name": car.name, "result": cmd}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
@@ -948,6 +984,13 @@ async def lock_engine_by_id(
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
     
+    # Находим активную аренду для данного автомобиля
+    try:
+        rental = get_active_rental_by_car_id(db, car_uuid)
+    except HTTPException:
+        # Если нет активной аренды, все равно выполняем команду (для админов/механиков)
+        rental = None
+    
     global AUTH_TOKEN
     if not AUTH_TOKEN:
         try:
@@ -957,6 +1000,17 @@ async def lock_engine_by_id(
     
     try:
         cmd = await send_lock_engine(car.gps_imei, AUTH_TOKEN)
+        
+        # Записываем действие в rental_actions если есть активная аренда
+        if rental:
+            action = RentalAction(
+                rental_id=rental.id,
+                user_id=current_user.id,
+                action_type=ActionType.LOCK_ENGINE
+            )
+            db.add(action)
+            db.commit()
+        
         return {"message": "Команда блокировки двигателя отправлена", "car_name": car.name, "result": cmd}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
@@ -978,6 +1032,13 @@ async def unlock_engine_by_id(
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
     
+    # Находим активную аренду для данного автомобиля
+    try:
+        rental = get_active_rental_by_car_id(db, car_uuid)
+    except HTTPException:
+        # Если нет активной аренды, все равно выполняем команду (для админов/механиков)
+        rental = None
+    
     global AUTH_TOKEN
     if not AUTH_TOKEN:
         try:
@@ -987,6 +1048,17 @@ async def unlock_engine_by_id(
     
     try:
         cmd = await send_unlock_engine(car.gps_imei, AUTH_TOKEN)
+        
+        # Записываем действие в rental_actions если есть активная аренда
+        if rental:
+            action = RentalAction(
+                rental_id=rental.id,
+                user_id=current_user.id,
+                action_type=ActionType.UNLOCK_ENGINE
+            )
+            db.add(action)
+            db.commit()
+        
         return {"message": "Команда разблокировки двигателя отправлена", "car_name": car.name, "result": cmd}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
@@ -1008,6 +1080,13 @@ async def give_key_by_id(
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
     
+    # Находим активную аренду для данного автомобиля
+    try:
+        rental = get_active_rental_by_car_id(db, car_uuid)
+    except HTTPException:
+        # Если нет активной аренды, все равно выполняем команду (для админов/механиков)
+        rental = None
+    
     global AUTH_TOKEN
     if not AUTH_TOKEN:
         try:
@@ -1017,6 +1096,17 @@ async def give_key_by_id(
     
     try:
         cmd = await send_give_key(car.gps_imei, AUTH_TOKEN)
+        
+        # Записываем действие в rental_actions если есть активная аренда
+        if rental:
+            action = RentalAction(
+                rental_id=rental.id,
+                user_id=current_user.id,
+                action_type=ActionType.GIVE_KEY
+            )
+            db.add(action)
+            db.commit()
+        
         return {"message": "Команда выдачи ключа отправлена", "car_name": car.name, "result": cmd}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
@@ -1040,6 +1130,13 @@ async def take_key_by_id(
     car = db.query(Car).filter(Car.id == car_uuid).first()
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    # Находим активную аренду для данного автомобиля
+    try:
+        rental = get_active_rental_by_car_id(db, car_uuid)
+    except HTTPException:
+        # Если нет активной аренды, все равно выполняем команду (для админов/механиков)
+        rental = None
     
     global AUTH_TOKEN
     if not AUTH_TOKEN:
@@ -1071,6 +1168,17 @@ async def take_key_by_id(
         
         # Забираем ключ
         cmd = await send_take_key(car.gps_imei, AUTH_TOKEN)
+        
+        # Записываем действие в rental_actions если есть активная аренда
+        if rental:
+            action = RentalAction(
+                rental_id=rental.id,
+                user_id=current_user.id,
+                action_type=ActionType.TAKE_KEY
+            )
+            db.add(action)
+            db.commit()
+        
         return {"message": "Команда забора ключа отправлена", "car_name": car.name, "result": cmd}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
