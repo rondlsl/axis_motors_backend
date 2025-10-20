@@ -844,6 +844,7 @@ async def read_users_me(
         # 2. Основной договор аренды (RENTAL_MAIN_CONTRACT) - проверяем для текущей аренды
         rental_main_contract_signed = False
         appendix_7_1_signed = False
+        appendix_7_2_signed = False
         if current_rental:
             rental_id = current_rental["rental_details"].get("rental_id") if "rental_details" in current_rental else None
             if rental_id:
@@ -857,6 +858,12 @@ async def read_users_me(
                     UserContractSignature.user_id == current_user.id,
                     UserContractSignature.rental_id == safe_sid_to_uuid(rental_id),
                     ContractFile.contract_type == ContractType.APPENDIX_7_1
+                ).first() is not None
+                
+                appendix_7_2_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                    UserContractSignature.user_id == current_user.id,
+                    UserContractSignature.rental_id == safe_sid_to_uuid(rental_id),
+                    ContractFile.contract_type == ContractType.APPENDIX_7_2
                 ).first() is not None
 
         response_data = {
@@ -911,6 +918,7 @@ async def read_users_me(
             "main_contract_signed": main_contract_signed,  # Договор о присоединении
             "rental_main_contract_signed": rental_main_contract_signed,  # Основной договор аренды (только для активной аренды)
             "appendix_7_1_signed": appendix_7_1_signed,  # Акт приема (только для активной аренды)
+            "appendix_7_2_signed": appendix_7_2_signed,  # Приложение 7.2 (только для активной аренды)
         }
 
         if not current_user.is_contract_read:
@@ -930,7 +938,7 @@ async def read_users_me(
                 "digital_signature": current_user.digital_signature
             })
 
-        # Проверяем активную аренду и не подписан ли основной договор аренды или аппендикс 7.1
+        # Проверяем активную аренду и не подписан ли основной договор аренды, приложение 7.1 или приложение 7.2
         if current_rental and current_user.role in [UserRole.USER, UserRole.ADMIN, UserRole.MECHANIC]:
             rental_id = current_rental["rental_details"].get("rental_id") if "rental_details" in current_rental else None
             if rental_id:
@@ -964,6 +972,34 @@ async def read_users_me(
                 
                 # Затем проверяем приложение 7.1 (только если основной договор аренды подписан)
                 elif not appendix_7_1_signed:
+                    car_details = current_rental.get("car_details", {})
+                    
+                    if 'full_name' not in locals():
+                        full_name_parts = []
+                        if first_name:
+                            full_name_parts.append(first_name)
+                        if last_name:
+                            full_name_parts.append(last_name)
+                        if current_user.middle_name:
+                            full_name_parts.append(current_user.middle_name)
+                        full_name = " ".join(full_name_parts) if full_name_parts else None
+                    
+                    response_data.update({
+                        "full_name": full_name,
+                        "login": current_user.phone_number,
+                        "client_uuid": str(current_user.id),
+                        "digital_signature": current_user.digital_signature,
+                        "rent_uuid": str(safe_sid_to_uuid(rental_id)),
+                        "plate_number": car_details.get("plate_number"),
+                        "car_uuid": str(safe_sid_to_uuid(car_details.get("id"))),
+                        "car_year": car_details.get("year"),
+                        "body_type": car_details.get("body_type"),
+                        "vin": car_details.get("vin"),
+                        "color": car_details.get("color")
+                    })
+                
+                # И наконец проверяем приложение 7.2 (только если основной договор аренды и приложение 7.1 подписаны)
+                elif not appendix_7_2_signed:
                     car_details = current_rental.get("car_details", {})
                     
                     if 'full_name' not in locals():
