@@ -849,44 +849,12 @@ async def read_users_me(
             rental_id = current_rental["rental_details"].get("rental_id") if "rental_details" in current_rental else None
             if rental_id:
                 rental_uuid = safe_sid_to_uuid(rental_id)
-                print(f"DEBUG: Checking rental_main_contract for user {current_user.id}, rental_id: {rental_id}, rental_uuid: {rental_uuid}")
-                
-                # Проверим все подписи для этой аренды
-                all_signatures = db.query(UserContractSignature).join(ContractFile).filter(
-                    UserContractSignature.user_id == current_user.id,
-                    UserContractSignature.rental_id == rental_uuid
-                ).all()
-                print(f"DEBUG: Found {len(all_signatures)} signatures for this rental")
-                for sig in all_signatures:
-                    contract_file = db.query(ContractFile).filter(ContractFile.id == sig.contract_file_id).first()
-                    if contract_file:
-                        print(f"DEBUG: Signature for contract_type: {contract_file.contract_type}")
                 
                 rental_main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
                     UserContractSignature.user_id == current_user.id,
                     UserContractSignature.rental_id == rental_uuid,
                     ContractFile.contract_type == ContractType.RENTAL_MAIN_CONTRACT
                 ).first() is not None
-                
-                print(f"DEBUG: rental_main_contract_signed: {rental_main_contract_signed}")
-                
-                if not rental_main_contract_signed:
-                    print(f"DEBUG: No signature for current rental, checking all user rentals...")
-                    all_user_rentals = db.query(RentalHistory).filter(
-                        RentalHistory.user_id == current_user.id
-                    ).all()
-                    print(f"DEBUG: User has {len(all_user_rentals)} total rentals")
-                    
-                    for rental in all_user_rentals:
-                        has_signature = db.query(UserContractSignature).join(ContractFile).filter(
-                            UserContractSignature.user_id == current_user.id,
-                            UserContractSignature.rental_id == rental.id,
-                            ContractFile.contract_type == ContractType.RENTAL_MAIN_CONTRACT
-                        ).first() is not None
-                        print(f"DEBUG: Rental {uuid_to_sid(rental.id)} has rental_main_contract_signed: {has_signature}")
-                        if has_signature:
-                            rental_main_contract_signed = True
-                            break
                 
                 appendix_7_1_signed = db.query(UserContractSignature).join(ContractFile).filter(
                     UserContractSignature.user_id == current_user.id,
