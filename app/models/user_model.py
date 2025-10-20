@@ -1,5 +1,5 @@
-from sqlalchemy import Column, Integer, String, DateTime, Numeric, Boolean, text
-from sqlalchemy.dialects.postgresql import ARRAY, UUID, ENUM
+from sqlalchemy import Column, Integer, String, DateTime, Enum, Numeric, Boolean, text
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 import enum
 import uuid
 from datetime import datetime
@@ -57,7 +57,7 @@ class User(Base):
     narcology_certificate_url = Column(String, nullable=True)
     pension_contributions_certificate_url = Column(String, nullable=True)
     documents_verified = Column(Boolean, default=False, server_default="false")
-    role = Column(ENUM(UserRole), default=UserRole.CLIENT)
+    role = Column(Enum(UserRole), default=UserRole.CLIENT)
     last_sms_code = Column(String)
     sms_code_valid_until = Column(DateTime)
     is_active = Column(Boolean, default=True, nullable=False)

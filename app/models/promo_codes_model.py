@@ -1,8 +1,7 @@
 import enum
 import uuid
 
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Numeric, ForeignKey
-from sqlalchemy.dialects.postgresql import ENUM
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Numeric, ForeignKey, Enum
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
 
@@ -37,7 +36,7 @@ class UserPromoCode(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     promo_code_id = Column(UUID(as_uuid=True), ForeignKey("promo_codes.id"), nullable=False)
-    status = Column(ENUM(UserPromoStatus), default=UserPromoStatus.ACTIVATED, nullable=False)
+    status = Column(Enum(UserPromoStatus), default=UserPromoStatus.ACTIVATED, nullable=False)
     activated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     used_at = Column(DateTime, nullable=True)
 

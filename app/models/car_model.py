@@ -2,7 +2,8 @@ from enum import Enum
 import uuid
 
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, JSON, Text
-from sqlalchemy.dialects.postgresql import UUID, ENUM
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.dependencies.database.database import Base
 
@@ -63,7 +64,7 @@ class Car(Base):
     price_per_day = Column(Integer, nullable=False)
     car_class = Column(Integer, nullable=True, default=1)
     auto_class = Column(
-        ENUM(CarAutoClass, name="car_auto_class"),
+        SAEnum(CarAutoClass, name="car_auto_class"),
         default=CarAutoClass.A,
         nullable=False
     )
@@ -72,11 +73,11 @@ class Car(Base):
     year = Column(Integer, nullable=True)
     drive_type = Column(Integer, nullable=True)
     transmission_type = Column(
-        ENUM(TransmissionType, name="transmission_type"),
+        SAEnum(TransmissionType, name="transmission_type"),
         nullable=True
     )
     body_type = Column(
-        ENUM(CarBodyType, name="car_body_type"),
+        SAEnum(CarBodyType, name="car_body_type"),
         default=CarBodyType.SEDAN,
         nullable=False
     )
@@ -89,7 +90,7 @@ class Car(Base):
     owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     current_renter_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
-    status = Column(ENUM(CarStatus), default=CarStatus.FREE, nullable=True)
+    status = Column(SAEnum(CarStatus), default=CarStatus.FREE, nullable=True)
 
     owner = relationship("User", foreign_keys=[owner_id], back_populates="owned_cars")
     current_renter = relationship("User", foreign_keys=[current_renter_id], back_populates="active_rental")

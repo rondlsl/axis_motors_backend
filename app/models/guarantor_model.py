@@ -1,5 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text
-from sqlalchemy.dialects.postgresql import ENUM
+from sqlalchemy import Column, Integer, String, DateTime, Enum, Boolean, ForeignKey, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -30,7 +29,7 @@ class GuarantorRequest(Base):
     requestor_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)  # Кто запрашивает гаранта
     guarantor_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)  # Кого просят быть гарантом (может быть NULL пока не зарегистрирован)
     guarantor_phone = Column(String, nullable=True)  # Номер телефона гаранта (для незарегистрированных)
-    status = Column(ENUM(GuarantorRequestStatus), default=GuarantorRequestStatus.PENDING)
+    status = Column(Enum(GuarantorRequestStatus), default=GuarantorRequestStatus.PENDING)
     verification_status = Column(String, default="not_verified")  # Статус проверки администратором: not_verified, verified, rejected
     reason = Column(Text, nullable=True)  # Причина отказа в регистрации (если применимо)
     admin_notes = Column(Text, nullable=True)  # Заметки администратора при проверке

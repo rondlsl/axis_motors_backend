@@ -18,7 +18,10 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Create all tables (ENUM types will be created automatically by SQLAlchemy)
+    # Create all enum types first
+    create_enums()
+    
+    # Create all tables
     create_users_table()
     create_cars_table()
     create_applications_table()
@@ -36,6 +39,197 @@ def upgrade() -> None:
     create_user_promo_codes_table()
     create_support_actions_table()
     create_wallet_transactions_table()
+
+
+def create_enums():
+    """Create all enum types"""
+    
+    # UserRole enum
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE userrole AS ENUM (
+                'admin', 'user', 'rejected', 'client', 'pending', 'mechanic', 'GARANT', 
+                'financier', 'mvd', 'SUPPORT', 'PENDINGTOFIRST', 'PENDINGTOSECOND', 
+                'REJECTFIRSTDOC', 'REJECTFIRSTCERT', 'REJECTFIRST', 'REJECTSECOND'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    
+    # AutoClass enum
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE autoclass AS ENUM ('A', 'B', 'C');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    
+    # CarBodyType enum
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE carbodytype AS ENUM (
+                'SEDAN', 'SUV', 'CROSSOVER', 'COUPE', 'HATCHBACK', 'CONVERTIBLE', 
+                'WAGON', 'MINIBUS', 'ELECTRIC'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    
+    # CarAutoClass enum
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE carautoclass AS ENUM ('A', 'B', 'C');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    
+    # TransmissionType enum
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE transmissiontype AS ENUM (
+                'manual', 'automatic', 'cvt', 'semi_automatic'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    
+    # CarStatus enum
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE carstatus AS ENUM (
+                'FREE', 'PENDING', 'IN_USE', 'DELIVERING', 'SERVICE', 
+                'RESERVED', 'SCHEDULED', 'OWNER', 'OCCUPIED'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    
+    # ApplicationStatus enum
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE applicationstatus AS ENUM (
+                'pending', 'approved', 'rejected'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    
+    # GuarantorRequestStatus enum
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE guarantorrequeststatus AS ENUM (
+                'pending', 'accepted', 'rejected', 'expired'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    
+    # VerificationStatus enum
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE verificationstatus AS ENUM (
+                'not_verified', 'verified', 'rejected'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    
+    # RentalType enum
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE rentaltype AS ENUM (
+                'minutes', 'hours', 'days'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    
+    # RentalStatus enum
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE rentalstatus AS ENUM (
+                'reserved', 'in_use', 'completed', 'delivering', 'delivering_in_progress',
+                'delivery_reserved', 'cancelled', 'scheduled'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    
+    # ActionType enum
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE actiontype AS ENUM (
+                'open_vehicle', 'close_vehicle', 'give_key', 'take_key', 
+                'lock_engine', 'unlock_engine'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    
+    # ContractType enum
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE contracttype AS ENUM (
+                'guarantor_contract', 'guarantor_main_contract', 'user_agreement',
+                'consent_to_data_processing', 'main_contract', 'appendix_7_1', 'appendix_7_2'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    
+    # NotificationStatus enum
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE notificationstatus AS ENUM (
+                'mechanic_assigned', 'car_delivered', 'delivery_new_order', 'delivery_started',
+                'new_car_for_inspection', 'paid_waiting_soon', 'paid_waiting_started',
+                'low_balance', 'basic_tariff_ending_soon', 'out_of_tariff_charges',
+                'delivery_cancelled', 'balance_exhausted', 'delivery_delay_penalty',
+                'application_rejected_financier', 'application_rejected_mvd',
+                'application_approved_financier', 'application_approved_mvd'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    
+    # UserPromoStatus enum
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE userpromostatus AS ENUM (
+                'activated', 'used'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    
+    # WalletTransactionType enum
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE wallettransactiontype AS ENUM (
+                'deposit', 'promo_bonus', 'refund', 'rent_open_fee', 'rent_waiting_fee',
+                'rent_minute_charge', 'rent_overtime_fee', 'rent_distance_fee',
+                'rent_base_charge', 'rent_fuel_fee', 'delivery_fee', 'delivery_penalty',
+                'manual_adjustment', 'damage_penalty', 'fine_penalty'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
 
 
 def create_users_table():
@@ -62,7 +256,7 @@ def create_users_table():
         sa.Column('narcology_certificate_url', sa.String(), nullable=True),
         sa.Column('pension_contributions_certificate_url', sa.String(), nullable=True),
         sa.Column('documents_verified', sa.Boolean(), nullable=False, server_default='false'),
-        sa.Column('role', postgresql.ENUM('admin', 'user', 'rejected', 'client', 'pending', 'mechanic', 'GARANT', 'financier', 'mvd', 'SUPPORT', 'PENDINGTOFIRST', 'PENDINGTOSECOND', 'REJECTFIRSTDOC', 'REJECTFIRSTCERT', 'REJECTFIRST', 'REJECTSECOND', name='userrole'), nullable=False, server_default='client'),
+        sa.Column('role', postgresql.ENUM('admin', 'user', 'rejected', 'client', 'pending', 'mechanic', 'GARANT', 'financier', 'mvd', 'SUPPORT', 'PENDINGTOFIRST', 'PENDINGTOSECOND', 'REJECTFIRSTDOC', 'REJECTFIRSTCERT', 'REJECTFIRST', 'REJECTSECOND', name='userrole', create_type=False), nullable=False, server_default='client'),
         sa.Column('last_sms_code', sa.String(), nullable=True),
         sa.Column('sms_code_valid_until', sa.DateTime(), nullable=True),
         sa.Column('is_active', sa.Boolean(), nullable=False, server_default='true'),
@@ -101,19 +295,19 @@ def create_cars_table():
         sa.Column('price_per_hour', sa.Integer(), nullable=False),
         sa.Column('price_per_day', sa.Integer(), nullable=False),
         sa.Column('car_class', sa.Integer(), nullable=True, server_default='1'),
-        sa.Column('auto_class', postgresql.ENUM('A', 'B', 'C', name='car_auto_class'), nullable=False, server_default='A'),
+        sa.Column('auto_class', postgresql.ENUM('A', 'B', 'C', name='carautoclass', create_type=False), nullable=False, server_default='A'),
         sa.Column('engine_volume', sa.Float(), nullable=True),
         sa.Column('year', sa.Integer(), nullable=True),
         sa.Column('drive_type', sa.Integer(), nullable=True),
-        sa.Column('transmission_type', postgresql.ENUM('manual', 'automatic', 'cvt', 'semi_automatic', name='transmission_type'), nullable=True),
-        sa.Column('body_type', postgresql.ENUM('SEDAN', 'SUV', 'CROSSOVER', 'COUPE', 'HATCHBACK', 'CONVERTIBLE', 'WAGON', 'MINIBUS', 'ELECTRIC', name='car_body_type'), nullable=False, server_default='SEDAN'),
+        sa.Column('transmission_type', postgresql.ENUM('manual', 'automatic', 'cvt', 'semi_automatic', name='transmissiontype', create_type=False), nullable=True),
+        sa.Column('body_type', postgresql.ENUM('SEDAN', 'SUV', 'CROSSOVER', 'COUPE', 'HATCHBACK', 'CONVERTIBLE', 'WAGON', 'MINIBUS', 'ELECTRIC', name='carbodytype', create_type=False), nullable=False, server_default='SEDAN'),
         sa.Column('vin', sa.String(), nullable=True),
         sa.Column('color', sa.String(), nullable=True),
         sa.Column('photos', postgresql.JSON(), nullable=True),
         sa.Column('description', sa.Text(), nullable=True),
         sa.Column('owner_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=True),
         sa.Column('current_renter_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=True),
-        sa.Column('status', postgresql.ENUM('FREE', 'PENDING', 'IN_USE', 'DELIVERING', 'SERVICE', 'RESERVED', 'SCHEDULED', 'OWNER', 'OCCUPIED', name='car_status'), nullable=True, server_default='FREE')
+        sa.Column('status', postgresql.ENUM('FREE', 'PENDING', 'IN_USE', 'DELIVERING', 'SERVICE', 'RESERVED', 'SCHEDULED', 'OWNER', 'OCCUPIED', name='carstatus', create_type=False), nullable=True, server_default='FREE')
     )
 
 
@@ -122,11 +316,11 @@ def create_applications_table():
     op.create_table('applications',
         sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
         sa.Column('user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=False),
-        sa.Column('financier_status', postgresql.ENUM('pending', 'approved', 'rejected', name='application_status'), nullable=False, server_default='pending'),
+        sa.Column('financier_status', postgresql.ENUM('pending', 'approved', 'rejected', name='applicationstatus', create_type=False), nullable=False, server_default='pending'),
         sa.Column('financier_approved_at', sa.DateTime(), nullable=True),
         sa.Column('financier_rejected_at', sa.DateTime(), nullable=True),
         sa.Column('financier_user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=True),
-        sa.Column('mvd_status', postgresql.ENUM('pending', 'approved', 'rejected', name='application_status'), nullable=False, server_default='pending'),
+        sa.Column('mvd_status', postgresql.ENUM('pending', 'approved', 'rejected', name='applicationstatus', create_type=False), nullable=False, server_default='pending'),
         sa.Column('mvd_approved_at', sa.DateTime(), nullable=True),
         sa.Column('mvd_rejected_at', sa.DateTime(), nullable=True),
         sa.Column('mvd_user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=True),
@@ -143,8 +337,8 @@ def create_guarantor_requests_table():
         sa.Column('requestor_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=False),
         sa.Column('guarantor_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=True),
         sa.Column('guarantor_phone', sa.String(), nullable=True),
-        sa.Column('status', postgresql.ENUM('pending', 'accepted', 'rejected', 'expired', name='guarantor_request_status'), nullable=False, server_default='pending'),
-        sa.Column('verification_status', postgresql.ENUM('not_verified', 'verified', 'rejected', name='verification_status'), nullable=False, server_default='not_verified'),
+        sa.Column('status', postgresql.ENUM('pending', 'accepted', 'rejected', 'expired', name='guarantorrequeststatus', create_type=False), nullable=False, server_default='pending'),
+        sa.Column('verification_status', postgresql.ENUM('not_verified', 'verified', 'rejected', name='verificationstatus', create_type=False), nullable=False, server_default='not_verified'),
         sa.Column('reason', sa.Text(), nullable=True),
         sa.Column('admin_notes', sa.Text(), nullable=True),
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
@@ -172,7 +366,7 @@ def create_rental_history_table():
         sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
         sa.Column('user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=False),
         sa.Column('car_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('cars.id'), nullable=False),
-        sa.Column('rental_type', postgresql.ENUM('minutes', 'hours', 'days', name='rental_type'), nullable=False),
+        sa.Column('rental_type', postgresql.ENUM('minutes', 'hours', 'days', name='rentaltype', create_type=False), nullable=False),
         sa.Column('duration', sa.Integer(), nullable=True),
         sa.Column('start_latitude', sa.Float(), nullable=False),
         sa.Column('start_longitude', sa.Float(), nullable=False),
@@ -183,7 +377,7 @@ def create_rental_history_table():
         sa.Column('reservation_time', sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.Column('scheduled_start_time', sa.DateTime(), nullable=True),
         sa.Column('scheduled_end_time', sa.DateTime(), nullable=True),
-        sa.Column('is_advance_booking', sa.String(), nullable=False, server_default='false'),
+        sa.Column('is_advance_booking', sa.Boolean(), nullable=False, server_default='false'),
         sa.Column('base_price', sa.Integer(), nullable=True),
         sa.Column('open_fee', sa.Integer(), nullable=True),
         sa.Column('delivery_fee', sa.Integer(), nullable=True),
@@ -198,7 +392,7 @@ def create_rental_history_table():
         sa.Column('mileage_after', sa.Integer(), nullable=True),
         sa.Column('already_payed', sa.Integer(), nullable=True),
         sa.Column('total_price', sa.Integer(), nullable=True),
-        sa.Column('rental_status', postgresql.ENUM('reserved', 'in_use', 'completed', 'delivering', 'delivering_in_progress', 'delivery_reserved', 'cancelled', 'scheduled', name='rental_status'), nullable=False, server_default='reserved'),
+        sa.Column('rental_status', postgresql.ENUM('reserved', 'in_use', 'completed', 'delivering', 'delivering_in_progress', 'delivery_reserved', 'cancelled', 'scheduled', name='rentalstatus', create_type=False), nullable=False, server_default='reserved'),
         sa.Column('delivery_latitude', sa.Float(), nullable=True),
         sa.Column('delivery_longitude', sa.Float(), nullable=True),
         sa.Column('delivery_mechanic_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=True),
@@ -245,7 +439,7 @@ def create_rental_actions_table():
         sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
         sa.Column('rental_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('rental_history.id'), nullable=False),
         sa.Column('user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=False),
-        sa.Column('action_type', postgresql.ENUM('open_vehicle', 'close_vehicle', 'give_key', 'take_key', 'lock_engine', 'unlock_engine', name='action_type'), nullable=False),
+        sa.Column('action_type', postgresql.ENUM('open_vehicle', 'close_vehicle', 'give_key', 'take_key', 'lock_engine', 'unlock_engine', name='actiontype', create_type=False), nullable=False),
         sa.Column('timestamp', sa.DateTime(), nullable=False, server_default=sa.func.now())
     )
 
@@ -280,7 +474,7 @@ def create_contract_files_table():
     """Create contract_files table"""
     op.create_table('contract_files',
         sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
-        sa.Column('contract_type', postgresql.ENUM('guarantor_contract', 'guarantor_main_contract', 'user_agreement', 'consent_to_data_processing', 'main_contract', 'appendix_7_1', 'appendix_7_2', name='contract_type'), nullable=False),
+        sa.Column('contract_type', postgresql.ENUM('guarantor_contract', 'guarantor_main_contract', 'user_agreement', 'consent_to_data_processing', 'main_contract', 'appendix_7_1', 'appendix_7_2', name='contracttype', create_type=False), nullable=False),
         sa.Column('file_path', sa.String(), nullable=False),
         sa.Column('file_name', sa.String(), nullable=False),
         sa.Column('is_active', sa.Boolean(), nullable=False, server_default='true'),
@@ -311,7 +505,7 @@ def create_notifications_table():
         sa.Column('body', sa.Text(), nullable=False),
         sa.Column('sent_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.Column('is_read', sa.Boolean(), nullable=False, server_default='false'),
-        sa.Column('status', postgresql.ENUM('mechanic_assigned', 'car_delivered', 'delivery_new_order', 'delivery_started', 'new_car_for_inspection', 'paid_waiting_soon', 'paid_waiting_started', 'low_balance', 'basic_tariff_ending_soon', 'out_of_tariff_charges', 'delivery_cancelled', 'balance_exhausted', 'delivery_delay_penalty', 'application_rejected_financier', 'application_rejected_mvd', 'application_approved_financier', 'application_approved_mvd', name='notification_status'), nullable=True)
+        sa.Column('status', postgresql.ENUM('mechanic_assigned', 'car_delivered', 'delivery_new_order', 'delivery_started', 'new_car_for_inspection', 'paid_waiting_soon', 'paid_waiting_started', 'low_balance', 'basic_tariff_ending_soon', 'out_of_tariff_charges', 'delivery_cancelled', 'balance_exhausted', 'delivery_delay_penalty', 'application_rejected_financier', 'application_rejected_mvd', 'application_approved_financier', 'application_approved_mvd', name='notificationstatus', create_type=False), nullable=True)
     )
 
 
@@ -332,7 +526,7 @@ def create_user_promo_codes_table():
         sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
         sa.Column('user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=False),
         sa.Column('promo_code_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('promo_codes.id'), nullable=False),
-        sa.Column('status', postgresql.ENUM('activated', 'used', name='user_promo_status'), nullable=False, server_default='activated'),
+        sa.Column('status', postgresql.ENUM('activated', 'used', name='userpromostatus', create_type=False), nullable=False, server_default='activated'),
         sa.Column('activated_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.Column('used_at', sa.DateTime(), nullable=True)
     )
@@ -356,7 +550,7 @@ def create_wallet_transactions_table():
         sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
         sa.Column('user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=False),
         sa.Column('amount', sa.Numeric(10, 2), nullable=False),
-        sa.Column('transaction_type', postgresql.ENUM('deposit', 'promo_bonus', 'refund', 'rent_open_fee', 'rent_waiting_fee', 'rent_minute_charge', 'rent_overtime_fee', 'rent_distance_fee', 'rent_base_charge', 'rent_fuel_fee', 'delivery_fee', 'delivery_penalty', 'manual_adjustment', 'damage_penalty', 'fine_penalty', name='wallet_transaction_type'), nullable=False),
+        sa.Column('transaction_type', postgresql.ENUM('deposit', 'promo_bonus', 'refund', 'rent_open_fee', 'rent_waiting_fee', 'rent_minute_charge', 'rent_overtime_fee', 'rent_distance_fee', 'rent_base_charge', 'rent_fuel_fee', 'delivery_fee', 'delivery_penalty', 'manual_adjustment', 'damage_penalty', 'fine_penalty', name='wallettransactiontype', create_type=False), nullable=False),
         sa.Column('description', sa.String(), nullable=True),
         sa.Column('balance_before', sa.Numeric(10, 2), nullable=False),
         sa.Column('balance_after', sa.Numeric(10, 2), nullable=False),
@@ -385,4 +579,13 @@ def downgrade() -> None:
     op.drop_table('cars')
     op.drop_table('users')
     
-    # ENUM types will be dropped automatically when tables are dropped
+    # Drop all enums
+    enums_to_drop = [
+        'wallettransactiontype', 'userpromostatus', 'notificationstatus', 'contracttype',
+        'actiontype', 'rentalstatus', 'rentaltype', 'verificationstatus',
+        'guarantorrequeststatus', 'applicationstatus', 'carstatus', 'transmissiontype',
+        'carautoclass', 'carbodytype', 'autoclass', 'userrole'
+    ]
+    
+    for enum_name in enums_to_drop:
+        op.execute(f"DROP TYPE IF EXISTS {enum_name}")
