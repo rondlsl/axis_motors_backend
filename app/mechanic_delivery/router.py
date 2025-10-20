@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field, constr
 import uuid
+import asyncio
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
 
 from app.auth.dependencies.get_current_user import get_current_mechanic
@@ -665,6 +666,22 @@ async def upload_delivery_photos_before_interior(
             urls.append(await save_file(p, rental.id, f"uploads/delivery/{rental.id}/before/interior/"))
         rental.delivery_photos_before = urls
         db.commit()
+        
+        # После загрузки фото салона - выдаем ключ и разблокируем двигатель
+        try:
+            car = db.query(Car).get(rental.car_id)
+            if car and car.gps_imei:
+                from app.gps_api.utils.auth_api import get_auth_token
+                from app.gps_api.utils.car_data import send_give_key, send_unlock_engine
+                from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
+                
+                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                await send_give_key(car.gps_imei, auth_token)
+                await asyncio.sleep(1.0)
+                await send_unlock_engine(car.gps_imei, auth_token)
+        except Exception as e:
+            print(f"Ошибка выдачи ключа/разблокировки двигателя после загрузки фото салона механиком доставки: {e}")
+        
         return {"message": "Фотографии салона перед доставкой загружены", "photo_count": len(interior_photos)}
     except HTTPException:
         raise
