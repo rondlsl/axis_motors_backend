@@ -274,30 +274,28 @@ async def sign_contract(
         print(f"🔍 Проверка доступа к аренде:")
         print(f"   - rental_id: {rental_uuid}")
         print(f"   - rental.user_id: {rental.user_id}")
-        print(f"   - rental.mechanic_id: {rental.mechanic_id}")
+        print(f"   - rental.mechanic_inspector_id: {rental.mechanic_inspector_id}")
         print(f"   - current_user.id: {current_user.id}")
         print(f"   - current_user.role: {current_user.role}")
-        print(f"   - rental.mechanic_id is None: {rental.mechanic_id is None}")
-        print(f"   - rental.mechanic_id == current_user.id: {rental.mechanic_id == current_user.id}")
         
-        # Для механиков разрешаем подписание договоров для аренд, с которыми они работают
+        # Для механиков разрешаем подписание договоров для аренд, где они являются инспекторами
         if current_user.role == UserRole.MECHANIC:
-            print(f"🔧 Проверка для механика: rental.mechanic_id == current_user.id")
-            print(f"   - {rental.mechanic_id} == {current_user.id} = {rental.mechanic_id == current_user.id}")
-            # Механик может подписывать договоры для аренд, где он назначен механиком
-            if rental.mechanic_id is None:
-                print(f"❌ Механик не назначен для данной аренды (mechanic_id is None)")
+            print(f"🔧 Проверка для механика: rental.mechanic_inspector_id == current_user.id")
+            print(f"   - {rental.mechanic_inspector_id} == {current_user.id} = {rental.mechanic_inspector_id == current_user.id}")
+            # Механик может подписывать договоры для аренд, где он является инспектором
+            if rental.mechanic_inspector_id is None:
+                print(f"❌ Механик не назначен инспектором для данной аренды (mechanic_inspector_id is None)")
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Механик не назначен для данной аренды"
+                    detail="Механик не назначен инспектором для данной аренды"
                 )
-            elif rental.mechanic_id != current_user.id:
-                print(f"❌ Механик не назначен для данной аренды (другой механик)")
+            elif rental.mechanic_inspector_id != current_user.id:
+                print(f"❌ Механик не назначен инспектором для данной аренды (другой механик)")
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Механик не назначен для данной аренды"
+                    detail="Механик не назначен инспектором для данной аренды"
                 )
-            print(f"✅ Механик имеет доступ к аренде")
+            print(f"✅ Механик имеет доступ к аренде как инспектор")
         else:
             print(f"👤 Проверка для обычного пользователя: rental.user_id == current_user.id")
             print(f"   - {rental.user_id} == {current_user.id} = {rental.user_id == current_user.id}")
@@ -475,21 +473,27 @@ async def get_rental_contract_status(
     print(f"🔍 Проверка доступа к статусу договоров аренды:")
     print(f"   - rental_id: {rental_uuid}")
     print(f"   - rental.user_id: {rental.user_id}")
-    print(f"   - rental.mechanic_id: {rental.mechanic_id}")
+    print(f"   - rental.mechanic_inspector_id: {rental.mechanic_inspector_id}")
     print(f"   - current_user.id: {current_user.id}")
     print(f"   - current_user.role: {current_user.role}")
     
-    # Для механиков разрешаем доступ к арендам, с которыми они работают
+    # Для механиков разрешаем доступ к арендам, где они являются инспекторами
     if current_user.role == UserRole.MECHANIC:
-        print(f"🔧 Проверка для механика: rental.mechanic_id == current_user.id")
-        print(f"   - {rental.mechanic_id} == {current_user.id} = {rental.mechanic_id == current_user.id}")
-        if rental.mechanic_id != current_user.id:
-            print(f"❌ Механик не назначен для данной аренды")
+        print(f"🔧 Проверка для механика: rental.mechanic_inspector_id == current_user.id")
+        print(f"   - {rental.mechanic_inspector_id} == {current_user.id} = {rental.mechanic_inspector_id == current_user.id}")
+        if rental.mechanic_inspector_id is None:
+            print(f"❌ Механик не назначен инспектором для данной аренды (mechanic_inspector_id is None)")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Механик не назначен для данной аренды"
+                detail="Механик не назначен инспектором для данной аренды"
             )
-        print(f"✅ Механик имеет доступ к статусу договоров аренды")
+        elif rental.mechanic_inspector_id != current_user.id:
+            print(f"❌ Механик не назначен инспектором для данной аренды (другой механик)")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Механик не назначен инспектором для данной аренды"
+            )
+        print(f"✅ Механик имеет доступ к статусу договоров аренды как инспектор")
     else:
         print(f"👤 Проверка для обычного пользователя: rental.user_id == current_user.id")
         print(f"   - {rental.user_id} == {current_user.id} = {rental.user_id == current_user.id}")
