@@ -46,6 +46,7 @@ def record_wallet_transaction(
     description: Optional[str] = None,
     related_rental: Optional[RentalHistory] = None,
     balance_before_override: Optional[float] = None,
+    tracking_id: Optional[str] = None,
 ) -> WalletTransaction:
     balance_before = balance_before_override if balance_before_override is not None else (user.wallet_balance or 0)
     # В проекте баланс хранится как Numeric(10,2), поддерживаем int -> float
@@ -61,6 +62,7 @@ def record_wallet_transaction(
         balance_before=balance_before,
         balance_after=new_balance,
         related_rental_id=related_rental.id if related_rental else None,
+        tracking_id=tracking_id,
     )
     db.add(tx)
     # Обновление баланса на вызывающей стороне уже произведено.

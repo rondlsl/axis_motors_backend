@@ -23,7 +23,7 @@ from app.models.contract_model import UserContractSignature, ContractFile, Contr
 from app.push.utils import send_notification_to_all_mechanics_async, send_push_to_user_by_id, send_localized_notification_to_user, send_localized_notification_to_all_mechanics
 from app.rent.exceptions import InsufficientBalanceException
 from app.wallet.utils import record_wallet_transaction
-from app.models.wallet_transaction_model import WalletTransactionType
+from app.models.wallet_transaction_model import WalletTransactionType, WalletTransaction
 from app.rent.utils.calculate_price import calculate_total_price, get_open_price
 from app.gps_api.utils.route_data import get_gps_route_data
 from app.gps_api.utils.auth_api import get_auth_token
@@ -348,8 +348,24 @@ async def get_trip_history_detail(
 
 @RentRouter.post("/add_money")
 def add_money(amount: int,
+              tracking_id: Optional[str] = None,
               db: Session = Depends(get_db),
               current_user: User = Depends(get_current_user)):
+    # Проверяем, не была ли уже обработана транзакция с таким tracking_id
+    if tracking_id:
+        existing_transaction = db.query(WalletTransaction).filter(
+            WalletTransaction.tracking_id == tracking_id,
+            WalletTransaction.user_id == current_user.id
+        ).first()
+        
+        if existing_transaction:
+            return {
+                "wallet_balance": float(current_user.wallet_balance),
+                "bonus": 0,
+                "promo_applied": False,
+                "message": "Транзакция уже была обработана"
+            }
+    
     # 1) Ищем у юзера активный промокод
     up = db.query(UserPromoCode) \
         .filter_by(user_id=current_user.id, status=UserPromoStatus.ACTIVATED) \
@@ -367,7 +383,7 @@ def add_money(amount: int,
         # фиксируем баланс до депозита, чтобы корректно отразить 2 транзакции подряд
         before = float(current_user.wallet_balance or 0)
         # депозит
-        record_wallet_transaction(db, user=current_user, amount=amount, ttype=WalletTransactionType.DEPOSIT, description="Пополнение кошелька", balance_before_override=before)
+        record_wallet_transaction(db, user=current_user, amount=amount, ttype=WalletTransactionType.DEPOSIT, description="Пополнение кошелька", balance_before_override=before, tracking_id=tracking_id)
         # бонус
         record_wallet_transaction(db, user=current_user, amount=bonus, ttype=WalletTransactionType.PROMO_BONUS, description=f"Бонус по промокоду {up.promo.code if up and up.promo else ''}", balance_before_override=before + amount)
         # начисляем основную сумму + бонус
@@ -379,7 +395,7 @@ def add_money(amount: int,
 
     else:
         # обычное пополнение
-        record_wallet_transaction(db, user=current_user, amount=amount, ttype=WalletTransactionType.DEPOSIT, description="Пополнение кошелька")
+        record_wallet_transaction(db, user=current_user, amount=amount, ttype=WalletTransactionType.DEPOSIT, description="Пополнение кошелька", tracking_id=tracking_id)
         current_user.wallet_balance += amount
 
     db.commit()
