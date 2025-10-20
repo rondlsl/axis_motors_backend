@@ -845,27 +845,31 @@ async def read_users_me(
         rental_main_contract_signed = False
         appendix_7_1_signed = False
         appendix_7_2_signed = False
-        if current_rental:
-            rental_id = current_rental["rental_details"].get("rental_id") if "rental_details" in current_rental else None
-            if rental_id:
-                rental_main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
-                    UserContractSignature.user_id == current_user.id,
-                    UserContractSignature.rental_id == safe_sid_to_uuid(rental_id),
-                    ContractFile.contract_type == ContractType.RENTAL_MAIN_CONTRACT
-                ).first() is not None
-                
-                appendix_7_1_signed = db.query(UserContractSignature).join(ContractFile).filter(
-                    UserContractSignature.user_id == current_user.id,
-                    UserContractSignature.rental_id == safe_sid_to_uuid(rental_id),
-                    ContractFile.contract_type == ContractType.APPENDIX_7_1
-                ).first() is not None
-                
-                # 3. Акт возврата (APPENDIX_7_2) - проверяем для текущей аренды
-                appendix_7_2_signed = db.query(UserContractSignature).join(ContractFile).filter(
-                    UserContractSignature.user_id == current_user.id,
-                    UserContractSignature.rental_id == safe_sid_to_uuid(rental_id),
-                    ContractFile.contract_type == ContractType.APPENDIX_7_2
-                ).first() is not None
+        
+        # Ищем последнюю аренду пользователя (активную или завершенную)
+        latest_rental = db.query(RentalHistory).filter(
+            RentalHistory.user_id == current_user.id
+        ).order_by(RentalHistory.created_at.desc()).first()
+        
+        if latest_rental:
+            rental_id = latest_rental.id
+            rental_main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                UserContractSignature.user_id == current_user.id,
+                UserContractSignature.rental_id == rental_id,
+                ContractFile.contract_type == ContractType.RENTAL_MAIN_CONTRACT
+            ).first() is not None
+            
+            appendix_7_1_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                UserContractSignature.user_id == current_user.id,
+                UserContractSignature.rental_id == rental_id,
+                ContractFile.contract_type == ContractType.APPENDIX_7_1
+            ).first() is not None
+            
+            appendix_7_2_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                UserContractSignature.user_id == current_user.id,
+                UserContractSignature.rental_id == rental_id,
+                ContractFile.contract_type == ContractType.APPENDIX_7_2
+            ).first() is not None
 
         response_data = {
             "id": uuid_to_sid(current_user.id),
@@ -939,135 +943,101 @@ async def read_users_me(
                 "digital_signature": current_user.digital_signature
             })
 
-        # Проверяем активную аренду и не подписан ли основной договор аренды, приложение 7.1 или приложение 7.2
-        if current_rental and current_user.role in [UserRole.USER, UserRole.ADMIN, UserRole.MECHANIC]:
-            rental_id = current_rental["rental_details"].get("rental_id") if "rental_details" in current_rental else None
-            if rental_id:
-                # Сначала проверяем основной договор аренды
-                if not rental_main_contract_signed:
-                    car_details = current_rental.get("car_details", {})
-                    
-                    if 'full_name' not in locals():
-                        full_name_parts = []
-                        if first_name:
-                            full_name_parts.append(first_name)
-                        if last_name:
-                            full_name_parts.append(last_name)
-                        if current_user.middle_name:
-                            full_name_parts.append(current_user.middle_name)
-                        full_name = " ".join(full_name_parts) if full_name_parts else None
-                    
-                    response_data.update({
-                        "full_name": full_name,
-                        "login": current_user.phone_number,
-                        "client_uuid": str(current_user.id),
-                        "digital_signature": current_user.digital_signature,
-                        "rent_uuid": str(safe_sid_to_uuid(rental_id)),
-                        "plate_number": car_details.get("plate_number"),
-                        "car_uuid": str(safe_sid_to_uuid(car_details.get("id"))),
-                        "car_year": car_details.get("year"),
-                        "body_type": car_details.get("body_type"),
-                        "vin": car_details.get("vin"),
-                        "color": car_details.get("color")
-                    })
-                
-                # Затем проверяем приложение 7.1 (только если основной договор аренды подписан)
-                elif not appendix_7_1_signed:
-                    car_details = current_rental.get("car_details", {})
-                    
-                    if 'full_name' not in locals():
-                        full_name_parts = []
-                        if first_name:
-                            full_name_parts.append(first_name)
-                        if last_name:
-                            full_name_parts.append(last_name)
-                        if current_user.middle_name:
-                            full_name_parts.append(current_user.middle_name)
-                        full_name = " ".join(full_name_parts) if full_name_parts else None
-                    
-                    response_data.update({
-                        "full_name": full_name,
-                        "login": current_user.phone_number,
-                        "client_uuid": str(current_user.id),
-                        "digital_signature": current_user.digital_signature,
-                        "rent_uuid": str(safe_sid_to_uuid(rental_id)),
-                        "plate_number": car_details.get("plate_number"),
-                        "car_uuid": str(safe_sid_to_uuid(car_details.get("id"))),
-                        "car_year": car_details.get("year"),
-                        "body_type": car_details.get("body_type"),
-                        "vin": car_details.get("vin"),
-                        "color": car_details.get("color")
-                    })
-                
-                # И наконец проверяем приложение 7.2 (только если основной договор аренды и приложение 7.1 подписаны)
-                elif not appendix_7_2_signed:
-                    car_details = current_rental.get("car_details", {})
-                    
-                    if 'full_name' not in locals():
-                        full_name_parts = []
-                        if first_name:
-                            full_name_parts.append(first_name)
-                        if last_name:
-                            full_name_parts.append(last_name)
-                        if current_user.middle_name:
-                            full_name_parts.append(current_user.middle_name)
-                        full_name = " ".join(full_name_parts) if full_name_parts else None
-                    
-                    response_data.update({
-                        "full_name": full_name,
-                        "login": current_user.phone_number,
-                        "client_uuid": str(current_user.id),
-                        "digital_signature": current_user.digital_signature,
-                        "rent_uuid": str(safe_sid_to_uuid(rental_id)),
-                        "plate_number": car_details.get("plate_number"),
-                        "car_uuid": str(safe_sid_to_uuid(car_details.get("id"))),
-                        "car_year": car_details.get("year"),
-                        "body_type": car_details.get("body_type"),
-                        "vin": car_details.get("vin"),
-                        "color": car_details.get("color")
-                    })
-
-        # Проверяем завершенную аренду и не подписан ли аппендикс 7.2
-        if current_user.role in [UserRole.USER, UserRole.ADMIN, UserRole.MECHANIC]:
-            last_completed_rental = db.query(RentalHistory).filter(
-                RentalHistory.user_id == current_user.id,
-                RentalHistory.rental_status == RentalStatus.COMPLETED
-            ).order_by(RentalHistory.end_time.desc()).first()
+        # Проверяем последнюю аренду и не подписан ли основной договор аренды, приложение 7.1 или приложение 7.2
+        if latest_rental and current_user.role in [UserRole.USER, UserRole.ADMIN, UserRole.MECHANIC]:
+            rental_id = latest_rental.id
             
-            if last_completed_rental:
-                appendix_7_2_signed = db.query(UserContractSignature).join(ContractFile).filter(
-                    UserContractSignature.user_id == current_user.id,
-                    UserContractSignature.rental_id == last_completed_rental.id,
-                    ContractFile.contract_type == ContractType.APPENDIX_7_2
-                ).first() is not None
+            # Получаем детали автомобиля для последней аренды
+            car = db.query(Car).get(latest_rental.car_id)
+            car_details = {}
+            if car:
+                car_details = {
+                    "id": uuid_to_sid(car.id),
+                    "plate_number": car.plate_number,
+                    "year": car.year,
+                    "body_type": car.body_type,
+                    "vin": car.vin,
+                    "color": car.color
+                }
+            
+            # Сначала проверяем основной договор аренды
+            if not rental_main_contract_signed:
+                if 'full_name' not in locals():
+                    full_name_parts = []
+                    if first_name:
+                        full_name_parts.append(first_name)
+                    if last_name:
+                        full_name_parts.append(last_name)
+                    if current_user.middle_name:
+                        full_name_parts.append(current_user.middle_name)
+                    full_name = " ".join(full_name_parts) if full_name_parts else None
                 
-                if not appendix_7_2_signed:
-                    car = db.query(Car).filter(Car.id == last_completed_rental.car_id).first()
-                    
-                    if car:
-                        if 'full_name' not in locals():
-                            full_name_parts = []
-                            if first_name:
-                                full_name_parts.append(first_name)
-                            if last_name:
-                                full_name_parts.append(last_name)
-                            if current_user.middle_name:
-                                full_name_parts.append(current_user.middle_name)
-                            full_name = " ".join(full_name_parts) if full_name_parts else None
-                        
-                        response_data.update({
-                            "full_name": full_name,
-                            "login": current_user.phone_number,
-                            "client_uuid": str(current_user.id),
-                            "digital_signature": current_user.digital_signature,
-                            "rent_uuid": str(last_completed_rental.id),
-                            "plate_number": car.plate_number,
-                            "car_uuid": str(car.id),
-                            "car_year": car.year,
-                            "body_type": car.body_type,
-                            "vin": car.vin,
-                            "color": car.color
-                        })
+                response_data.update({
+                    "full_name": full_name,
+                    "login": current_user.phone_number,
+                    "client_uuid": str(current_user.id),
+                    "digital_signature": current_user.digital_signature,
+                    "rent_uuid": str(rental_id),
+                    "plate_number": car_details.get("plate_number"),
+                    "car_uuid": str(car_details.get("id")),
+                    "car_year": car_details.get("year"),
+                    "body_type": car_details.get("body_type"),
+                    "vin": car_details.get("vin"),
+                    "color": car_details.get("color")
+                })
+            
+            # Затем проверяем приложение 7.1 (только если основной договор аренды подписан)
+            elif not appendix_7_1_signed:
+                if 'full_name' not in locals():
+                    full_name_parts = []
+                    if first_name:
+                        full_name_parts.append(first_name)
+                    if last_name:
+                        full_name_parts.append(last_name)
+                    if current_user.middle_name:
+                        full_name_parts.append(current_user.middle_name)
+                    full_name = " ".join(full_name_parts) if full_name_parts else None
+                
+                response_data.update({
+                    "full_name": full_name,
+                    "login": current_user.phone_number,
+                    "client_uuid": str(current_user.id),
+                    "digital_signature": current_user.digital_signature,
+                    "rent_uuid": str(rental_id),
+                    "plate_number": car_details.get("plate_number"),
+                    "car_uuid": str(car_details.get("id")),
+                    "car_year": car_details.get("year"),
+                    "body_type": car_details.get("body_type"),
+                    "vin": car_details.get("vin"),
+                    "color": car_details.get("color")
+                })
+            
+            # И наконец проверяем приложение 7.2 (только если основной договор аренды и приложение 7.1 подписаны)
+            elif not appendix_7_2_signed:
+                if 'full_name' not in locals():
+                    full_name_parts = []
+                    if first_name:
+                        full_name_parts.append(first_name)
+                    if last_name:
+                        full_name_parts.append(last_name)
+                    if current_user.middle_name:
+                        full_name_parts.append(current_user.middle_name)
+                    full_name = " ".join(full_name_parts) if full_name_parts else None
+                
+                response_data.update({
+                    "full_name": full_name,
+                    "login": current_user.phone_number,
+                    "client_uuid": str(current_user.id),
+                    "digital_signature": current_user.digital_signature,
+                    "rent_uuid": str(rental_id),
+                    "plate_number": car_details.get("plate_number"),
+                    "car_uuid": str(car_details.get("id")),
+                    "car_year": car_details.get("year"),
+                    "body_type": car_details.get("body_type"),
+                    "vin": car_details.get("vin"),
+                    "color": car_details.get("color")
+                })
+
 
         return response_data
     except Exception as e:
