@@ -383,7 +383,7 @@ def create_rental_history_table():
         sa.Column('reservation_time', sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.Column('scheduled_start_time', sa.DateTime(), nullable=True),
         sa.Column('scheduled_end_time', sa.DateTime(), nullable=True),
-        sa.Column('is_advance_booking', sa.Boolean(), nullable=False, server_default='false'),
+        sa.Column('is_advance_booking', sa.String(), nullable=False, server_default='false'),
         sa.Column('base_price', sa.Integer(), nullable=True),
         sa.Column('open_fee', sa.Integer(), nullable=True),
         sa.Column('delivery_fee', sa.Integer(), nullable=True),
