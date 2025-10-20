@@ -259,11 +259,27 @@ async def sign_contract(
             )
         
         rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
-        if not rental or rental.user_id != current_user.id:
+        if not rental:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Аренда не найдена или не принадлежит пользователю"
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Аренда не найдена"
             )
+        
+        # Для механиков разрешаем подписание договоров для аренд, с которыми они работают
+        if current_user.role == UserRole.MECHANIC:
+            # Механик может подписывать договоры для аренд, где он назначен механиком
+            if rental.mechanic_id != current_user.id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Механик не назначен для данной аренды"
+                )
+        else:
+            # Для обычных пользователей проверяем, что аренда принадлежит им
+            if rental.user_id != current_user.id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Аренда не принадлежит пользователю"
+                )
     
     if sign_request.contract_type in [ContractType.GUARANTOR_CONTRACT, ContractType.GUARANTOR_MAIN_CONTRACT]:
         if not sign_request.guarantor_relationship_id:
@@ -420,11 +436,20 @@ async def get_rental_contract_status(
             detail="Аренда не найдена"
         )
     
-    if rental.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Доступ запрещен"
-        )
+    # Для механиков разрешаем доступ к арендам, с которыми они работают
+    if current_user.role == UserRole.MECHANIC:
+        if rental.mechanic_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Механик не назначен для данной аренды"
+            )
+    else:
+        # Для обычных пользователей проверяем, что аренда принадлежит им
+        if rental.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Доступ запрещен"
+            )
     
     signatures = db.query(UserContractSignature).join(ContractFile).filter(
         UserContractSignature.user_id == current_user.id,
