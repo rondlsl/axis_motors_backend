@@ -1,3 +1,4 @@
+# Database Configuration for azv_motors_backend_v2
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=postgres
 POSTGRES_DB=azv_motors_backend_v2
