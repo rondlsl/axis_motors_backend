@@ -834,6 +834,24 @@ async def read_users_me(
         last_name = current_user.last_name if isinstance(current_user.last_name, str) else None
         role = getattr(current_user.role, "value", current_user.role) if current_user.role is not None else None
 
+        # Проверяем подписание основных договоров
+        # 1. Договор о присоединении (MAIN_CONTRACT)
+        main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+            UserContractSignature.user_id == current_user.id,
+            ContractFile.contract_type == ContractType.MAIN_CONTRACT
+        ).first() is not None
+
+        # 2. Акт приема (APPENDIX_7_1) - проверяем для текущей аренды
+        appendix_7_1_signed = False
+        if current_rental:
+            rental_id = current_rental["rental_details"].get("rental_id") if "rental_details" in current_rental else None
+            if rental_id:
+                appendix_7_1_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                    UserContractSignature.user_id == current_user.id,
+                    UserContractSignature.rental_id == safe_sid_to_uuid(rental_id),
+                    ContractFile.contract_type == ContractType.APPENDIX_7_1
+                ).first() is not None
+
         response_data = {
             "id": uuid_to_sid(current_user.id),
             "user_id": uuid_to_sid(current_user.id),
@@ -881,7 +899,10 @@ async def read_users_me(
             "is_consent_to_data_processing": current_user.is_consent_to_data_processing,
             "is_contract_read": current_user.is_contract_read,
             "is_user_agreement": current_user.is_user_agreement,
-            "upload_document_at": current_user.upload_document_at.isoformat() if current_user.upload_document_at else None
+            "upload_document_at": current_user.upload_document_at.isoformat() if current_user.upload_document_at else None,
+            # Информация о подписанных договорах для аренды
+            "main_contract_signed": main_contract_signed,  # Договор о присоединении
+            "appendix_7_1_signed": appendix_7_1_signed,  # Акт приема (только для активной аренды)
         }
 
         if not current_user.is_contract_read:
