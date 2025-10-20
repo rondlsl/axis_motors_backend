@@ -18,10 +18,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Create all enum types first
-    create_enums()
-    
-    # Create all tables
+    # Create all tables first (without enum types)
     create_users_table()
     create_cars_table()
     create_applications_table()
@@ -39,6 +36,9 @@ def upgrade() -> None:
     create_user_promo_codes_table()
     create_support_actions_table()
     create_wallet_transactions_table()
+    
+    # Create all enum types after tables are created
+    create_enums()
 
 
 def create_enums():
