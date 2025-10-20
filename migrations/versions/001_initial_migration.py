@@ -1,0 +1,525 @@
+"""Initial migration with all models
+
+Revision ID: 001_initial_migration
+Revises: 
+Create Date: 2025-10-20 06:00:00.000000
+
+"""
+from alembic import op
+import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
+
+
+# revision identifiers, used by Alembic.
+revision = '001_initial_migration'
+down_revision = None
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    # Create all enum types
+    create_enums()
+    
+    # Create all tables
+    create_users_table()
+    create_cars_table()
+    create_applications_table()
+    create_guarantor_requests_table()
+    create_guarantors_table()
+    create_rental_history_table()
+    create_rental_reviews_table()
+    create_rental_actions_table()
+    create_car_comments_table()
+    create_verification_codes_table()
+    create_contract_files_table()
+    create_user_contract_signatures_table()
+    create_notifications_table()
+    create_promo_codes_table()
+    create_user_promo_codes_table()
+    create_support_actions_table()
+    create_wallet_transactions_table()
+
+
+def create_enums():
+    """Create all enum types"""
+    
+    # UserRole enum
+    user_role_enum = postgresql.ENUM(
+        'admin', 'user', 'rejected', 'client', 'pending', 'mechanic', 'GARANT', 
+        'financier', 'mvd', 'SUPPORT', 'PENDINGTOFIRST', 'PENDINGTOSECOND', 
+        'REJECTFIRSTDOC', 'REJECTFIRSTCERT', 'REJECTFIRST', 'REJECTSECOND',
+        name='userrole'
+    )
+    user_role_enum.create(op.get_bind(), checkfirst=True)
+    
+    # AutoClass enum
+    auto_class_enum = postgresql.ENUM('A', 'B', 'C', name='autoclass')
+    auto_class_enum.create(op.get_bind(), checkfirst=True)
+    
+    # CarBodyType enum
+    car_body_type_enum = postgresql.ENUM(
+        'SEDAN', 'SUV', 'CROSSOVER', 'COUPE', 'HATCHBACK', 'CONVERTIBLE', 
+        'WAGON', 'MINIBUS', 'ELECTRIC',
+        name='carbodytype'
+    )
+    car_body_type_enum.create(op.get_bind(), checkfirst=True)
+    
+    # CarAutoClass enum
+    car_auto_class_enum = postgresql.ENUM('A', 'B', 'C', name='carautoclass')
+    car_auto_class_enum.create(op.get_bind(), checkfirst=True)
+    
+    # TransmissionType enum
+    transmission_type_enum = postgresql.ENUM(
+        'manual', 'automatic', 'cvt', 'semi_automatic',
+        name='transmissiontype'
+    )
+    transmission_type_enum.create(op.get_bind(), checkfirst=True)
+    
+    # CarStatus enum
+    car_status_enum = postgresql.ENUM(
+        'FREE', 'PENDING', 'IN_USE', 'DELIVERING', 'SERVICE', 
+        'RESERVED', 'SCHEDULED', 'OWNER', 'OCCUPIED',
+        name='carstatus'
+    )
+    car_status_enum.create(op.get_bind(), checkfirst=True)
+    
+    # ApplicationStatus enum
+    application_status_enum = postgresql.ENUM(
+        'pending', 'approved', 'rejected',
+        name='applicationstatus'
+    )
+    application_status_enum.create(op.get_bind(), checkfirst=True)
+    
+    # GuarantorRequestStatus enum
+    guarantor_request_status_enum = postgresql.ENUM(
+        'pending', 'accepted', 'rejected', 'expired',
+        name='guarantorrequeststatus'
+    )
+    guarantor_request_status_enum.create(op.get_bind(), checkfirst=True)
+    
+    # VerificationStatus enum
+    verification_status_enum = postgresql.ENUM(
+        'not_verified', 'verified', 'rejected',
+        name='verificationstatus'
+    )
+    verification_status_enum.create(op.get_bind(), checkfirst=True)
+    
+    # RentalType enum
+    rental_type_enum = postgresql.ENUM(
+        'minutes', 'hours', 'days',
+        name='rentaltype'
+    )
+    rental_type_enum.create(op.get_bind(), checkfirst=True)
+    
+    # RentalStatus enum
+    rental_status_enum = postgresql.ENUM(
+        'reserved', 'in_use', 'completed', 'delivering', 'delivering_in_progress',
+        'delivery_reserved', 'cancelled', 'scheduled',
+        name='rentalstatus'
+    )
+    rental_status_enum.create(op.get_bind(), checkfirst=True)
+    
+    # ActionType enum
+    action_type_enum = postgresql.ENUM(
+        'open_vehicle', 'close_vehicle', 'give_key', 'take_key', 
+        'lock_engine', 'unlock_engine',
+        name='actiontype'
+    )
+    action_type_enum.create(op.get_bind(), checkfirst=True)
+    
+    # ContractType enum
+    contract_type_enum = postgresql.ENUM(
+        'guarantor_contract', 'guarantor_main_contract', 'user_agreement',
+        'consent_to_data_processing', 'main_contract', 'appendix_7_1', 'appendix_7_2',
+        name='contracttype'
+    )
+    contract_type_enum.create(op.get_bind(), checkfirst=True)
+    
+    # NotificationStatus enum
+    notification_status_enum = postgresql.ENUM(
+        'mechanic_assigned', 'car_delivered', 'delivery_new_order', 'delivery_started',
+        'new_car_for_inspection', 'paid_waiting_soon', 'paid_waiting_started',
+        'low_balance', 'basic_tariff_ending_soon', 'out_of_tariff_charges',
+        'delivery_cancelled', 'balance_exhausted', 'delivery_delay_penalty',
+        'application_rejected_financier', 'application_rejected_mvd',
+        'application_approved_financier', 'application_approved_mvd',
+        name='notificationstatus'
+    )
+    notification_status_enum.create(op.get_bind(), checkfirst=True)
+    
+    # UserPromoStatus enum
+    user_promo_status_enum = postgresql.ENUM(
+        'activated', 'used',
+        name='userpromostatus'
+    )
+    user_promo_status_enum.create(op.get_bind(), checkfirst=True)
+    
+    # WalletTransactionType enum
+    wallet_transaction_type_enum = postgresql.ENUM(
+        'deposit', 'promo_bonus', 'refund', 'rent_open_fee', 'rent_waiting_fee',
+        'rent_minute_charge', 'rent_overtime_fee', 'rent_distance_fee',
+        'rent_base_charge', 'rent_fuel_fee', 'delivery_fee', 'delivery_penalty',
+        'manual_adjustment', 'damage_penalty', 'fine_penalty',
+        name='wallettransactiontype'
+    )
+    wallet_transaction_type_enum.create(op.get_bind(), checkfirst=True)
+
+
+def create_users_table():
+    """Create users table"""
+    op.create_table('users',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
+        sa.Column('first_name', sa.String(), nullable=True),
+        sa.Column('last_name', sa.String(), nullable=True),
+        sa.Column('middle_name', sa.String(100), nullable=True),
+        sa.Column('phone_number', sa.String(), nullable=False),
+        sa.Column('email', sa.String(), nullable=True),
+        sa.Column('birth_date', sa.DateTime(), nullable=True),
+        sa.Column('iin', sa.String(12), nullable=True),
+        sa.Column('passport_number', sa.String(50), nullable=True),
+        sa.Column('drivers_license_expiry', sa.DateTime(), nullable=True),
+        sa.Column('wallet_balance', sa.Numeric(10, 2), nullable=False, server_default='0'),
+        sa.Column('selfie_with_license_url', sa.String(), nullable=True),
+        sa.Column('selfie_url', sa.String(), nullable=True),
+        sa.Column('drivers_license_url', sa.String(), nullable=True),
+        sa.Column('id_card_front_url', sa.String(), nullable=True),
+        sa.Column('id_card_back_url', sa.String(), nullable=True),
+        sa.Column('id_card_expiry', sa.DateTime(), nullable=True),
+        sa.Column('psych_neurology_certificate_url', sa.String(), nullable=True),
+        sa.Column('narcology_certificate_url', sa.String(), nullable=True),
+        sa.Column('pension_contributions_certificate_url', sa.String(), nullable=True),
+        sa.Column('documents_verified', sa.Boolean(), nullable=False, server_default='false'),
+        sa.Column('role', sa.Enum('admin', 'user', 'rejected', 'client', 'pending', 'mechanic', 'GARANT', 'financier', 'mvd', 'SUPPORT', 'PENDINGTOFIRST', 'PENDINGTOSECOND', 'REJECTFIRSTDOC', 'REJECTFIRSTCERT', 'REJECTFIRST', 'REJECTSECOND', name='userrole'), nullable=False, server_default='client'),
+        sa.Column('last_sms_code', sa.String(), nullable=True),
+        sa.Column('sms_code_valid_until', sa.DateTime(), nullable=True),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default='true'),
+        sa.Column('is_verified_email', sa.Boolean(), nullable=False, server_default='false'),
+        sa.Column('is_citizen_kz', sa.Boolean(), nullable=False, server_default='false'),
+        sa.Column('fcm_token', sa.String(), nullable=True),
+        sa.Column('locale', sa.String(), nullable=False, server_default="'ru'"),
+        sa.Column('auto_class', postgresql.ARRAY(sa.String()), nullable=True),
+        sa.Column('digital_signature', sa.String(), nullable=True, unique=True),
+        sa.Column('is_consent_to_data_processing', sa.Boolean(), nullable=False, server_default='false'),
+        sa.Column('is_contract_read', sa.Boolean(), nullable=False, server_default='false'),
+        sa.Column('is_user_agreement', sa.Boolean(), nullable=False, server_default='false'),
+        sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        sa.Column('last_activity_at', sa.DateTime(), nullable=True),
+        sa.Column('upload_document_at', sa.DateTime(), nullable=True),
+        sa.Column('admin_comment', sa.String(), nullable=True),
+        sa.UniqueConstraint('phone_number'),
+        sa.UniqueConstraint('digital_signature')
+    )
+
+
+def create_cars_table():
+    """Create cars table"""
+    op.create_table('cars',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
+        sa.Column('name', sa.String(), nullable=False),
+        sa.Column('plate_number', sa.String(), nullable=False, unique=True),
+        sa.Column('latitude', sa.Float(), nullable=True),
+        sa.Column('longitude', sa.Float(), nullable=True),
+        sa.Column('gps_id', sa.String(), nullable=True),
+        sa.Column('gps_imei', sa.String(), nullable=True),
+        sa.Column('fuel_level', sa.Float(), nullable=True),
+        sa.Column('mileage', sa.Integer(), nullable=True),
+        sa.Column('course', sa.Integer(), nullable=True),
+        sa.Column('price_per_minute', sa.Integer(), nullable=False),
+        sa.Column('price_per_hour', sa.Integer(), nullable=False),
+        sa.Column('price_per_day', sa.Integer(), nullable=False),
+        sa.Column('car_class', sa.Integer(), nullable=True, server_default='1'),
+        sa.Column('auto_class', sa.Enum('A', 'B', 'C', name='carautoclass'), nullable=False, server_default='A'),
+        sa.Column('engine_volume', sa.Float(), nullable=True),
+        sa.Column('year', sa.Integer(), nullable=True),
+        sa.Column('drive_type', sa.Integer(), nullable=True),
+        sa.Column('transmission_type', sa.Enum('manual', 'automatic', 'cvt', 'semi_automatic', name='transmissiontype'), nullable=True),
+        sa.Column('body_type', sa.Enum('SEDAN', 'SUV', 'CROSSOVER', 'COUPE', 'HATCHBACK', 'CONVERTIBLE', 'WAGON', 'MINIBUS', 'ELECTRIC', name='carbodytype'), nullable=False, server_default='SEDAN'),
+        sa.Column('vin', sa.String(), nullable=True),
+        sa.Column('color', sa.String(), nullable=True),
+        sa.Column('photos', postgresql.JSON(), nullable=True),
+        sa.Column('description', sa.Text(), nullable=True),
+        sa.Column('owner_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=True),
+        sa.Column('current_renter_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=True),
+        sa.Column('status', sa.Enum('FREE', 'PENDING', 'IN_USE', 'DELIVERING', 'SERVICE', 'RESERVED', 'SCHEDULED', 'OWNER', 'OCCUPIED', name='carstatus'), nullable=True, server_default='FREE')
+    )
+
+
+def create_applications_table():
+    """Create applications table"""
+    op.create_table('applications',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
+        sa.Column('user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=False),
+        sa.Column('financier_status', sa.Enum('pending', 'approved', 'rejected', name='applicationstatus'), nullable=False, server_default='pending'),
+        sa.Column('financier_approved_at', sa.DateTime(), nullable=True),
+        sa.Column('financier_rejected_at', sa.DateTime(), nullable=True),
+        sa.Column('financier_user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=True),
+        sa.Column('mvd_status', sa.Enum('pending', 'approved', 'rejected', name='applicationstatus'), nullable=False, server_default='pending'),
+        sa.Column('mvd_approved_at', sa.DateTime(), nullable=True),
+        sa.Column('mvd_rejected_at', sa.DateTime(), nullable=True),
+        sa.Column('mvd_user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=True),
+        sa.Column('reason', sa.String(), nullable=True),
+        sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.func.now())
+    )
+
+
+def create_guarantor_requests_table():
+    """Create guarantor_requests table"""
+    op.create_table('guarantor_requests',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
+        sa.Column('requestor_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=False),
+        sa.Column('guarantor_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=True),
+        sa.Column('guarantor_phone', sa.String(), nullable=True),
+        sa.Column('status', sa.Enum('pending', 'accepted', 'rejected', 'expired', name='guarantorrequeststatus'), nullable=False, server_default='pending'),
+        sa.Column('verification_status', sa.String(), nullable=False, server_default='not_verified'),
+        sa.Column('reason', sa.Text(), nullable=True),
+        sa.Column('admin_notes', sa.Text(), nullable=True),
+        sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        sa.Column('responded_at', sa.DateTime(), nullable=True),
+        sa.Column('verified_at', sa.DateTime(), nullable=True)
+    )
+
+
+def create_guarantors_table():
+    """Create guarantors table"""
+    op.create_table('guarantors',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
+        sa.Column('guarantor_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=False),
+        sa.Column('client_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=False),
+        sa.Column('request_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('guarantor_requests.id'), nullable=False),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default='true'),
+        sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        sa.Column('deactivated_at', sa.DateTime(), nullable=True)
+    )
+
+
+def create_rental_history_table():
+    """Create rental_history table"""
+    op.create_table('rental_history',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
+        sa.Column('user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=False),
+        sa.Column('car_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('cars.id'), nullable=False),
+        sa.Column('rental_type', sa.Enum('minutes', 'hours', 'days', name='rentaltype'), nullable=False),
+        sa.Column('duration', sa.Integer(), nullable=True),
+        sa.Column('start_latitude', sa.Float(), nullable=False),
+        sa.Column('start_longitude', sa.Float(), nullable=False),
+        sa.Column('end_latitude', sa.Float(), nullable=True),
+        sa.Column('end_longitude', sa.Float(), nullable=True),
+        sa.Column('start_time', sa.DateTime(), nullable=True),
+        sa.Column('end_time', sa.DateTime(), nullable=True),
+        sa.Column('reservation_time', sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        sa.Column('scheduled_start_time', sa.DateTime(), nullable=True),
+        sa.Column('scheduled_end_time', sa.DateTime(), nullable=True),
+        sa.Column('is_advance_booking', sa.String(), nullable=False, server_default='false'),
+        sa.Column('base_price', sa.Integer(), nullable=True),
+        sa.Column('open_fee', sa.Integer(), nullable=True),
+        sa.Column('delivery_fee', sa.Integer(), nullable=True),
+        sa.Column('waiting_fee', sa.Integer(), nullable=True, server_default='0'),
+        sa.Column('overtime_fee', sa.Integer(), nullable=True, server_default='0'),
+        sa.Column('distance_fee', sa.Integer(), nullable=True, server_default='0'),
+        sa.Column('photos_before', postgresql.ARRAY(sa.String()), nullable=True),
+        sa.Column('photos_after', postgresql.ARRAY(sa.String()), nullable=True),
+        sa.Column('fuel_before', sa.Float(), nullable=True),
+        sa.Column('fuel_after', sa.Float(), nullable=True),
+        sa.Column('mileage_before', sa.Integer(), nullable=True),
+        sa.Column('mileage_after', sa.Integer(), nullable=True),
+        sa.Column('already_payed', sa.Integer(), nullable=True),
+        sa.Column('total_price', sa.Integer(), nullable=True),
+        sa.Column('rental_status', sa.Enum('reserved', 'in_use', 'completed', 'delivering', 'delivering_in_progress', 'delivery_reserved', 'cancelled', 'scheduled', name='rentalstatus'), nullable=False, server_default='reserved'),
+        sa.Column('delivery_latitude', sa.Float(), nullable=True),
+        sa.Column('delivery_longitude', sa.Float(), nullable=True),
+        sa.Column('delivery_mechanic_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=True),
+        sa.Column('delivery_start_time', sa.DateTime(), nullable=True),
+        sa.Column('delivery_end_time', sa.DateTime(), nullable=True),
+        sa.Column('delivery_penalty_fee', sa.Integer(), nullable=True, server_default='0'),
+        sa.Column('delivery_start_latitude', sa.Float(), nullable=True),
+        sa.Column('delivery_start_longitude', sa.Float(), nullable=True),
+        sa.Column('delivery_end_latitude', sa.Float(), nullable=True),
+        sa.Column('delivery_end_longitude', sa.Float(), nullable=True),
+        sa.Column('delivery_photos_before', postgresql.ARRAY(sa.String()), nullable=True),
+        sa.Column('delivery_photos_after', postgresql.ARRAY(sa.String()), nullable=True),
+        sa.Column('mechanic_photos_before', postgresql.ARRAY(sa.String()), nullable=True),
+        sa.Column('mechanic_photos_after', postgresql.ARRAY(sa.String()), nullable=True),
+        sa.Column('mechanic_inspector_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=True),
+        sa.Column('mechanic_inspection_start_time', sa.DateTime(), nullable=True),
+        sa.Column('mechanic_inspection_end_time', sa.DateTime(), nullable=True),
+        sa.Column('mechanic_inspection_status', sa.String(), nullable=True, server_default='PENDING'),
+        sa.Column('mechanic_inspection_comment', sa.Text(), nullable=True),
+        sa.Column('mechanic_inspection_start_latitude', sa.Float(), nullable=True),
+        sa.Column('mechanic_inspection_start_longitude', sa.Float(), nullable=True),
+        sa.Column('mechanic_inspection_end_latitude', sa.Float(), nullable=True),
+        sa.Column('mechanic_inspection_end_longitude', sa.Float(), nullable=True)
+    )
+
+
+def create_rental_reviews_table():
+    """Create rental_reviews table"""
+    op.create_table('rental_reviews',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
+        sa.Column('rental_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('rental_history.id'), nullable=False),
+        sa.Column('rating', sa.Integer(), nullable=True),
+        sa.Column('comment', sa.String(255), nullable=True),
+        sa.Column('mechanic_rating', sa.Integer(), nullable=True),
+        sa.Column('mechanic_comment', sa.String(255), nullable=True),
+        sa.Column('delivery_mechanic_rating', sa.Integer(), nullable=True),
+        sa.Column('delivery_mechanic_comment', sa.String(255), nullable=True)
+    )
+
+
+def create_rental_actions_table():
+    """Create rental_actions table"""
+    op.create_table('rental_actions',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
+        sa.Column('rental_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('rental_history.id'), nullable=False),
+        sa.Column('user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=False),
+        sa.Column('action_type', sa.Enum('open_vehicle', 'close_vehicle', 'give_key', 'take_key', 'lock_engine', 'unlock_engine', name='actiontype'), nullable=False),
+        sa.Column('timestamp', sa.DateTime(), nullable=False, server_default=sa.func.now())
+    )
+
+
+def create_car_comments_table():
+    """Create car_comments table"""
+    op.create_table('car_comments',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
+        sa.Column('car_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('cars.id'), nullable=False),
+        sa.Column('author_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=False),
+        sa.Column('comment', sa.Text(), nullable=False),
+        sa.Column('is_internal', sa.Boolean(), nullable=False, server_default='true'),
+        sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.func.now())
+    )
+
+
+def create_verification_codes_table():
+    """Create verification_codes table"""
+    op.create_table('verification_codes',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
+        sa.Column('phone_number', sa.String(50), nullable=True),
+        sa.Column('email', sa.String(50), nullable=True),
+        sa.Column('code', sa.String(10), nullable=False),
+        sa.Column('purpose', sa.String(50), nullable=False),
+        sa.Column('is_used', sa.Boolean(), nullable=False, server_default='false'),
+        sa.Column('expires_at', sa.DateTime(), nullable=False)
+    )
+
+
+def create_contract_files_table():
+    """Create contract_files table"""
+    op.create_table('contract_files',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
+        sa.Column('contract_type', sa.Enum('guarantor_contract', 'guarantor_main_contract', 'user_agreement', 'consent_to_data_processing', 'main_contract', 'appendix_7_1', 'appendix_7_2', name='contracttype'), nullable=False),
+        sa.Column('file_path', sa.String(), nullable=False),
+        sa.Column('file_name', sa.String(), nullable=False),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default='true'),
+        sa.Column('uploaded_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.func.now())
+    )
+
+
+def create_user_contract_signatures_table():
+    """Create user_contract_signatures table"""
+    op.create_table('user_contract_signatures',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
+        sa.Column('user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=False),
+        sa.Column('contract_file_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('contract_files.id'), nullable=False),
+        sa.Column('rental_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('rental_history.id'), nullable=True),
+        sa.Column('guarantor_relationship_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('guarantors.id'), nullable=True),
+        sa.Column('digital_signature', sa.String(), nullable=False),
+        sa.Column('signed_at', sa.DateTime(), nullable=False, server_default=sa.func.now())
+    )
+
+
+def create_notifications_table():
+    """Create notifications table"""
+    op.create_table('notifications',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
+        sa.Column('user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False),
+        sa.Column('title', sa.String(255), nullable=False),
+        sa.Column('body', sa.Text(), nullable=False),
+        sa.Column('sent_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        sa.Column('is_read', sa.Boolean(), nullable=False, server_default='false'),
+        sa.Column('status', sa.Enum('mechanic_assigned', 'car_delivered', 'delivery_new_order', 'delivery_started', 'new_car_for_inspection', 'paid_waiting_soon', 'paid_waiting_started', 'low_balance', 'basic_tariff_ending_soon', 'out_of_tariff_charges', 'delivery_cancelled', 'balance_exhausted', 'delivery_delay_penalty', 'application_rejected_financier', 'application_rejected_mvd', 'application_approved_financier', 'application_approved_mvd', name='notificationstatus'), nullable=True)
+    )
+
+
+def create_promo_codes_table():
+    """Create promo_codes table"""
+    op.create_table('promo_codes',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
+        sa.Column('code', sa.String(), nullable=False, unique=True),
+        sa.Column('discount_percent', sa.Numeric(5, 2), nullable=False, server_default='15'),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default='true'),
+        sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now())
+    )
+
+
+def create_user_promo_codes_table():
+    """Create user_promo_codes table"""
+    op.create_table('user_promo_codes',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
+        sa.Column('user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=False),
+        sa.Column('promo_code_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('promo_codes.id'), nullable=False),
+        sa.Column('status', sa.Enum('activated', 'used', name='userpromostatus'), nullable=False, server_default='activated'),
+        sa.Column('activated_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        sa.Column('used_at', sa.DateTime(), nullable=True)
+    )
+
+
+def create_support_actions_table():
+    """Create support_actions table"""
+    op.create_table('support_actions',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
+        sa.Column('user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=False),
+        sa.Column('action', sa.String(128), nullable=False),
+        sa.Column('entity_type', sa.String(64), nullable=True),
+        sa.Column('entity_id', postgresql.UUID(as_uuid=True), nullable=True),
+        sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now())
+    )
+
+
+def create_wallet_transactions_table():
+    """Create wallet_transactions table"""
+    op.create_table('wallet_transactions',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
+        sa.Column('user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=False),
+        sa.Column('amount', sa.Numeric(10, 2), nullable=False),
+        sa.Column('transaction_type', sa.Enum('deposit', 'promo_bonus', 'refund', 'rent_open_fee', 'rent_waiting_fee', 'rent_minute_charge', 'rent_overtime_fee', 'rent_distance_fee', 'rent_base_charge', 'rent_fuel_fee', 'delivery_fee', 'delivery_penalty', 'manual_adjustment', 'damage_penalty', 'fine_penalty', name='wallettransactiontype'), nullable=False),
+        sa.Column('description', sa.String(), nullable=True),
+        sa.Column('balance_before', sa.Numeric(10, 2), nullable=False),
+        sa.Column('balance_after', sa.Numeric(10, 2), nullable=False),
+        sa.Column('related_rental_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('rental_history.id'), nullable=True),
+        sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now())
+    )
+
+
+def downgrade() -> None:
+    # Drop all tables in reverse order
+    op.drop_table('wallet_transactions')
+    op.drop_table('support_actions')
+    op.drop_table('user_promo_codes')
+    op.drop_table('promo_codes')
+    op.drop_table('notifications')
+    op.drop_table('user_contract_signatures')
+    op.drop_table('contract_files')
+    op.drop_table('verification_codes')
+    op.drop_table('car_comments')
+    op.drop_table('rental_actions')
+    op.drop_table('rental_reviews')
+    op.drop_table('rental_history')
+    op.drop_table('guarantors')
+    op.drop_table('guarantor_requests')
+    op.drop_table('applications')
+    op.drop_table('cars')
+    op.drop_table('users')
+    
+    # Drop all enums
+    enums_to_drop = [
+        'wallettransactiontype', 'userpromostatus', 'notificationstatus', 'contracttype',
+        'actiontype', 'rentalstatus', 'rentaltype', 'verificationstatus',
+        'guarantorrequeststatus', 'applicationstatus', 'carstatus', 'transmissiontype',
+        'carautoclass', 'carbodytype', 'autoclass', 'userrole'
+    ]
+    
+    for enum_name in enums_to_drop:
+        op.execute(f"DROP TYPE IF EXISTS {enum_name}")
