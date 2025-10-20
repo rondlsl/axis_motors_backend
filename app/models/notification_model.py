@@ -1,6 +1,7 @@
 from datetime import datetime
 import uuid
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Enum
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text
+from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.dependencies.database.database import Base
@@ -22,7 +23,7 @@ class Notification(Base):
     # Прочитано?
     is_read = Column(Boolean, default=False, nullable=False)
     # Статус уведомления
-    status = Column(Enum(NotificationStatus), nullable=True)
+    status = Column(ENUM(NotificationStatus), nullable=True)
 
     user = relationship("User", back_populates="notifications")
 

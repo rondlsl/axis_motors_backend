@@ -2,7 +2,8 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, ForeignKey, Enum, Float, DateTime, ARRAY, String, Text
+from sqlalchemy import Column, Integer, ForeignKey, Float, DateTime, ARRAY, String, Text
+from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -37,7 +38,7 @@ class RentalHistory(Base):
     car_id = Column(Integer, ForeignKey("cars.id"), nullable=False)
     car = relationship("Car", back_populates="rental_history")
 
-    rental_type = Column(Enum(RentalType), nullable=False)
+    rental_type = Column(ENUM(RentalType), nullable=False)
     duration = Column(Integer, nullable=True)
 
     start_latitude = Column(Float, nullable=False)
@@ -72,7 +73,7 @@ class RentalHistory(Base):
     already_payed = Column(Integer, nullable=True)
     total_price = Column(Integer, nullable=True)
 
-    rental_status = Column(Enum(RentalStatus), nullable=False, default=RentalStatus.RESERVED)
+    rental_status = Column(ENUM(RentalStatus), nullable=False, default=RentalStatus.RESERVED)
 
     # Новые поля для доставки
     delivery_latitude = Column(Float, nullable=True)

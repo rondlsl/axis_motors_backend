@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, DateTime, Enum, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import enum
@@ -28,7 +29,7 @@ class RentalAction(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     user = relationship("User")
 
-    action_type = Column(Enum(ActionType), nullable=False)
+    action_type = Column(ENUM(ActionType), nullable=False)
     timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
     
     @property
