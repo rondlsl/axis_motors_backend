@@ -1126,12 +1126,21 @@ async def read_users_me(
                                 full_name_parts.append(current_user.middle_name)
                             full_name = " ".join(full_name_parts) if full_name_parts else None
                         
+                        # Используем rent_uuid от активной аренды, если она есть, иначе от последней завершенной
+                        rent_uuid_to_use = None
+                        if current_rental:
+                            rental_id = current_rental["rental_details"].get("rental_id")
+                            if rental_id:
+                                rent_uuid_to_use = safe_sid_to_uuid(rental_id)
+                        else:
+                            rent_uuid_to_use = last_completed_rental.id
+                        
                         response_data.update({
                             "full_name": full_name,
                             "login": current_user.phone_number,
                             "client_uuid": str(current_user.id),
                             "digital_signature": current_user.digital_signature,
-                            "rent_uuid": str(last_completed_rental.id),
+                            "rent_uuid": str(rent_uuid_to_use),
                             "plate_number": car.plate_number,
                             "car_uuid": str(car.id),
                             "car_year": car.year,
