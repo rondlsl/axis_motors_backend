@@ -2,9 +2,11 @@
 Модуль для инициализации тестовых данных
 """
 import os
+import uuid
 from sqlalchemy.orm import Session
 from app.models.car_model import Car, CarBodyType, CarAutoClass, CarStatus
 from app.models.user_model import User, UserRole
+from app.models.contract_model import ContractFile, ContractType
 
 
 def init_test_data(db: Session) -> None:
@@ -27,10 +29,13 @@ def init_test_data(db: Session) -> None:
         # Создаем моковые автомобили
         create_mock_cars(db, owner)
         
-        print("✅ Все тестовые данные успешно инициализированы")
+        # Создаем файлы договоров
+        create_contract_files(db)
+        
+        print("Все тестовые данные успешно инициализированы")
         
     except Exception as e:
-        print(f"❌ Ошибка при инициализации тестовых данных: {e}")
+        print(f"Ошибка при инициализации тестовых данных: {e}")
         raise
 
 
@@ -50,9 +55,9 @@ def create_owner(db: Session) -> User:
         db.add(owner)
         db.commit()
         db.refresh(owner)
-        print("✅ Владелец создан")
+        print("Владелец создан")
     else:
-        print("ℹ️ Владелец уже существует")
+        print("Владелец уже существует")
     
     return owner
 
@@ -133,12 +138,12 @@ def create_cars(db: Session, owner: User) -> None:
         plate = spec["plate_number"]
         existing = db.query(Car).filter(Car.plate_number == plate).first()
         if existing:
-            print(f"ℹ️ {spec['name']} ({plate}) уже существует")
+            print(f"{spec['name']} ({plate}) уже существует")
             continue
         car = Car(**spec, owner_id=owner.id)
         db.add(car)
         created += 1
-        print(f"✅ {spec['name']} ({plate}) добавлена")
+        print(f"{spec['name']} ({plate}) добавлена")
     if created:
         db.commit()
 
@@ -161,15 +166,15 @@ def create_mechanic(db: Session) -> None:
         db.add(mechanic)
         db.commit()
         db.refresh(mechanic)
-        print("✅ Механик создан")
+        print("Механик создан")
     else:
-        print("ℹ️ Механик уже существует")
+        print("Механик уже существует")
         # Обновляем имена если они отсутствуют
         if not mechanic.first_name or not mechanic.last_name:
             mechanic.first_name = "Механик"
             mechanic.last_name = "Механик"
             db.commit()
-            print("✅ Имена механика обновлены")
+            print("Имена механика обновлены")
 
 
 def create_system_users(db: Session) -> None:
@@ -192,9 +197,9 @@ def create_system_users(db: Session) -> None:
         db.add(financier)
         db.commit()
         db.refresh(financier)
-        print("✅ Финансист создан")
+        print("Финансист создан")
     else:
-        print("ℹ️ Финансист уже существует")
+        print("Финансист уже существует")
 
     # МВД
     mvd_phone = "77777777772"
@@ -213,9 +218,9 @@ def create_system_users(db: Session) -> None:
         db.add(mvd_user)
         db.commit()
         db.refresh(mvd_user)
-        print("✅ Пользователь МВД создан")
+        print("Пользователь МВД создан")
     else:
-        print("ℹ️ Пользователь МВД уже существует")
+        print("Пользователь МВД уже существует")
 
 
 def create_mock_cars(db: Session, owner: User) -> None:
@@ -251,7 +256,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car4.photos = get_car_photos("x4")
         mock_cars_to_create.append(("Bentley Flying Spur", car4))
     else:
-        print("ℹ️ Bentley Flying Spur уже существует")
+        print("Bentley Flying Spur уже существует")
 
     # Hyundai Palisade
     if not db.query(Car).filter(Car.plate_number == "x5").first():
@@ -281,7 +286,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car5.photos = get_car_photos("x5")
         mock_cars_to_create.append(("Hyundai Palisade", car5))
     else:
-        print("ℹ️ Hyundai Palisade уже существует")
+        print("Hyundai Palisade уже существует")
 
     # Mercedes CLA 45s (второй)
     if not db.query(Car).filter(Car.plate_number == "x6").first():
@@ -311,7 +316,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car6.photos = get_car_photos("x6")
         mock_cars_to_create.append(("Mercedes CLA 45s", car6))
     else:
-        print("ℹ️ Mercedes CLA 45s уже существует")
+        print("Mercedes CLA 45s уже существует")
 
     # ZEEKR 001
     if not db.query(Car).filter(Car.plate_number == "x7").first():
@@ -341,7 +346,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car7.photos = get_car_photos("x7")
         mock_cars_to_create.append(("ZEEKR 001", car7))
     else:
-        print("ℹ️ ZEEKR 001 уже существует")
+        print("ZEEKR 001 уже существует")
 
     # Hongqi E-QM5 (второй)
     if not db.query(Car).filter(Car.plate_number == "x8").first():
@@ -371,7 +376,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car8.photos = get_car_photos("x8")
         mock_cars_to_create.append(("Hongqi E-QM5", car8))
     else:
-        print("ℹ️ Hongqi E-QM5 уже существует")
+        print("Hongqi E-QM5 уже существует")
 
     # Toyota Land Cruiser Prado
     if not db.query(Car).filter(Car.plate_number == "x9").first():
@@ -401,7 +406,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car9.photos = get_car_photos("x9")
         mock_cars_to_create.append(("Toyota Land Cruiser Prado", car9))
     else:
-        print("ℹ️ Toyota Land Cruiser Prado уже существует")
+        print("Toyota Land Cruiser Prado уже существует")
     
     # Range Rover Sport
     if not db.query(Car).filter(Car.plate_number == "x10").first():
@@ -431,7 +436,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car10.photos = get_car_photos("x10")
         mock_cars_to_create.append(("Range Rover Sport", car10))
     else:
-        print("ℹ️ Range Rover Sport уже существует")
+        print("Range Rover Sport уже существует")
 
     # Mercedes e63s
     if not db.query(Car).filter(Car.plate_number == "x11").first():
@@ -461,7 +466,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car11.photos = get_car_photos("x11")
         mock_cars_to_create.append(("Mercedes e63s", car11))
     else:
-        print("ℹ️ Mercedes e63s уже существует")
+        print("Mercedes e63s уже существует")
 
     # Toyota Camry 2020
     if not db.query(Car).filter(Car.plate_number == "x12").first():
@@ -491,7 +496,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car12.photos = get_car_photos("x12")
         mock_cars_to_create.append(("Toyota Camry 2020", car12))
     else:
-        print("ℹ️ Toyota Camry 2020 уже существует")
+        print("Toyota Camry 2020 уже существует")
 
     # BMW m5
     if not db.query(Car).filter(Car.plate_number == "x13").first():
@@ -521,7 +526,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car13.photos = get_car_photos("x13")
         mock_cars_to_create.append(("BMW m5", car13))
     else:
-        print("ℹ️ BMW m5 уже существует")
+        print("BMW m5 уже существует")
 
     # Toyota Highlander
     if not db.query(Car).filter(Car.plate_number == "x14").first():
@@ -551,7 +556,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car14.photos = get_car_photos("x14")
         mock_cars_to_create.append(("Toyota Highlander", car14))
     else:
-        print("ℹ️ Toyota Highlander уже существует")
+        print("Toyota Highlander уже существует")
 
     # Lexus es 350
     if not db.query(Car).filter(Car.plate_number == "x15").first():
@@ -581,7 +586,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car15.photos = get_car_photos("x15")
         mock_cars_to_create.append(("Lexus es 350", car15))
     else:
-        print("ℹ️ Lexus es 350 уже существует")
+        print("Lexus es 350 уже существует")
 
     # Toyota Camry 2024
     if not db.query(Car).filter(Car.plate_number == "x16").first():
@@ -611,7 +616,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car16.photos = get_car_photos("x16")
         mock_cars_to_create.append(("Toyota Camry 2024", car16))
     else:
-        print("ℹ️ Toyota Camry 2024 уже существует")
+        print("Toyota Camry 2024 уже существует")
 
     # BMW 540i 2018
     if not db.query(Car).filter(Car.plate_number == "x17").first():
@@ -641,7 +646,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car17.photos = get_car_photos("x17")
         mock_cars_to_create.append(("BMW 540i 2018", car17))
     else:
-        print("ℹ️ BMW 540i 2018 уже существует")
+        print("BMW 540i 2018 уже существует")
 
     # Lexus rx 350h
     if not db.query(Car).filter(Car.plate_number == "x18").first():
@@ -671,7 +676,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car18.photos = get_car_photos("x18")
         mock_cars_to_create.append(("Lexus rx 350h", car18))
     else:
-        print("ℹ️ Lexus rx 350h уже существует")
+        print("Lexus rx 350h уже существует")
 
     # Changan uni-v
     if not db.query(Car).filter(Car.plate_number == "x19").first():
@@ -701,7 +706,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car19.photos = get_car_photos("x19")
         mock_cars_to_create.append(("Changan uni-v", car19))
     else:
-        print("ℹ️ Changan uni-v уже существует")
+        print("Changan uni-v уже существует")
 
     # Lexus es 300h
     if not db.query(Car).filter(Car.plate_number == "x20").first():
@@ -731,7 +736,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car20.photos = get_car_photos("x20")
         mock_cars_to_create.append(("Lexus es 300h", car20))
     else:
-        print("ℹ️ Lexus es 300h уже существует")
+        print("Lexus es 300h уже существует")
 
     # Kia k8
     if not db.query(Car).filter(Car.plate_number == "x21").first():
@@ -761,7 +766,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car21.photos = get_car_photos("x21")
         mock_cars_to_create.append(("Kia k8", car21))
     else:
-        print("ℹ️ Kia k8 уже существует")
+        print("Kia k8 уже существует")
 
     # Toyota Camry 2024 (второй)
     if not db.query(Car).filter(Car.plate_number == "x22").first():
@@ -791,7 +796,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car22.photos = get_car_photos("x22")
         mock_cars_to_create.append(("Toyota Camry 2024 второй", car22))
     else:
-        print("ℹ️ Toyota Camry 2024 второй уже существует")
+        print("Toyota Camry 2024 второй уже существует")
 
     # Hyundai Palisade
     if not db.query(Car).filter(Car.plate_number == "x23").first():
@@ -821,7 +826,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car23.photos = get_car_photos("x23")
         mock_cars_to_create.append(("Hyundai Palisade", car23))
     else:
-        print("ℹ️ Hyundai Palisade уже существует")
+        print("Hyundai Palisade уже существует")
 
     # Mercedes e200
     if not db.query(Car).filter(Car.plate_number == "x24").first():
@@ -851,7 +856,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car24.photos = get_car_photos("x24")
         mock_cars_to_create.append(("Mercedes e200", car24))
     else:
-        print("ℹ️ Mercedes e200 уже существует")
+        print("Mercedes e200 уже существует")
 
     # Mercedes s63
     if not db.query(Car).filter(Car.plate_number == "x25").first():
@@ -881,7 +886,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car25.photos = get_car_photos("x25")
         mock_cars_to_create.append(("Mercedes s63", car25))
     else:
-        print("ℹ️ Mercedes s63 уже существует")
+        print("Mercedes s63 уже существует")
 
     # Hyundai Tucson
     if not db.query(Car).filter(Car.plate_number == "x26").first():
@@ -911,7 +916,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car26.photos = get_car_photos("x26")
         mock_cars_to_create.append(("Hyundai Tucson", car26))
     else:
-        print("ℹ️ Hyundai Tucson уже существует")
+        print("Hyundai Tucson уже существует")
 
     # Changan uni-k
     if not db.query(Car).filter(Car.plate_number == "x27").first():
@@ -941,7 +946,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car27.photos = get_car_photos("x27")
         mock_cars_to_create.append(("Changan uni-k", car27))
     else:
-        print("ℹ️ Changan uni-k уже существует")
+        print("Changan uni-k уже существует")
 
     # ZEEKR 001 (второй)
     if not db.query(Car).filter(Car.plate_number == "x28").first():
@@ -971,7 +976,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car28.photos = get_car_photos("x28")
         mock_cars_to_create.append(("ZEEKR 001 второй", car28))
     else:
-        print("ℹ️ ZEEKR 001 второй уже существует")
+        print("ZEEKR 001 второй уже существует")
 
     # Toyota Land Cruiser 2018
     if not db.query(Car).filter(Car.plate_number == "x29").first():
@@ -1001,7 +1006,7 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car29.photos = get_car_photos("x29")
         mock_cars_to_create.append(("Toyota Land Cruiser 2018", car29))
     else:
-        print("ℹ️ Toyota Land Cruiser 2018 уже существует")
+        print("Toyota Land Cruiser 2018 уже существует")
 
     # BMW 540i 2024 
     if not db.query(Car).filter(Car.plate_number == "x30").first():
@@ -1031,13 +1036,13 @@ def create_mock_cars(db: Session, owner: User) -> None:
         car30.photos = get_car_photos("x30")
         mock_cars_to_create.append(("BMW 540i 2024", car30))
     else:
-        print("ℹ️ BMW 540i 2024 уже существует")
+        print("BMW 540i 2024 уже существует")
 
     # Добавляем все моковые автомобили одним commit'ом
     if mock_cars_to_create:
         for name, car in mock_cars_to_create:
             db.add(car)
-            print(f"✅ {name} добавлен (моковый)")
+            print(f"{name} добавлен (моковый)")
         db.commit()
 
 
@@ -1057,3 +1062,53 @@ def get_car_photos(plate_number: str) -> list[str]:
                 photos.append(f"/uploads/cars/{folder_name}/{fname}")
     
     return photos
+
+
+def create_contract_files(db: Session) -> None:
+    """Создает файлы договоров в базе данных"""
+    
+    contracts_dir = os.path.join(os.path.dirname(__file__), "..", "..", "uploads", "contracts")
+    os.makedirs(contracts_dir, exist_ok=True)
+    
+    contract_files = {
+        ContractType.CONSENT_TO_DATA_PROCESSING: "consent_to_data_processing.docx",
+        ContractType.USER_AGREEMENT: "user_agreement.docx", 
+        ContractType.MAIN_CONTRACT: "main_contract.docx",
+        ContractType.RENTAL_MAIN_CONTRACT: "rental_main_contract.docx",
+        ContractType.GUARANTOR_CONTRACT: "guarantor_contract.docx",
+        ContractType.GUARANTOR_MAIN_CONTRACT: "guarantor_main_contract.docx",
+        ContractType.APPENDIX_7_1: "appendix_7_1.docx",
+        ContractType.APPENDIX_7_2: "appendix_7_2.docx"
+    }
+    
+    for contract_type, filename in contract_files.items():
+        existing_file = db.query(ContractFile).filter(
+            ContractFile.contract_type == contract_type,
+            ContractFile.is_active == True
+        ).first()
+        
+        if existing_file:
+            print(f"Файл договора {contract_type.value} уже существует")
+            continue
+            
+        file_uuid = str(uuid.uuid4())
+        file_extension = os.path.splitext(filename)[1]
+        unique_filename = f"{os.path.splitext(filename)[0]}_{file_uuid}{file_extension}"
+        file_path = f"uploads/contracts/{unique_filename}"
+        
+        full_file_path = os.path.join(os.path.dirname(__file__), "..", "..", file_path)
+        with open(full_file_path, 'w', encoding='utf-8') as f:
+            f.write(f"Шаблон договора для типа: {contract_type.value}")
+        
+        contract_file = ContractFile(
+            contract_type=contract_type,
+            file_path=file_path,
+            file_name=unique_filename,
+            is_active=True
+        )
+        
+        db.add(contract_file)
+        print(f"Создан файл договора: {contract_type.value}")
+    
+    db.commit()
+    print("Все файлы договоров успешно созданы")
