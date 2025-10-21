@@ -1537,49 +1537,50 @@ async def upload_documents(
             pass
 
         # Записываем код подтверждения email и отправляем его на почту
-        try:
-            code = generate_email_verification_code()
-            record = VerificationCode(
-                phone_number=None,
-                email=current_user.email,
-                code=code,
-                purpose="email_verification",
-                is_used=False,
-                expires_at=datetime.utcnow() + timedelta(minutes=15),
-            )
-            db.add(record)
-            # Пытаемся отправить письмо
-            try:
-                smtp_host = os.getenv("SMTP_HOST")
-                smtp_port = int(os.getenv("SMTP_PORT", "587"))
-                smtp_user = os.getenv("SMTP_USER")
-                smtp_pass = os.getenv("SMTP_PASSWORD")
-                smtp_from = os.getenv("SMTP_FROM", smtp_user or "no-reply@example.com")
-                if smtp_host and smtp_user and smtp_pass:
-                    msg = MIMEText(f"Ваш код подтверждения: {code}")
-                    msg["Subject"] = "AZV Motors"
-                    msg["From"] = smtp_from
-                    msg["To"] = current_user.email
-                    with smtplib.SMTP(smtp_host, smtp_port) as server:
-                        server.starttls()
-                        server.login(smtp_user, smtp_pass)
-                        server.send_message(msg)
-                else:
-                    try:
-                        from app.core.config import logger
-                        logger.warning(f"SMTP not configured; verification code for {current_user.email}: {code}")
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-            try:
-                from app.core.config import logger
-                logger.warning(f"Email verification code for {current_user.email}: {code}")
-            except Exception:
-                pass
-        except Exception:
-            # Не блокируем основной флоу из-за ошибок записи кода
-            pass
+        # ЗАКОММЕНТИРОВАНО: отправка кода будет выполняться отдельным запросом
+        # try:
+        #     code = generate_email_verification_code()
+        #     record = VerificationCode(
+        #         phone_number=None,
+        #         email=current_user.email,
+        #         code=code,
+        #         purpose="email_verification",
+        #         is_used=False,
+        #         expires_at=datetime.utcnow() + timedelta(minutes=15),
+        #     )
+        #     db.add(record)
+        #     # Пытаемся отправить письмо
+        #     try:
+        #         smtp_host = os.getenv("SMTP_HOST")
+        #         smtp_port = int(os.getenv("SMTP_PORT", "587"))
+        #         smtp_user = os.getenv("SMTP_USER")
+        #         smtp_pass = os.getenv("SMTP_PASSWORD")
+        #         smtp_from = os.getenv("SMTP_FROM", smtp_user or "no-reply@example.com")
+        #         if smtp_host and smtp_user and smtp_pass:
+        #             msg = MIMEText(f"Ваш код подтверждения: {code}")
+        #             msg["Subject"] = "AZV Motors"
+        #             msg["From"] = smtp_from
+        #             msg["To"] = current_user.email
+        #             with smtplib.SMTP(smtp_host, smtp_port) as server:
+        #                 server.starttls()
+        #                 server.login(smtp_user, smtp_pass)
+        #                 server.send_message(msg)
+        #         else:
+        #             try:
+        #                 from app.core.config import logger
+        #                 logger.warning(f"SMTP not configured; verification code for {current_user.email}: {code}")
+        #             except Exception:
+        #                 pass
+        #     except Exception:
+        #         pass
+        #     try:
+        #         from app.core.config import logger
+        #         logger.warning(f"Email verification code for {current_user.email}: {code}")
+        #     except Exception:
+        #         pass
+        # except Exception:
+        #     # Не блокируем основной флоу из-за ошибок записи кода
+        #     pass
 
         current_user.upload_document_at = datetime.utcnow()
 
