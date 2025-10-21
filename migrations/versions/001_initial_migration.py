@@ -48,11 +48,12 @@ def create_enums():
     op.execute("""
         DO $$ BEGIN
             CREATE TYPE userrole AS ENUM (
-                'admin', 'user', 'rejected', 'client', 'pending', 'mechanic', 'GARANT', 
-                'financier', 'mvd', 'SUPPORT', 'PENDINGTOFIRST', 'PENDINGTOSECOND', 
-                'REJECTFIRSTDOC', 'REJECTFIRSTCERT', 'REJECTFIRST', 'REJECTSECOND',
-                'ADMIN', 'USER', 'REJECTED', 'CLIENT', 'PENDING', 'MECHANIC', 
-                'FINANCIER', 'MVD'
+                'admin', 'user', 'rejected', 'client', 'pending', 'mechanic', 'garant', 
+                'financier', 'mvd', 'support', 'pendingtofirst', 'pendingtosecond', 
+                'rejectfirstdoc', 'rejectfirstcert', 'rejectfirst', 'rejectsecond',
+                'ADMIN', 'USER', 'REJECTED', 'CLIENT', 'PENDING', 'MECHANIC', 'GARANT',
+                'FINANCIER', 'MVD', 'SUPPORT', 'PENDINGTOFIRST', 'PENDINGTOSECOND', 
+                'REJECTFIRSTDOC', 'REJECTFIRSTCERT', 'REJECTFIRST', 'REJECTSECOND'
             );
         EXCEPTION
             WHEN duplicate_object THEN null;
