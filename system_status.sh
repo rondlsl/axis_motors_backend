@@ -40,17 +40,17 @@ echo
 echo "5. СТАТУС ПРИЛОЖЕНИЯ:"
 echo "================================"
 echo "Проверка доступности API..."
-if curl -s http://localhost:7138/health > /dev/null 2>&1; then
-    echo "API доступен на порту 7138"
+if curl -s http://localhost:7139/health > /dev/null 2>&1; then
+    echo "API доступен на порту 7139"
 else
-    echo "API недоступен на порту 7138"
+    echo "API недоступен на порту 7139"
 fi
 echo
 
 # 6. Последние логи
 echo "6. ПОСЛЕДНИЕ ЛОГИ ПРИЛОЖЕНИЯ:"
 echo "================================"
-docker logs azv_motors_backend-back-1 --tail 10 2>/dev/null || echo "Логи недоступны"
+docker logs azv_motors_backend_v2-back-1 --tail 10 2>/dev/null || echo "Логи недоступны"
 echo
 
 echo "=== ПРОВЕРКА ЗАВЕРШЕНА ==="

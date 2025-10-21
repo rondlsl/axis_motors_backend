@@ -12,9 +12,9 @@ if ! command -v docker &> /dev/null; then
 fi
 
 # Проверяем, что контейнер БД запущен
-DOCKER_CONTAINER=$(docker ps --filter "name=azv_motors_backend-db-1" --format "{{.Names}}" | head -1)
+DOCKER_CONTAINER=$(docker ps --filter "name=azv_motors_backend_v2-db-1" --format "{{.Names}}" | head -1)
 if [ -z "$DOCKER_CONTAINER" ]; then
-    echo "Ошибка: Контейнер PostgreSQL для azv_motors_backend не найден"
+    echo "Ошибка: Контейнер PostgreSQL для azv_motors_backend_v2 не найден"
     echo "Доступные контейнеры PostgreSQL:"
     docker ps --filter "ancestor=postgres" --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
     exit 1
