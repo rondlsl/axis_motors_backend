@@ -597,10 +597,13 @@ def create_wallet_transactions_table():
 def downgrade() -> None:
     # Drop all tables in reverse order
     # Drop indexes first (with existence check)
-    try:
-        op.drop_index('idx_wallet_transactions_tracking_id', table_name='wallet_transactions')
-    except Exception:
-        pass  # Index doesn't exist, skip
+    op.execute("""
+        DO $$ BEGIN
+            IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_wallet_transactions_tracking_id') THEN
+                DROP INDEX idx_wallet_transactions_tracking_id;
+            END IF;
+        END $$;
+    """)
     op.drop_table('wallet_transactions')
     op.drop_table('support_actions')
     op.drop_table('user_promo_codes')
