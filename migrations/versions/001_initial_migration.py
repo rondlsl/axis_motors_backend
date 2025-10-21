@@ -199,9 +199,11 @@ def create_enums():
         DO $$ BEGIN
             CREATE TYPE contracttype AS ENUM (
                 'guarantor_contract', 'guarantor_main_contract', 'user_agreement',
-                'consent_to_data_processing', 'main_contract', 'appendix_7_1', 'appendix_7_2',
+                'consent_to_data_processing', 'main_contract', 'rental_main_contract',
+                'appendix_7_1', 'appendix_7_2',
                 'GUARANTOR_CONTRACT', 'GUARANTOR_MAIN_CONTRACT', 'USER_AGREEMENT',
-                'CONSENT_TO_DATA_PROCESSING', 'MAIN_CONTRACT', 'APPENDIX_7_1', 'APPENDIX_7_2'
+                'CONSENT_TO_DATA_PROCESSING', 'MAIN_CONTRACT', 'RENTAL_MAIN_CONTRACT',
+                'APPENDIX_7_1', 'APPENDIX_7_2'
             );
         EXCEPTION
             WHEN duplicate_object THEN null;
