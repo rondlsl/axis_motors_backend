@@ -73,7 +73,9 @@ def create_enums():
         DO $$ BEGIN
             CREATE TYPE carbodytype AS ENUM (
                 'SEDAN', 'SUV', 'CROSSOVER', 'COUPE', 'HATCHBACK', 'CONVERTIBLE', 
-                'WAGON', 'MINIBUS', 'ELECTRIC'
+                'WAGON', 'MINIBUS', 'ELECTRIC',
+                'sedan', 'suv', 'crossover', 'coupe', 'hatchback', 'convertible', 
+                'wagon', 'minibus', 'electric'
             );
         EXCEPTION
             WHEN duplicate_object THEN null;
@@ -93,7 +95,8 @@ def create_enums():
     op.execute("""
         DO $$ BEGIN
             CREATE TYPE transmissiontype AS ENUM (
-                'manual', 'automatic', 'cvt', 'semi_automatic'
+                'manual', 'automatic', 'cvt', 'semi_automatic',
+                'MANUAL', 'AUTOMATIC', 'CVT', 'SEMI_AUTOMATIC'
             );
         EXCEPTION
             WHEN duplicate_object THEN null;
@@ -118,7 +121,8 @@ def create_enums():
     op.execute("""
         DO $$ BEGIN
             CREATE TYPE applicationstatus AS ENUM (
-                'pending', 'approved', 'rejected'
+                'pending', 'approved', 'rejected',
+                'PENDING', 'APPROVED', 'REJECTED'
             );
         EXCEPTION
             WHEN duplicate_object THEN null;
@@ -129,7 +133,8 @@ def create_enums():
     op.execute("""
         DO $$ BEGIN
             CREATE TYPE guarantorrequeststatus AS ENUM (
-                'pending', 'accepted', 'rejected', 'expired'
+                'pending', 'accepted', 'rejected', 'expired',
+                'PENDING', 'ACCEPTED', 'REJECTED', 'EXPIRED'
             );
         EXCEPTION
             WHEN duplicate_object THEN null;
@@ -140,7 +145,8 @@ def create_enums():
     op.execute("""
         DO $$ BEGIN
             CREATE TYPE verificationstatus AS ENUM (
-                'not_verified', 'verified', 'rejected'
+                'not_verified', 'verified', 'rejected',
+                'NOT_VERIFIED', 'VERIFIED', 'REJECTED'
             );
         EXCEPTION
             WHEN duplicate_object THEN null;
@@ -151,7 +157,8 @@ def create_enums():
     op.execute("""
         DO $$ BEGIN
             CREATE TYPE rentaltype AS ENUM (
-                'minutes', 'hours', 'days'
+                'minutes', 'hours', 'days',
+                'MINUTES', 'HOURS', 'DAYS'
             );
         EXCEPTION
             WHEN duplicate_object THEN null;
@@ -177,7 +184,9 @@ def create_enums():
         DO $$ BEGIN
             CREATE TYPE actiontype AS ENUM (
                 'open_vehicle', 'close_vehicle', 'give_key', 'take_key', 
-                'lock_engine', 'unlock_engine'
+                'lock_engine', 'unlock_engine',
+                'OPEN_VEHICLE', 'CLOSE_VEHICLE', 'GIVE_KEY', 'TAKE_KEY', 
+                'LOCK_ENGINE', 'UNLOCK_ENGINE'
             );
         EXCEPTION
             WHEN duplicate_object THEN null;
@@ -189,7 +198,9 @@ def create_enums():
         DO $$ BEGIN
             CREATE TYPE contracttype AS ENUM (
                 'guarantor_contract', 'guarantor_main_contract', 'user_agreement',
-                'consent_to_data_processing', 'main_contract', 'appendix_7_1', 'appendix_7_2'
+                'consent_to_data_processing', 'main_contract', 'appendix_7_1', 'appendix_7_2',
+                'GUARANTOR_CONTRACT', 'GUARANTOR_MAIN_CONTRACT', 'USER_AGREEMENT',
+                'CONSENT_TO_DATA_PROCESSING', 'MAIN_CONTRACT', 'APPENDIX_7_1', 'APPENDIX_7_2'
             );
         EXCEPTION
             WHEN duplicate_object THEN null;
@@ -205,7 +216,13 @@ def create_enums():
                 'low_balance', 'basic_tariff_ending_soon', 'out_of_tariff_charges',
                 'delivery_cancelled', 'balance_exhausted', 'delivery_delay_penalty',
                 'application_rejected_financier', 'application_rejected_mvd',
-                'application_approved_financier', 'application_approved_mvd'
+                'application_approved_financier', 'application_approved_mvd',
+                'MECHANIC_ASSIGNED', 'CAR_DELIVERED', 'DELIVERY_NEW_ORDER', 'DELIVERY_STARTED',
+                'NEW_CAR_FOR_INSPECTION', 'PAID_WAITING_SOON', 'PAID_WAITING_STARTED',
+                'LOW_BALANCE', 'BASIC_TARIFF_ENDING_SOON', 'OUT_OF_TARIFF_CHARGES',
+                'DELIVERY_CANCELLED', 'BALANCE_EXHAUSTED', 'DELIVERY_DELAY_PENALTY',
+                'APPLICATION_REJECTED_FINANCIER', 'APPLICATION_REJECTED_MVD',
+                'APPLICATION_APPROVED_FINANCIER', 'APPLICATION_APPROVED_MVD'
             );
         EXCEPTION
             WHEN duplicate_object THEN null;
@@ -216,7 +233,8 @@ def create_enums():
     op.execute("""
         DO $$ BEGIN
             CREATE TYPE userpromostatus AS ENUM (
-                'activated', 'used'
+                'activated', 'used',
+                'ACTIVATED', 'USED'
             );
         EXCEPTION
             WHEN duplicate_object THEN null;
@@ -230,7 +248,11 @@ def create_enums():
                 'deposit', 'promo_bonus', 'refund', 'rent_open_fee', 'rent_waiting_fee',
                 'rent_minute_charge', 'rent_overtime_fee', 'rent_distance_fee',
                 'rent_base_charge', 'rent_fuel_fee', 'delivery_fee', 'delivery_penalty',
-                'manual_adjustment', 'damage_penalty', 'fine_penalty'
+                'manual_adjustment', 'damage_penalty', 'fine_penalty',
+                'DEPOSIT', 'PROMO_BONUS', 'REFUND', 'RENT_OPEN_FEE', 'RENT_WAITING_FEE',
+                'RENT_MINUTE_CHARGE', 'RENT_OVERTIME_FEE', 'RENT_DISTANCE_FEE',
+                'RENT_BASE_CHARGE', 'RENT_FUEL_FEE', 'DELIVERY_FEE', 'DELIVERY_PENALTY',
+                'MANUAL_ADJUSTMENT', 'DAMAGE_PENALTY', 'FINE_PENALTY'
             );
         EXCEPTION
             WHEN duplicate_object THEN null;
