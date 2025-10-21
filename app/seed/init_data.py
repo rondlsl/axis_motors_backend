@@ -50,7 +50,8 @@ def create_owner(db: Session) -> User:
             phone_number=owner_phone, 
             role=UserRole.CLIENT, 
             wallet_balance=0,
-            iin=owner_iin
+            iin=owner_iin,
+            digital_signature=str(uuid.uuid4())
         )
         db.add(owner)
         db.commit()
@@ -58,6 +59,11 @@ def create_owner(db: Session) -> User:
         print("Владелец создан")
     else:
         print("Владелец уже существует")
+        # Добавляем digital_signature если его нет
+        if not owner.digital_signature:
+            owner.digital_signature = str(uuid.uuid4())
+            db.commit()
+            print("Digital signature добавлена для владельца")
     
     return owner
 
@@ -161,7 +167,8 @@ def create_mechanic(db: Session) -> None:
             last_name="Механик",
             role=UserRole.MECHANIC, 
             wallet_balance=0,
-            iin=mechanic_iin
+            iin=mechanic_iin,
+            digital_signature=str(uuid.uuid4())
         )
         db.add(mechanic)
         db.commit()
@@ -175,6 +182,11 @@ def create_mechanic(db: Session) -> None:
             mechanic.last_name = "Механик"
             db.commit()
             print("Имена механика обновлены")
+        # Добавляем digital_signature если его нет
+        if not mechanic.digital_signature:
+            mechanic.digital_signature = str(uuid.uuid4())
+            db.commit()
+            print("Digital signature добавлена для механика")
 
 
 def create_system_users(db: Session) -> None:
@@ -193,6 +205,7 @@ def create_system_users(db: Session) -> None:
             documents_verified=True,
             is_active=True,
             iin=financier_iin,
+            digital_signature=str(uuid.uuid4())
         )
         db.add(financier)
         db.commit()
@@ -200,6 +213,11 @@ def create_system_users(db: Session) -> None:
         print("Финансист создан")
     else:
         print("Финансист уже существует")
+        # Добавляем digital_signature если его нет
+        if not financier.digital_signature:
+            financier.digital_signature = str(uuid.uuid4())
+            db.commit()
+            print("Digital signature добавлена для финансиста")
 
     # МВД
     mvd_phone = "77777777772"
@@ -214,6 +232,7 @@ def create_system_users(db: Session) -> None:
             documents_verified=True,
             is_active=True,
             iin=mvd_iin,
+            digital_signature=str(uuid.uuid4())
         )
         db.add(mvd_user)
         db.commit()
@@ -221,6 +240,11 @@ def create_system_users(db: Session) -> None:
         print("Пользователь МВД создан")
     else:
         print("Пользователь МВД уже существует")
+        # Добавляем digital_signature если его нет
+        if not mvd_user.digital_signature:
+            mvd_user.digital_signature = str(uuid.uuid4())
+            db.commit()
+            print("Digital signature добавлена для пользователя МВД")
 
 
 def create_mock_cars(db: Session, owner: User) -> None:
