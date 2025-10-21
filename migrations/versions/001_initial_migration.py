@@ -505,7 +505,7 @@ def create_contract_files_table():
     """Create contract_files table"""
     op.create_table('contract_files',
         sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
-        sa.Column('contract_type', postgresql.ENUM('guarantor_contract', 'guarantor_main_contract', 'user_agreement', 'consent_to_data_processing', 'main_contract', 'appendix_7_1', 'appendix_7_2', name='contracttype', create_type=False), nullable=False),
+        sa.Column('contract_type', postgresql.ENUM('guarantor_contract', 'guarantor_main_contract', 'user_agreement', 'consent_to_data_processing', 'main_contract', 'rental_main_contract', 'appendix_7_1', 'appendix_7_2', name='contracttype', create_type=False), nullable=False),
         sa.Column('file_path', sa.String(), nullable=False),
         sa.Column('file_name', sa.String(), nullable=False),
         sa.Column('is_active', sa.Boolean(), nullable=False, server_default='true'),
@@ -586,12 +586,18 @@ def create_wallet_transactions_table():
         sa.Column('balance_before', sa.Numeric(10, 2), nullable=False),
         sa.Column('balance_after', sa.Numeric(10, 2), nullable=False),
         sa.Column('related_rental_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('rental_history.id'), nullable=True),
+        sa.Column('tracking_id', sa.String(), nullable=True),
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now())
     )
+    
+    # Create index for tracking_id
+    op.create_index('idx_wallet_transactions_tracking_id', 'wallet_transactions', ['tracking_id'])
 
 
 def downgrade() -> None:
     # Drop all tables in reverse order
+    # Drop indexes first
+    op.drop_index('idx_wallet_transactions_tracking_id', table_name='wallet_transactions')
     op.drop_table('wallet_transactions')
     op.drop_table('support_actions')
     op.drop_table('user_promo_codes')
