@@ -505,7 +505,7 @@ def create_contract_files_table():
     """Create contract_files table"""
     op.create_table('contract_files',
         sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
-        sa.Column('contract_type', postgresql.ENUM('guarantor_contract', 'guarantor_main_contract', 'user_agreement', 'consent_to_data_processing', 'main_contract', 'rental_main_contract', 'appendix_7_1', 'appendix_7_2', name='contracttype', create_type=False), nullable=False),
+        sa.Column('contract_type', postgresql.ENUM('guarantor_contract', 'guarantor_main_contract', 'user_agreement', 'consent_to_data_processing', 'main_contract', 'rental_main_contract', 'appendix_7_1', 'appendix_7_2', 'GUARANTOR_CONTRACT', 'GUARANTOR_MAIN_CONTRACT', 'USER_AGREEMENT', 'CONSENT_TO_DATA_PROCESSING', 'MAIN_CONTRACT', 'RENTAL_MAIN_CONTRACT', 'APPENDIX_7_1', 'APPENDIX_7_2', name='contracttype', create_type=False), nullable=False),
         sa.Column('file_path', sa.String(), nullable=False),
         sa.Column('file_name', sa.String(), nullable=False),
         sa.Column('is_active', sa.Boolean(), nullable=False, server_default='true'),
