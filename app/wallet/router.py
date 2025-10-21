@@ -79,7 +79,7 @@ def export_my_transactions_csv(
     items = q.order_by(WalletTransaction.created_at.desc()).all()
     # Формируем CSV и отдаём как файл
     def _iter_csv():
-        yield "id,created_at,type,amount,balance_before,balance_after,related_rental_id,description\n"
+        yield "id,created_at,type,amount,balance_before,balance_after,related_rental_id,tracking_id,description\n"
         for t in items:
             row = [
                 str(t.id),
@@ -89,6 +89,7 @@ def export_my_transactions_csv(
                 str(float(t.balance_before)),
                 str(float(t.balance_after)),
                 str(t.related_rental_id or ""),
+                str(t.tracking_id or ""),
                 (t.description or "").replace(",", " ")
             ]
             yield ",".join(row) + "\n"
@@ -140,6 +141,7 @@ def get_my_transactions(
                 balance_after=float(t.balance_after),
                 created_at=t.created_at,
                 related_rental_id=t.related_rental_id,
+                tracking_id=t.tracking_id,
                 first_name=current_user.first_name,
                 last_name=current_user.last_name,
                 phone_number=current_user.phone_number,
@@ -266,7 +268,7 @@ def export_my_transactions_legacy_path(
     items = q.order_by(WalletTransaction.created_at.desc()).all()
 
     def _iter_csv():
-        yield "id,created_at,type,amount,balance_before,balance_after,related_rental_id,description\n"
+        yield "id,created_at,type,amount,balance_before,balance_after,related_rental_id,tracking_id,description\n"
         for t in items:
             row = [
                 str(t.id),
@@ -276,6 +278,7 @@ def export_my_transactions_legacy_path(
                 str(float(t.balance_before)),
                 str(float(t.balance_after)),
                 str(t.related_rental_id or ""),
+                str(t.tracking_id or ""),
                 (t.description or "").replace(",", " ")
             ]
             yield ",".join(row) + "\n"
@@ -313,6 +316,7 @@ def get_transaction_detail(
         balance_after=float(tx.balance_after),
         created_at=tx.created_at,
         related_rental_id=tx.related_rental_id,
+        tracking_id=tx.tracking_id,
         first_name=current_user.first_name,
         last_name=current_user.last_name,
         phone_number=current_user.phone_number,
@@ -364,6 +368,7 @@ def get_transactions_by_user(
                 balance_after=float(t.balance_after),
                 created_at=t.created_at,
                 related_rental_id=t.related_rental_id,
+                tracking_id=t.tracking_id,
                 first_name=getattr(users_map.get(t.user_id), "first_name", None),
                 last_name=getattr(users_map.get(t.user_id), "last_name", None),
                 phone_number=getattr(users_map.get(t.user_id), "phone_number", None),

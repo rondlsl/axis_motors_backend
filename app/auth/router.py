@@ -18,7 +18,7 @@ from starlette import status
 
 from app.auth.dependencies.get_current_user import get_current_user  
 from app.auth.dependencies.save_documents import save_file
-from app.auth.schemas import SendSmsRequest, VerifySmsRequest, DocumentUploadRequest, LocaleUpdate, SelfieUploadResponse, UserRegistrationInfoResponse, VerifySmsResponse
+from app.auth.schemas import SendSmsRequest, VerifySmsRequest, DocumentUploadRequest, LocaleUpdate, SelfieUploadResponse, UserRegistrationInfoResponse, VerifySmsResponse, ChangeEmailRequest, VerifyEmailChangeRequest, ChangeEmailResponse
 from app.auth.security.auth_bearer import JWTBearer
 from app.auth.security.tokens import create_refresh_token, create_access_token
 from app.core.config import SMS_TOKEN
@@ -630,13 +630,35 @@ async def read_users_me(
             # Проверяем, это осмотр или доставка
             if rental.mechanic_inspector_id == current_user.id:
                 # Это осмотр - используем mechanic_photos_before/after
-                car_details["photo_before_selfie_uploaded"] = bool(rental.mechanic_photos_before and len(rental.mechanic_photos_before) > 0)
-                car_details["photo_before_car_uploaded"] = bool(rental.mechanic_photos_before and len(rental.mechanic_photos_before) > 1)
-                car_details["photo_before_interior_uploaded"] = bool(rental.mechanic_photos_before and len(rental.mechanic_photos_before) > 2)
+                # Проверяем по содержимому путей (аналогично /mechanic/start)
+                before_photos = rental.mechanic_photos_before or []
+                car_details["photo_before_selfie_uploaded"] = any(
+                    ("/mechanic/before/selfie/" in p) or ("\\mechanic\\before\\selfie\\" in p) 
+                    for p in before_photos
+                )
+                car_details["photo_before_car_uploaded"] = any(
+                    ("/mechanic/before/car/" in p) or ("\\mechanic\\before\\car\\" in p) 
+                    for p in before_photos
+                )
+                car_details["photo_before_interior_uploaded"] = any(
+                    ("/mechanic/before/interior/" in p) or ("\\mechanic\\before\\interior\\" in p) 
+                    for p in before_photos
+                )
                 
-                car_details["photo_after_selfie_uploaded"] = bool(rental.mechanic_photos_after and len(rental.mechanic_photos_after) > 0)
-                car_details["photo_after_car_uploaded"] = bool(rental.mechanic_photos_after and len(rental.mechanic_photos_after) > 1)
-                car_details["photo_after_interior_uploaded"] = bool(rental.mechanic_photos_after and len(rental.mechanic_photos_after) > 2)
+                # Проверяем фото ПОСЛЕ по содержимому путей
+                after_photos = rental.mechanic_photos_after or []
+                car_details["photo_after_selfie_uploaded"] = any(
+                    ("/mechanic/after/selfie/" in p) or ("\\mechanic\\after\\selfie\\" in p) 
+                    for p in after_photos
+                )
+                car_details["photo_after_car_uploaded"] = any(
+                    ("/mechanic/after/car/" in p) or ("\\mechanic\\after\\car\\" in p) 
+                    for p in after_photos
+                )
+                car_details["photo_after_interior_uploaded"] = any(
+                    ("/mechanic/after/interior/" in p) or ("\\mechanic\\after\\interior\\" in p) 
+                    for p in after_photos
+                )
             else:
                 # Это доставка - используем delivery_photos_before/after
                 # Проверяем флаги загрузки фото ПЕРЕД доставкой по содержимому путей
@@ -737,6 +759,53 @@ async def read_users_me(
             else:
                 car_details["last_client_review"] = None
         
+        if current_user.role == UserRole.USER:
+            photo_before_selfie_uploaded = False
+            photo_before_car_uploaded = False
+            photo_before_interior_uploaded = False
+            
+            if rental.photos_before:
+                photos_before = rental.photos_before
+                photo_before_selfie_uploaded = any(
+                    ("/before/selfie/" in photo) or ("\\before\\selfie\\" in photo) 
+                    for photo in photos_before
+                )
+                photo_before_car_uploaded = any(
+                    ("/before/car/" in photo) or ("\\before\\car\\" in photo) 
+                    for photo in photos_before
+                )
+                photo_before_interior_uploaded = any(
+                    ("/before/interior/" in photo) or ("\\before\\interior\\" in photo) 
+                    for photo in photos_before
+                )
+            
+            car_details["photo_before_selfie_uploaded"] = photo_before_selfie_uploaded
+            car_details["photo_before_car_uploaded"] = photo_before_car_uploaded
+            car_details["photo_before_interior_uploaded"] = photo_before_interior_uploaded
+            
+            photo_after_selfie_uploaded = False
+            photo_after_car_uploaded = False
+            photo_after_interior_uploaded = False
+            
+            if rental.photos_after:
+                photos_after = rental.photos_after
+                photo_after_selfie_uploaded = any(
+                    ("/after/selfie/" in photo) or ("\\after\\selfie\\" in photo) 
+                    for photo in photos_after
+                )
+                photo_after_car_uploaded = any(
+                    ("/after/car/" in photo) or ("\\after\\car\\" in photo) 
+                    for photo in photos_after
+                )
+                photo_after_interior_uploaded = any(
+                    ("/after/interior/" in photo) or ("\\after\\interior\\" in photo) 
+                    for photo in photos_after
+                )
+            
+            car_details["photo_after_selfie_uploaded"] = photo_after_selfie_uploaded
+            car_details["photo_after_car_uploaded"] = photo_after_car_uploaded
+            car_details["photo_after_interior_uploaded"] = photo_after_interior_uploaded
+        
         # Для механиков добавляем current_renter_details
         if current_user.role == UserRole.MECHANIC and car.current_renter_id:
             car_details["current_renter_details"] = {
@@ -834,6 +903,41 @@ async def read_users_me(
         last_name = current_user.last_name if isinstance(current_user.last_name, str) else None
         role = getattr(current_user.role, "value", current_user.role) if current_user.role is not None else None
 
+        # Проверяем подписание основных договоров
+        # 1. Договор о присоединении (MAIN_CONTRACT)
+        main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+            UserContractSignature.user_id == current_user.id,
+            ContractFile.contract_type == ContractType.MAIN_CONTRACT
+        ).first() is not None
+
+        # 2. Основной договор аренды (RENTAL_MAIN_CONTRACT) - проверяем для текущей аренды
+        rental_main_contract_signed = False
+        appendix_7_1_signed = False
+        appendix_7_2_signed = False
+        if current_rental:
+            rental_id = current_rental["rental_details"].get("rental_id") if "rental_details" in current_rental else None
+            if rental_id:
+                rental_uuid = safe_sid_to_uuid(rental_id)
+                
+                rental_main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                    UserContractSignature.user_id == current_user.id,
+                    UserContractSignature.rental_id == rental_uuid,
+                    ContractFile.contract_type == ContractType.RENTAL_MAIN_CONTRACT
+                ).first() is not None
+                
+                appendix_7_1_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                    UserContractSignature.user_id == current_user.id,
+                    UserContractSignature.rental_id == safe_sid_to_uuid(rental_id),
+                    ContractFile.contract_type == ContractType.APPENDIX_7_1
+                ).first() is not None
+                
+                # 3. Акт возврата (APPENDIX_7_2) - проверяем для текущей аренды
+                appendix_7_2_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                    UserContractSignature.user_id == current_user.id,
+                    UserContractSignature.rental_id == safe_sid_to_uuid(rental_id),
+                    ContractFile.contract_type == ContractType.APPENDIX_7_2
+                ).first() is not None
+
         response_data = {
             "id": uuid_to_sid(current_user.id),
             "user_id": uuid_to_sid(current_user.id),
@@ -881,7 +985,12 @@ async def read_users_me(
             "is_consent_to_data_processing": current_user.is_consent_to_data_processing,
             "is_contract_read": current_user.is_contract_read,
             "is_user_agreement": current_user.is_user_agreement,
-            "upload_document_at": current_user.upload_document_at.isoformat() if current_user.upload_document_at else None
+            "upload_document_at": current_user.upload_document_at.isoformat() if current_user.upload_document_at else None,
+            # Информация о подписанных договорах для аренды
+            "main_contract_signed": main_contract_signed,  # Договор о присоединении
+            "rental_main_contract_signed": rental_main_contract_signed,  # Основной договор аренды (только для активной аренды)
+            "appendix_7_1_signed": appendix_7_1_signed,  # Акт приема (только для активной аренды)
+            "appendix_7_2_signed": appendix_7_2_signed,  # Акт возврата (только для активной аренды)
         }
 
         if not current_user.is_contract_read:
@@ -901,17 +1010,68 @@ async def read_users_me(
                 "digital_signature": current_user.digital_signature
             })
 
-        # Проверяем активную аренду и не подписан ли аппендикс 7.1
+        # Проверяем активную аренду и не подписан ли основной договор аренды, приложение 7.1 или приложение 7.2
         if current_rental and current_user.role in [UserRole.USER, UserRole.ADMIN, UserRole.MECHANIC]:
             rental_id = current_rental["rental_details"].get("rental_id") if "rental_details" in current_rental else None
             if rental_id:
-                appendix_7_1_signed = db.query(UserContractSignature).join(ContractFile).filter(
-                    UserContractSignature.user_id == current_user.id,
-                    UserContractSignature.rental_id == safe_sid_to_uuid(rental_id),
-                    ContractFile.contract_type == ContractType.APPENDIX_7_1
-                ).first() is not None
+                # Сначала проверяем основной договор аренды
+                if not rental_main_contract_signed:
+                    car_details = current_rental.get("car_details", {})
+                    
+                    if 'full_name' not in locals():
+                        full_name_parts = []
+                        if first_name:
+                            full_name_parts.append(first_name)
+                        if last_name:
+                            full_name_parts.append(last_name)
+                        if current_user.middle_name:
+                            full_name_parts.append(current_user.middle_name)
+                        full_name = " ".join(full_name_parts) if full_name_parts else None
+                    
+                    response_data.update({
+                        "full_name": full_name,
+                        "login": current_user.phone_number,
+                        "client_uuid": str(current_user.id),
+                        "digital_signature": current_user.digital_signature,
+                        "rent_uuid": str(safe_sid_to_uuid(rental_id)),
+                        "plate_number": car_details.get("plate_number"),
+                        "car_uuid": str(safe_sid_to_uuid(car_details.get("id"))),
+                        "car_year": car_details.get("year"),
+                        "body_type": car_details.get("body_type"),
+                        "vin": car_details.get("vin"),
+                        "color": car_details.get("color")
+                    })
                 
-                if not appendix_7_1_signed:
+                # Затем проверяем приложение 7.1 (только если основной договор аренды подписан)
+                elif not appendix_7_1_signed:
+                    car_details = current_rental.get("car_details", {})
+                    
+                    if 'full_name' not in locals():
+                        full_name_parts = []
+                        if first_name:
+                            full_name_parts.append(first_name)
+                        if last_name:
+                            full_name_parts.append(last_name)
+                        if current_user.middle_name:
+                            full_name_parts.append(current_user.middle_name)
+                        full_name = " ".join(full_name_parts) if full_name_parts else None
+                    
+                    response_data.update({
+                        "full_name": full_name,
+                        "login": current_user.phone_number,
+                        "client_uuid": str(current_user.id),
+                        "digital_signature": current_user.digital_signature,
+                        "rent_uuid": str(safe_sid_to_uuid(rental_id)),
+                        "plate_number": car_details.get("plate_number"),
+                        "car_uuid": str(safe_sid_to_uuid(car_details.get("id"))),
+                        "car_year": car_details.get("year"),
+                        "body_type": car_details.get("body_type"),
+                        "vin": car_details.get("vin"),
+                        "color": car_details.get("color")
+                    })
+                
+                # И наконец проверяем приложение 7.2 (только если основной договор аренды и приложение 7.1 подписаны)
+                elif not appendix_7_2_signed:
                     car_details = current_rental.get("car_details", {})
                     
                     if 'full_name' not in locals():
@@ -1453,6 +1613,152 @@ async def upload_documents(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while uploading documents and data"
         )
+
+
+@Auth_router.post("/change_email/request", response_model=ChangeEmailResponse)
+async def request_change_email(
+    request: ChangeEmailRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Запрос на изменение email адреса.
+    Отправляет код подтверждения на новый email адрес.
+    """
+    new_email = request.new_email.strip().lower()
+    
+    # Проверяем, что новый email отличается от текущего
+    if current_user.email and current_user.email.lower() == new_email:
+        raise HTTPException(
+            status_code=400,
+            detail="Новый email совпадает с текущим"
+        )
+    
+    # Проверяем, что email не используется другим пользователем
+    existing_user = db.query(User).filter(
+        User.email == new_email,
+        User.id != current_user.id,
+        User.is_active == True
+    ).first()
+    
+    if existing_user:
+        raise HTTPException(
+            status_code=400,
+            detail="Этот email уже используется другим пользователем"
+        )
+    
+    # Генерируем код подтверждения
+    code = generate_email_verification_code()
+    
+    # Сохраняем код в базу данных с указанием purpose = "email_change"
+    record = VerificationCode(
+        phone_number=None,
+        email=new_email,
+        code=code,
+        purpose="email_change",
+        is_used=False,
+        expires_at=datetime.utcnow() + timedelta(minutes=15),
+    )
+    db.add(record)
+    
+    # Отправляем письмо с кодом
+    try:
+        smtp_host = os.getenv("SMTP_HOST")
+        smtp_port = int(os.getenv("SMTP_PORT", "587"))
+        smtp_user = os.getenv("SMTP_USER")
+        smtp_pass = os.getenv("SMTP_PASSWORD")
+        smtp_from = os.getenv("SMTP_FROM", smtp_user or "no-reply@example.com")
+        
+        if smtp_host and smtp_user and smtp_pass:
+            msg = MIMEText(f"Ваш код для подтверждения изменения email: {code}")
+            msg["Subject"] = "AZV Motors - Изменение email"
+            msg["From"] = smtp_from
+            msg["To"] = new_email
+            
+            with smtplib.SMTP(smtp_host, smtp_port) as server:
+                server.starttls()
+                server.login(smtp_user, smtp_pass)
+                server.send_message(msg)
+        else:
+            try:
+                from app.core.config import logger
+                logger.warning(f"SMTP not configured; verification code for {new_email}: {code}")
+            except Exception:
+                pass
+    except Exception as e:
+        try:
+            from app.core.config import logger
+            logger.error(f"Failed to send email: {e}")
+        except Exception:
+            pass
+    
+    try:
+        from app.core.config import logger
+        logger.warning(f"Email change verification code for {new_email}: {code}")
+    except Exception:
+        pass
+    
+    db.commit()
+    
+    return ChangeEmailResponse(
+        message="Код подтверждения отправлен на новый email адрес",
+        email=new_email
+    )
+
+
+@Auth_router.post("/change_email/verify", response_model=ChangeEmailResponse)
+async def verify_change_email(
+    request: VerifyEmailChangeRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Подтверждение изменения email адреса с помощью кода.
+    После успешной верификации email будет изменен.
+    """
+    new_email = request.new_email.strip().lower()
+    
+    # Ищем неиспользованный и неистекший код
+    vc = db.query(VerificationCode).filter(
+        VerificationCode.email == new_email,
+        VerificationCode.code == request.code,
+        VerificationCode.purpose == "email_change",
+        VerificationCode.is_used == False,
+        VerificationCode.expires_at >= datetime.utcnow(),
+    ).order_by(VerificationCode.id.desc()).first()
+    
+    if not vc:
+        raise HTTPException(
+            status_code=400,
+            detail="Неверный код подтверждения или код истек"
+        )
+    
+    # Проверяем еще раз, что email не занят (могло измениться за время верификации)
+    existing_user = db.query(User).filter(
+        User.email == new_email,
+        User.id != current_user.id,
+        User.is_active == True
+    ).first()
+    
+    if existing_user:
+        raise HTTPException(
+            status_code=400,
+            detail="Этот email уже используется другим пользователем"
+        )
+    
+    # Отмечаем код использованным
+    vc.is_used = True
+    
+    # Обновляем email пользователя
+    current_user.email = new_email
+    current_user.is_verified_email = True
+    
+    db.commit()
+    
+    return ChangeEmailResponse(
+        message="Email успешно изменен",
+        email=new_email
+    )
 
 
 @Auth_router.delete("/delete_account/")

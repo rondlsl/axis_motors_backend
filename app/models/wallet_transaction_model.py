@@ -52,6 +52,7 @@ class WalletTransaction(Base):
     balance_before = Column(Numeric(10, 2), nullable=False)
     balance_after = Column(Numeric(10, 2), nullable=False)
     related_rental_id = Column(UUID(as_uuid=True), ForeignKey("rental_history.id"), nullable=True)
+    tracking_id = Column(String, nullable=True, index=True)  # ID транзакции от платежной системы
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     user = relationship("User")

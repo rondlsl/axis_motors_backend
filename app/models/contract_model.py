@@ -19,6 +19,7 @@ class ContractType(str, enum.Enum):
     USER_AGREEMENT = "user_agreement"  # Пользовательское соглашение
     CONSENT_TO_DATA_PROCESSING = "consent_to_data_processing"  # Обработка персональных данных
     MAIN_CONTRACT = "main_contract"  # Договор присоединения
+    RENTAL_MAIN_CONTRACT = "rental_main_contract"  # Основной договор аренды
     APPENDIX_7_1 = "appendix_7_1"  # Приложение 7.1
     APPENDIX_7_2 = "appendix_7_2"  # Приложение 7.2
 

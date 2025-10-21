@@ -19,10 +19,11 @@ from app.models.promo_codes_model import PromoCode, UserPromoCode, UserPromoStat
 from app.models.user_model import User, UserRole
 from app.models.application_model import Application, ApplicationStatus
 from app.models.car_model import Car, CarStatus
+from app.models.contract_model import UserContractSignature, ContractFile, ContractType
 from app.push.utils import send_notification_to_all_mechanics_async, send_push_to_user_by_id, send_localized_notification_to_user, send_localized_notification_to_all_mechanics
 from app.rent.exceptions import InsufficientBalanceException
 from app.wallet.utils import record_wallet_transaction
-from app.models.wallet_transaction_model import WalletTransactionType
+from app.models.wallet_transaction_model import WalletTransactionType, WalletTransaction
 from app.rent.utils.calculate_price import calculate_total_price, get_open_price
 from app.gps_api.utils.route_data import get_gps_route_data
 from app.gps_api.utils.auth_api import get_auth_token
@@ -347,8 +348,24 @@ async def get_trip_history_detail(
 
 @RentRouter.post("/add_money")
 def add_money(amount: int,
+              tracking_id: Optional[str] = None,
               db: Session = Depends(get_db),
               current_user: User = Depends(get_current_user)):
+    # Проверяем, не была ли уже обработана транзакция с таким tracking_id
+    if tracking_id:
+        existing_transaction = db.query(WalletTransaction).filter(
+            WalletTransaction.tracking_id == tracking_id,
+            WalletTransaction.user_id == current_user.id
+        ).first()
+        
+        if existing_transaction:
+            return {
+                "wallet_balance": float(current_user.wallet_balance),
+                "bonus": 0,
+                "promo_applied": False,
+                "message": "Транзакция уже была обработана"
+            }
+    
     # 1) Ищем у юзера активный промокод
     up = db.query(UserPromoCode) \
         .filter_by(user_id=current_user.id, status=UserPromoStatus.ACTIVATED) \
@@ -366,7 +383,7 @@ def add_money(amount: int,
         # фиксируем баланс до депозита, чтобы корректно отразить 2 транзакции подряд
         before = float(current_user.wallet_balance or 0)
         # депозит
-        record_wallet_transaction(db, user=current_user, amount=amount, ttype=WalletTransactionType.DEPOSIT, description="Пополнение кошелька", balance_before_override=before)
+        record_wallet_transaction(db, user=current_user, amount=amount, ttype=WalletTransactionType.DEPOSIT, description="Пополнение кошелька", balance_before_override=before, tracking_id=tracking_id)
         # бонус
         record_wallet_transaction(db, user=current_user, amount=bonus, ttype=WalletTransactionType.PROMO_BONUS, description=f"Бонус по промокоду {up.promo.code if up and up.promo else ''}", balance_before_override=before + amount)
         # начисляем основную сумму + бонус
@@ -378,7 +395,7 @@ def add_money(amount: int,
 
     else:
         # обычное пополнение
-        record_wallet_transaction(db, user=current_user, amount=amount, ttype=WalletTransactionType.DEPOSIT, description="Пополнение кошелька")
+        record_wallet_transaction(db, user=current_user, amount=amount, ttype=WalletTransactionType.DEPOSIT, description="Пополнение кошелька", tracking_id=tracking_id)
         current_user.wallet_balance += amount
 
     db.commit()
@@ -439,6 +456,18 @@ async def reserve_car(
     # Запреты по ролям/верификации для НЕ владельцев
     if car_meta.owner_id != current_user.id:
         validate_user_can_rent(current_user, db)
+        
+        # Проверяем подписание договора о присоединении (MAIN_CONTRACT)
+        main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+            UserContractSignature.user_id == current_user.id,
+            ContractFile.contract_type == ContractType.MAIN_CONTRACT
+        ).first() is not None
+        
+        if not main_contract_signed:
+            raise HTTPException(
+                status_code=403,
+                detail="Необходимо подписать договор о присоединении перед бронированием автомобиля"
+            )
 
     # 1) Проверяем, нет ли у пользователя уже активной аренды
     active_rental = db.query(RentalHistory).filter(
@@ -619,6 +648,21 @@ async def reserve_delivery(
     car_uuid = safe_sid_to_uuid(car_id)
     # Запреты по ролям/верификации
     validate_user_can_rent(current_user, db)
+    
+    # Получаем информацию о машине для проверки владельца
+    car_check = db.query(Car).filter(Car.id == car_uuid).first()
+    if car_check and car_check.owner_id != current_user.id:
+        # Проверяем подписание договора о присоединении (MAIN_CONTRACT) для не-владельцев
+        main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+            UserContractSignature.user_id == current_user.id,
+            ContractFile.contract_type == ContractType.MAIN_CONTRACT
+        ).first() is not None
+        
+        if not main_contract_signed:
+            raise HTTPException(
+                status_code=403,
+                detail="Необходимо подписать договор о присоединении перед бронированием автомобиля с доставкой"
+            )
 
     # 1) Проверяем, нет ли у пользователя активной аренды (RESERVED, IN_USE или DELIVERING)
     active_rental = db.query(RentalHistory).filter(
@@ -953,6 +997,21 @@ async def start_rental(
 
     if rental.rental_status != RentalStatus.RESERVED:
         raise HTTPException(status_code=400, detail="Rental is not in reserved status")
+    
+    # Проверяем, что основной договор аренды подписан
+    from app.models.contract_model import UserContractSignature, ContractFile, ContractType
+    
+    rental_main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+        UserContractSignature.user_id == current_user.id,
+        UserContractSignature.rental_id == rental.id,
+        ContractFile.contract_type == ContractType.RENTAL_MAIN_CONTRACT
+    ).first() is not None
+    
+    if not rental_main_contract_signed:
+        raise HTTPException(
+            status_code=400, 
+            detail="Необходимо подписать основной договор аренды перед началом аренды"
+        )
 
     # Получаем машину по аренде
     car = db.query(Car).filter(Car.id == rental.car_id).first()
@@ -961,6 +1020,33 @@ async def start_rental(
 
     # Проверяем, является ли пользователь владельцем автомобиля
     is_owner = car.owner_id == current_user.id
+
+    # Проверяем подписание обязательных договоров (только для не-владельцев)
+    if not is_owner:
+        # 1. Проверяем договор о присоединении (MAIN_CONTRACT)
+        main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+            UserContractSignature.user_id == current_user.id,
+            ContractFile.contract_type == ContractType.MAIN_CONTRACT
+        ).first() is not None
+        
+        if not main_contract_signed:
+            raise HTTPException(
+                status_code=403,
+                detail="Необходимо подписать договор о присоединении перед началом аренды"
+            )
+        
+        # 2. Проверяем акт приема (APPENDIX_7_1) для текущей аренды
+        appendix_7_1_signed = db.query(UserContractSignature).join(ContractFile).filter(
+            UserContractSignature.user_id == current_user.id,
+            UserContractSignature.rental_id == rental.id,
+            ContractFile.contract_type == ContractType.APPENDIX_7_1
+        ).first() is not None
+        
+        if not appendix_7_1_signed:
+            raise HTTPException(
+                status_code=403,
+                detail="Необходимо подписать акт приема автомобиля перед началом аренды"
+            )
     
     existing_before = rental.photos_before or []
     has_selfie_before = any(("/before/selfie/" in p) or ("\\before\\selfie\\" in p) for p in existing_before)

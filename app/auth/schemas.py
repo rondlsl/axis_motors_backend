@@ -188,3 +188,46 @@ class DocumentUploadRequest(BaseModel):
             if "does not match format" in str(e):
                 raise ValueError('Дата должна быть в формате YYYY-MM-DD. Пример: 2030-12-31')
             raise e
+
+
+class ChangeEmailRequest(BaseModel):
+    """Схема запроса на изменение email"""
+    new_email: str = Field(
+        ...,
+        description="Новый email адрес пользователя"
+    )
+    
+    @validator('new_email')
+    def validate_email(cls, v):
+        import re
+        # Простая валидация email
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_pattern, v):
+            raise ValueError('Некорректный формат email адреса')
+        return v.strip().lower()
+
+
+class VerifyEmailChangeRequest(BaseModel):
+    """Схема запроса на подтверждение изменения email"""
+    new_email: str = Field(
+        ...,
+        description="Новый email адрес для подтверждения"
+    )
+    code: str = Field(
+        ...,
+        min_length=6,
+        max_length=6,
+        description="6-значный код подтверждения"
+    )
+    
+    @validator('code')
+    def validate_code(cls, v):
+        if not v.isdigit():
+            raise ValueError('Код подтверждения должен содержать только цифры')
+        return v
+
+
+class ChangeEmailResponse(BaseModel):
+    """Схема ответа на изменение email"""
+    message: str = Field(..., description="Сообщение об успешной операции")
+    email: Optional[str] = Field(None, description="Новый email адрес")
