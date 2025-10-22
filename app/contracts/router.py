@@ -265,18 +265,16 @@ async def sign_contract(
                 detail="Аренда не найдена"
             )
         
-        # Для механиков разрешаем подписание договоров для аренд, где они являются инспекторами
+        # Для механиков разрешаем подписание договоров для аренд, где они являются инспекторами или доставщиками
         if current_user.role == UserRole.MECHANIC:
-            # Механик может подписывать договоры для аренд, где он является инспектором
-            if rental.mechanic_inspector_id is None:
+            # Механик может подписывать договоры для аренд, где он является инспектором или доставщиком
+            is_inspector = rental.mechanic_inspector_id == current_user.id
+            is_delivery_mechanic = rental.delivery_mechanic_id == current_user.id
+            
+            if not (is_inspector or is_delivery_mechanic):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Механик не назначен инспектором для данной аренды"
-                )
-            elif rental.mechanic_inspector_id != current_user.id:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Механик не назначен инспектором для данной аренды"
+                    detail="Механик не назначен инспектором или доставщиком для данной аренды"
                 )
         else:
             # Для обычных пользователей проверяем, что аренда принадлежит им
@@ -441,17 +439,15 @@ async def get_rental_contract_status(
             detail="Аренда не найдена"
         )
     
-    # Для механиков разрешаем доступ к арендам, где они являются инспекторами
+    # Для механиков разрешаем доступ к арендам, где они являются инспекторами или доставщиками
     if current_user.role == UserRole.MECHANIC:
-        if rental.mechanic_inspector_id is None:
+        is_inspector = rental.mechanic_inspector_id == current_user.id
+        is_delivery_mechanic = rental.delivery_mechanic_id == current_user.id
+        
+        if not (is_inspector or is_delivery_mechanic):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Механик не назначен инспектором для данной аренды"
-            )
-        elif rental.mechanic_inspector_id != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Механик не назначен инспектором для данной аренды"
+                detail="Механик не назначен инспектором или доставщиком для данной аренды"
             )
     else:
         # Для обычных пользователей проверяем, что аренда принадлежит им
