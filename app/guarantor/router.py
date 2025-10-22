@@ -327,15 +327,15 @@ async def get_my_guarantors(
     for relationship in guarantor_relationships:
         guarantor_user = db.query(User).filter(User.id == relationship.guarantor_id).first()
         if guarantor_user:
-            # Проверяем подписи из user_contract_signatures
+            # Проверяем подписи из user_contract_signatures (гарант подписывает для клиента)
             contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
-                UserContractSignature.user_id == current_user.id,
+                UserContractSignature.user_id == relationship.guarantor_id,  # Гарант подписывает
                 UserContractSignature.guarantor_relationship_id == relationship.id,
                 ContractFile.contract_type == ContractType.GUARANTOR_CONTRACT
             ).first() is not None
             
             main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
-                UserContractSignature.user_id == current_user.id,
+                UserContractSignature.user_id == relationship.guarantor_id,  # Гарант подписывает
                 UserContractSignature.guarantor_relationship_id == relationship.id,
                 ContractFile.contract_type == ContractType.GUARANTOR_MAIN_CONTRACT
             ).first() is not None
