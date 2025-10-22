@@ -1290,10 +1290,10 @@ async def upload_photos_before_interior(
             urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/interior/"))
         rental.photos_before = urls
         db.commit()
-        # MERCEDES: after interior photos, give key and unlock engine
+        # После загрузки фото салона: выдать ключ и разблокировать двигатель
         try:
             car = db.query(Car).get(rental.car_id)
-            if car and car.gps_imei and car.plate_number == '666AZV02':
+            if car and car.gps_imei:
                 from app.gps_api.utils.auth_api import get_auth_token
                 from app.gps_api.utils.car_data import send_give_key, send_unlock_engine
                 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
