@@ -216,13 +216,10 @@ class SimpleGuarantorSchema(BaseModel):
 
 class SimpleClientSchema(BaseModel):
     """Упрощенная схема для клиента"""
-    id: str = Field(..., description="ID связи гарант-клиент", example=1)
-    first_name: Optional[str] = Field(None, description="Имя клиента", example="Петр")
-    last_name: Optional[str] = Field(None, description="Фамилия клиента", example="Иванов")
-    phone: str = Field(..., description="Номер телефона клиента", example="7771234567")
-    contract_signed: bool = Field(..., description="Подписан ли договор гаранта", example=True)
-    main_contract_signed: bool = Field(..., description="Подписан ли основной договор гаранта", example=True)
-    created_at: datetime = Field(..., description="Дата создания связи", example="2024-01-15T10:30:00Z")
+    guarantee_id: str = Field(..., description="ID связи гарант-клиент", example="abc123def")
+    guarantor: dict = Field(..., description="Информация о гаранте")
+    client: dict = Field(..., description="Информация о клиенте")
+    contract: dict = Field(..., description="Информация о контрактах")
 
 
 class IncomingRequestSchema(SidMixin):

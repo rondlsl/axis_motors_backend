@@ -479,14 +479,49 @@ async def get_my_clients(
                 ContractFile.contract_type == ContractType.GUARANTOR_MAIN_CONTRACT
             ).first() is not None
             
+            # Формируем полное имя гаранта
+            guarantor_fullname_parts = []
+            if current_user.first_name:
+                guarantor_fullname_parts.append(current_user.first_name)
+            if current_user.middle_name:
+                guarantor_fullname_parts.append(current_user.middle_name)
+            if current_user.last_name:
+                guarantor_fullname_parts.append(current_user.last_name)
+            guarantor_fullname = " ".join(guarantor_fullname_parts) if guarantor_fullname_parts else "Не указано"
+            
+            # Формируем полное имя клиента
+            client_fullname_parts = []
+            if client_user.first_name:
+                client_fullname_parts.append(client_user.first_name)
+            if client_user.middle_name:
+                client_fullname_parts.append(client_user.middle_name)
+            if client_user.last_name:
+                client_fullname_parts.append(client_user.last_name)
+            client_fullname = " ".join(client_fullname_parts) if client_fullname_parts else "Не указано"
+            
             result.append(SimpleClientSchema(
-                id=relationship.sid,
-                first_name=client_user.first_name,
-                last_name=client_user.last_name,
-                phone=client_user.phone_number,
-                contract_signed=contract_signed,
-                main_contract_signed=main_contract_signed,
-                created_at=relationship.created_at
+                guarantee_id=relationship.sid,
+                guarantor={
+                    "guarantor_fullname": guarantor_fullname,
+                    "guarantor_iin": current_user.iin or "",
+                    "guarantor_phone": current_user.phone_number or "",
+                    "guarantor_email": current_user.email or "",
+                    "guarantor_id": uuid_to_sid(current_user.id),
+                    "digital_signature": current_user.digital_signature or ""
+                },
+                client={
+                    "client_fullname": client_fullname,
+                    "client_iin": client_user.iin or "",
+                    "client_phone": client_user.phone_number or "",
+                    "client_email": client_user.email or "",
+                    "client_id": uuid_to_sid(client_user.id)
+                },
+                contract={
+                    "contract_signed": contract_signed,
+                    "main_contract_signed": main_contract_signed,
+                    "guarantee_uuid": str(relationship.id),
+                    "created_at": relationship.created_at.isoformat()
+                }
             ))
     
     return result
