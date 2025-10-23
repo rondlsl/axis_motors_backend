@@ -1236,18 +1236,29 @@ async def upload_photos_before(
         
         try:
             car = db.query(Car).get(rental.car_id)
+            print(f"DEBUG: Car found: {car is not None}, GPS IMEI: {car.gps_imei if car else 'None'}")
             if car and car.gps_imei:
                 from app.gps_api.utils.auth_api import get_auth_token
                 from app.gps_api.utils.car_data import execute_gps_sequence
                 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
                 
+                print(f"DEBUG: Starting GPS sequence for IMEI: {car.gps_imei}")
                 auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                print(f"DEBUG: Auth token received: {auth_token[:20] if auth_token else 'None'}...")
+                
                 # Универсальная последовательность: открыть замки → выдать ключ → открыть замки → забрать ключ
                 result = await execute_gps_sequence(car.gps_imei, auth_token, "selfie_exterior")
+                print(f"DEBUG: GPS sequence result: {result}")
                 if not result["success"]:
                     print(f"Ошибка GPS последовательности для селфи+кузов: {result.get('error', 'Unknown error')}")
+                else:
+                    print(f"GPS последовательность выполнена успешно: {result.get('executed_commands', [])}")
+            else:
+                print(f"DEBUG: GPS команды не выполнены - car: {car is not None}, gps_imei: {car.gps_imei if car else 'None'}")
         except Exception as e:
             print(f"Ошибка GPS команд после загрузки селфи+кузов: {e}")
+            import traceback
+            traceback.print_exc()
         
         return {"message": "Photos before (selfie+car) uploaded", "photo_count": len(urls)}
     except HTTPException:

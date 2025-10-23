@@ -76,7 +76,7 @@ def get_commands_by_imei(imei: str) -> dict:
     """Возвращает команды для конкретного IMEI"""
     commands_map = {
         "860803068139548": {  # Hongqi - vehicle_id 800283232
-            "open": "chat OPEN|chat OPEN|chat OPEN",
+            "open": "chat OPEN|chat OPEN|chat OPEN|",
             "close": "chat CLOSE|chat CLOSE|chat CLOSE",
             "give_key": "OUTPUT1 1",
             "take_key": "OUTPUT1 0",
