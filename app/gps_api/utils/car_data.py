@@ -6,6 +6,7 @@ from httpx import Response
 
 from app.RateLimitedHTTPClient import RateLimitedHTTPClient
 from app.core.config import logger
+import asyncio
 
 
 async def get_last_vehicles_data():
@@ -210,6 +211,242 @@ async def auto_lock_vehicle_after_rental(imei: str, token: str) -> dict:
     except Exception as e:
         error_msg = f"Общая ошибка автоматической блокировки: {e}"
         results["errors"].append(error_msg)
+        logger.error(error_msg)
+    
+    return results
+
+
+async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dict:
+    """
+    Универсальная функция для выполнения GPS команд по этапам
+    
+    :param imei: IMEI автомобиля
+    :param token: Токен авторизации
+    :param sequence_type: Тип последовательности ('selfie_exterior', 'interior', 'start')
+    :return: Результат выполнения команд
+    """
+    commands = get_commands_by_imei(imei)
+    if not commands:
+        return {"success": False, "error": f"Команды для IMEI {imei} не найдены"}
+    
+    results = {"success": True, "executed_commands": [], "errors": []}
+    
+    try:
+        if sequence_type == "selfie_exterior":
+            # Этап 1: Селфи + кузов
+            # 1. Открыть замки
+            # 2. Выдать ключ  
+            # 3. Открыть замки
+            # 4. Забрать ключ
+            
+            # 1. Открыть замки
+            try:
+                open_cmd = commands.get("open", "")
+                if open_cmd:
+                    result = await send_command_to_terminal(imei, open_cmd, token)
+                    results["executed_commands"].append({"step": 1, "action": "open_locks", "result": result})
+                    logger.info(f"Замки автомобиля {imei} открыты")
+                    await asyncio.sleep(2)  # Пауза между командами
+            except Exception as e:
+                error_msg = f"Ошибка открытия замков: {e}"
+                results["errors"].append(error_msg)
+                logger.error(error_msg)
+            
+            # 2. Выдать ключ
+            try:
+                give_key_cmd = commands.get("give_key", "")
+                if give_key_cmd:
+                    result = await send_command_to_terminal(imei, give_key_cmd, token)
+                    results["executed_commands"].append({"step": 2, "action": "give_key", "result": result})
+                    logger.info(f"Ключ автомобиля {imei} выдан")
+                    await asyncio.sleep(2)
+            except Exception as e:
+                error_msg = f"Ошибка выдачи ключа: {e}"
+                results["errors"].append(error_msg)
+                logger.error(error_msg)
+            
+            # 3. Снова открыть замки
+            try:
+                open_cmd = commands.get("open", "")
+                if open_cmd:
+                    result = await send_command_to_terminal(imei, open_cmd, token)
+                    results["executed_commands"].append({"step": 3, "action": "open_locks_again", "result": result})
+                    logger.info(f"Замки автомобиля {imei} открыты повторно")
+                    await asyncio.sleep(2)
+            except Exception as e:
+                error_msg = f"Ошибка повторного открытия замков: {e}"
+                results["errors"].append(error_msg)
+                logger.error(error_msg)
+            
+            # 4. Забрать ключ
+            try:
+                take_key_cmd = commands.get("take_key", "")
+                if take_key_cmd:
+                    result = await send_command_to_terminal(imei, take_key_cmd, token)
+                    results["executed_commands"].append({"step": 4, "action": "take_key", "result": result})
+                    logger.info(f"Ключ автомобиля {imei} забран")
+            except Exception as e:
+                error_msg = f"Ошибка забора ключа: {e}"
+                results["errors"].append(error_msg)
+                logger.error(error_msg)
+                
+        elif sequence_type == "interior":
+            # Этап 2: Салон
+            # 1. Разблокировать двигатель
+            # 2. Выдать ключ
+            
+            # 1. Разблокировать двигатель
+            try:
+                unlock_engine_cmd = commands.get("unlock_engine", "")
+                if unlock_engine_cmd:
+                    result = await send_command_to_terminal(imei, unlock_engine_cmd, token)
+                    results["executed_commands"].append({"step": 1, "action": "unlock_engine", "result": result})
+                    logger.info(f"Двигатель автомобиля {imei} разблокирован")
+                    await asyncio.sleep(2)
+            except Exception as e:
+                error_msg = f"Ошибка разблокировки двигателя: {e}"
+                results["errors"].append(error_msg)
+                logger.error(error_msg)
+            
+            # 2. Выдать ключ
+            try:
+                give_key_cmd = commands.get("give_key", "")
+                if give_key_cmd:
+                    result = await send_command_to_terminal(imei, give_key_cmd, token)
+                    results["executed_commands"].append({"step": 2, "action": "give_key", "result": result})
+                    logger.info(f"Ключ автомобиля {imei} выдан")
+            except Exception as e:
+                error_msg = f"Ошибка выдачи ключа: {e}"
+                results["errors"].append(error_msg)
+                logger.error(error_msg)
+                
+        elif sequence_type == "start":
+            # Этап 3: Старт
+            # 1. Разблокировать двигатель
+            
+            # 1. Разблокировать двигатель
+            try:
+                unlock_engine_cmd = commands.get("unlock_engine", "")
+                if unlock_engine_cmd:
+                    result = await send_command_to_terminal(imei, unlock_engine_cmd, token)
+                    results["executed_commands"].append({"step": 1, "action": "unlock_engine", "result": result})
+                    logger.info(f"Двигатель автомобиля {imei} разблокирован при старте")
+            except Exception as e:
+                error_msg = f"Ошибка разблокировки двигателя при старте: {e}"
+                results["errors"].append(error_msg)
+                logger.error(error_msg)
+                
+        elif sequence_type == "complete_selfie_interior":
+            # Этап 4: Завершение - селфи + салон
+            # 1. Заблокировать двигатель
+            # 2. Забрать ключ
+            # 3. Закрыть замки
+            
+            # 1. Заблокировать двигатель
+            try:
+                lock_engine_cmd = commands.get("lock_engine", "")
+                if lock_engine_cmd:
+                    result = await send_command_to_terminal(imei, lock_engine_cmd, token)
+                    results["executed_commands"].append({"step": 1, "action": "lock_engine", "result": result})
+                    logger.info(f"Двигатель автомобиля {imei} заблокирован")
+                    await asyncio.sleep(2)
+            except Exception as e:
+                error_msg = f"Ошибка блокировки двигателя: {e}"
+                results["errors"].append(error_msg)
+                logger.error(error_msg)
+            
+            # 2. Забрать ключ
+            try:
+                take_key_cmd = commands.get("take_key", "")
+                if take_key_cmd:
+                    result = await send_command_to_terminal(imei, take_key_cmd, token)
+                    results["executed_commands"].append({"step": 2, "action": "take_key", "result": result})
+                    logger.info(f"Ключ автомобиля {imei} забран")
+                    await asyncio.sleep(2)
+            except Exception as e:
+                error_msg = f"Ошибка забора ключа: {e}"
+                results["errors"].append(error_msg)
+                logger.error(error_msg)
+            
+            # 3. Закрыть замки
+            try:
+                close_cmd = commands.get("close", "")
+                if close_cmd:
+                    result = await send_command_to_terminal(imei, close_cmd, token)
+                    results["executed_commands"].append({"step": 3, "action": "close_locks", "result": result})
+                    logger.info(f"Замки автомобиля {imei} закрыты")
+            except Exception as e:
+                error_msg = f"Ошибка закрытия замков: {e}"
+                results["errors"].append(error_msg)
+                logger.error(error_msg)
+                
+        elif sequence_type == "complete_exterior":
+            # Этап 5: Завершение - кузов
+            # 1. Заблокировать двигатель
+            # 2. Забрать ключ
+            # 3. Закрыть замки
+            
+            # 1. Заблокировать двигатель
+            try:
+                lock_engine_cmd = commands.get("lock_engine", "")
+                if lock_engine_cmd:
+                    result = await send_command_to_terminal(imei, lock_engine_cmd, token)
+                    results["executed_commands"].append({"step": 1, "action": "lock_engine", "result": result})
+                    logger.info(f"Двигатель автомобиля {imei} заблокирован")
+                    await asyncio.sleep(2)
+            except Exception as e:
+                error_msg = f"Ошибка блокировки двигателя: {e}"
+                results["errors"].append(error_msg)
+                logger.error(error_msg)
+            
+            # 2. Забрать ключ
+            try:
+                take_key_cmd = commands.get("take_key", "")
+                if take_key_cmd:
+                    result = await send_command_to_terminal(imei, take_key_cmd, token)
+                    results["executed_commands"].append({"step": 2, "action": "take_key", "result": result})
+                    logger.info(f"Ключ автомобиля {imei} забран")
+                    await asyncio.sleep(2)
+            except Exception as e:
+                error_msg = f"Ошибка забора ключа: {e}"
+                results["errors"].append(error_msg)
+                logger.error(error_msg)
+            
+            # 3. Закрыть замки
+            try:
+                close_cmd = commands.get("close", "")
+                if close_cmd:
+                    result = await send_command_to_terminal(imei, close_cmd, token)
+                    results["executed_commands"].append({"step": 3, "action": "close_locks", "result": result})
+                    logger.info(f"Замки автомобиля {imei} закрыты")
+            except Exception as e:
+                error_msg = f"Ошибка закрытия замков: {e}"
+                results["errors"].append(error_msg)
+                logger.error(error_msg)
+                
+        elif sequence_type == "final_lock":
+            # Этап 6: Окончательная блокировка
+            # 1. Заблокировать двигатель
+            
+            # 1. Заблокировать двигатель
+            try:
+                lock_engine_cmd = commands.get("lock_engine", "")
+                if lock_engine_cmd:
+                    result = await send_command_to_terminal(imei, lock_engine_cmd, token)
+                    results["executed_commands"].append({"step": 1, "action": "lock_engine", "result": result})
+                    logger.info(f"Двигатель автомобиля {imei} окончательно заблокирован")
+            except Exception as e:
+                error_msg = f"Ошибка окончательной блокировки двигателя: {e}"
+                results["errors"].append(error_msg)
+                logger.error(error_msg)
+        else:
+            results["success"] = False
+            results["error"] = f"Неизвестный тип последовательности: {sequence_type}"
+            
+    except Exception as e:
+        error_msg = f"Общая ошибка выполнения GPS последовательности: {e}"
+        results["errors"].append(error_msg)
+        results["success"] = False
         logger.error(error_msg)
     
     return results

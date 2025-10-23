@@ -736,32 +736,47 @@ async def start_rental(
     car.status = CarStatus.IN_USE
     db.commit()
     
+    # GPS команды при старте проверки механиком
     try:
-        name_parts = []
-        if current_mechanic.first_name:
-            name_parts.append(current_mechanic.first_name)
-        if current_mechanic.middle_name:
-            name_parts.append(current_mechanic.middle_name)
-        if current_mechanic.last_name:
-            name_parts.append(current_mechanic.last_name)
-        full_name = " ".join(name_parts) if name_parts else "Не указано"
-        
-        login = current_mechanic.phone_number or "Не указан"
-        
-        await send_rental_start_sms(
-            client_phone=current_mechanic.phone_number,
-            rent_id=str(rental.id),
-            full_name=full_name,
-            login=login,
-            client_id=str(current_mechanic.id),
-            digital_signature=current_mechanic.digital_signature or "Не указана",
-            car_id=str(car.id),
-            plate_number=car.plate_number,
-            car_name=car.name
-        )
-        print(f"SMS отправлена механику {current_mechanic.phone_number} при начале проверки")
+        if car and car.gps_imei:
+            from app.gps_api.utils.auth_api import get_auth_token
+            from app.gps_api.utils.car_data import execute_gps_sequence
+            from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
+            
+            auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+            # Универсальная последовательность: разблокировать двигатель
+            result = await execute_gps_sequence(car.gps_imei, auth_token, "start")
+            if not result["success"]:
+                print(f"Ошибка GPS последовательности при старте проверки механиком: {result.get('error', 'Unknown error')}")
     except Exception as e:
-        print(f"Ошибка отправки SMS при начале проверки механиком: {e}")
+        print(f"Ошибка GPS команд при старте проверки механиком: {e}")
+    
+    # try:
+    #     name_parts = []
+    #     if current_mechanic.first_name:
+    #         name_parts.append(current_mechanic.first_name)
+    #     if current_mechanic.middle_name:
+    #         name_parts.append(current_mechanic.middle_name)
+    #     if current_mechanic.last_name:
+    #         name_parts.append(current_mechanic.last_name)
+    #     full_name = " ".join(name_parts) if name_parts else "Не указано"
+    #     
+    #     login = current_mechanic.phone_number or "Не указан"
+    #     
+    #     await send_rental_start_sms(
+    #         client_phone=current_mechanic.phone_number,
+    #         rent_id=str(rental.id),
+    #         full_name=full_name,
+    #         login=login,
+    #         client_id=str(current_mechanic.id),
+    #         digital_signature=current_mechanic.digital_signature or "Не указана",
+    #         car_id=str(car.id),
+    #         plate_number=car.plate_number,
+    #         car_name=car.name
+    #     )
+    #     print(f"SMS отправлена механику {current_mechanic.phone_number} при начале проверки")
+    # except Exception as e:
+    #     print(f"Ошибка отправки SMS при начале проверки механиком: {e}")
     
     return {"message": "Проверка автомобиля запущена", "rental_id": uuid_to_sid(rental.id)}
 
@@ -843,18 +858,21 @@ async def upload_photos_before(
         rental.mechanic_photos_before = urls
         db.commit()
         
-        # Открываем замки после успешной загрузки фото
+        # Универсальная GPS последовательность после загрузки селфи+кузов
         try:
             car = db.query(Car).get(rental.car_id)
             if car and car.gps_imei:
                 from app.gps_api.utils.auth_api import get_auth_token
-                from app.gps_api.utils.car_data import send_open
+                from app.gps_api.utils.car_data import execute_gps_sequence
                 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
                 
                 auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-                open_result = await send_open(car.gps_imei, auth_token)
+                # Универсальная последовательность: открыть замки → выдать ключ → открыть замки → забрать ключ
+                result = await execute_gps_sequence(car.gps_imei, auth_token, "selfie_exterior")
+                if not result["success"]:
+                    print(f"Ошибка GPS последовательности для селфи+кузов механика: {result.get('error', 'Unknown error')}")
         except Exception as e:
-            print(f"Ошибка открытия замков после загрузки фото механиком: {e}")
+            print(f"Ошибка GPS команд после загрузки селфи+кузов механиком: {e}")
         
         return {"message": "Фотографии до проверки (selfie+car) загружены", "photo_count": len(urls)}
     except HTTPException:
@@ -895,20 +913,21 @@ async def upload_photos_before_interior(
         rental.mechanic_photos_before = urls
         db.commit()
         
-        # После загрузки фото салона - выдаем ключ и разблокируем двигатель
+        # После загрузки фото салона: разблокировать двигатель → выдать ключ
         try:
             car = db.query(Car).get(rental.car_id)
             if car and car.gps_imei:
                 from app.gps_api.utils.auth_api import get_auth_token
-                from app.gps_api.utils.car_data import send_give_key, send_unlock_engine
+                from app.gps_api.utils.car_data import execute_gps_sequence
                 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
                 
                 auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-                await send_give_key(car.gps_imei, auth_token)
-                await asyncio.sleep(1.0)
-                await send_unlock_engine(car.gps_imei, auth_token)
+                # Универсальная последовательность: разблокировать двигатель → выдать ключ
+                result = await execute_gps_sequence(car.gps_imei, auth_token, "interior")
+                if not result["success"]:
+                    print(f"Ошибка GPS последовательности для салона механика: {result.get('error', 'Unknown error')}")
         except Exception as e:
-            print(f"Ошибка выдачи ключа/разблокировки двигателя после загрузки фото салона механиком: {e}")
+            print(f"Ошибка GPS команд после загрузки салона механиком: {e}")
         
         return {"message": "Фотографии салона до проверки загружены", "photo_count": len(interior_photos)}
     except HTTPException:
@@ -971,16 +990,21 @@ async def upload_photos_after(
         rental.mechanic_photos_after = urls
         db.commit()
         
-        # Автоматическая блокировка и закрытие замков после успешной загрузки фото механиком
+        # После загрузки селфи+салона механиком: заблокировать двигатель → забрать ключ → закрыть замки
         try:
             car = db.query(Car).get(rental.car_id)
             if car and car.gps_imei:
-                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                from app.gps_api.utils.auth_api import get_auth_token
+                from app.gps_api.utils.car_data import execute_gps_sequence
+                from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
                 
-                # Закрываем замки, блокируем двигатель и забираем ключ
-                lock_result = await auto_lock_vehicle_after_rental(car.gps_imei, auth_token)
+                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                # Универсальная последовательность: заблокировать двигатель → забрать ключ → закрыть замки
+                result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_selfie_interior")
+                if not result["success"]:
+                    print(f"Ошибка GPS последовательности для завершения селфи+салон механиком: {result.get('error', 'Unknown error')}")
         except Exception as e:
-            print(f"Ошибка блокировки/закрытия после загрузки фото механиком: {e}")
+            print(f"Ошибка GPS команд после загрузки селфи+салон механиком: {e}")
         
         return {"message": "Фотографии после проверки (selfie+interior) загружены", "photo_count": len(urls)}
     except HTTPException:
@@ -1034,6 +1058,22 @@ async def upload_photos_after_car(
             urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/mechanic/after/car/"))
         rental.mechanic_photos_after = urls
         db.commit()
+        
+        # После загрузки кузова механиком: заблокировать двигатель → забрать ключ → закрыть замки
+        try:
+            if car and car.gps_imei:
+                from app.gps_api.utils.auth_api import get_auth_token
+                from app.gps_api.utils.car_data import execute_gps_sequence
+                from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
+                
+                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                # Универсальная последовательность: заблокировать двигатель → забрать ключ → закрыть замки
+                result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_exterior")
+                if not result["success"]:
+                    print(f"Ошибка GPS последовательности для завершения кузова механиком: {result.get('error', 'Unknown error')}")
+        except Exception as e:
+            print(f"Ошибка GPS команд после загрузки кузова механиком: {e}")
+        
         return {"message": "Фотографии внешние после проверки загружены", "photo_count": len(car_photos)}
     except HTTPException:
         raise
@@ -1097,35 +1137,53 @@ async def complete_rental(
     # При успешном завершении проверки автомобиль снова становится доступным (FREE)
     car.status = CarStatus.FREE
     add_review_if_exists(db, rental.id, review_input)
+    
+    # Окончательная блокировка двигателя при завершении проверки механиком
+    try:
+        if car and car.gps_imei:
+            from app.gps_api.utils.auth_api import get_auth_token
+            from app.gps_api.utils.car_data import execute_gps_sequence
+            from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
+            
+            auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+            # Универсальная последовательность: заблокировать двигатель
+            result = await execute_gps_sequence(car.gps_imei, auth_token, "final_lock")
+            if result["success"]:
+                print(f"Двигатель автомобиля {car.name} окончательно заблокирован после завершения проверки механиком")
+            else:
+                print(f"Ошибка GPS последовательности при окончательной блокировке механиком: {result.get('error', 'Unknown error')}")
+    except Exception as e:
+        print(f"Ошибка GPS команд при окончательной блокировке механиком: {e}")
+    
     try:
         db.commit()
         
-        try:
-            name_parts = []
-            if current_mechanic.first_name:
-                name_parts.append(current_mechanic.first_name)
-            if current_mechanic.middle_name:
-                name_parts.append(current_mechanic.middle_name)
-            if current_mechanic.last_name:
-                name_parts.append(current_mechanic.last_name)
-            full_name = " ".join(name_parts) if name_parts else "Не указано"
-            
-            login = current_mechanic.phone_number or "Не указан"
-            
-            await send_rental_complete_sms(
-                client_phone=current_mechanic.phone_number,
-                rent_id=str(rental.id),
-                full_name=full_name,
-                login=login,
-                client_id=str(current_mechanic.id),
-                digital_signature=current_mechanic.digital_signature or "Не указана",
-                car_id=str(car.id),
-                plate_number=car.plate_number,
-                car_name=car.name
-            )
-            print(f"SMS отправлена механику {current_mechanic.phone_number} при завершении проверки")
-        except Exception as e:
-            print(f"Ошибка отправки SMS при завершении проверки механиком: {e}")
+        # try:
+        #     name_parts = []
+        #     if current_mechanic.first_name:
+        #         name_parts.append(current_mechanic.first_name)
+        #     if current_mechanic.middle_name:
+        #         name_parts.append(current_mechanic.middle_name)
+        #     if current_mechanic.last_name:
+        #         name_parts.append(current_mechanic.last_name)
+        #     full_name = " ".join(name_parts) if name_parts else "Не указано"
+        #     
+        #     login = current_mechanic.phone_number or "Не указан"
+        #     
+        #     await send_rental_complete_sms(
+        #         client_phone=current_mechanic.phone_number,
+        #         rent_id=str(rental.id),
+        #         full_name=full_name,
+        #         login=login,
+        #         client_id=str(current_mechanic.id),
+        #         digital_signature=current_mechanic.digital_signature or "Не указана",
+        #         car_id=str(car.id),
+        #         plate_number=car.plate_number,
+        #         car_name=car.name
+        #     )
+        #     print(f"SMS отправлена механику {current_mechanic.phone_number} при завершении проверки")
+        # except Exception as e:
+        #     print(f"Ошибка отправки SMS при завершении проверки механиком: {e}")
         
         return {
             "message": "Проверка автомобиля успешно завершена",

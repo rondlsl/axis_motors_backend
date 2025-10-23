@@ -1099,12 +1099,16 @@ async def start_rental(
             from app.gps_api.utils.car_data import send_unlock_engine
             
             # Получаем токен для GPS API
+            from app.gps_api.utils.car_data import execute_gps_sequence
             from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
             auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
             
-            # Разблокируем двигатель
-            await send_unlock_engine(car.gps_imei, auth_token)
-            print(f"Двигатель автомобиля {car.name} разблокирован при начале аренды (владелец)")
+            # Универсальная последовательность: разблокировать двигатель
+            result = await execute_gps_sequence(car.gps_imei, auth_token, "start")
+            if result["success"]:
+                print(f"Двигатель автомобиля {car.name} разблокирован при начале аренды (владелец)")
+            else:
+                print(f"Ошибка GPS последовательности для владельца: {result.get('error', 'Unknown error')}")
         except Exception as e:
             print(f"Ошибка разблокировки двигателя при начале аренды (владелец): {e}")
         
@@ -1139,48 +1143,49 @@ async def start_rental(
 
         db.commit()
 
-        # Автоматическая разблокировка двигателя при начале аренды
-        # Исключение: для автомобиля с plate_number == '666AZV02' не разблокируем на этом этапе
+        # Автоматическая разблокировка двигателя при начале аренды (универсально для всех автомобилей)
         try:
             car = db.query(Car).get(rental.car_id)
-            if car and car.plate_number != '666AZV02':
+            if car and car.gps_imei:
                 from app.gps_api.utils.auth_api import get_auth_token
-                from app.gps_api.utils.car_data import send_unlock_engine
+                from app.gps_api.utils.car_data import execute_gps_sequence
                 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
                 auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-                await send_unlock_engine(car.gps_imei, auth_token)
-                print(f"Двигатель автомобиля {car.name} разблокирован при начале аренды")
+                # Универсальная последовательность: разблокировать двигатель
+                result = await execute_gps_sequence(car.gps_imei, auth_token, "start")
+                if not result["success"]:
+                    print(f"Ошибка GPS последовательности при старте: {result.get('error', 'Unknown error')}")
         except Exception as e:
-            print(f"Ошибка разблокировки двигателя при начале аренды: {e}")
+            print(f"Ошибка GPS команд при старте аренды: {e}")
 
         is_owner_rental = False
 
-    try:
-        name_parts = []
-        if current_user.first_name:
-            name_parts.append(current_user.first_name)
-        if current_user.middle_name:
-            name_parts.append(current_user.middle_name)
-        if current_user.last_name:
-            name_parts.append(current_user.last_name)
-        full_name = " ".join(name_parts) if name_parts else "Не указано"
-        
-        login = current_user.phone_number or "Не указан"
-        
-        await send_rental_start_sms(
-            client_phone=current_user.phone_number,
-            rent_id=str(rental.id),
-            full_name=full_name,
-            login=login,
-            client_id=str(current_user.id),
-            digital_signature=current_user.digital_signature or "Не указана",
-            car_id=str(car.id),
-            plate_number=car.plate_number,
-            car_name=car.name
-        )
-        print(f"SMS отправлена клиенту {current_user.phone_number} при начале аренды")
-    except Exception as e:
-        print(f"Ошибка отправки SMS при начале аренды: {e}")
+    # try:
+    #     name_parts = []
+    #     if current_user.first_name:
+    #         name_parts.append(current_user.first_name)
+    #     if current_user.middle_name:
+    #         name_parts.append(current_user.middle_name)
+    #     if current_user.last_name:
+    #         name_parts.append(current_user.last_name)
+    #     full_name = " ".join(name_parts) if name_parts else "Не указано"
+    #     
+    #     login = current_user.phone_number or "Не указан"
+    #     
+    #     await send_rental_start_sms(
+    #         client_phone=current_user.phone_number,
+    #         rent_id=str(rental.id),
+    #         full_name=full_name,
+    #         login=login,
+    #         client_id=str(current_user.id),
+    #         digital_signature=current_user.digital_signature or "Не указана",
+    #         car_id=str(car.id),
+    #         plate_number=car.plate_number,
+    #         car_name=car.name
+    #     )
+    #     print(f"SMS отправлена клиенту {current_user.phone_number} при начале аренды")
+    # except Exception as e:
+    #     print(f"Ошибка отправки SMS при начале аренды: {e}")
 
     if is_owner_rental:
         return {"message": "Rental started successfully (owner rental)", "rental_id": uuid_to_sid(rental.id)}
@@ -1233,22 +1238,16 @@ async def upload_photos_before(
             car = db.query(Car).get(rental.car_id)
             if car and car.gps_imei:
                 from app.gps_api.utils.auth_api import get_auth_token
-                from app.gps_api.utils.car_data import send_open, send_give_key, send_take_key
+                from app.gps_api.utils.car_data import execute_gps_sequence
                 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
                 
                 auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-                if car.plate_number == '666AZV02':
-                    # MERCEDES sequence: give_key -> open -> take_key; engine remains locked
-                    await send_give_key(car.gps_imei, auth_token)
-                    await asyncio.sleep(1.0)
-                    await send_open(car.gps_imei, auth_token)
-                    await asyncio.sleep(1.0)
-                    await send_take_key(car.gps_imei, auth_token)
-                else:
-                    # Default behavior: just open locks
-                    await send_open(car.gps_imei, auth_token)
+                # Универсальная последовательность: открыть замки → выдать ключ → открыть замки → забрать ключ
+                result = await execute_gps_sequence(car.gps_imei, auth_token, "selfie_exterior")
+                if not result["success"]:
+                    print(f"Ошибка GPS последовательности для селфи+кузов: {result.get('error', 'Unknown error')}")
         except Exception as e:
-            print(f"Ошибка открытия замков после загрузки фото: {e}")
+            print(f"Ошибка GPS команд после загрузки селфи+кузов: {e}")
         
         return {"message": "Photos before (selfie+car) uploaded", "photo_count": len(urls)}
     except HTTPException:
@@ -1290,19 +1289,20 @@ async def upload_photos_before_interior(
             urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/interior/"))
         rental.photos_before = urls
         db.commit()
-        # После загрузки фото салона: выдать ключ и разблокировать двигатель
+        # После загрузки фото салона: разблокировать двигатель → выдать ключ
         try:
             car = db.query(Car).get(rental.car_id)
             if car and car.gps_imei:
                 from app.gps_api.utils.auth_api import get_auth_token
-                from app.gps_api.utils.car_data import send_give_key, send_unlock_engine
+                from app.gps_api.utils.car_data import execute_gps_sequence
                 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
                 auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-                await send_give_key(car.gps_imei, auth_token)
-                await asyncio.sleep(1.0)
-                await send_unlock_engine(car.gps_imei, auth_token)
+                # Универсальная последовательность: разблокировать двигатель → выдать ключ
+                result = await execute_gps_sequence(car.gps_imei, auth_token, "interior")
+                if not result["success"]:
+                    print(f"Ошибка GPS последовательности для салона: {result.get('error', 'Unknown error')}")
         except Exception as e:
-            print(f"Ошибка выдачи ключа/разблокировки двигателя после загрузки интерьера: {e}")
+            print(f"Ошибка GPS команд после загрузки салона: {e}")
         return {"message": "Photos before (interior) uploaded", "photo_count": len(interior_photos)}
     except Exception:
         db.rollback()
@@ -1381,17 +1381,21 @@ async def upload_photos_after(
         rental.photos_after = urls
         db.commit()
         
-        # После загрузки фото: забрать ключ, заблокировать двигатель, закрыть замки
+        # После загрузки селфи+салона: заблокировать двигатель → забрать ключ → закрыть замки
         try:
             car = db.query(Car).get(rental.car_id)
             if car and car.gps_imei:
+                from app.gps_api.utils.auth_api import get_auth_token
+                from app.gps_api.utils.car_data import execute_gps_sequence
+                from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
+                
                 auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-                from app.gps_api.utils.car_data import send_take_key, send_lock_engine, send_close
-                await send_take_key(car.gps_imei, auth_token)
-                await send_lock_engine(car.gps_imei, auth_token)
-                await send_close(car.gps_imei, auth_token)
+                # Универсальная последовательность: заблокировать двигатель → забрать ключ → закрыть замки
+                result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_selfie_interior")
+                if not result["success"]:
+                    print(f"Ошибка GPS последовательности для завершения селфи+салон: {result.get('error', 'Unknown error')}")
         except Exception as e:
-            print(f"Ошибка последовательности завершения аренды (take_key/lock_engine/close): {e}")
+            print(f"Ошибка GPS команд после загрузки селфи+салон: {e}")
         
         return {"message": "Photos after (selfie+interior) uploaded", "photo_count": len(interior_photos) + 1}
     except Exception:
@@ -1469,6 +1473,21 @@ async def upload_photos_after_car(
             urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/car/"))
         rental.photos_after = urls
         db.commit()
+        
+        # После загрузки кузова: заблокировать двигатель → забрать ключ → закрыть замки
+        try:
+            if car and car.gps_imei:
+                from app.gps_api.utils.auth_api import get_auth_token
+                from app.gps_api.utils.car_data import execute_gps_sequence
+                from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
+                
+                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                # Универсальная последовательность: заблокировать двигатель → забрать ключ → закрыть замки
+                result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_exterior")
+                if not result["success"]:
+                    print(f"Ошибка GPS последовательности для завершения кузова: {result.get('error', 'Unknown error')}")
+        except Exception as e:
+            print(f"Ошибка GPS команд после загрузки кузова: {e}")
         
         return {
             "message": "Photos after (car) uploaded successfully", 
@@ -1607,16 +1626,21 @@ async def upload_photos_after_owner(
         rental.photos_after = urls
         db.commit()
         
-        # Автоматическая блокировка и закрытие замков после успешной загрузки фото владельцем
+        # После загрузки салона владельцем: заблокировать двигатель → забрать ключ → закрыть замки
         try:
             car = db.query(Car).get(rental.car_id)
             if car and car.gps_imei:
-                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                from app.gps_api.utils.auth_api import get_auth_token
+                from app.gps_api.utils.car_data import execute_gps_sequence
+                from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
                 
-                # Закрываем замки, блокируем двигатель и забираем ключ
-                lock_result = await auto_lock_vehicle_after_rental(car.gps_imei, auth_token)
+                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                # Универсальная последовательность: заблокировать двигатель → забрать ключ → закрыть замки
+                result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_selfie_interior")
+                if not result["success"]:
+                    print(f"Ошибка GPS последовательности для завершения салона владельцем: {result.get('error', 'Unknown error')}")
         except Exception as e:
-            print(f"Ошибка блокировки/закрытия после загрузки фото владельцем: {e}")
+            print(f"Ошибка GPS команд после загрузки салона владельцем: {e}")
         
         return {"message": "Owner photos after (interior) uploaded", "photo_count": len(interior_photos)}
     except Exception:
@@ -1981,18 +2005,21 @@ async def complete_rental(
             current_user.wallet_balance -= amount_to_charge
             rental.already_payed = rental.total_price
 
-    # 12) Автоматическая блокировка двигателя при завершении аренды
+    # 12) Окончательная блокировка двигателя при завершении аренды
     try:
         from app.gps_api.utils.auth_api import get_auth_token
-        from app.gps_api.utils.car_data import send_lock_engine
+        from app.gps_api.utils.car_data import execute_gps_sequence
         
         # Получаем токен для GPS API
         from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
         auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
         
-        # Блокируем двигатель
-        await send_lock_engine(car.gps_imei, auth_token)
-        print(f"Двигатель автомобиля {car.name} заблокирован после завершения аренды")
+        # Универсальная последовательность: заблокировать двигатель
+        result = await execute_gps_sequence(car.gps_imei, auth_token, "final_lock")
+        if result["success"]:
+            print(f"Двигатель автомобиля {car.name} окончательно заблокирован после завершения аренды")
+        else:
+            print(f"Ошибка GPS последовательности при окончательной блокировке: {result.get('error', 'Unknown error')}")
     except Exception as e:
         print(f"Ошибка блокировки двигателя: {e}")
 
@@ -2009,32 +2036,32 @@ async def complete_rental(
     except Exception as e:
         print(e)
 
-    try:
-        name_parts = []
-        if current_user.first_name:
-            name_parts.append(current_user.first_name)
-        if current_user.middle_name:
-            name_parts.append(current_user.middle_name)
-        if current_user.last_name:
-            name_parts.append(current_user.last_name)
-        full_name = " ".join(name_parts) if name_parts else "Не указано"
-        
-        login = current_user.phone_number or "Не указан"
-        
-        await send_rental_complete_sms(
-            client_phone=current_user.phone_number,
-            rent_id=str(rental.id),
-            full_name=full_name,
-            login=login,
-            client_id=str(current_user.id),
-            digital_signature=current_user.digital_signature or "Не указана",
-            car_id=str(car.id),
-            plate_number=car.plate_number,
-            car_name=car.name
-        )
-        print(f"SMS отправлена клиенту {current_user.phone_number} при завершении аренды")
-    except Exception as e:
-        print(f"Ошибка отправки SMS при завершении аренды: {e}")
+    # try:
+    #     name_parts = []
+    #     if current_user.first_name:
+    #         name_parts.append(current_user.first_name)
+    #     if current_user.middle_name:
+    #         name_parts.append(current_user.middle_name)
+    #     if current_user.last_name:
+    #         name_parts.append(current_user.last_name)
+    #     full_name = " ".join(name_parts) if name_parts else "Не указано"
+    #     
+    #     login = current_user.phone_number or "Не указан"
+    #     
+    #     await send_rental_complete_sms(
+    #         client_phone=current_user.phone_number,
+    #         rent_id=str(rental.id),
+    #         full_name=full_name,
+    #         login=login,
+    #         client_id=str(current_user.id),
+    #         digital_signature=current_user.digital_signature or "Не указана",
+    #         car_id=str(car.id),
+    #         plate_number=car.plate_number,
+    #         car_name=car.name
+    #     )
+    #     print(f"SMS отправлена клиенту {current_user.phone_number} при завершении аренды")
+    # except Exception as e:
+    #     print(f"Ошибка отправки SMS при завершении аренды: {e}")
 
     return {
         "message": "Rental completed successfully",
