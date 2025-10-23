@@ -506,7 +506,7 @@ async def get_my_clients(
                     "guarantor_iin": current_user.iin or "",
                     "guarantor_phone": current_user.phone_number or "",
                     "guarantor_email": current_user.email or "",
-                    "guarantor_id": uuid_to_sid(current_user.id),
+                    "guarantor_id": str(current_user.id),
                     "digital_signature": current_user.digital_signature or ""
                 },
                 client={
@@ -514,7 +514,7 @@ async def get_my_clients(
                     "client_iin": client_user.iin or "",
                     "client_phone": client_user.phone_number or "",
                     "client_email": client_user.email or "",
-                    "client_id": uuid_to_sid(client_user.id)
+                    "client_id": str(client_user.id)
                 },
                 contract={
                     "contract_signed": contract_signed,
