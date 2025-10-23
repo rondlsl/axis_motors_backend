@@ -26,12 +26,10 @@ async def get_gps_route_data(
         url = f"http://195.93.152.69:8666/vehicles/{device_id}/gps?start_date={start_date}&end_date={end_date}"
         headers = {"accept": "application/json"}
         
-        print(f"DEBUG GPS: Making request to {url}")
         
         async with httpx.AsyncClient(timeout=15.0) as client:
             try:
                 response = await client.get(url, headers=headers)
-                print(f"DEBUG GPS: Response status: {response.status_code}")
                 
                 # Выводим сырой ответ для диагностики
                 response_text = response.text

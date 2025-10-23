@@ -243,7 +243,8 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
             try:
                 open_cmd = commands.get("open", "")
                 if open_cmd:
-                    result = await send_command_to_terminal(imei, open_cmd, token)
+                    vehicle_id = get_vehicle_id_by_imei(imei)
+                    result = await send_command_to_terminal(vehicle_id, open_cmd, token)
                     results["executed_commands"].append({"step": 1, "action": "open_locks", "result": result})
                     logger.info(f"Замки автомобиля {imei} открыты")
                     await asyncio.sleep(2)  # Пауза между командами
@@ -256,7 +257,8 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
             try:
                 give_key_cmd = commands.get("give_key", "")
                 if give_key_cmd:
-                    result = await send_command_to_terminal(imei, give_key_cmd, token)
+                    vehicle_id = get_vehicle_id_by_imei(imei)
+                    result = await send_command_to_terminal(vehicle_id, give_key_cmd, token)
                     results["executed_commands"].append({"step": 2, "action": "give_key", "result": result})
                     logger.info(f"Ключ автомобиля {imei} выдан")
                     await asyncio.sleep(2)
@@ -269,7 +271,8 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
             try:
                 open_cmd = commands.get("open", "")
                 if open_cmd:
-                    result = await send_command_to_terminal(imei, open_cmd, token)
+                    vehicle_id = get_vehicle_id_by_imei(imei)
+                    result = await send_command_to_terminal(vehicle_id, open_cmd, token)
                     results["executed_commands"].append({"step": 3, "action": "open_locks_again", "result": result})
                     logger.info(f"Замки автомобиля {imei} открыты повторно")
                     await asyncio.sleep(2)
@@ -282,7 +285,8 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
             try:
                 take_key_cmd = commands.get("take_key", "")
                 if take_key_cmd:
-                    result = await send_command_to_terminal(imei, take_key_cmd, token)
+                    vehicle_id = get_vehicle_id_by_imei(imei)
+                    result = await send_command_to_terminal(vehicle_id, take_key_cmd, token)
                     results["executed_commands"].append({"step": 4, "action": "take_key", "result": result})
                     logger.info(f"Ключ автомобиля {imei} забран")
             except Exception as e:
@@ -299,7 +303,8 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
             try:
                 unlock_engine_cmd = commands.get("unlock_engine", "")
                 if unlock_engine_cmd:
-                    result = await send_command_to_terminal(imei, unlock_engine_cmd, token)
+                    vehicle_id = get_vehicle_id_by_imei(imei)
+                    result = await send_command_to_terminal(vehicle_id, unlock_engine_cmd, token)
                     results["executed_commands"].append({"step": 1, "action": "unlock_engine", "result": result})
                     logger.info(f"Двигатель автомобиля {imei} разблокирован")
                     await asyncio.sleep(2)
@@ -312,7 +317,8 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
             try:
                 give_key_cmd = commands.get("give_key", "")
                 if give_key_cmd:
-                    result = await send_command_to_terminal(imei, give_key_cmd, token)
+                    vehicle_id = get_vehicle_id_by_imei(imei)
+                    result = await send_command_to_terminal(vehicle_id, give_key_cmd, token)
                     results["executed_commands"].append({"step": 2, "action": "give_key", "result": result})
                     logger.info(f"Ключ автомобиля {imei} выдан")
             except Exception as e:
@@ -328,7 +334,8 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
             try:
                 unlock_engine_cmd = commands.get("unlock_engine", "")
                 if unlock_engine_cmd:
-                    result = await send_command_to_terminal(imei, unlock_engine_cmd, token)
+                    vehicle_id = get_vehicle_id_by_imei(imei)
+                    result = await send_command_to_terminal(vehicle_id, unlock_engine_cmd, token)
                     results["executed_commands"].append({"step": 1, "action": "unlock_engine", "result": result})
                     logger.info(f"Двигатель автомобиля {imei} разблокирован при старте")
             except Exception as e:
@@ -346,7 +353,8 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
             try:
                 lock_engine_cmd = commands.get("lock_engine", "")
                 if lock_engine_cmd:
-                    result = await send_command_to_terminal(imei, lock_engine_cmd, token)
+                    vehicle_id = get_vehicle_id_by_imei(imei)
+                    result = await send_command_to_terminal(vehicle_id, lock_engine_cmd, token)
                     results["executed_commands"].append({"step": 1, "action": "lock_engine", "result": result})
                     logger.info(f"Двигатель автомобиля {imei} заблокирован")
                     await asyncio.sleep(2)
@@ -359,7 +367,8 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
             try:
                 take_key_cmd = commands.get("take_key", "")
                 if take_key_cmd:
-                    result = await send_command_to_terminal(imei, take_key_cmd, token)
+                    vehicle_id = get_vehicle_id_by_imei(imei)
+                    result = await send_command_to_terminal(vehicle_id, take_key_cmd, token)
                     results["executed_commands"].append({"step": 2, "action": "take_key", "result": result})
                     logger.info(f"Ключ автомобиля {imei} забран")
                     await asyncio.sleep(2)
@@ -372,7 +381,8 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
             try:
                 close_cmd = commands.get("close", "")
                 if close_cmd:
-                    result = await send_command_to_terminal(imei, close_cmd, token)
+                    vehicle_id = get_vehicle_id_by_imei(imei)
+                    result = await send_command_to_terminal(vehicle_id, close_cmd, token)
                     results["executed_commands"].append({"step": 3, "action": "close_locks", "result": result})
                     logger.info(f"Замки автомобиля {imei} закрыты")
             except Exception as e:
@@ -390,7 +400,8 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
             try:
                 lock_engine_cmd = commands.get("lock_engine", "")
                 if lock_engine_cmd:
-                    result = await send_command_to_terminal(imei, lock_engine_cmd, token)
+                    vehicle_id = get_vehicle_id_by_imei(imei)
+                    result = await send_command_to_terminal(vehicle_id, lock_engine_cmd, token)
                     results["executed_commands"].append({"step": 1, "action": "lock_engine", "result": result})
                     logger.info(f"Двигатель автомобиля {imei} заблокирован")
                     await asyncio.sleep(2)
@@ -403,7 +414,8 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
             try:
                 take_key_cmd = commands.get("take_key", "")
                 if take_key_cmd:
-                    result = await send_command_to_terminal(imei, take_key_cmd, token)
+                    vehicle_id = get_vehicle_id_by_imei(imei)
+                    result = await send_command_to_terminal(vehicle_id, take_key_cmd, token)
                     results["executed_commands"].append({"step": 2, "action": "take_key", "result": result})
                     logger.info(f"Ключ автомобиля {imei} забран")
                     await asyncio.sleep(2)
@@ -416,7 +428,8 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
             try:
                 close_cmd = commands.get("close", "")
                 if close_cmd:
-                    result = await send_command_to_terminal(imei, close_cmd, token)
+                    vehicle_id = get_vehicle_id_by_imei(imei)
+                    result = await send_command_to_terminal(vehicle_id, close_cmd, token)
                     results["executed_commands"].append({"step": 3, "action": "close_locks", "result": result})
                     logger.info(f"Замки автомобиля {imei} закрыты")
             except Exception as e:
@@ -432,7 +445,8 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
             try:
                 lock_engine_cmd = commands.get("lock_engine", "")
                 if lock_engine_cmd:
-                    result = await send_command_to_terminal(imei, lock_engine_cmd, token)
+                    vehicle_id = get_vehicle_id_by_imei(imei)
+                    result = await send_command_to_terminal(vehicle_id, lock_engine_cmd, token)
                     results["executed_commands"].append({"step": 1, "action": "lock_engine", "result": result})
                     logger.info(f"Двигатель автомобиля {imei} окончательно заблокирован")
             except Exception as e:

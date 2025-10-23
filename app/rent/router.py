@@ -314,8 +314,6 @@ async def get_trip_history_detail(
     route_data = None
     if car and car.gps_id and rental.start_time and rental.end_time:
         try:
-            print(f"DEBUG: Fetching GPS data for car {car.id}, gps_id: {car.gps_id}")
-            print(f"DEBUG: Start time: {rental.start_time}, End time: {rental.end_time}")
             
             route_data = await get_gps_route_data(
                 device_id=car.gps_id,
@@ -324,15 +322,11 @@ async def get_trip_history_detail(
             )
             
             if route_data:
-                print(f"DEBUG: GPS data received - {route_data.total_coordinates} coordinates")
-            else:
-                print("DEBUG: GPS data is None")
-                
+                pass
         except Exception as e:
-            print(f"DEBUG: GPS fetch error: {e}")
             route_data = None
     else:
-        print(f"DEBUG: Missing GPS data - car: {car is not None}, gps_id: {car.gps_id if car else 'N/A'}, times: {rental.start_time}, {rental.end_time}")
+        pass
 
     # Добавляем данные маршрута в ответ
     rental_detail["route_map"] = {
@@ -1236,25 +1230,21 @@ async def upload_photos_before(
         
         try:
             car = db.query(Car).get(rental.car_id)
-            print(f"DEBUG: Car found: {car is not None}, GPS IMEI: {car.gps_imei if car else 'None'}")
             if car and car.gps_imei:
                 from app.gps_api.utils.auth_api import get_auth_token
                 from app.gps_api.utils.car_data import execute_gps_sequence
                 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
                 
-                print(f"DEBUG: Starting GPS sequence for IMEI: {car.gps_imei}")
                 auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-                print(f"DEBUG: Auth token received: {auth_token[:20] if auth_token else 'None'}...")
                 
                 # Универсальная последовательность: открыть замки → выдать ключ → открыть замки → забрать ключ
                 result = await execute_gps_sequence(car.gps_imei, auth_token, "selfie_exterior")
-                print(f"DEBUG: GPS sequence result: {result}")
                 if not result["success"]:
                     print(f"Ошибка GPS последовательности для селфи+кузов: {result.get('error', 'Unknown error')}")
                 else:
                     print(f"GPS последовательность выполнена успешно: {result.get('executed_commands', [])}")
             else:
-                print(f"DEBUG: GPS команды не выполнены - car: {car is not None}, gps_imei: {car.gps_imei if car else 'None'}")
+                pass
         except Exception as e:
             print(f"Ошибка GPS команд после загрузки селфи+кузов: {e}")
             import traceback
