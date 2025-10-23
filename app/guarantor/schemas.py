@@ -220,6 +220,7 @@ class SimpleClientSchema(BaseModel):
     guarantor: dict = Field(..., description="Информация о гаранте")
     client: dict = Field(..., description="Информация о клиенте")
     contract: dict = Field(..., description="Информация о контрактах")
+    status: str = Field(..., description="Статус связи гарант-клиент", example="accepted")
 
 
 class IncomingRequestSchema(SidMixin):

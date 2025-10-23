@@ -5,6 +5,9 @@ from typing import List
 import base64
 import os
 import uuid
+import logging
+
+logger = logging.getLogger(__name__)
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
 from app.utils.sid_converter import convert_uuid_response_to_sid
 
@@ -18,6 +21,7 @@ from app.models.guarantor_model import (
     Guarantor
 )
 from app.models.contract_model import ContractFile, ContractType, UserContractSignature
+from app.models.application_model import Application, ApplicationStatus
 from app.guarantor.schemas import (
     GuarantorRequestCreateSchema,
     ContractListSchema,
@@ -41,6 +45,42 @@ from app.guarantor.schemas import (
 )
 from app.guarantor.sms_utils import send_guarantor_invitation_sms
 from app.push.utils import send_push_to_user_by_id
+
+
+async def cancel_guarantor_requests_on_rejection(guarantor_user_id: str, db: Session):
+    """
+    Отменяет все заявки гаранта при его отклонении финансистом или МВД
+    """
+    try:
+        # Находим все активные заявки где этот пользователь является гарантом
+        active_requests = db.query(GuarantorRequest).filter(
+            GuarantorRequest.guarantor_id == guarantor_user_id,
+            GuarantorRequest.status == GuarantorRequestStatus.PENDING
+        ).all()
+        
+        # Отменяем все заявки
+        for request in active_requests:
+            request.status = GuarantorRequestStatus.REJECTED
+            request.responded_at = datetime.utcnow()
+        
+        # Деактивируем все активные связи гарант-клиент
+        active_relationships = db.query(Guarantor).filter(
+            Guarantor.guarantor_id == guarantor_user_id,
+            Guarantor.is_active == True
+        ).all()
+        
+        for relationship in active_relationships:
+            relationship.is_active = False
+        
+        db.commit()
+        
+        logger.info(f"Отменены все заявки и связи для гаранта {guarantor_user_id}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Ошибка при отмене заявок гаранта {guarantor_user_id}: {e}")
+        db.rollback()
+        return False
 
 guarantor_router = APIRouter(prefix="/guarantor", tags=["Guarantor"])
 
@@ -73,6 +113,27 @@ async def invite_guarantor(
             status_code=400,
             detail="Вы не можете назначить себя гарантом"
         )
+    
+    # Проверяем статус одобрения финансистом - только отклоненные по финансовым причинам могут приглашать гарантов
+    user_application = db.query(Application).filter(
+        Application.user_id == current_user.id
+    ).first()
+    
+    if user_application:
+        # Не может приглашать если одобрен или в обработке
+        if user_application.financier_status in [ApplicationStatus.APPROVED, ApplicationStatus.PENDING]:
+            raise HTTPException(
+                status_code=403,
+                detail="Услуга гаранта для вас недоступна"
+            )
+        
+        # Может приглашать только если отклонен финансистом И роль REJECTFIRST (финансовые причины)
+        if user_application.financier_status == ApplicationStatus.REJECTED:
+            if current_user.role != UserRole.REJECTFIRST:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Услуга гаранта для вас недоступна"
+                )
     
     # Проверяем, нет ли уже активной заявки к этому номеру телефона
     existing_request = db.query(GuarantorRequest).filter(
@@ -120,6 +181,13 @@ async def invite_guarantor(
             "request_id": pending_request.sid,
             "sms_result": sms_result
         }
+    
+    # Проверяем роль пользователя - только user может стать гарантом
+    if guarantor_user.role != UserRole.USER:
+        raise HTTPException(
+            status_code=400,
+            detail="Данный клиент не может стать гарантом"
+        )
     
     # Проверяем, нет ли уже активной заявки между этими пользователями
     existing_request = db.query(GuarantorRequest).filter(
@@ -366,7 +434,7 @@ async def get_my_guarantor_requests(
     """Мои заявки гарантов (от лица клиента) со статусами"""
     requests = db.query(GuarantorRequest).filter(
         GuarantorRequest.requestor_id == current_user.id
-    ).all()
+    ).order_by(GuarantorRequest.created_at.desc()).all()
 
     items: list[ClientGuarantorRequestItemSchema] = []
     for req in requests:
@@ -454,13 +522,12 @@ async def get_my_clients(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Люди, за которых я уже несу ответственность"""
+    """Люди, за которых я уже несу ответственность (включая отклоненных)"""
     
-    # Клиенты, за которых я ручаюсь
+    # Клиенты, за которых я ручаюсь (включая неактивных)
     client_relationships = db.query(Guarantor).filter(
-        Guarantor.guarantor_id == current_user.id,
-        Guarantor.is_active == True
-    ).all()
+        Guarantor.guarantor_id == current_user.id
+    ).order_by(Guarantor.created_at.desc()).all()
     
     result = []
     for relationship in client_relationships:
@@ -521,7 +588,8 @@ async def get_my_clients(
                     "main_contract_signed": main_contract_signed,
                     "guarantee_uuid": str(relationship.id),
                     "created_at": relationship.created_at.isoformat()
-                }
+                },
+                status="accepted" if relationship.is_active else "rejected"
             ))
     
     return result

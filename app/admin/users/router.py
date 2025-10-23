@@ -952,7 +952,15 @@ async def edit_user(
     
     # Обновляем роль
     if edit_data.role is not None:
+        old_role = user.role
         user.role = edit_data.role
+        
+        # Если роль изменилась на отклоненную (REJECTFIRST, REJECTSECOND, REJECTFIRSTDOC, REJECTFIRSTCERT)
+        # и пользователь был гарантом, отменяем все его заявки
+        if (edit_data.role in [UserRole.REJECTFIRST, UserRole.REJECTSECOND, UserRole.REJECTFIRSTDOC, UserRole.REJECTFIRSTCERT] 
+            and old_role != edit_data.role):
+            from app.guarantor.router import cancel_guarantor_requests_on_rejection
+            await cancel_guarantor_requests_on_rejection(str(user.id), db)
     
     db.commit()
     
