@@ -321,6 +321,10 @@ async def reject_application(
         user.role = UserRole.REJECTSECOND
         user.is_active = False
     
+    # Если пользователь был гарантом, отменяем все его заявки
+    from app.guarantor.router import cancel_guarantor_requests_on_rejection
+    await cancel_guarantor_requests_on_rejection(str(user.id), db)
+    
     db.commit()
     
     # Пуш пользователю

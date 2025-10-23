@@ -375,6 +375,10 @@ async def reject_application(
             # Убираем дубликаты и обновляем классы гаранта
             guarantor_user.auto_class = list(set(all_client_classes)) if all_client_classes else None
     
+    # Если пользователь был гарантом, отменяем все его заявки
+    from app.guarantor.router import cancel_guarantor_requests_on_rejection
+    await cancel_guarantor_requests_on_rejection(str(user.id), db)
+    
     db.commit()
 
     # Уведомление пользователю
