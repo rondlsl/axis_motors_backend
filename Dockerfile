@@ -18,7 +18,10 @@ ENV PYTHONDONTWRITEBYTECODE=1
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip3 install -r requirements.txt
+
+# Настраиваем pip для работы с таймаутами и retry
+RUN pip3 install --upgrade pip
+RUN pip3 install --timeout=1000 --retries=5 -r requirements.txt
 
 COPY . .
 
