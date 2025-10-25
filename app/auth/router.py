@@ -1165,7 +1165,12 @@ async def _get_user_me_data(db: Session, current_user: User):
                             "color": car.color
                         })
 
-        return response_data
+    except Exception as e:
+        logger.error(f"Error in _get_user_me_data: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+    return response_data
 
 
 @Auth_router.post("/set_locale/", summary="Set locale body", description="Доступные locale - ru/en/kz")
