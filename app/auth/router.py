@@ -15,6 +15,7 @@ from app.models.history_model import RentalHistory, RentalStatus
 from app.models.car_model import Car
 
 from starlette import status
+import traceback
 
 from app.auth.dependencies.get_current_user import get_current_user  
 from app.auth.dependencies.save_documents import save_file
@@ -475,6 +476,21 @@ async def read_users_me(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
+    try:
+        return await _get_user_me_data(db, current_user)
+    except HTTPException as e:
+        # Обрабатываем ошибки токенов (просрочен, неверный и т.д.)
+        if e.status_code in [401, 403]:
+            raise e
+        else:
+            raise HTTPException(status_code=401, detail="Authentication failed")
+    except Exception as e:
+        logger.error(f"Error in /auth/user/me: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
+async def _get_user_me_data(db: Session, current_user: User):
     # Получаем активную аренду и автомобиль
     # Для механиков ищем по mechanic_inspector_id, для обычных пользователей - по user_id
     if current_user.role == UserRole.MECHANIC:
@@ -1150,12 +1166,6 @@ async def read_users_me(
                         })
 
         return response_data
-    except Exception as e:
-        from app.core.config import logger
-        import traceback
-        logger.error(f"Error in /auth/user/me: {e}")
-        logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
 @Auth_router.post("/set_locale/", summary="Set locale body", description="Доступные locale - ru/en/kz")
