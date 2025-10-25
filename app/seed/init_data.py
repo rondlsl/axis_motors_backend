@@ -193,7 +193,7 @@ def create_system_users(db: Session) -> None:
     """Создает системных пользователей (финансист, МВД)"""
     
     # Финансист
-    financier_phone = "77777777771"
+    financier_phone = "71234567899"
     financier_iin = "970401523457"  
     financier = db.query(User).filter(User.phone_number == financier_phone).first()
     if not financier:
@@ -220,7 +220,7 @@ def create_system_users(db: Session) -> None:
             print("Digital signature добавлена для финансиста")
 
     # МВД
-    mvd_phone = "77777777772"
+    mvd_phone = "71234567898"
     mvd_iin = "970205558210"  
     mvd_user = db.query(User).filter(User.phone_number == mvd_phone).first()
     if not mvd_user:
