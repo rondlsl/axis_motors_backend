@@ -31,7 +31,7 @@ async def get_pending_applications(
     
     query = db.query(Application).options(
         joinedload(Application.user)
-    ).filter(
+    ).join(User, Application.user_id == User.id).filter(
         and_(
             Application.financier_status == ApplicationStatus.PENDING,
             User.is_verified_email == True
@@ -67,6 +67,7 @@ async def get_pending_applications(
             "id_card_expiry": user.id_card_expiry.isoformat() if user.id_card_expiry else None,
             "drivers_license_expiry": user.drivers_license_expiry.isoformat() if user.drivers_license_expiry else None,
             "is_citizen_kz": user.is_citizen_kz,
+            "is_verified_email": user.is_verified_email,
             "certificates": {
                 "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
                 "narcology_certificate_url": user.narcology_certificate_url,
@@ -97,7 +98,7 @@ async def get_approved_applications(
     
     query = db.query(Application).options(
         joinedload(Application.user)
-    ).filter(
+    ).join(User, Application.user_id == User.id).filter(
         and_(
             Application.financier_status == ApplicationStatus.APPROVED,
             User.is_verified_email == True
@@ -133,6 +134,7 @@ async def get_approved_applications(
             "id_card_expiry": user.id_card_expiry.isoformat() if user.id_card_expiry else None,
             "drivers_license_expiry": user.drivers_license_expiry.isoformat() if user.drivers_license_expiry else None,
             "is_citizen_kz": user.is_citizen_kz,
+            "is_verified_email": user.is_verified_email,
             "certificates": {
                 "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
                 "narcology_certificate_url": user.narcology_certificate_url,
@@ -165,7 +167,7 @@ async def get_rejected_applications(
     
     query = db.query(Application).options(
         joinedload(Application.user)
-    ).filter(
+    ).join(User, Application.user_id == User.id).filter(
         and_(
             Application.financier_status == ApplicationStatus.REJECTED,
             User.is_verified_email == True
@@ -201,6 +203,7 @@ async def get_rejected_applications(
             "id_card_expiry": user.id_card_expiry.isoformat() if user.id_card_expiry else None,
             "drivers_license_expiry": user.drivers_license_expiry.isoformat() if user.drivers_license_expiry else None,
             "is_citizen_kz": user.is_citizen_kz,
+            "is_verified_email": user.is_verified_email,
             "certificates": {
                 "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
                 "narcology_certificate_url": user.narcology_certificate_url,

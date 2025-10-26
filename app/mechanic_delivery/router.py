@@ -202,8 +202,8 @@ async def start_delivery(
             from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
             
             auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-            # Универсальная последовательность: разблокировать двигатель
-            result = await execute_gps_sequence(car.gps_imei, auth_token, "start")
+            # Универсальная последовательность: разблокировать двигатель → выдать ключ
+            result = await execute_gps_sequence(car.gps_imei, auth_token, "interior")
             if not result["success"]:
                 print(f"Ошибка GPS последовательности при старте доставки: {result.get('error', 'Unknown error')}")
     except Exception as e:
@@ -701,22 +701,6 @@ async def upload_delivery_photos_before_interior(
             urls.append(await save_file(p, rental.id, f"uploads/delivery/{rental.id}/before/interior/"))
         rental.delivery_photos_before = urls
         db.commit()
-        
-        # После загрузки фото салона: разблокировать двигатель → выдать ключ
-        try:
-            car = db.query(Car).get(rental.car_id)
-            if car and car.gps_imei:
-                from app.gps_api.utils.auth_api import get_auth_token
-                from app.gps_api.utils.car_data import execute_gps_sequence
-                from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
-                
-                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-                # Универсальная последовательность: разблокировать двигатель → выдать ключ
-                result = await execute_gps_sequence(car.gps_imei, auth_token, "interior")
-                if not result["success"]:
-                    print(f"Ошибка GPS последовательности для салона доставщика: {result.get('error', 'Unknown error')}")
-        except Exception as e:
-            print(f"Ошибка GPS команд после загрузки салона доставщиком: {e}")
         
         return {"message": "Фотографии салона перед доставкой загружены", "photo_count": len(interior_photos)}
     except HTTPException:

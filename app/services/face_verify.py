@@ -106,7 +106,7 @@ def verify_user_upload_against_profile(user, upload_file) -> Tuple[bool, str]:
         if is_same:
             return True, "ok"
         
-        return False, "Личность не подтверждена по селфи. Убедитесь, что на фото именно вы, и попробуйте снова."
+        return False, "Ой! Похоже на фотографии не вы, но если это вы, то пожалуйста сделайте селфи как в профиле."
     except Exception as e:
         return False, f"Ошибка проверки селфи: {str(e)}"
     finally:

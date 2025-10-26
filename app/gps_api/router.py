@@ -18,6 +18,7 @@ from app.models.car_model import Car, CarAutoClass, CarStatus
 from app.models.history_model import RentalHistory, RentalStatus
 from app.models.rental_actions_model import ActionType, RentalAction
 from app.models.user_model import User, UserRole
+from app.rent.router import get_user_available_auto_classes
 from app.models.application_model import Application, ApplicationStatus
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.get_active_rental import get_active_rental_car, get_active_rental, get_active_rental_by_car_id
@@ -130,62 +131,73 @@ def get_vehicle_info(
         current_user: User = Depends(get_current_user)
 ) -> Dict[str, Any]:
     try:
-        if current_user.role == UserRole.REJECTFIRST:
-            return {"vehicles": []}
-        
         if current_user.role == UserRole.REJECTFIRSTCERT:
             return {"vehicles": []}
         
-        # Базовый фильтр: механики видят все, клиенты - только FREE и OCCUPIED
+        if current_user.role == UserRole.REJECTFIRST:
+            available_classes = get_user_available_auto_classes(current_user, db)
+            if not available_classes:
+                return {"vehicles": []}
+        
         if current_user.role == UserRole.MECHANIC:
-            # Механики видят все автомобили включая занятые
             query = db.query(Car)
         else:
-            # Обычные пользователи видят только FREE и OCCUPIED
-            # Сначала ищем активную аренду пользователя
             active_rental = db.query(RentalHistory).filter(
                 RentalHistory.user_id == current_user.id,
                 RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
             ).first()
             
             if active_rental:
-                # Если есть активная аренда, показываем только эту машину
                 query = db.query(Car).filter(Car.id == active_rental.car_id)
             else:
-                # Если нет активной аренды, показываем только FREE и OCCUPIED
                 query = db.query(Car).filter(Car.status.in_([CarStatus.FREE, CarStatus.OCCUPIED]))
 
-        # Фильтрация по классам авто для роли USER при верифицированных документах
-        # Механики видят все автомобили без ограничений по классам
         if current_user.role == UserRole.USER and bool(current_user.documents_verified):
-            allowed_classes: list[str] = []
+            available_classes = get_user_available_auto_classes(current_user, db)
+            
+            if not available_classes:
+                allowed_classes: list[str] = []
 
-            # Поле users.auto_class может прийти как массив ["A","B"] или строка вида "{A, B}" или "{""A, B, C""}"
-            if isinstance(current_user.auto_class, list):
-                allowed_classes = [str(c).strip().upper() for c in current_user.auto_class if c]
-            elif isinstance(current_user.auto_class, str):
-                raw = current_user.auto_class.strip()
-                if raw.startswith("{") and raw.endswith("}"):
-                    raw = raw[1:-1]
-                # Убираем все кавычки (включая двойные) и обрабатываем строку
-                raw = raw.replace('""', '').replace('"', '').replace("'", "")
-                allowed_classes = [part.strip().upper() for part in raw.split(",") if part.strip()]
-
-            # Преобразуем в enum значения, игнорируя неизвестные элементы
+                if isinstance(current_user.auto_class, list):
+                    allowed_classes = [str(c).strip().upper() for c in current_user.auto_class if c]
+                elif isinstance(current_user.auto_class, str):
+                    raw = current_user.auto_class.strip()
+                    if raw.startswith("{") and raw.endswith("}"):
+                        raw = raw[1:-1]
+                    raw = raw.replace('""', '').replace('"', '').replace("'", "")
+                    allowed_classes = [part.strip().upper() for part in raw.split(",") if part.strip()]
+                
+                available_classes = allowed_classes
+            
             allowed_enum: list[CarAutoClass] = []
-            for cls in allowed_classes:
+            for cls in available_classes:
                 try:
                     allowed_enum.append(CarAutoClass(cls))
                 except Exception:
-                    # Пропускаем некорректные значения
                     pass
 
             if len(allowed_enum) == 0:
                 cars = []
             else:
                 cars = query.filter(Car.auto_class.in_(allowed_enum)).all()
+        elif current_user.role == UserRole.REJECTFIRST:
+            available_classes = get_user_available_auto_classes(current_user, db)
+            
+            if available_classes:
+                allowed_enum: list[CarAutoClass] = []
+                for cls in available_classes:
+                    try:
+                        allowed_enum.append(CarAutoClass(cls))
+                    except Exception:
+                        pass
+                
+                if allowed_enum:
+                    cars = query.filter(Car.auto_class.in_(allowed_enum)).all()
+                else:
+                    cars = []
+            else:
+                cars = []
         else:
-            # Для CLIENT, MECHANIC и прочих ролей — без ограничений по классу
             cars = query.all()
 
         vehicles_data = []

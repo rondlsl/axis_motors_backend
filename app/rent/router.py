@@ -18,8 +18,9 @@ from app.models.history_model import RentalType, RentalStatus, RentalHistory, Re
 from app.models.promo_codes_model import PromoCode, UserPromoCode, UserPromoStatus
 from app.models.user_model import User, UserRole
 from app.models.application_model import Application, ApplicationStatus
-from app.models.car_model import Car, CarStatus
+from app.models.car_model import Car, CarStatus, CarAutoClass
 from app.models.contract_model import UserContractSignature, ContractFile, ContractType
+from app.models.guarantor_model import Guarantor
 from app.push.utils import send_notification_to_all_mechanics_async, send_push_to_user_by_id, send_localized_notification_to_user, send_localized_notification_to_all_mechanics
 from app.rent.exceptions import InsufficientBalanceException
 from app.wallet.utils import record_wallet_transaction
@@ -64,6 +65,22 @@ FUEL_PRICE_PER_LITER = 450
 ELECTRIC_FUEL_PRICE_PER_LITER = 200
 
 
+def get_user_available_auto_classes(user: User, db: Session) -> List[str]:
+    if user.auto_class and len(user.auto_class) > 0:
+        return user.auto_class
+    
+    if user.role == UserRole.REJECTFIRST:
+        active_guarantor = db.query(Guarantor).join(User, Guarantor.guarantor_id == User.id).filter(
+            Guarantor.client_id == user.id,
+            Guarantor.is_active == True
+        ).first()
+        
+        if active_guarantor and active_guarantor.guarantor_user.auto_class:
+            return active_guarantor.guarantor_user.auto_class
+    
+    return []
+
+
 def validate_user_can_rent(current_user: User, db: Session) -> None:
     """
     Валидация прав пользователя на аренду автомобилей.
@@ -103,10 +120,16 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
     
     # Пользователи с финансовыми проблемами не могут арендовать
     if current_user.role == UserRole.REJECTFIRST:
-        raise HTTPException(
-            status_code=403, 
-            detail="Аренда недоступна по финансовым причинам. Обратитесь к гаранту"
-        )
+        active_guarantor = db.query(Guarantor).join(User, Guarantor.guarantor_id == User.id).filter(
+            Guarantor.client_id == current_user.id,
+            Guarantor.is_active == True
+        ).first()
+        
+        if not active_guarantor or not active_guarantor.guarantor_user.auto_class:
+            raise HTTPException(
+                status_code=403, 
+                detail="Аренда недоступна по финансовым причинам. Обратитесь к гаранту"
+            )
     
     # Пользователи в процессе верификации не могут арендовать
     if current_user.role in [UserRole.PENDINGTOFIRST, UserRole.PENDINGTOSECOND]:
@@ -1145,8 +1168,8 @@ async def start_rental(
                 from app.gps_api.utils.car_data import execute_gps_sequence
                 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
                 auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-                # Универсальная последовательность: разблокировать двигатель
-                result = await execute_gps_sequence(car.gps_imei, auth_token, "start")
+                # Универсальная последовательность: разблокировать двигатель → выдать ключ
+                result = await execute_gps_sequence(car.gps_imei, auth_token, "interior")
                 if not result["success"]:
                     print(f"Ошибка GPS последовательности при старте: {result.get('error', 'Unknown error')}")
         except Exception as e:
@@ -1290,20 +1313,6 @@ async def upload_photos_before_interior(
             urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/interior/"))
         rental.photos_before = urls
         db.commit()
-        # После загрузки фото салона: разблокировать двигатель → выдать ключ
-        try:
-            car = db.query(Car).get(rental.car_id)
-            if car and car.gps_imei:
-                from app.gps_api.utils.auth_api import get_auth_token
-                from app.gps_api.utils.car_data import execute_gps_sequence
-                from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
-                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-                # Универсальная последовательность: разблокировать двигатель → выдать ключ
-                result = await execute_gps_sequence(car.gps_imei, auth_token, "interior")
-                if not result["success"]:
-                    print(f"Ошибка GPS последовательности для салона: {result.get('error', 'Unknown error')}")
-        except Exception as e:
-            print(f"Ошибка GPS команд после загрузки салона: {e}")
         return {"message": "Photos before (interior) uploaded", "photo_count": len(interior_photos)}
     except Exception:
         db.rollback()
@@ -2352,11 +2361,70 @@ async def get_available_cars_for_booking(
         RentalHistory.scheduled_end_time >= scheduled_start_time
     ).subquery()
 
-    # 2) Находим доступные автомобили
-    available_cars = db.query(Car).filter(
+    query = db.query(Car).filter(
         Car.status == CarStatus.FREE,
         ~Car.id.in_(conflicting_rentals)
-    ).all()
+    )
+    
+    if current_user.role == UserRole.USER and bool(current_user.documents_verified):
+        available_classes = get_user_available_auto_classes(current_user, db)
+        
+        if not available_classes:
+            allowed_classes: list[str] = []
+
+            if isinstance(current_user.auto_class, list):
+                allowed_classes = [str(c).strip().upper() for c in current_user.auto_class if c]
+            elif isinstance(current_user.auto_class, str):
+                raw = current_user.auto_class.strip()
+                if raw.startswith("{") and raw.endswith("}"):
+                    raw = raw[1:-1]
+                raw = raw.replace('""', '').replace('"', '').replace("'", "")
+                allowed_classes = [part.strip().upper() for part in raw.split(",") if part.strip()]
+            
+            available_classes = allowed_classes
+        
+        allowed_enum: list[CarAutoClass] = []
+        for cls in available_classes:
+            try:
+                allowed_enum.append(CarAutoClass(cls))
+            except Exception:
+                pass
+
+        if allowed_enum:
+            query = query.filter(Car.auto_class.in_(allowed_enum))
+        else:
+            return {
+                "available_cars": [],
+                "scheduled_start_time": scheduled_start_time.isoformat(),
+                "scheduled_end_time": scheduled_end_time.isoformat()
+            }
+    elif current_user.role == UserRole.REJECTFIRST:
+        available_classes = get_user_available_auto_classes(current_user, db)
+        
+        if available_classes:
+            allowed_enum: list[CarAutoClass] = []
+            for cls in available_classes:
+                try:
+                    allowed_enum.append(CarAutoClass(cls))
+                except Exception:
+                    pass
+            
+            if allowed_enum:
+                query = query.filter(Car.auto_class.in_(allowed_enum))
+            else:
+                return {
+                    "available_cars": [],
+                    "scheduled_start_time": scheduled_start_time.isoformat(),
+                    "scheduled_end_time": scheduled_end_time.isoformat()
+                }
+        else:
+            return {
+                "available_cars": [],
+                "scheduled_start_time": scheduled_start_time.isoformat(),
+                "scheduled_end_time": scheduled_end_time.isoformat()
+            }
+    
+    available_cars = query.all()
 
     result = []
     for car in available_cars:

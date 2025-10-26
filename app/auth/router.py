@@ -13,6 +13,7 @@ from app.utils.short_id import uuid_to_sid, safe_sid_to_uuid
 from app.models.contract_model import UserContractSignature, ContractFile, ContractType
 from app.models.history_model import RentalHistory, RentalStatus
 from app.models.car_model import Car
+from app.rent.router import get_user_available_auto_classes
 
 from starlette import status
 import traceback
@@ -910,10 +911,14 @@ async def _get_user_me_data(db: Session, current_user: User):
                 "first_name": guarantor_user.first_name,
                 "last_name": guarantor_user.last_name,
                 "middle_name": guarantor_user.middle_name,
-                "phone_number": guarantor_user.phone_number
+                "phone_number": guarantor_user.phone_number,
+                "auto_class": guarantor_user.auto_class or []
             })
         
         guarantors_count = len(guarantors)
+        
+        # Получаем доступные классы авто пользователя (с учетом гаранта)
+        available_auto_classes = get_user_available_auto_classes(current_user, db)
 
         first_name = current_user.first_name if isinstance(current_user.first_name, str) else None
         last_name = current_user.last_name if isinstance(current_user.last_name, str) else None
@@ -976,6 +981,7 @@ async def _get_user_me_data(db: Session, current_user: User):
             "guarantors_count": guarantors_count,
             "guarantors": guarantors,
             "auto_class": current_user.auto_class or [],
+            "available_auto_classes": available_auto_classes,
             "application": {
                 "reason": getattr(user_application, "reason", None) if user_application else None,
             },
