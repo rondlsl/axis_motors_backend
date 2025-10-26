@@ -8,6 +8,8 @@ from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole
 from app.models.support_chat_model import SupportChatStatus
 from app.services.support_service import SupportService
+from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
+from app.utils.sid_converter import convert_uuid_response_to_sid
 from app.schemas.support_schemas import (
     SupportChatCreate, SupportChatResponse, SupportMessageCreate,
     SupportMessageResponse, SupportChatWithMessages, SupportChatListResponse,
@@ -43,7 +45,7 @@ async def create_support_chat(
     """Создать новый чат поддержки"""
     try:
         chat = support_service.create_chat(chat_data)
-        return SupportChatResponse.from_orm(chat)
+        return SupportChatResponse.from_orm_with_sid(chat)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -71,7 +73,7 @@ async def get_support_chats(
     )
     
     return SupportChatListResponse(
-        chats=[SupportChatResponse.from_orm(chat) for chat in chats],
+        chats=[SupportChatResponse.from_orm_with_sid(chat) for chat in chats],
         total=total,
         page=page,
         per_page=per_page
@@ -97,7 +99,7 @@ async def get_all_support_chats(
     )
     
     return SupportChatListResponse(
-        chats=[SupportChatResponse.from_orm(chat) for chat in chats],
+        chats=[SupportChatResponse.from_orm_with_sid(chat) for chat in chats],
         total=total,
         page=page,
         per_page=per_page
@@ -121,7 +123,7 @@ async def get_new_support_chats(
     )
     
     return SupportChatListResponse(
-        chats=[SupportChatResponse.from_orm(chat) for chat in chats],
+        chats=[SupportChatResponse.from_orm_with_sid(chat) for chat in chats],
         total=total,
         page=page,
         per_page=per_page
@@ -130,13 +132,13 @@ async def get_new_support_chats(
 
 @router.get("/chats/{chat_id}", response_model=SupportChatWithMessages)
 async def get_support_chat(
-    chat_id: UUID,
+    chat_id: str,
     current_user: User = Depends(require_support_role),
     support_service: SupportService = Depends(get_support_service)
 ):
     """Получить чат с сообщениями"""
     
-    chat = support_service.get_chat_by_id(chat_id)
+    chat = support_service.get_chat_by_sid(chat_id)
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
     
@@ -146,18 +148,18 @@ async def get_support_chat(
         chat.status == SupportChatStatus.NEW):
         raise HTTPException(status_code=403, detail="Access denied")
     
-    return SupportChatWithMessages.from_orm(chat)
+    return SupportChatWithMessages.from_orm_with_sid(chat)
 
 
 @router.get("/chats/{chat_id}/messages", response_model=List[SupportMessageResponse])
 async def get_chat_messages(
-    chat_id: UUID,
+    chat_id: str,
     current_user: User = Depends(require_support_role),
     support_service: SupportService = Depends(get_support_service)
 ):
     """Получить сообщения конкретного чата"""
     
-    chat = support_service.get_chat_by_id(chat_id)
+    chat = support_service.get_chat_by_sid(chat_id)
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
     
@@ -167,19 +169,19 @@ async def get_chat_messages(
         chat.status == SupportChatStatus.NEW):
         raise HTTPException(status_code=403, detail="Access denied")
     
-    messages = support_service.get_chat_messages(chat_id)
-    return [SupportMessageResponse.from_orm(msg) for msg in messages]
+    messages = support_service.get_chat_messages(chat.id)
+    return [SupportMessageResponse.from_orm_with_sid(msg) for msg in messages]
 
 
 @router.post("/chats/{chat_id}/take")
 async def take_chat(
-    chat_id: UUID,
+    chat_id: str,
     current_user: User = Depends(require_support_role),
     support_service: SupportService = Depends(get_support_service)
 ):
     """Взять чат в работу (назначить себе)"""
     
-    success = support_service.assign_chat(chat_id, current_user.id)
+    success = support_service.assign_chat_by_sid(chat_id, uuid_to_sid(current_user.id))
     if not success:
         raise HTTPException(status_code=400, detail="Failed to take chat")
     
@@ -188,7 +190,7 @@ async def take_chat(
 
 @router.post("/chats/{chat_id}/assign")
 async def assign_chat(
-    chat_id: UUID,
+    chat_id: str,
     assign_data: SupportChatAssignRequest,
     current_user: User = Depends(require_support_role),
     support_service: SupportService = Depends(get_support_service)
@@ -197,10 +199,10 @@ async def assign_chat(
     
     # Только админы могут назначать чаты другим
     if (current_user.role == UserRole.SUPPORT and 
-        assign_data.assigned_to != current_user.id):
+        assign_data.assigned_to != uuid_to_sid(current_user.id)):
         raise HTTPException(status_code=403, detail="Can only assign to yourself")
     
-    success = support_service.assign_chat(chat_id, assign_data.assigned_to)
+    success = support_service.assign_chat_by_sid(chat_id, assign_data.assigned_to)
     if not success:
         raise HTTPException(status_code=400, detail="Failed to assign chat")
     
@@ -209,14 +211,14 @@ async def assign_chat(
 
 @router.put("/chats/{chat_id}/status")
 async def update_chat_status(
-    chat_id: UUID,
+    chat_id: str,
     status_data: SupportChatStatusUpdate,
     current_user: User = Depends(require_support_role),
     support_service: SupportService = Depends(get_support_service)
 ):
     """Обновить статус чата"""
     
-    chat = support_service.get_chat_by_id(chat_id)
+    chat = support_service.get_chat_by_sid(chat_id)
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
     
@@ -225,7 +227,7 @@ async def update_chat_status(
         chat.assigned_to != current_user.id):
         raise HTTPException(status_code=403, detail="Access denied")
     
-    success = support_service.update_chat_status(chat_id, status_data.status)
+    success = support_service.update_chat_status_by_sid(chat_id, status_data.status)
     if not success:
         raise HTTPException(status_code=400, detail="Failed to update status")
     
@@ -240,7 +242,7 @@ async def send_support_message(
 ):
     """Отправить сообщение в чат поддержки"""
     
-    chat = support_service.get_chat_by_id(message_data.chat_id)
+    chat = support_service.get_chat_by_sid(message_data.chat_id)
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
     
@@ -254,7 +256,7 @@ async def send_support_message(
         sender_user_id=current_user.id if message_data.sender_type == "support" else None
     )
     
-    return SupportMessageResponse.from_orm(message)
+    return SupportMessageResponse.from_orm_with_sid(message)
 
 
 @router.get("/stats", response_model=SupportStatsResponse)
@@ -275,7 +277,7 @@ async def get_support_staff(
     staff = support_service.get_support_staff()
     return [
         {
-            "id": user.id,
+            "id": uuid_to_sid(user.id),
             "first_name": user.first_name,
             "last_name": user.last_name,
             "phone_number": user.phone_number

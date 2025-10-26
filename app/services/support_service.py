@@ -4,6 +4,7 @@ from typing import List, Optional, Tuple
 from uuid import UUID
 from datetime import datetime, timedelta
 
+from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
 from app.models.support_chat_model import SupportChat, SupportChatStatus
 from app.models.support_message_model import SupportMessage, SupportMessageSenderType
 from app.models.user_model import User, UserRole
@@ -51,6 +52,14 @@ class SupportService:
         
         return chat
 
+    def get_chat_by_sid(self, chat_sid: str) -> Optional[SupportChat]:
+        """Получить чат по sid"""
+        try:
+            chat_uuid = safe_sid_to_uuid(chat_sid)
+            return self.db.query(SupportChat).filter(SupportChat.id == chat_uuid).first()
+        except ValueError:
+            return None
+
     def get_chat_by_id(self, chat_id: UUID) -> Optional[SupportChat]:
         """Получить чат по ID"""
         return self.db.query(SupportChat).filter(SupportChat.id == chat_id).first()
@@ -71,8 +80,11 @@ class SupportService:
     def add_message(self, message_data: SupportMessageCreate, sender_user_id: Optional[UUID] = None) -> SupportMessage:
         """Добавить сообщение в чат"""
         
+        # Конвертируем chat_id из sid в UUID
+        chat_uuid = safe_sid_to_uuid(message_data.chat_id)
+        
         message = SupportMessage(
-            chat_id=message_data.chat_id,
+            chat_id=chat_uuid,
             sender_type=message_data.sender_type,
             sender_user_id=sender_user_id,
             message_text=message_data.message_text,
@@ -82,12 +94,29 @@ class SupportService:
         self.db.add(message)
         
         # Обновляем время последнего обновления чата
-        chat = self.get_chat_by_id(message_data.chat_id)
+        chat = self.get_chat_by_id(chat_uuid)
         if chat:
             chat.updated_at = datetime.utcnow()
         
         self.db.commit()
         return message
+
+    def assign_chat_by_sid(self, chat_sid: str, support_user_sid: str) -> bool:
+        """Назначить чат сотруднику поддержки по sid"""
+        try:
+            chat_uuid = safe_sid_to_uuid(chat_sid)
+            support_user_uuid = safe_sid_to_uuid(support_user_sid)
+            return self.assign_chat(chat_uuid, support_user_uuid)
+        except ValueError:
+            return False
+
+    def update_chat_status_by_sid(self, chat_sid: str, status: str) -> bool:
+        """Обновить статус чата по sid"""
+        try:
+            chat_uuid = safe_sid_to_uuid(chat_sid)
+            return self.update_chat_status(chat_uuid, status)
+        except ValueError:
+            return False
 
     def assign_chat(self, chat_id: UUID, support_user_id: UUID) -> bool:
         """Назначить чат сотруднику поддержки"""
@@ -176,6 +205,7 @@ class SupportService:
         
         # Статистика по сотрудникам
         support_stats = self.db.query(
+            User.id.label('user_id'),
             User.first_name,
             func.count(SupportChat.id).label('chat_count')
         ).join(SupportChat, User.id == SupportChat.assigned_to).filter(
@@ -183,7 +213,7 @@ class SupportService:
         ).group_by(User.id, User.first_name).all()
         
         chats_per_support = {
-            stat.first_name: stat.chat_count 
+            uuid_to_sid(stat.user_id): stat.chat_count 
             for stat in support_stats
         }
         

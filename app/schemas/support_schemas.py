@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
 from uuid import UUID
+from app.schemas.base import SidMixin, SidField
 
 
 class SupportChatBase(BaseModel):
@@ -15,16 +16,15 @@ class SupportChatCreate(SupportChatBase):
     user_telegram_username: Optional[str] = Field(None, description="Username в Telegram")
 
 
-class SupportChatResponse(BaseModel):
-    id: UUID
-    sid: str
+class SupportChatResponse(SidMixin):
+    id: str
     user_name: str
     user_phone: str
     user_telegram_id: int
     user_telegram_username: Optional[str]
-    azv_user_id: Optional[UUID]
+    azv_user_id: Optional[str] = None
     status: str
-    assigned_to: Optional[UUID]
+    assigned_to: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     closed_at: Optional[datetime]
@@ -40,16 +40,15 @@ class SupportMessageBase(BaseModel):
 
 
 class SupportMessageCreate(SupportMessageBase):
-    chat_id: UUID = Field(..., description="ID чата поддержки")
+    chat_id: SidField = Field(..., description="ID чата поддержки")
     sender_type: str = Field(..., description="Тип отправителя: client, support, system")
 
 
-class SupportMessageResponse(BaseModel):
-    id: UUID
-    sid: str
-    chat_id: UUID
+class SupportMessageResponse(SidMixin):
+    id: str
+    chat_id: str
     sender_type: str
-    sender_user_id: Optional[UUID]
+    sender_user_id: Optional[str] = None
     message_text: str
     telegram_message_id: Optional[int]
     is_from_bot: bool
@@ -73,12 +72,10 @@ class SupportChatListResponse(BaseModel):
 
 
 class SupportChatAssignRequest(BaseModel):
-    chat_id: UUID = Field(..., description="ID чата для назначения")
-    assigned_to: UUID = Field(..., description="ID сотрудника поддержки")
+    assigned_to: SidField = Field(..., description="ID сотрудника поддержки")
 
 
 class SupportChatStatusUpdate(BaseModel):
-    chat_id: UUID = Field(..., description="ID чата")
     status: str = Field(..., description="Новый статус: new, in_progress, resolved, closed")
 
 
