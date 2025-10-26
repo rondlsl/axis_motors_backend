@@ -64,7 +64,7 @@ class SupportMessageBase(BaseModel):
 
 
 class SupportMessageCreate(SupportMessageBase):
-    chat_id: SidField = Field(
+    chat_id: str = Field(
         ..., 
         description="ID чата поддержки",
         example="NTNdkwMISUyHK00ntA4Ssw"
@@ -73,6 +73,15 @@ class SupportMessageCreate(SupportMessageBase):
         ..., 
         description="Тип отправителя: client, support, system",
         example="support"
+    )
+
+
+class SupportMessageReply(SupportMessageBase):
+    """Схема для ответов поддержки"""
+    chat_id: str = Field(
+        ..., 
+        description="ID чата поддержки",
+        example="NTNdkwMISUyHK00ntA4Ssw"
     )
 
 
@@ -104,7 +113,7 @@ class SupportChatListResponse(BaseModel):
 
 
 class SupportChatAssignRequest(BaseModel):
-    assigned_to: SidField = Field(
+    assigned_to: str = Field(
         ..., 
         description="ID сотрудника поддержки",
         example="aqgP9ItsRXKNIWYtXGyRhA"
@@ -112,7 +121,11 @@ class SupportChatAssignRequest(BaseModel):
 
 
 class SupportChatStatusUpdate(BaseModel):
-    status: str = Field(..., description="Новый статус: new, in_progress, resolved, closed")
+    status: str = Field(
+        ..., 
+        description="Новый статус: new, in_progress, resolved, closed",
+        example="in_progress"
+    )
 
 
 class SupportStatsResponse(BaseModel):

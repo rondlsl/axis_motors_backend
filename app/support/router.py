@@ -13,7 +13,8 @@ from app.utils.sid_converter import convert_uuid_response_to_sid
 from app.schemas.support_schemas import (
     SupportChatCreate, SupportChatResponse, SupportMessageCreate,
     SupportMessageResponse, SupportChatWithMessages, SupportChatListResponse,
-    SupportChatAssignRequest, SupportChatStatusUpdate, SupportStatsResponse
+    SupportChatAssignRequest, SupportChatStatusUpdate, SupportStatsResponse,
+    SupportMessageReply
 )
 
 router = APIRouter(prefix="/api/support", tags=["Support"])
@@ -250,7 +251,7 @@ async def update_chat_status(
 
 @router.post("/messages", response_model=SupportMessageResponse)
 async def send_support_message(
-    message_data: SupportMessageCreate,
+    message_data: SupportMessageReply,
     current_user: User = Depends(require_support_role),
     support_service: SupportService = Depends(get_support_service)
 ):
@@ -265,9 +266,16 @@ async def send_support_message(
         chat.assigned_to != current_user.id):
         raise HTTPException(status_code=403, detail="Access denied")
     
+    # Создаем объект SupportMessageCreate с автоматическим sender_type = "support"
+    message_create = SupportMessageCreate(
+        chat_id=message_data.chat_id,
+        sender_type="support",
+        message_text=message_data.message_text
+    )
+    
     message = support_service.add_message(
-        message_data, 
-        sender_user_id=current_user.id if message_data.sender_type == "support" else None
+        message_create, 
+        sender_user_id=current_user.id
     )
     
     return SupportMessageResponse.from_orm_with_sid(message)
