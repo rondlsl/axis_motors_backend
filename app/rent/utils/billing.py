@@ -14,7 +14,7 @@ from app.models.user_model import User, UserRole
 from app.wallet.utils import record_wallet_transaction
 from app.models.wallet_transaction_model import WalletTransactionType
 from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
-from app.core.config import TELEGRAM_BOT_TOKEN, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
+from app.core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.car_data import send_lock_engine
 
@@ -47,17 +47,23 @@ async def billing_job():
         else:  # Неожиданный формат
             print(f"Unexpected notification format: {notification}")
 
-    # 4) Fire-and-forget Telegram alerts
-    async def _send_telegram(text: str, chat_id: int):
+    # 4) Fire-and-forget Telegram alerts - ОБА БОТА
+    async def _send_telegram(text: str, chat_id: int, bot_token: str):
         async with httpx.AsyncClient() as client:
             await client.post(
-                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                f"https://api.telegram.org/bot{bot_token}/sendMessage",
                 json={"chat_id": chat_id, "text": text}
             )
 
+    # Отправка в первый бот
     for text in telegram_alerts:
         for chat_id in (965048905, 5941825713, 860991388):
-            asyncio.create_task(_send_telegram(text, chat_id))
+            asyncio.create_task(_send_telegram(text, chat_id, TELEGRAM_BOT_TOKEN))
+    
+    # Отправка во второй бот
+    for text in telegram_alerts:
+        for chat_id in (965048905, 5941825713, 860991388):
+            asyncio.create_task(_send_telegram(text, chat_id, TELEGRAM_BOT_TOKEN_2))
 
     # 5) Выполняем блокировки двигателя для просроченных (10+ минут) нулевых балансов
     try:
@@ -77,15 +83,28 @@ async def billing_job():
                             user_info += f", email: {user.email}"
                         user_info += f", user_id={user_id}"
                     note = f"🛑 Двигатель заблокирован из-за нулевого баланса. Авто: {car_name} (IMEI {imei}), {user_info}"
+                    # Отправка в первый бот
                     for chat_id in (965048905, 5941825713, 860991388):
-                        asyncio.create_task(_send_telegram(note, chat_id))
+                        asyncio.create_task(_send_telegram(note, chat_id, TELEGRAM_BOT_TOKEN))
+                    # Отправка во второй бот
+                    for chat_id in (965048905, 5941825713, 860991388):
+                        asyncio.create_task(_send_telegram(note, chat_id, TELEGRAM_BOT_TOKEN_2))
                 except Exception as e:
                     err = f"⚠️ Ошибка блокировки двигателя (IMEI {imei}): {e}"
+                    # Отправка в первый бот
                     for chat_id in (965048905, 5941825713, 860991388):
-                        asyncio.create_task(_send_telegram(err, chat_id))
+                        asyncio.create_task(_send_telegram(err, chat_id, TELEGRAM_BOT_TOKEN))
+                    # Отправка во второй бот
+                    for chat_id in (965048905, 5941825713, 860991388):
+                        asyncio.create_task(_send_telegram(err, chat_id, TELEGRAM_BOT_TOKEN_2))
     except Exception as e:
+        error_msg = f"⚠️ Ошибка при обработке блокировок двигателя: {e}"
+        # Отправка в первый бот
         for chat_id in (965048905, 5941825713, 860991388):
-            asyncio.create_task(_send_telegram(f"⚠️ Ошибка при обработке блокировок двигателя: {e}", chat_id))
+            asyncio.create_task(_send_telegram(error_msg, chat_id, TELEGRAM_BOT_TOKEN))
+        # Отправка во второй бот
+        for chat_id in (965048905, 5941825713, 860991388):
+            asyncio.create_task(_send_telegram(error_msg, chat_id, TELEGRAM_BOT_TOKEN_2))
 
     # 6) Yield back to event loop
     await asyncio.sleep(0)

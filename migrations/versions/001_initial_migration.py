@@ -39,6 +39,8 @@ def upgrade() -> None:
     create_user_promo_codes_table()
     create_support_actions_table()
     create_wallet_transactions_table()
+    create_support_chats_table()
+    create_support_messages_table()
 
 
 def create_enums():
@@ -594,6 +596,50 @@ def create_wallet_transactions_table():
     op.create_index('idx_wallet_transactions_tracking_id', 'wallet_transactions', ['tracking_id'])
 
 
+def create_support_chats_table():
+    """Create support_chats table"""
+    op.create_table('support_chats',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
+        sa.Column('user_telegram_id', sa.BigInteger(), nullable=False),
+        sa.Column('user_telegram_username', sa.String(255), nullable=True),
+        sa.Column('user_name', sa.String(255), nullable=False),
+        sa.Column('user_phone', sa.String(20), nullable=False),
+        sa.Column('azv_user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id', ondelete='SET NULL'), nullable=True),
+        sa.Column('status', sa.String(20), nullable=False, server_default='new'),
+        sa.Column('assigned_to', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id', ondelete='SET NULL'), nullable=True),
+        sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        sa.Column('closed_at', sa.DateTime(), nullable=True)
+    )
+    
+    # Create indexes for support_chats
+    op.create_index('ix_support_chats_id', 'support_chats', ['id'])
+    op.create_index('ix_support_chats_user_telegram_id', 'support_chats', ['user_telegram_id'])
+    op.create_index('ix_support_chats_user_phone', 'support_chats', ['user_phone'])
+    op.create_index('ix_support_chats_status', 'support_chats', ['status'])
+
+
+def create_support_messages_table():
+    """Create support_messages table"""
+    op.create_table('support_messages',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
+        sa.Column('chat_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('support_chats.id', ondelete='CASCADE'), nullable=False),
+        sa.Column('sender_type', sa.String(20), nullable=False),
+        sa.Column('sender_user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id', ondelete='SET NULL'), nullable=True),
+        sa.Column('message_text', sa.Text(), nullable=False),
+        sa.Column('telegram_message_id', sa.BigInteger(), nullable=True),
+        sa.Column('telegram_chat_id', sa.BigInteger(), nullable=True),
+        sa.Column('is_from_bot', sa.Boolean(), nullable=False, server_default='false'),
+        sa.Column('is_read', sa.Boolean(), nullable=False, server_default='false'),
+        sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now())
+    )
+    
+    # Create indexes for support_messages
+    op.create_index('ix_support_messages_id', 'support_messages', ['id'])
+    op.create_index('ix_support_messages_chat_id', 'support_messages', ['chat_id'])
+    op.create_index('ix_support_messages_sender_type', 'support_messages', ['sender_type'])
+
+
 def downgrade() -> None:
     # Drop all tables in reverse order
     # Drop indexes first (with existence check)
@@ -602,8 +648,31 @@ def downgrade() -> None:
             IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_wallet_transactions_tracking_id') THEN
                 DROP INDEX idx_wallet_transactions_tracking_id;
             END IF;
+            IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'ix_support_messages_sender_type') THEN
+                DROP INDEX ix_support_messages_sender_type;
+            END IF;
+            IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'ix_support_messages_chat_id') THEN
+                DROP INDEX ix_support_messages_chat_id;
+            END IF;
+            IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'ix_support_messages_id') THEN
+                DROP INDEX ix_support_messages_id;
+            END IF;
+            IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'ix_support_chats_status') THEN
+                DROP INDEX ix_support_chats_status;
+            END IF;
+            IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'ix_support_chats_user_phone') THEN
+                DROP INDEX ix_support_chats_user_phone;
+            END IF;
+            IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'ix_support_chats_user_telegram_id') THEN
+                DROP INDEX ix_support_chats_user_telegram_id;
+            END IF;
+            IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'ix_support_chats_id') THEN
+                DROP INDEX ix_support_chats_id;
+            END IF;
         END $$;
     """)
+    op.drop_table('support_messages')
+    op.drop_table('support_chats')
     op.drop_table('wallet_transactions')
     op.drop_table('support_actions')
     op.drop_table('user_promo_codes')

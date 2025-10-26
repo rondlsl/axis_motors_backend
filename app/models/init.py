@@ -7,3 +7,5 @@ from app.models.application_model import Application, ApplicationStatus
 from app.models.car_comment_model import CarComment
 from app.models.verification_code_model import VerificationCode
 from app.models.contract_model import ContractFile, ContractType, UserContractSignature
+from app.models.support_chat_model import SupportChat, SupportChatStatus
+from app.models.support_message_model import SupportMessage, SupportMessageSenderType
