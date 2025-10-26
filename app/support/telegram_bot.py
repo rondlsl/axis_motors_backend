@@ -297,7 +297,17 @@ class SupportBot:
     async def run(self):
         """Запуск бота"""
         logger.info("Starting support bot...")
-        await self.application.run_polling()
+        try:
+            await self.application.initialize()
+            await self.application.start()
+            await self.application.updater.start_polling()
+            logger.info("✅ Бот поддержки запущен и работает!")
+            
+            # Ждем бесконечно (бот работает в фоне)
+            await asyncio.Event().wait()
+        except Exception as e:
+            logger.error(f"Ошибка запуска бота: {e}")
+            raise
 
 
 # Функция для запуска бота
