@@ -55,7 +55,7 @@ async def get_support_chats(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     status: Optional[str] = Query(None),
-    assigned_to: Optional[UUID] = Query(None),
+    assigned_to: Optional[str] = Query(None),
     current_user: User = Depends(require_support_role),
     support_service: SupportService = Depends(get_support_service)
 ):
@@ -63,10 +63,17 @@ async def get_support_chats(
     
     # Если не админ, показываем только свои чаты
     if current_user.role == UserRole.SUPPORT:
-        assigned_to = current_user.id
+        assigned_to = uuid_to_sid(current_user.id)
+    
+    assigned_to_uuid = None
+    if assigned_to:
+        try:
+            assigned_to_uuid = safe_sid_to_uuid(assigned_to)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid assigned_to sid format")
     
     chats, total = support_service.get_chats_for_support(
-        support_user_id=assigned_to,
+        support_user_id=assigned_to_uuid,
         status=status,
         page=page,
         per_page=per_page
@@ -85,14 +92,21 @@ async def get_all_support_chats(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     status: Optional[str] = Query(None),
-    assigned_to: Optional[UUID] = Query(None),
+    assigned_to: Optional[str] = Query(None),
     current_user: User = Depends(require_admin_role),
     support_service: SupportService = Depends(get_support_service)
 ):
     """Получить ВСЕ чаты поддержки (только для админов)"""
     
+    assigned_to_uuid = None
+    if assigned_to:
+        try:
+            assigned_to_uuid = safe_sid_to_uuid(assigned_to)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid assigned_to sid format")
+    
     chats, total = support_service.get_chats_for_support(
-        support_user_id=assigned_to,
+        support_user_id=assigned_to_uuid,
         status=status,
         page=page,
         per_page=per_page

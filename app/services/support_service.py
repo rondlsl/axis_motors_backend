@@ -80,7 +80,6 @@ class SupportService:
     def add_message(self, message_data: SupportMessageCreate, sender_user_id: Optional[UUID] = None) -> SupportMessage:
         """Добавить сообщение в чат"""
         
-        # Конвертируем chat_id из sid в UUID
         chat_uuid = safe_sid_to_uuid(message_data.chat_id)
         
         message = SupportMessage(

@@ -6,42 +6,74 @@ from app.schemas.base import SidMixin, SidField
 
 
 class SupportChatBase(BaseModel):
-    user_name: str = Field(..., description="ФИО клиента")
-    user_phone: str = Field(..., description="Номер телефона клиента")
-    message_text: str = Field(..., description="Первое сообщение от клиента")
+    user_name: str = Field(
+        ..., 
+        description="ФИО клиента",
+        example="Иван Иванов"
+    )
+    user_phone: str = Field(
+        ..., 
+        description="Номер телефона клиента",
+        example="+77001234567"
+    )
+    message_text: str = Field(
+        ..., 
+        description="Первое сообщение от клиента",
+        example="У меня проблема с арендой автомобиля"
+    )
 
 
 class SupportChatCreate(SupportChatBase):
-    user_telegram_id: int = Field(..., description="ID пользователя в Telegram")
-    user_telegram_username: Optional[str] = Field(None, description="Username в Telegram")
+    user_telegram_id: int = Field(
+        ..., 
+        description="ID пользователя в Telegram",
+        example=860991388
+    )
+    user_telegram_username: Optional[str] = Field(
+        None, 
+        description="Username в Telegram",
+        example="ivan_user"
+    )
 
 
 class SupportChatResponse(SidMixin):
-    id: str
-    user_name: str
-    user_phone: str
-    user_telegram_id: int
-    user_telegram_username: Optional[str]
-    azv_user_id: Optional[str] = None
-    status: str
-    assigned_to: Optional[str] = None
+    id: str = Field(..., example="NTNdkwMISUyHK00ntA4Ssw")
+    user_name: str = Field(..., example="Иван Иванов")
+    user_phone: str = Field(..., example="+77001234567")
+    user_telegram_id: int = Field(..., example=860991388)
+    user_telegram_username: Optional[str] = Field(None, example="ivan_user")
+    azv_user_id: Optional[str] = Field(None, example="aqgP9ItsRXKNIWYtXGyRhA")
+    status: str = Field(..., example="new")
+    assigned_to: Optional[str] = Field(None, example="aqgP9ItsRXKNIWYtXGyRhA")
     created_at: datetime
     updated_at: datetime
     closed_at: Optional[datetime]
-    message_count: int
-    is_active: bool
+    message_count: int = Field(..., example=5)
+    is_active: bool = Field(..., example=True)
 
     class Config:
         from_attributes = True
 
 
 class SupportMessageBase(BaseModel):
-    message_text: str = Field(..., description="Текст сообщения")
+    message_text: str = Field(
+        ..., 
+        description="Текст сообщения",
+        example="Здравствуйте! Мы работаем над вашей проблемой..."
+    )
 
 
 class SupportMessageCreate(SupportMessageBase):
-    chat_id: SidField = Field(..., description="ID чата поддержки")
-    sender_type: str = Field(..., description="Тип отправителя: client, support, system")
+    chat_id: SidField = Field(
+        ..., 
+        description="ID чата поддержки",
+        example="NTNdkwMISUyHK00ntA4Ssw"
+    )
+    sender_type: str = Field(
+        ..., 
+        description="Тип отправителя: client, support, system",
+        example="support"
+    )
 
 
 class SupportMessageResponse(SidMixin):
@@ -72,7 +104,11 @@ class SupportChatListResponse(BaseModel):
 
 
 class SupportChatAssignRequest(BaseModel):
-    assigned_to: SidField = Field(..., description="ID сотрудника поддержки")
+    assigned_to: SidField = Field(
+        ..., 
+        description="ID сотрудника поддержки",
+        example="aqgP9ItsRXKNIWYtXGyRhA"
+    )
 
 
 class SupportChatStatusUpdate(BaseModel):
