@@ -15,9 +15,6 @@ logger = logging.getLogger(__name__)
 def setup_support_system(app: FastAPI, db_session_factory):
     """Настройка системы поддержки"""
     
-    # Добавляем роутер поддержки
-    app.include_router(support_router)
-    
     # Запускаем телеграм бота в фоновом режиме
     async def start_support_bot_task():
         logger.info("Starting support system...")
