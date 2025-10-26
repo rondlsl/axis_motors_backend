@@ -19,8 +19,7 @@ def setup_support_system(app: FastAPI, db_session_factory):
     app.include_router(support_router)
     
     # Запускаем телеграм бота в фоновом режиме
-    @app.on_event("startup")
-    async def startup_event():
+    async def start_support_bot_task():
         logger.info("Starting support system...")
         
         # Запускаем бота поддержки в фоновой задаче
@@ -28,11 +27,8 @@ def setup_support_system(app: FastAPI, db_session_factory):
         
         logger.info("Support system started successfully")
     
-    @app.on_event("shutdown")
-    async def shutdown_event():
-        logger.info("Shutting down support system...")
-    
-    return app
+    # Возвращаем функцию для запуска
+    return start_support_bot_task
 
 
 # Функция для тестирования уведомлений
