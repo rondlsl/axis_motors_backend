@@ -17,7 +17,7 @@ from fastapi.requests import Request
 
 from sqlalchemy.orm import Session
 from app.auth.router import Auth_router
-from app.core.config import logger
+from app.core.config import logger, TELEGRAM_BOT_TOKEN_2
 from app.dependencies.database.database import get_db
 import logging
 
@@ -176,6 +176,7 @@ def init_app(app: FastAPI):
         # Запускаем систему поддержки
         try:
             logger.info("🔧 Начинаем настройку системы поддержки...")
+            logger.info(f"🔑 TELEGRAM_BOT_TOKEN_2: {TELEGRAM_BOT_TOKEN_2[:10] if TELEGRAM_BOT_TOKEN_2 else 'None'}...")
             start_support_task = setup_support_system(app, get_db)
             logger.info("⚙️ setup_support_system выполнен")
             await start_support_task()
