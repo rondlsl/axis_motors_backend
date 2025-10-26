@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from uuid import UUID
+import logging
+import httpx
 
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
@@ -16,6 +18,8 @@ from app.schemas.support_schemas import (
     SupportChatAssignRequest, SupportChatStatusUpdate, SupportStatsResponse,
     SupportMessageReply
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/support", tags=["Support"])
 
@@ -278,7 +282,34 @@ async def send_support_message(
         sender_user_id=current_user.id
     )
     
+    # Отправляем уведомление клиенту в Telegram
+    await send_message_to_client(chat.user_telegram_id, message_data.message_text)
+    
     return SupportMessageResponse.from_orm_with_sid(message)
+
+
+async def send_message_to_client(telegram_id: int, message_text: str):
+    """Отправить сообщение клиенту в Telegram"""
+    try:
+        from app.core.config import TELEGRAM_BOT_TOKEN_2
+        
+        if not TELEGRAM_BOT_TOKEN_2:
+            logger.warning("TELEGRAM_BOT_TOKEN_2 не установлен")
+            return
+            
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN_2}/sendMessage",
+                json={
+                    "chat_id": telegram_id,
+                    "text": f"📞 Поддержка:\n\n{message_text}"
+                }
+            )
+            response.raise_for_status()
+            logger.info(f"Сообщение отправлено клиенту {telegram_id}")
+            
+    except Exception as e:
+        logger.error(f"Ошибка отправки сообщения клиенту: {e}")
 
 
 @router.get("/stats", response_model=SupportStatsResponse)
