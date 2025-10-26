@@ -303,8 +303,7 @@ class SupportBot:
                     f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN_2}/sendMessage",
                     json={
                         "chat_id": SUPPORT_GROUP_ID,
-                        "text": text,
-                        "parse_mode": "Markdown"
+                        "text": text
                     }
                 )
                 response.raise_for_status()
