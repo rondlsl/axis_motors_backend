@@ -4,7 +4,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from app.dependencies.database.database import get_db
-from app.dependencies.get_current_user import get_current_user
+from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole
 from app.models.support_chat_model import SupportChatStatus
 from app.services.support_service import SupportService
