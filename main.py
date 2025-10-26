@@ -144,8 +144,8 @@ async def check_vehicle_conditions():
 def init_app(app: FastAPI):
     @app.on_event("startup")
     async def startup_event():
-        print("🚀 Приложение запущено")
-        logger.info("🚀 Приложение запущено - STARTUP EVENT")
+        print("Приложение запущено")
+        print("Проверка")
         run_migrations()
 
         db_gen = get_db()
@@ -171,7 +171,7 @@ def init_app(app: FastAPI):
         try:
             scheduler.add_job(check_vehicle_conditions, "interval", seconds=1)
             scheduler.start()
-            logger.info("✅ Планировщик задач запущен")
+            logger.info("Планировщик задач запущен")
         except Exception as e:
             logger.error(f"Ошибка запуска планировщика задач: {e}")
         
@@ -179,19 +179,19 @@ def init_app(app: FastAPI):
         # Запускаем систему поддержки
         try:
             logger.info("🔧 Начинаем настройку системы поддержки...")
-            logger.info(f"🔑 TELEGRAM_BOT_TOKEN_2: {TELEGRAM_BOT_TOKEN_2[:10] if TELEGRAM_BOT_TOKEN_2 else 'None'}...")
+            logger.info(f"TELEGRAM_BOT_TOKEN_2: {TELEGRAM_BOT_TOKEN_2[:10] if TELEGRAM_BOT_TOKEN_2 else 'None'}...")
             start_support_task = setup_support_system(app, get_db)
-            logger.info("⚙️ setup_support_system выполнен")
+            logger.info("setup_support_system выполнен")
             await start_support_task()
-            logger.info("✅ Система поддержки запущена успешно")
+            logger.info("Система поддержки запущена успешно")
         except Exception as e:
-            logger.error(f"❌ Ошибка запуска системы поддержки: {e}")
+            logger.error(f"Ошибка запуска системы поддержки: {e}")
             import traceback
-            logger.error(f"❌ Traceback: {traceback.format_exc()}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
 
     @app.on_event("shutdown")
     async def shutdown_event():
-        print("🛑 Приложение остановлено")
+        print("Приложение остановлено")
         try:
             scheduler.shutdown()
         except Exception as e:
