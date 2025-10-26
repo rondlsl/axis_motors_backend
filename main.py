@@ -141,6 +141,32 @@ async def check_vehicle_conditions():
     await update_vehicle_data()
 
 
+def _auto_close_support_chats_sync() -> int:
+    """Синхронная функция для автоматического закрытия чатов поддержки"""
+    db_gen = get_db()
+    db = next(db_gen)
+    try:
+        from app.services.support_service import SupportService
+        support_service = SupportService(db)
+        return support_service.auto_close_resolved_chats(hours_threshold=12)
+    except Exception as e:
+        logger.error(f"Ошибка при автоматическом закрытии чатов: {e}")
+        return 0
+    finally:
+        db.close()
+
+
+async def auto_close_support_chats():
+    """Автоматически закрыть чаты поддержки в статусе resolved"""
+    try:
+        loop = asyncio.get_event_loop()
+        closed_count = await loop.run_in_executor(None, _auto_close_support_chats_sync)
+        if closed_count > 0:
+            logger.info(f"Автоматически закрыто {closed_count} чатов поддержки")
+    except Exception as e:
+        logger.error(f"Ошибка в процессе автоматического закрытия чатов: {e}")
+
+
 def init_app(app: FastAPI):
     @app.on_event("startup")
     async def startup_event():
@@ -170,6 +196,7 @@ def init_app(app: FastAPI):
 
         try:
             scheduler.add_job(check_vehicle_conditions, "interval", seconds=1)
+            scheduler.add_job(auto_close_support_chats, "interval", hours=1)  # Каждый час проверяем чаты
             scheduler.start()
             logger.info("Планировщик задач запущен")
         except Exception as e:

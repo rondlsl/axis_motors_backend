@@ -3,6 +3,7 @@ from sqlalchemy import and_, or_, desc, func
 from typing import List, Optional, Tuple
 from uuid import UUID
 from datetime import datetime, timedelta
+import logging
 
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
 from app.models.support_chat_model import SupportChat, SupportChatStatus
@@ -12,6 +13,8 @@ from app.schemas.support_schemas import (
     SupportChatCreate, SupportMessageCreate, SupportChatResponse,
     SupportMessageResponse, SupportChatWithMessages, SupportStatsResponse
 )
+
+logger = logging.getLogger(__name__)
 
 
 class SupportService:
@@ -190,6 +193,43 @@ class SupportService:
         return self.db.query(SupportMessage).filter(
             SupportMessage.chat_id == chat_id
         ).order_by(SupportMessage.created_at).all()
+
+    def mark_messages_as_read(self, chat_id: UUID, support_user_id: UUID) -> None:
+        """Пометить все сообщения чата как прочитанные"""
+        # Помечаем как прочитанные только сообщения от клиентов
+        self.db.query(SupportMessage).filter(
+            SupportMessage.chat_id == chat_id,
+            SupportMessage.sender_type == SupportMessageSenderType.CLIENT,
+            SupportMessage.is_read == False
+        ).update({"is_read": True})
+        
+        self.db.commit()
+
+    def auto_close_resolved_chats(self, hours_threshold: int = 12) -> int:
+        """Автоматически закрыть чаты в статусе resolved, если нет активности от клиента"""
+        from datetime import datetime, timedelta
+        
+        # Время порога (по умолчанию 12 часов)
+        threshold_time = datetime.utcnow() - timedelta(hours=hours_threshold)
+        
+        # Находим чаты в статусе resolved, где последнее обновление было давно
+        chats_to_close = self.db.query(SupportChat).filter(
+            SupportChat.status == SupportChatStatus.RESOLVED,
+            SupportChat.updated_at < threshold_time
+        ).all()
+        
+        closed_count = 0
+        for chat in chats_to_close:
+            chat.status = SupportChatStatus.CLOSED
+            chat.closed_at = datetime.utcnow()
+            chat.updated_at = datetime.utcnow()
+            closed_count += 1
+        
+        if closed_count > 0:
+            self.db.commit()
+            logger.info(f"Автоматически закрыто {closed_count} чатов в статусе resolved")
+        
+        return closed_count
 
     def get_support_stats(self) -> SupportStatsResponse:
         """Получить статистику поддержки"""

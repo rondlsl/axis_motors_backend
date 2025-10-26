@@ -189,6 +189,10 @@ async def get_chat_messages(
         raise HTTPException(status_code=403, detail="Access denied")
     
     messages = support_service.get_chat_messages(chat.id)
+    
+    # Помечаем все сообщения как прочитанные при просмотре
+    support_service.mark_messages_as_read(chat.id, current_user.id)
+    
     return [SupportMessageResponse.from_orm_with_sid(msg) for msg in messages]
 
 
