@@ -175,19 +175,19 @@ def init_app(app: FastAPI):
         except Exception as e:
             logger.error(f"Ошибка запуска планировщика задач: {e}")
         
-        logger.info("🔧 Переходим к системе поддержки...")
+        print("🔧 Переходим к системе поддержки...")
         # Запускаем систему поддержки
         try:
-            logger.info("🔧 Начинаем настройку системы поддержки...")
-            logger.info(f"TELEGRAM_BOT_TOKEN_2: {TELEGRAM_BOT_TOKEN_2[:10] if TELEGRAM_BOT_TOKEN_2 else 'None'}...")
+            print("🔧 Начинаем настройку системы поддержки...")
+            print(f"TELEGRAM_BOT_TOKEN_2: {TELEGRAM_BOT_TOKEN_2[:10] if TELEGRAM_BOT_TOKEN_2 else 'None'}...")
             start_support_task = setup_support_system(app, get_db)
-            logger.info("setup_support_system выполнен")
+            print("setup_support_system выполнен")
             await start_support_task()
-            logger.info("Система поддержки запущена успешно")
+            print("Система поддержки запущена успешно")
         except Exception as e:
-            logger.error(f"Ошибка запуска системы поддержки: {e}")
+            print(f"❌ Ошибка запуска системы поддержки: {e}")
             import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
+            print(f"❌ Traceback: {traceback.format_exc()}")
 
     @app.on_event("shutdown")
     async def shutdown_event():

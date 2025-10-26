@@ -30,10 +30,10 @@ class SupportBot:
         
         # Проверяем токен бота
         if not TELEGRAM_BOT_TOKEN_2:
-            logger.error("TELEGRAM_BOT_TOKEN_2 не установлен!")
+            print("TELEGRAM_BOT_TOKEN_2 не установлен!")
             raise ValueError("TELEGRAM_BOT_TOKEN_2 не установлен")
         
-        logger.info(f"🤖 Инициализируем бота с токеном: {TELEGRAM_BOT_TOKEN_2[:10]}...")
+        print(f"🤖 Инициализируем бота с токеном: {TELEGRAM_BOT_TOKEN_2[:10]}...")
         self.application = Application.builder().token(TELEGRAM_BOT_TOKEN_2).build()
         self.setup_handlers()
 
@@ -296,17 +296,17 @@ class SupportBot:
 
     async def run(self):
         """Запуск бота"""
-        logger.info("Starting support bot...")
+        print("Starting support bot...")
         try:
             await self.application.initialize()
             await self.application.start()
             await self.application.updater.start_polling()
-            logger.info("✅ Бот поддержки запущен и работает!")
+            print("✅ Бот поддержки запущен и работает!")
             
             # Ждем бесконечно (бот работает в фоне)
             await asyncio.Event().wait()
         except Exception as e:
-            logger.error(f"Ошибка запуска бота: {e}")
+            print(f"❌ Ошибка запуска бота: {e}")
             raise
 
 
@@ -314,11 +314,11 @@ class SupportBot:
 async def start_support_bot(db_session_factory):
     """Запустить бота поддержки"""
     try:
-        logger.info("Создаем экземпляр бота поддержки...")
+        print("Создаем экземпляр бота поддержки...")
         bot = SupportBot(db_session_factory)
-        logger.info("Бот создан, запускаем polling...")
+        print("Бот создан, запускаем polling...")
         await bot.run()
     except Exception as e:
-        logger.error(f"Ошибка запуска бота поддержки: {e}")
+        print(f"Ошибка запуска бота поддержки: {e}")
         import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
+        print(f"Traceback: {traceback.format_exc()}")
