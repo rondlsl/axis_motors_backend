@@ -101,14 +101,19 @@ def verify_user_upload_against_profile(user, upload_file) -> Tuple[bool, str]:
     
     try:
         # Проверка с ArcFace (строгий threshold для высокой точности)
-        is_same, details = verify_faces(selfie_tmp_path, str(resolved), threshold=0.40)
+        is_same, details = verify_faces(
+            selfie_tmp_path, 
+            str(resolved), 
+            threshold=0.40,
+            enforce_detection=False
+        )
         
         if is_same:
             return True, "ok"
         
         return False, "Ой! Похоже на фотографии не вы, но если это вы, то пожалуйста сделайте селфи как в профиле."
     except Exception as e:
-        return False, f"Ошибка проверки селфи: {str(e)}"
+        return False, "Ой! Похоже на фотографии не вы, но если это вы, то пожалуйста сделайте селфи как в профиле."
     finally:
         # Очищаем временный файл
         try:
