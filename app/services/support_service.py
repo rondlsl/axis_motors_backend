@@ -157,6 +157,12 @@ class SupportService:
         
         return chats, total
 
+    def get_chat_messages(self, chat_id: UUID) -> List[SupportMessage]:
+        """Получить все сообщения чата"""
+        return self.db.query(SupportMessage).filter(
+            SupportMessage.chat_id == chat_id
+        ).order_by(SupportMessage.created_at).all()
+
     def get_support_stats(self) -> SupportStatsResponse:
         """Получить статистику поддержки"""
         
