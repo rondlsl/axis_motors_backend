@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import traceback
 from typing import Dict, Optional
 import httpx
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -101,7 +102,7 @@ class SupportBot:
                     f"Создано: {existing_chat.created_at.strftime('%d.%m.%Y %H:%M')}\n\n"
                     "Вы можете продолжить общение, просто отправьте сообщение."
                 )
-                user_states[user_id] = {"state": BotState.IN_CHAT, "chat_id": existing_chat.id}
+                user_states[user_id] = {"state": BotState.IN_CHAT, "chat_id": existing_chat.sid}
                 return
             
             # Начинаем процесс создания нового чата
@@ -208,7 +209,7 @@ class SupportBot:
             # Отправляем уведомление в группу поддержки
             await self.send_notification_to_support_group(chat)
             
-            user_states[user_id] = {"state": BotState.IN_CHAT, "chat_id": chat.id}
+            user_states[user_id] = {"state": BotState.IN_CHAT, "chat_id": chat.sid}
             
             await update.message.reply_text(
                 f"✅ Ваше обращение создано!\n\n"
@@ -245,13 +246,15 @@ class SupportBot:
             support_service.add_message(message_data)
             
             # Отправляем уведомление в группу поддержки
-            chat = support_service.get_chat_by_id(chat_id)
-            await self.send_message_notification_to_support_group(chat, message_text)
+            chat = support_service.get_chat_by_sid(chat_id)
+            if chat:
+                await self.send_message_notification_to_support_group(chat, message_text)
             
             await update.message.reply_text("✅ Сообщение отправлено!")
             
         except Exception as e:
             logger.error(f"Error sending message: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
             await update.message.reply_text("❌ Ошибка при отправке сообщения")
         finally:
             db.close()
@@ -259,12 +262,16 @@ class SupportBot:
     async def send_notification_to_support_group(self, chat):
         """Отправить уведомление о новом чате в группу поддержки"""
         try:
+            # Get first message text safely
+            first_message = chat.messages[0].message_text if chat.messages and len(chat.messages) > 0 else "Нет сообщения"
+            message_preview = first_message[:100] if len(first_message) > 100 else first_message
+            
             notification_text = (
                 f"🔔 Новое обращение в поддержку\n\n"
                 f"👤 Клиент: {chat.user_name}\n"
                 f"📞 Телефон: {chat.user_phone}\n"
                 f"🆔 AZV ID: {chat.azv_user.sid if chat.azv_user else 'Не найден'}\n"
-                f"📝 Сообщение: {chat.messages[0].message_text[:100]}...\n\n"
+                f"📝 Сообщение: {message_preview}...\n\n"
                 f"ID чата: {chat.sid}"
             )
             
