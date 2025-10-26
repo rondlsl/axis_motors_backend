@@ -30,10 +30,8 @@ class SupportBot:
         
         # Проверяем токен бота
         if not TELEGRAM_BOT_TOKEN_2:
-            print("TELEGRAM_BOT_TOKEN_2 не установлен!")
             raise ValueError("TELEGRAM_BOT_TOKEN_2 не установлен")
         
-        print(f"Инициализируем бота с токеном: {TELEGRAM_BOT_TOKEN_2[:10]}...")
         self.application = Application.builder().token(TELEGRAM_BOT_TOKEN_2).build()
         self.setup_handlers()
 
@@ -46,6 +44,10 @@ class SupportBot:
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка команды /start"""
+        # Игнорируем команды в группах и супергруппах
+        if update.message.chat.type in ['group', 'supergroup']:
+            return
+        
         user = update.effective_user
         
         keyboard = [
@@ -73,35 +75,26 @@ class SupportBot:
 
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка нажатий на кнопки"""
-        print("Получен callback!")
         query = update.callback_query
         await query.answer()
         
         user_id = query.from_user.id
-        print(f"Callback от пользователя {user_id}, data: {query.data}")
         
         if query.data == "start_support":
-            print("Обрабатываем start_support")
             await self.start_support_process(query)
 
     async def start_support_process(self, query):
         """Начать процесс обращения в поддержку"""
-        print("Начинаем start_support_process")
         user_id = query.from_user.id
-        print(f"Пользователь ID: {user_id}")
         
         # Проверяем, есть ли активный чат
-        print("Создаем подключение к БД")
         db_gen = self.db_session_factory()
         db = next(db_gen)
         try:
-            print("Создаем SupportService")
             support_service = SupportService(db)
-            print("Ищем существующий чат")
             existing_chat = support_service.get_chat_by_telegram_id(user_id)
             
             if existing_chat:
-                print(f"Найден существующий чат: {existing_chat.id}")
                 await query.edit_message_text(
                     f"У вас уже есть активное обращение в поддержку!\n\n"
                     f"Статус: {self.get_status_text(existing_chat.status)}\n"
@@ -112,25 +105,24 @@ class SupportBot:
                 return
             
             # Начинаем процесс создания нового чата
-            print("Создаем новый чат")
             user_states[user_id] = {"state": BotState.WAITING_FOR_NAME}
             
             await query.edit_message_text(
-                "Для создания обращения в поддержку нам нужна некоторая информация.\n\n"
+                "📝 Для создания обращения в поддержку нам нужна некоторая информация.\n\n"
                 "Пожалуйста, введите ваше ФИО (Фамилия Имя Отчество):"
             )
-            print("Сообщение отправлено пользователю")
             
         except Exception as e:
-            print(f"Ошибка в start_support_process: {e}")
-            import traceback
-            print(f"Traceback: {traceback.format_exc()}")
+            logger.error(f"Ошибка в start_support_process: {e}")
         finally:
-            print("Закрываем подключение к БД")
             db.close()
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка текстовых сообщений"""
+        # Игнорируем сообщения в группах и супергруппах
+        if update.message.chat.type in ['group', 'supergroup']:
+            return
+            
         user = update.effective_user
         user_id = user.id
         message_text = update.message.text
@@ -299,9 +291,27 @@ class SupportBot:
 
     async def send_to_support_group(self, text: str):
         """Отправить сообщение в группу поддержки"""
-        # Здесь нужно добавить логику отправки в группу поддержки
-        # Пока просто логируем
-        logger.info(f"Support group notification: {text}")
+        try:
+            from app.core.config import SUPPORT_GROUP_ID
+            
+            if not SUPPORT_GROUP_ID:
+                logger.warning("SUPPORT_GROUP_ID не установлен")
+                return
+                
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN_2}/sendMessage",
+                    json={
+                        "chat_id": SUPPORT_GROUP_ID,
+                        "text": text,
+                        "parse_mode": "Markdown"
+                    }
+                )
+                response.raise_for_status()
+                logger.info(f"Уведомление отправлено в группу поддержки: {SUPPORT_GROUP_ID}")
+                
+        except Exception as e:
+            logger.error(f"Ошибка отправки в группу поддержки: {e}")
 
     def get_status_text(self, status: str) -> str:
         """Получить текстовое описание статуса"""
@@ -315,17 +325,15 @@ class SupportBot:
 
     async def run(self):
         """Запуск бота"""
-        print("Starting support bot...")
         try:
             await self.application.initialize()
             await self.application.start()
             await self.application.updater.start_polling()
-            print("Бот поддержки запущен и работает!")
             
             # Ждем бесконечно (бот работает в фоне)
             await asyncio.Event().wait()
         except Exception as e:
-            print(f"Ошибка запуска бота: {e}")
+            logger.error(f"Ошибка запуска бота: {e}")
             raise
 
 
@@ -333,11 +341,9 @@ class SupportBot:
 async def start_support_bot(db_session_factory):
     """Запустить бота поддержки"""
     try:
-        print("Создаем экземпляр бота поддержки...")
         bot = SupportBot(db_session_factory)
-        print("Бот создан, запускаем polling...")
         await bot.run()
     except Exception as e:
-        print(f"Ошибка запуска бота поддержки: {e}")
+        logger.error(f"Ошибка запуска бота поддержки: {e}")
         import traceback
-        print(f"Traceback: {traceback.format_exc()}")
+        logger.error(f"Traceback: {traceback.format_exc()}")

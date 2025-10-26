@@ -17,12 +17,8 @@ def setup_support_system(app: FastAPI, db_session_factory):
     
     # Запускаем телеграм бота в фоновом режиме
     async def start_support_bot_task():
-        print("Starting support system...")
-        
         # Запускаем бота поддержки в фоновой задаче
         asyncio.create_task(start_support_bot(db_session_factory))
-        
-        print("Support system started successfully")
     
     # Возвращаем функцию для запуска
     return start_support_bot_task

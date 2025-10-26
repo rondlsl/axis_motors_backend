@@ -134,7 +134,7 @@ def create_cars(db: Session, owner: User) -> None:
             "course": 0,
             "description": "Электромобиль в отличном состоянии.",
             "photos": get_car_photos("890AVB09"),
-            "vin": "LSGBF53E8EH123456",
+            "vin": "LFPHC7CD1S2B17968",
             "color": "Черный",
         },
     ]
