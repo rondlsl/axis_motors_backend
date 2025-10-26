@@ -20,9 +20,9 @@ class SupportService:
     def create_chat(self, chat_data: SupportChatCreate) -> SupportChat:
         """Создать новый чат поддержки"""
         
-        # Ищем пользователя AZV по номеру телефона
+        phone_for_search = chat_data.user_phone.replace("+", "")
         azv_user = self.db.query(User).filter(
-            User.phone_number == chat_data.user_phone
+            User.phone_number == phone_for_search
         ).first()
         
         # Создаем чат

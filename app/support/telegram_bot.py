@@ -259,7 +259,6 @@ class SupportBot:
     async def send_notification_to_support_group(self, chat):
         """Отправить уведомление о новом чате в группу поддержки"""
         try:
-            print(f"DEBUG: send_notification_to_support_group вызвана для чата {chat.id}")
             notification_text = (
                 f"🔔 Новое обращение в поддержку\n\n"
                 f"👤 Клиент: {chat.user_name}\n"
@@ -269,14 +268,10 @@ class SupportBot:
                 f"ID чата: {chat.sid}"
             )
             
-            print(f"DEBUG: Отправляем уведомление: {notification_text[:100]}...")
             await self.send_to_support_group(notification_text)
             
         except Exception as e:
             logger.error(f"Error sending notification: {e}")
-            print(f"ERROR: Ошибка в send_notification_to_support_group: {e}")
-            import traceback
-            print(f"ERROR: Traceback: {traceback.format_exc()}")
 
     async def send_message_notification_to_support_group(self, chat, message_text):
         """Отправить уведомление о новом сообщении в группу поддержки"""
@@ -299,16 +294,9 @@ class SupportBot:
         try:
             from app.core.config import SUPPORT_GROUP_ID
             
-            print(f"DEBUG: SUPPORT_GROUP_ID = {SUPPORT_GROUP_ID}")
-            print(f"DEBUG: TELEGRAM_BOT_TOKEN_2 = {TELEGRAM_BOT_TOKEN_2[:10] if TELEGRAM_BOT_TOKEN_2 else 'None'}...")
-            
             if not SUPPORT_GROUP_ID:
                 logger.warning("SUPPORT_GROUP_ID не установлен")
-                print("ERROR: SUPPORT_GROUP_ID не установлен")
                 return
-                
-            print(f"DEBUG: Отправляем сообщение в группу {SUPPORT_GROUP_ID}")
-            print(f"DEBUG: Текст сообщения: {text[:100]}...")
                 
             async with httpx.AsyncClient() as client:
                 response = await client.post(
@@ -319,17 +307,11 @@ class SupportBot:
                         "parse_mode": "Markdown"
                     }
                 )
-                print(f"DEBUG: Ответ от Telegram API: {response.status_code}")
-                print(f"DEBUG: Тело ответа: {response.text}")
                 response.raise_for_status()
                 logger.info(f"Уведомление отправлено в группу поддержки: {SUPPORT_GROUP_ID}")
-                print(f"SUCCESS: Уведомление отправлено в группу {SUPPORT_GROUP_ID}")
                 
         except Exception as e:
             logger.error(f"Ошибка отправки в группу поддержки: {e}")
-            print(f"ERROR: Ошибка отправки в группу поддержки: {e}")
-            import traceback
-            print(f"ERROR: Traceback: {traceback.format_exc()}")
 
     def get_status_text(self, status: str) -> str:
         """Получить текстовое описание статуса"""
