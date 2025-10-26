@@ -259,6 +259,7 @@ class SupportBot:
     async def send_notification_to_support_group(self, chat):
         """Отправить уведомление о новом чате в группу поддержки"""
         try:
+            print(f"DEBUG: send_notification_to_support_group вызвана для чата {chat.id}")
             notification_text = (
                 f"🔔 Новое обращение в поддержку\n\n"
                 f"👤 Клиент: {chat.user_name}\n"
@@ -268,10 +269,14 @@ class SupportBot:
                 f"ID чата: {chat.sid}"
             )
             
+            print(f"DEBUG: Отправляем уведомление: {notification_text[:100]}...")
             await self.send_to_support_group(notification_text)
             
         except Exception as e:
             logger.error(f"Error sending notification: {e}")
+            print(f"ERROR: Ошибка в send_notification_to_support_group: {e}")
+            import traceback
+            print(f"ERROR: Traceback: {traceback.format_exc()}")
 
     async def send_message_notification_to_support_group(self, chat, message_text):
         """Отправить уведомление о новом сообщении в группу поддержки"""
