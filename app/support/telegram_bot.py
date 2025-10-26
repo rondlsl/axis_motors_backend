@@ -33,7 +33,7 @@ class SupportBot:
             print("TELEGRAM_BOT_TOKEN_2 не установлен!")
             raise ValueError("TELEGRAM_BOT_TOKEN_2 не установлен")
         
-        print(f"🤖 Инициализируем бота с токеном: {TELEGRAM_BOT_TOKEN_2[:10]}...")
+        print(f"Инициализируем бота с токеном: {TELEGRAM_BOT_TOKEN_2[:10]}...")
         self.application = Application.builder().token(TELEGRAM_BOT_TOKEN_2).build()
         self.setup_handlers()
 
@@ -73,12 +73,15 @@ class SupportBot:
 
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка нажатий на кнопки"""
+        print("Получен callback!")
         query = update.callback_query
         await query.answer()
         
         user_id = query.from_user.id
+        print(f"Callback от пользователя {user_id}, data: {query.data}")
         
         if query.data == "start_support":
+            print("Обрабатываем start_support")
             await self.start_support_process(query)
 
     async def start_support_process(self, query):
@@ -301,12 +304,12 @@ class SupportBot:
             await self.application.initialize()
             await self.application.start()
             await self.application.updater.start_polling()
-            print("✅ Бот поддержки запущен и работает!")
+            print("Бот поддержки запущен и работает!")
             
             # Ждем бесконечно (бот работает в фоне)
             await asyncio.Event().wait()
         except Exception as e:
-            print(f"❌ Ошибка запуска бота: {e}")
+            print(f"Ошибка запуска бота: {e}")
             raise
 
 
