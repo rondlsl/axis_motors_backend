@@ -27,6 +27,13 @@ user_states: Dict[int, Dict] = {}
 class SupportBot:
     def __init__(self, db_session_factory):
         self.db_session_factory = db_session_factory
+        
+        # Проверяем токен бота
+        if not TELEGRAM_BOT_TOKEN_2:
+            logger.error("TELEGRAM_BOT_TOKEN_2 не установлен!")
+            raise ValueError("TELEGRAM_BOT_TOKEN_2 не установлен")
+        
+        logger.info(f"🤖 Инициализируем бота с токеном: {TELEGRAM_BOT_TOKEN_2[:10]}...")
         self.application = Application.builder().token(TELEGRAM_BOT_TOKEN_2).build()
         self.setup_handlers()
 
@@ -296,5 +303,12 @@ class SupportBot:
 # Функция для запуска бота
 async def start_support_bot(db_session_factory):
     """Запустить бота поддержки"""
-    bot = SupportBot(db_session_factory)
-    await bot.run()
+    try:
+        logger.info("Создаем экземпляр бота поддержки...")
+        bot = SupportBot(db_session_factory)
+        logger.info("Бот создан, запускаем polling...")
+        await bot.run()
+    except Exception as e:
+        logger.error(f"Ошибка запуска бота поддержки: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
