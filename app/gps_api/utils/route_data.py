@@ -23,7 +23,21 @@ async def get_gps_route_data(
     """
     try:
         
-        url = f"http://195.93.152.69:8666/vehicles/{device_id}/gps?start_date={start_date}&end_date={end_date}"
+        # API GlonassSoft требует диапазон дат, включая будущую дату
+        # Если end_date в прошлом/настоящем, добавляем +1 день
+        end_date_for_api = end_date
+        try:
+            end_date_obj = datetime.strptime(end_date.split('T')[0], "%Y-%m-%d")
+            today = datetime.now().date()
+            
+            if end_date_obj.date() <= today:
+                # Если end_date сегодня или в прошлом, добавляем завтрашний день
+                end_date_for_api = (end_date_obj + timedelta(days=1)).strftime("%Y-%m-%d")
+                logger.info(f"Расширяем диапазон до завтрашнего дня: {end_date_for_api}")
+        except Exception as e:
+            logger.warning(f"Ошибка обработки end_date: {e}")
+        
+        url = f"http://195.93.152.69:8666/vehicles/{device_id}/gps?start_date={start_date.split('T')[0]}&end_date={end_date_for_api}"
         headers = {"accept": "application/json"}
         
         
