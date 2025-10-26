@@ -175,12 +175,17 @@ def init_app(app: FastAPI):
         
         # Запускаем систему поддержки
         try:
+            logger.info("🔧 Начинаем настройку системы поддержки...")
             from app.dependencies.database.database import get_db
+            logger.info("📦 Импорт get_db успешен")
             start_support_task = setup_support_system(app, get_db)
+            logger.info("⚙️ setup_support_system выполнен")
             await start_support_task()
             logger.info("✅ Система поддержки запущена успешно")
         except Exception as e:
             logger.error(f"❌ Ошибка запуска системы поддержки: {e}")
+            import traceback
+            logger.error(f"❌ Traceback: {traceback.format_exc()}")
 
     @app.on_event("shutdown")
     async def shutdown_event():
