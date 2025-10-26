@@ -294,9 +294,16 @@ class SupportBot:
         try:
             from app.core.config import SUPPORT_GROUP_ID
             
+            print(f"DEBUG: SUPPORT_GROUP_ID = {SUPPORT_GROUP_ID}")
+            print(f"DEBUG: TELEGRAM_BOT_TOKEN_2 = {TELEGRAM_BOT_TOKEN_2[:10] if TELEGRAM_BOT_TOKEN_2 else 'None'}...")
+            
             if not SUPPORT_GROUP_ID:
                 logger.warning("SUPPORT_GROUP_ID не установлен")
+                print("ERROR: SUPPORT_GROUP_ID не установлен")
                 return
+                
+            print(f"DEBUG: Отправляем сообщение в группу {SUPPORT_GROUP_ID}")
+            print(f"DEBUG: Текст сообщения: {text[:100]}...")
                 
             async with httpx.AsyncClient() as client:
                 response = await client.post(
@@ -307,11 +314,17 @@ class SupportBot:
                         "parse_mode": "Markdown"
                     }
                 )
+                print(f"DEBUG: Ответ от Telegram API: {response.status_code}")
+                print(f"DEBUG: Тело ответа: {response.text}")
                 response.raise_for_status()
                 logger.info(f"Уведомление отправлено в группу поддержки: {SUPPORT_GROUP_ID}")
+                print(f"SUCCESS: Уведомление отправлено в группу {SUPPORT_GROUP_ID}")
                 
         except Exception as e:
             logger.error(f"Ошибка отправки в группу поддержки: {e}")
+            print(f"ERROR: Ошибка отправки в группу поддержки: {e}")
+            import traceback
+            print(f"ERROR: Traceback: {traceback.format_exc()}")
 
     def get_status_text(self, status: str) -> str:
         """Получить текстовое описание статуса"""
