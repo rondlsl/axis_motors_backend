@@ -92,7 +92,8 @@ class SupportBot:
         
         # Проверяем, есть ли активный чат
         print("Создаем подключение к БД")
-        db = self.db_session_factory()
+        db_gen = self.db_session_factory()
+        db = next(db_gen)
         try:
             print("Создаем SupportService")
             support_service = SupportService(db)
@@ -197,7 +198,8 @@ class SupportBot:
             return
         
         # Создаем чат поддержки
-        db = self.db_session_factory()
+        db_gen = self.db_session_factory()
+        db = next(db_gen)
         try:
             support_service = SupportService(db)
             
@@ -237,7 +239,8 @@ class SupportBot:
         user_id = update.effective_user.id
         chat_id = user_states[user_id]["chat_id"]
         
-        db = self.db_session_factory()
+        db_gen = self.db_session_factory()
+        db = next(db_gen)
         try:
             support_service = SupportService(db)
             
