@@ -145,6 +145,7 @@ def init_app(app: FastAPI):
     @app.on_event("startup")
     async def startup_event():
         print("🚀 Приложение запущено")
+        logger.info("🚀 Приложение запущено - STARTUP EVENT")
         run_migrations()
 
         db_gen = get_db()
@@ -170,9 +171,11 @@ def init_app(app: FastAPI):
         try:
             scheduler.add_job(check_vehicle_conditions, "interval", seconds=1)
             scheduler.start()
+            logger.info("✅ Планировщик задач запущен")
         except Exception as e:
             logger.error(f"Ошибка запуска планировщика задач: {e}")
         
+        logger.info("🔧 Переходим к системе поддержки...")
         # Запускаем систему поддержки
         try:
             logger.info("🔧 Начинаем настройку системы поддержки...")
