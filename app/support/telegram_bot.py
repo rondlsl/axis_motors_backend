@@ -86,17 +86,23 @@ class SupportBot:
 
     async def start_support_process(self, query):
         """Начать процесс обращения в поддержку"""
+        print("Начинаем start_support_process")
         user_id = query.from_user.id
+        print(f"Пользователь ID: {user_id}")
         
         # Проверяем, есть ли активный чат
+        print("Создаем подключение к БД")
         db = self.db_session_factory()
         try:
+            print("Создаем SupportService")
             support_service = SupportService(db)
+            print("Ищем существующий чат")
             existing_chat = support_service.get_chat_by_telegram_id(user_id)
             
             if existing_chat:
+                print(f"Найден существующий чат: {existing_chat.id}")
                 await query.edit_message_text(
-                    f"✅ У вас уже есть активное обращение в поддержку!\n\n"
+                    f"У вас уже есть активное обращение в поддержку!\n\n"
                     f"Статус: {self.get_status_text(existing_chat.status)}\n"
                     f"Создано: {existing_chat.created_at.strftime('%d.%m.%Y %H:%M')}\n\n"
                     "Вы можете продолжить общение, просто отправьте сообщение."
@@ -105,14 +111,21 @@ class SupportBot:
                 return
             
             # Начинаем процесс создания нового чата
+            print("Создаем новый чат")
             user_states[user_id] = {"state": BotState.WAITING_FOR_NAME}
             
             await query.edit_message_text(
-                "📝 Для создания обращения в поддержку нам нужна некоторая информация.\n\n"
+                "Для создания обращения в поддержку нам нужна некоторая информация.\n\n"
                 "Пожалуйста, введите ваше ФИО (Фамилия Имя Отчество):"
             )
+            print("Сообщение отправлено пользователю")
             
+        except Exception as e:
+            print(f"Ошибка в start_support_process: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
         finally:
+            print("Закрываем подключение к БД")
             db.close()
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
