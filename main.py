@@ -45,6 +45,7 @@ from app.mvd.router import MvdRouter
 from app.wallet.router import WalletRouter
 from app.contracts.router import ContractsRouter
 from app.support.router import router as SupportRouter
+from app.support import setup_support_system
 
 # === APP ===
 app = FastAPI(
@@ -171,6 +172,14 @@ def init_app(app: FastAPI):
             scheduler.start()
         except Exception as e:
             logger.error(f"Ошибка запуска планировщика задач: {e}")
+        
+        # Запускаем систему поддержки
+        try:
+            from app.dependencies.database.database import get_db
+            setup_support_system(app, get_db)
+            logger.info("✅ Система поддержки запущена успешно")
+        except Exception as e:
+            logger.error(f"❌ Ошибка запуска системы поддержки: {e}")
 
     @app.on_event("shutdown")
     async def shutdown_event():
