@@ -166,3 +166,50 @@ ID машины: {car_id}
     except Exception as e:
         print(f"SMS sending error: {e}")
         return {"message": "SMS sending failed", "error": str(e)}
+
+
+async def send_guarantor_contract_signed_sms(
+    guarantor_phone: str,
+    guarantor_full_name: str,
+    guarantor_id: str,
+    client_full_name: str,
+    client_id: str
+):
+    """Отправка SMS гаранту после подписания всех договоров"""
+    sms_text = f"""Поздравляем! Договоры подписаны. Вы {guarantor_full_name}, {guarantor_id} стали гарантом и несете ответственность за Клиента {client_full_name}, {client_id}.
+ТОО «Объединение Азаева» - AZV Motors"""
+    
+    if SMS_TOKEN == "6666":
+        print(f"TEST SMS to {guarantor_phone}: {sms_text}")
+        return {"message": "TEST SMS sent successfully"}
+    
+    try:
+        result = await send_sms_mobizon(guarantor_phone, sms_text, SMS_TOKEN)
+        return {"message": "SMS sent successfully", "result": result}
+    except Exception as e:
+        print(f"SMS sending error: {e}")
+        return {"message": "SMS sending failed", "error": str(e)}
+
+
+async def send_client_guarantor_confirmed_sms(
+    client_phone: str,
+    guarantor_full_name: str,
+    guarantor_id: str,
+    client_full_name: str,
+    client_id: str
+):
+    """Отправка SMS клиенту после подтверждения гаранта"""
+    sms_text = f"""Поздравляем! Гарант {guarantor_full_name} (ID: {guarantor_id}) подтвердил ваш запрос на гаранта и взял ответственность по вашим договорам. Ваш ID: {client_id}, {client_full_name}.
+
+ТОО «Объединение Азаева» - AZV Motors"""
+    
+    if SMS_TOKEN == "6666":
+        print(f"TEST SMS to {client_phone}: {sms_text}")
+        return {"message": "TEST SMS sent successfully"}
+    
+    try:
+        result = await send_sms_mobizon(client_phone, sms_text, SMS_TOKEN)
+        return {"message": "SMS sent successfully", "result": result}
+    except Exception as e:
+        print(f"SMS sending error: {e}")
+        return {"message": "SMS sending failed", "error": str(e)}

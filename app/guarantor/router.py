@@ -43,7 +43,7 @@ from app.guarantor.schemas import (
     ClientGuarantorRequestItemSchema,
     VerificationStatusSchema
 )
-from app.guarantor.sms_utils import send_guarantor_invitation_sms
+from app.guarantor.sms_utils import send_guarantor_invitation_sms, send_guarantor_contract_signed_sms, send_client_guarantor_confirmed_sms
 from app.push.utils import send_push_to_user_by_id
 
 
@@ -1078,6 +1078,11 @@ async def sign_contract(
         client_name_parts = [p for p in [client_user.first_name if client_user else None, client_user.last_name if client_user else None, client_user.middle_name if client_user else None] if p]
         client_full_name = " ".join(client_name_parts) or "Клиент"
 
+        # Формируем ID пользователей в формате UUID
+        guarantor_id = str(current_user.id)
+        client_id = str(client_user.id) if client_user else None
+        
+        # Push уведомления
         title_for_guarantor = "Подтверждение роли гаранта"
         body_for_guarantor = (
             f"Вы, {guarantor_full_name}, стали гарантом для пользователя {client_full_name}, {client_user.phone_number if client_user else 'неизвестно'}. "
@@ -1092,6 +1097,32 @@ async def sign_contract(
                 f"Договор успешно подписан."
             )
             await send_push_to_user_by_id(db, client_user.id, title_for_client, body_for_client)
+        
+        # SMS уведомления
+        # Отправляем SMS гаранту
+        try:
+            await send_guarantor_contract_signed_sms(
+                guarantor_phone=current_user.phone_number,
+                guarantor_full_name=guarantor_full_name,
+                guarantor_id=guarantor_id,
+                client_full_name=client_full_name,
+                client_id=client_id or "N/A"
+            )
+        except Exception as sms_e:
+            print(f"Ошибка отправки SMS гаранту: {sms_e}")
+        
+        # Отправляем SMS клиенту
+        if client_user:
+            try:
+                await send_client_guarantor_confirmed_sms(
+                    client_phone=client_user.phone_number,
+                    guarantor_full_name=guarantor_full_name,
+                    guarantor_id=guarantor_id,
+                    client_full_name=client_full_name,
+                    client_id=client_id or "N/A"
+                )
+            except Exception as sms_e:
+                print(f"Ошибка отправки SMS клиенту: {sms_e}")
     except Exception:
         pass
 
