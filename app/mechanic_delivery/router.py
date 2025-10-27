@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -632,11 +633,13 @@ async def upload_delivery_photos_before(
         raise HTTPException(404, "Нет активной доставки для загрузки фотографий")
 
     validate_photos([selfie], "selfie")
-    # Закомментировано для механиков - не требуется верификация с документом
-    # сверяем селфи механика доставки
-    # is_same, msg = verify_user_upload_against_profile(current_mechanic, selfie)
-    # if not is_same:
-    #     raise HTTPException(status_code=400, detail=msg)
+    # try:
+    #     # Сверяем селфи механика доставки с документом
+    #     is_same, msg = await run_in_threadpool(verify_user_upload_against_profile, current_mechanic, selfie)
+    #     if not is_same:
+    #         raise HTTPException(status_code=400, detail=msg)
+    # except HTTPException:
+    #     raise
     validate_photos(car_photos, "car_photos")
 
     try:
@@ -728,11 +731,13 @@ async def upload_delivery_photos_after(
         raise HTTPException(404, "Нет активной доставки для загрузки фотографий")
 
     validate_photos([selfie], "selfie")
-    # Закомментировано для механиков - не требуется верификация с документом
-    # сверяем селфи механика доставки
-    # is_same, msg = verify_user_upload_against_profile(current_mechanic, selfie)
-    # if not is_same:
-    #     raise HTTPException(status_code=400, detail=msg)
+    # try:
+    #     # Сверяем селфи механика доставки с документом
+    #     is_same, msg = await run_in_threadpool(verify_user_upload_against_profile, current_mechanic, selfie)
+    #     if not is_same:
+    #         raise HTTPException(status_code=400, detail=msg)
+    # except HTTPException:
+    #     raise
     validate_photos(interior_photos, "interior_photos")
 
     try:

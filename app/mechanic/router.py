@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, Query
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, constr, Field, conint
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -842,15 +843,17 @@ async def upload_photos_before(
     if not rental:
         raise HTTPException(status_code=404, detail="Нет активной проверки (PENDING, IN_USE или SERVICE)")
 
+    validate_photos([selfie], "selfie")
+    # try:
+    #     # Сверяем селфи механика с документом
+    #     is_same, msg = await run_in_threadpool(verify_user_upload_against_profile, current_mechanic, selfie)
+    #     if not is_same:
+    #         raise HTTPException(status_code=400, detail=msg)
+    # except HTTPException:
+    #     raise
+    validate_photos(car_photos, "car_photos")
+    
     try:
-        # сверяем селфи механика с его документом
-        validate_photos([selfie], "selfie")
-        # Закомментировано для механиков - не требуется верификация с документом
-        # is_same, msg = verify_user_upload_against_profile(current_mechanic, selfie)
-        # if not is_same:
-        #     raise HTTPException(status_code=400, detail=msg)
-        # сохраняем только selfie + car
-        validate_photos(car_photos, "car_photos")
         urls = list(rental.mechanic_photos_before or [])
         urls.append(await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/mechanic/before/selfie/"))
         for p in car_photos:
@@ -959,14 +962,17 @@ async def upload_photos_after(
         error_message = "Перед завершением осмотра:\n" + "\n".join(vehicle_status["errors"])
         raise HTTPException(status_code=400, detail=error_message)
 
+    validate_photos([selfie], "selfie")
+    # try:
+    #     # Сверяем селфи механика после осмотра с документом
+    #     is_same, msg = await run_in_threadpool(verify_user_upload_against_profile, current_mechanic, selfie)
+    #     if not is_same:
+    #         raise HTTPException(status_code=400, detail=msg)
+    # except HTTPException:
+    #     raise
+    validate_photos(interior_photos, "interior_photos")
+    
     try:
-        validate_photos([selfie], "selfie")
-        # сверяем селфи механика после осмотра
-        # Закомментировано для механиков - не требуется верификация с документом
-        # is_same, msg = verify_user_upload_against_profile(current_mechanic, selfie)
-        # if not is_same:
-        #     raise HTTPException(status_code=400, detail=msg)
-        validate_photos(interior_photos, "interior_photos")
         urls = list(rental.mechanic_photos_after or [])
         urls.append(await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/mechanic/after/selfie/"))
         for p in interior_photos:

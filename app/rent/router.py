@@ -1350,10 +1350,13 @@ async def upload_photos_after(
     validate_photos([selfie], 'selfie')
     validate_photos(interior_photos, 'interior_photos')
     
-    # Проверяем селфи на идентичность с документом
-    is_same, msg = await run_in_threadpool(verify_user_upload_against_profile, current_user, selfie)
-    if not is_same:
-        raise HTTPException(status_code=400, detail=msg)
+    try:
+        # Проверяем селфи на идентичность с документом
+        is_same, msg = await run_in_threadpool(verify_user_upload_against_profile, current_user, selfie)
+        if not is_same:
+            raise HTTPException(status_code=400, detail=msg)
+    except HTTPException:
+        raise
     
     # Получаем автомобиль
     car = db.query(Car).get(rental.car_id)
@@ -1408,9 +1411,12 @@ async def upload_photos_after(
             print(f"Ошибка GPS команд после загрузки селфи+салон: {e}")
         
         return {"message": "Photos after (selfie+interior) uploaded", "photo_count": len(interior_photos) + 1}
-    except Exception:
+    except HTTPException:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Error uploading after photos (selfie+interior)")
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Ошибка загрузки фото после аренды: {str(e)}")
 
 
 @RentRouter.post("/upload-photos-after-car")
