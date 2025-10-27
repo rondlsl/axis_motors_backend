@@ -851,6 +851,8 @@ async def upload_photos_before(
     #         raise HTTPException(status_code=400, detail=msg)
     # except HTTPException:
     #     raise
+    # except Exception as e:
+    #     raise HTTPException(status_code=400, detail="Ой! Похоже на фотографии не вы, но если это вы, то пожалуйста сделайте селфи как в профиле.")
     validate_photos(car_photos, "car_photos")
     
     try:
@@ -970,6 +972,8 @@ async def upload_photos_after(
     #         raise HTTPException(status_code=400, detail=msg)
     # except HTTPException:
     #     raise
+    # except Exception as e:
+    #     raise HTTPException(status_code=400, detail="Ой! Похоже на фотографии не вы, но если это вы, то пожалуйста сделайте селфи как в профиле.")
     validate_photos(interior_photos, "interior_photos")
     
     try:

@@ -1242,6 +1242,8 @@ async def upload_photos_before(
                 raise HTTPException(status_code=400, detail=msg)
         except HTTPException:
             raise
+        except Exception as e:
+            raise HTTPException(status_code=400, detail="Ой! Похоже на фотографии не вы, но если это вы, то пожалуйста сделайте селфи как в профиле.")
 
         # 2) Если верификация успешна — сохраняем фото
         urls = list(rental.photos_before or [])
@@ -1350,13 +1352,15 @@ async def upload_photos_after(
     validate_photos([selfie], 'selfie')
     validate_photos(interior_photos, 'interior_photos')
     
+    # Проверяем селфи на идентичность с документом
     try:
-        # Проверяем селфи на идентичность с документом
         is_same, msg = await run_in_threadpool(verify_user_upload_against_profile, current_user, selfie)
         if not is_same:
             raise HTTPException(status_code=400, detail=msg)
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="Ой! Похоже на фотографии не вы, но если это вы, то пожалуйста сделайте селфи как в профиле.")
     
     # Получаем автомобиль
     car = db.query(Car).get(rental.car_id)
