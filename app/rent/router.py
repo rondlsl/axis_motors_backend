@@ -1280,9 +1280,6 @@ async def upload_photos_before(
     except HTTPException:
         db.rollback()
         raise
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Ошибка загрузки фото до аренды: {str(e)}")
 
 
 @RentRouter.post("/upload-photos-before-interior")
@@ -1417,9 +1414,6 @@ async def upload_photos_after(
     except HTTPException:
         db.rollback()
         raise
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Ошибка загрузки фото после аренды: {str(e)}")
 
 
 @RentRouter.post("/upload-photos-after-car")
