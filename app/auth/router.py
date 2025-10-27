@@ -1033,7 +1033,8 @@ async def _get_user_me_data(db: Session, current_user: User):
             })
 
         # Проверяем активную аренду и не подписан ли основной договор аренды, приложение 7.1 или приложение 7.2
-        if current_rental and current_user.role in [UserRole.USER, UserRole.ADMIN, UserRole.MECHANIC]:
+        # Также проверяем для пользователей с гарантом (guarantors_count > 0)
+        if current_rental and (current_user.role in [UserRole.USER, UserRole.ADMIN, UserRole.MECHANIC] or guarantors_count > 0):
             rental_id = current_rental["rental_details"].get("rental_id") if "rental_details" in current_rental else None
             if rental_id:
                 # Сначала проверяем основной договор аренды
@@ -1121,7 +1122,8 @@ async def _get_user_me_data(db: Session, current_user: User):
                     })
 
         # Проверяем завершенную аренду и не подписан ли аппендикс 7.2
-        if current_user.role in [UserRole.USER, UserRole.ADMIN, UserRole.MECHANIC]:
+        # Также проверяем для пользователей с гарантом (guarantors_count > 0)
+        if current_user.role in [UserRole.USER, UserRole.ADMIN, UserRole.MECHANIC] or guarantors_count > 0:
             last_completed_rental = db.query(RentalHistory).filter(
                 RentalHistory.user_id == current_user.id,
                 RentalHistory.rental_status == RentalStatus.COMPLETED
