@@ -1236,9 +1236,12 @@ async def upload_photos_before(
 
     try:
         # 1) Сверяем селфи клиента с документом из профиля
-        is_same, msg = await run_in_threadpool(verify_user_upload_against_profile, current_user, selfie)
-        if not is_same:
-            raise HTTPException(status_code=400, detail=msg)
+        try:
+            is_same, msg = await run_in_threadpool(verify_user_upload_against_profile, current_user, selfie)
+            if not is_same:
+                raise HTTPException(status_code=400, detail=msg)
+        except HTTPException:
+            raise
 
         # 2) Если верификация успешна — сохраняем фото
         urls = list(rental.photos_before or [])
