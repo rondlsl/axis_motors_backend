@@ -567,7 +567,7 @@ async def reserve_car(
 
         # Обновляем статус машины
         car.current_renter_id = current_user.id
-        car.status = CarStatus.FREE  # Возвращаем машину в свободное состояние
+        car.status = CarStatus.OWNER  # Машина у владельца
         
         # Обновляем время последней активности пользователя
         current_user.last_activity_at = datetime.utcnow()
