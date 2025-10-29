@@ -250,9 +250,21 @@ async def update_chat_status(
         chat.assigned_to != current_user.id):
         raise HTTPException(status_code=403, detail="Access denied")
     
+    # Сохраняем старый статус для отправки уведомления
+    old_status = chat.status
+    new_status = status_data.status
+    
     success = support_service.update_chat_status_by_sid(chat_id, status_data.status)
     if not success:
         raise HTTPException(status_code=400, detail="Failed to update status")
+    
+    # Отправляем уведомление клиенту, если статус изменился на resolved или closed
+    if old_status != new_status and new_status in [SupportChatStatus.RESOLVED, SupportChatStatus.CLOSED]:
+        await send_status_change_notification_to_client(
+            chat.user_telegram_id, 
+            new_status,
+            chat.sid
+        )
     
     return {"message": "Status updated successfully"}
 
@@ -314,6 +326,51 @@ async def send_message_to_client(telegram_id: int, message_text: str):
             
     except Exception as e:
         logger.error(f"Ошибка отправки сообщения клиенту: {e}")
+
+
+async def send_status_change_notification_to_client(telegram_id: int, new_status: str, chat_id: str):
+    """Отправить уведомление клиенту об изменении статуса обращения"""
+    try:
+        from app.core.config import TELEGRAM_BOT_TOKEN_2
+        
+        if not TELEGRAM_BOT_TOKEN_2:
+            logger.warning("TELEGRAM_BOT_TOKEN_2 не установлен")
+            return
+        
+        if not telegram_id:
+            logger.warning(f"Telegram ID не найден для чата {chat_id}")
+            return
+            
+        status_messages = {
+            SupportChatStatus.RESOLVED: (
+                "✅ **Ваше обращение решено!**\n\n"
+                "Мы завершили работы по вашему обращению.\n\n"
+                "Если у вас возникнут дополнительные вопросы, просто отправьте сообщение в этом чате."
+            ),
+            SupportChatStatus.CLOSED: (
+                "🔒 **Обращение закрыто**\n\n"
+                "Ваше обращение в поддержку было закрыто.\n\n"
+                "Если вам понадобится помощь снова, создайте новое обращение через бота."
+            )
+        }
+        
+        message_text = status_messages.get(new_status)
+        if not message_text:
+            return
+            
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN_2}/sendMessage",
+                json={
+                    "chat_id": telegram_id,
+                    "text": message_text
+                }
+            )
+            response.raise_for_status()
+            logger.info(f"Уведомление о смене статуса отправлено клиенту {telegram_id}, статус: {new_status}")
+            
+    except Exception as e:
+        logger.error(f"Ошибка отправки уведомления о смене статуса клиенту: {e}")
 
 
 @router.get("/stats", response_model=SupportStatsResponse)

@@ -4,6 +4,9 @@ from typing import List, Optional, Tuple
 from uuid import UUID
 from datetime import datetime, timedelta
 import logging
+import httpx
+
+from app.core.config import TELEGRAM_BOT_TOKEN_2
 
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
 from app.models.support_chat_model import SupportChat, SupportChatStatus
@@ -228,6 +231,31 @@ class SupportService:
         if closed_count > 0:
             self.db.commit()
             logger.info(f"Автоматически закрыто {closed_count} чатов в статусе resolved")
+            # Отправляем уведомления клиентам об авто-закрытии
+            try:
+                if TELEGRAM_BOT_TOKEN_2:
+                    message_text = (
+                        "🔒 **Обращение закрыто**\n\n"
+                        "Ваше обращение в поддержку было закрыто.\n\n"
+                        "Если вам понадобится помощь снова, создайте новое обращение через бота."
+                    )
+                    with httpx.Client(timeout=5.0) as client:
+                        for chat in chats_to_close:
+                            if chat.user_telegram_id:
+                                try:
+                                    client.post(
+                                        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN_2}/sendMessage",
+                                        json={
+                                            "chat_id": chat.user_telegram_id,
+                                            "text": message_text
+                                        }
+                                    )
+                                except Exception as send_err:
+                                    logger.error(f"Не удалось отправить уведомление об авто-закрытии клиенту {chat.user_telegram_id}: {send_err}")
+                else:
+                    logger.warning("TELEGRAM_BOT_TOKEN_2 не установлен — уведомления об авто-закрытии не отправлены")
+            except Exception as e:
+                logger.error(f"Ошибка при отправке уведомлений об авто-закрытии: {e}")
         
         return closed_count
 
