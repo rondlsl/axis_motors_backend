@@ -799,6 +799,19 @@ def get_rented_cars(
     return [RentedCar(name=name, plate_number=plate) for name, plate in rows]
 
 
+@Vehicle_Router.get("/occupied", summary="Список машин в статусе OCCUPIED")
+def get_occupied_cars(
+    key: str = Query(..., description="Секретный ключ доступа"),
+    db: Session = Depends(get_db)
+):
+    # 1) Проверяем ключ
+    if key != RENTED_CARS_ENDPOINT_KEY:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access key")
+    # 2) Берём только OCCUPIED
+    rows = db.query(Car.plate_number).filter(Car.status == CarStatus.OCCUPIED).all()
+    return [{"plate_number": plate} for (plate,) in rows]
+
+
 @Vehicle_Router.get("/telemetry/{car_id}", response_model=VehicleTelemetryResponse)
 async def get_vehicle_telemetry(
     car_id: str,
