@@ -1,6 +1,48 @@
-from typing import Optional
+from typing import Optional, List
+import os
+import re
 from app.models.car_model import Car
 from app.admin.cars.schemas import CarDetailSchema
+
+
+def sort_car_photos(photos: List[str]) -> List[str]:
+    """
+    Сортирует фотографии автомобиля в порядке: front, rear, interior
+    Порядок: front_1, front_2, ..., rear_1, rear_2, ..., interior_1, interior_2, ...
+    """
+    if not photos:
+        return []
+    
+    def get_photo_priority(photo_path: str) -> tuple:
+        """Возвращает приоритет для сортировки: (тип_приоритет, номер)"""
+        filename = os.path.basename(photo_path).lower()
+        
+        # Определяем тип фото
+        if filename.startswith('front'):
+            type_priority = 1  # front - первый приоритет
+        elif filename.startswith('rear'):
+            type_priority = 2  # rear - второй приоритет
+        elif filename.startswith('interior'):
+            type_priority = 3  # interior - третий приоритет
+        else:
+            type_priority = 4  # остальные фото - последними
+        
+        # Извлекаем номер из имени файла (например, front_1.jpg -> 1)
+        try:
+            # Ищем паттерн _число перед расширением
+            match = re.search(r'_(\d+)\.', filename)
+            if match:
+                number = int(match.group(1))
+            else:
+                number = 0
+        except:
+            number = 0
+        
+        return (type_priority, number)
+    
+    # Сортируем фотографии
+    sorted_photos = sorted(photos, key=get_photo_priority)
+    return sorted_photos
 
 
 def status_display(status: Optional[str]) -> str:
@@ -37,7 +79,7 @@ def car_to_detail_schema(car: Car) -> CarDetailSchema:
         transmission_type_display=car.transmission_type.value if car.transmission_type else None,
         status=car.status or "FREE",
         status_display=status_display(car.status),
-        photos=car.photos or [],
+        photos=sort_car_photos(car.photos or []),
         description=car.description,
         latitude=car.latitude,
         longitude=car.longitude,

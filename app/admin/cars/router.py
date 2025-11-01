@@ -23,7 +23,7 @@ from app.admin.cars.schemas import (
     CarListResponseSchema, CarMapResponseSchema, CarStatisticsSchema,
     CarListItemSchema, CarMapItemSchema
 )
-from app.admin.cars.utils import car_to_detail_schema, status_display, _get_drive_type_display
+from app.admin.cars.utils import car_to_detail_schema, status_display, _get_drive_type_display, sort_car_photos
 from app.gps_api.utils.route_data import get_gps_route_data
 from app.models.support_action_model import SupportAction
 from app.utils.plate_normalizer import normalize_plate_number
@@ -103,7 +103,7 @@ async def get_car_details(
         transmission_type_display=car.transmission_type.value if car.transmission_type else None,
         status=car.status or CarStatus.FREE,
         status_display=status_display(car.status),
-        photos=car.photos or [],
+        photos=sort_car_photos(car.photos or []),
         description=car.description,
         latitude=car.latitude,
         longitude=car.longitude,
@@ -873,7 +873,7 @@ async def get_cars_map(
             longitude=car.longitude,
             fuel_level=car.fuel_level,
             course=car.course,
-            photos=car.photos or [],
+            photos=sort_car_photos(car.photos or []),
             current_renter=renter_info,
             vin=car.vin,
             color=car.color,
@@ -952,7 +952,7 @@ async def get_cars_list(
             year=car.year,
             owner_name=owner_name,
             current_renter_name=current_renter_name,
-            photos=car.photos or [],
+            photos=sort_car_photos(car.photos or []),
             vin=car.vin,
             color=car.color,
         ))
