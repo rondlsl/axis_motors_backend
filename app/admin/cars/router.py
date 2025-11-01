@@ -1048,8 +1048,27 @@ async def upload_car_photos(
     os.makedirs(base_dir, exist_ok=True)
 
     for f in photos:
-        path = await save_file(f, user_id=car.id, UPLOAD_DIR=base_dir)
-        normalized = path.replace("\\", "/")
+        # Получаем оригинальное имя файла
+        original_filename = f.filename or "photo.jpg"
+        # Обрабатываем имя файла для предотвращения конфликтов
+        filename = original_filename
+        file_path = os.path.join(base_dir, filename)
+        
+        # Если файл уже существует, добавляем номер к имени
+        counter = 1
+        while os.path.exists(file_path):
+            name, ext = os.path.splitext(original_filename)
+            filename = f"{name}_{counter}{ext}"
+            file_path = os.path.join(base_dir, filename)
+            counter += 1
+        
+        # Сохраняем файл
+        with open(file_path, "wb") as buffer:
+            content = await f.read()
+            buffer.write(content)
+        
+        # Нормализуем путь для сохранения в БД
+        normalized = file_path.replace("\\", "/")
         if not normalized.startswith("/"):
             normalized = "/" + normalized.lstrip("/")
         saved_paths.append(normalized)
@@ -1065,6 +1084,60 @@ async def upload_car_photos(
         "added": saved_paths,
         "total_photos": len(car.photos or [])
     }
+
+
+@cars_router.delete("/{car_id}/photos", summary="Удалить все фотографии автомобиля")
+async def delete_car_photos(
+    car_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Удалить все фотографии автомобиля из базы данных и с файловой системы"""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+
+    car = get_car_by_id(db, car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+
+    try:
+        # Путь к директории с фотографиями автомобиля
+        photos_dir = os.path.join("uploads", "cars", str(car.id))
+        
+        deleted_files = []
+        
+        # Удаляем все файлы из директории
+        if os.path.exists(photos_dir):
+            for filename in os.listdir(photos_dir):
+                file_path = os.path.join(photos_dir, filename)
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+                    deleted_files.append(filename)
+            
+            # Удаляем саму директорию, если она пустая
+            try:
+                if not os.listdir(photos_dir):
+                    os.rmdir(photos_dir)
+            except OSError:
+                # Если директория не пустая или есть проблемы с удалением, продолжаем
+                pass
+        
+        # Очищаем поле photos в базе данных
+        deleted_count = len(car.photos or [])
+        car.photos = []
+        db.commit()
+        db.refresh(car)
+
+        return {
+            "message": "Все фотографии автомобиля успешно удалены",
+            "car_id": uuid_to_sid(car.id),
+            "deleted_count": deleted_count,
+            "deleted_files": deleted_files
+        }
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Ошибка удаления фотографий: {e}")
 
 
 @cars_router.put("/{car_id}/status")
