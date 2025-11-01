@@ -21,9 +21,24 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from app.core.config import DATABASE_URL
 from app.models.car_model import Car
-from app.models.user_model import User
-from app.models.history_model import RentalHistory
-from app.models.car_comment_model import CarComment  
+# Импортируем все модели для инициализации relationships
+from app.models import (
+    user_model,
+    car_model,
+    history_model,
+    notification_model,
+    promo_codes_model,
+    rental_actions_model,
+    guarantor_model,
+    car_comment_model,
+    application_model,
+    verification_code_model,
+    contract_model,
+    support_chat_model,
+    support_message_model,
+    wallet_transaction_model,
+    support_action_model
+)
 from app.utils.plate_normalizer import normalize_plate_number
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
