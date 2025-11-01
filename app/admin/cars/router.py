@@ -13,6 +13,9 @@ from app.models.user_model import User, UserRole
 from app.models.car_model import Car, CarStatus, CarBodyType, TransmissionType
 from app.models.car_comment_model import CarComment
 from app.models.history_model import RentalHistory, RentalStatus, RentalReview
+from app.models.rental_actions_model import RentalAction
+from app.models.contract_model import UserContractSignature
+from app.models.wallet_transaction_model import WalletTransaction
 from app.admin.cars.schemas import (
     CarDetailSchema, CarEditSchema, CarCommentSchema, 
     CarCommentCreateSchema, CarCommentUpdateSchema,
@@ -1146,6 +1149,95 @@ async def delete_car_photos(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Ошибка удаления фотографий: {e}")
+
+
+@cars_router.delete("/{car_id}/rentals", summary="Удалить все поездки автомобиля")
+async def delete_car_rentals(
+    car_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Удалить все поездки автомобиля из базы данных (включая связанные данные)"""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+
+    car = get_car_by_id(db, car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+
+    try:
+        # Получаем все поездки для этого автомобиля
+        rentals = db.query(RentalHistory).filter(RentalHistory.car_id == car.id).all()
+        
+        if not rentals:
+            return {
+                "message": "Поездки не найдены",
+                "car_id": uuid_to_sid(car.id),
+                "deleted_count": 0
+            }
+
+        deleted_rentals_count = len(rentals)
+        deleted_actions_count = 0
+        deleted_signatures_count = 0
+        deleted_transactions_count = 0
+        deleted_reviews_count = 0
+
+        # Для каждой поездки удаляем связанные данные в правильном порядке
+        for rental in rentals:
+            rental_uuid = rental.id
+
+            # 1. Удаляем wallet_transactions (related_rental_id)
+            transactions = db.query(WalletTransaction).filter(
+                WalletTransaction.related_rental_id == rental_uuid
+            ).all()
+            for transaction in transactions:
+                db.delete(transaction)
+                deleted_transactions_count += 1
+
+            # 2. Удаляем user_contract_signatures (rental_id)
+            signatures = db.query(UserContractSignature).filter(
+                UserContractSignature.rental_id == rental_uuid
+            ).all()
+            for signature in signatures:
+                db.delete(signature)
+                deleted_signatures_count += 1
+
+            # 3. Удаляем rental_actions (rental_id)
+            actions = db.query(RentalAction).filter(
+                RentalAction.rental_id == rental_uuid
+            ).all()
+            for action in actions:
+                db.delete(action)
+                deleted_actions_count += 1
+
+            # 4. Удаляем rental_reviews (rental_id через relationship)
+            review = db.query(RentalReview).filter(
+                RentalReview.rental_id == rental_uuid
+            ).first()
+            if review:
+                db.delete(review)
+                deleted_reviews_count += 1
+
+        # 5. Удаляем rental_history
+        for rental in rentals:
+            db.delete(rental)
+
+        db.commit()
+
+        return {
+            "message": "Все поездки автомобиля успешно удалены",
+            "car_id": uuid_to_sid(car.id),
+            "car_name": car.name,
+            "deleted_rentals": deleted_rentals_count,
+            "deleted_wallet_transactions": deleted_transactions_count,
+            "deleted_contract_signatures": deleted_signatures_count,
+            "deleted_rental_actions": deleted_actions_count,
+            "deleted_rental_reviews": deleted_reviews_count
+        }
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Ошибка удаления поездок: {e}")
 
 
 @cars_router.put("/{car_id}/status")
