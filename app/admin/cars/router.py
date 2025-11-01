@@ -23,6 +23,7 @@ from app.admin.cars.schemas import (
 from app.admin.cars.utils import car_to_detail_schema, status_display, _get_drive_type_display
 from app.gps_api.utils.route_data import get_gps_route_data
 from app.models.support_action_model import SupportAction
+from app.utils.plate_normalizer import normalize_plate_number
 
 cars_router = APIRouter(tags=["Admin Cars"])
 
@@ -1044,7 +1045,9 @@ async def upload_car_photos(
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
     saved_paths: List[str] = []
-    base_dir = os.path.join("uploads", "cars", str(car.id))
+    # Используем plate_number для создания директории (как в файловой системе)
+    normalized_plate = normalize_plate_number(car.plate_number) if car.plate_number else str(car.id)
+    base_dir = os.path.join("uploads", "cars", normalized_plate)
     os.makedirs(base_dir, exist_ok=True)
 
     for f in photos:
@@ -1101,8 +1104,9 @@ async def delete_car_photos(
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
     try:
-        # Путь к директории с фотографиями автомобиля
-        photos_dir = os.path.join("uploads", "cars", str(car.id))
+        # Путь к директории с фотографиями автомобиля (используем plate_number)
+        normalized_plate = normalize_plate_number(car.plate_number) if car.plate_number else str(car.id)
+        photos_dir = os.path.join("uploads", "cars", normalized_plate)
         
         deleted_files = []
         
@@ -1121,6 +1125,18 @@ async def delete_car_photos(
             except OSError:
                 # Если директория не пустая или есть проблемы с удалением, продолжаем
                 pass
+        
+        # Также удаляем файлы, на которые есть ссылки в car.photos (на случай если пути отличаются)
+        if car.photos:
+            for photo_path in car.photos:
+                # Убираем ведущий слеш если есть
+                photo_path_clean = photo_path.lstrip("/").lstrip("\\")
+                if os.path.exists(photo_path_clean):
+                    try:
+                        os.remove(photo_path_clean)
+                        deleted_files.append(os.path.basename(photo_path_clean))
+                    except OSError:
+                        pass
         
         # Очищаем поле photos в базе данных
         deleted_count = len(car.photos or [])
