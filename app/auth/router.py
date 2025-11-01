@@ -177,8 +177,14 @@ async def send_sms_mobizon(recipient: str, sms_text: str, api_key: str):
 async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
     """
     Отправка смс по номеру телефона:
-    - Если активного аккаунта по номеру не существует, создаётся новый (обязательно указать first_name и last_name).
     - Если имеется активный аккаунт, для него обновляется sms-код (только phone_number).
+    - Если активного аккаунта нет, но есть неактивный (удаленный), он автоматически восстанавливается (только phone_number).
+    - Если вообще нет пользователя с таким номером, создаётся новый (обязательно указать first_name и last_name).
+    
+    Для существующих или восстановленных пользователей:
+    {
+        "phone_number": "77771234567"
+    }
     
     Для новых пользователей:
     {
@@ -186,11 +192,6 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
         "first_name": "Иван",
         "last_name": "Иванов",
         "middle_name": "Петрович"  // опционально
-    }
-    
-    Для существующих пользователей:
-    {
-        "phone_number": "77771234567"
     }
     """
     totp = pyotp.TOTP(
@@ -222,37 +223,56 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.phone_number == phone_number, User.is_active == True).first()
 
     if not user:
-        # Нет активного — создаём новый аккаунт
-        if not request.first_name or not request.last_name:
-            raise HTTPException(
-                status_code=400, 
-                detail="Для новых пользователей обязательно указать имя и фамилию"
+        # Нет активного — проверяем, есть ли неактивный (удаленный) пользователь
+        inactive_user = db.query(User).filter(
+            User.phone_number == phone_number, 
+            User.is_active == False
+        ).first()
+        
+        if inactive_user:
+            # Восстанавливаем удаленный аккаунт
+            # Проверяем, что не переданы лишние поля (имя/фамилия уже есть в профиле)
+            if request.first_name or request.last_name or request.middle_name:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Пользователь с таким номером телефона уже существует. Укажите только номер телефона."
+                )
+            inactive_user.is_active = True
+            inactive_user.last_sms_code = sms_code
+            inactive_user.sms_code_valid_until = current_time + timedelta(hours=1)
+            user = inactive_user
+        else:
+            # Вообще нет пользователя — создаём новый аккаунт
+            if not request.first_name or not request.last_name:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Для новых пользователей обязательно указать имя и фамилию"
+                )
+            
+            user = User(
+                phone_number=phone_number,
+                first_name=request.first_name,
+                last_name=request.last_name,
+                middle_name=request.middle_name,
+                role=UserRole.CLIENT,  # Новым пользователям даём роль CLIENT
+                last_sms_code=sms_code,
+                sms_code_valid_until=current_time + timedelta(hours=1),
+                is_active=True  # Новый аккаунт активен
             )
-        
-        user = User(
-            phone_number=phone_number,
-            first_name=request.first_name,
-            last_name=request.last_name,
-            middle_name=request.middle_name,
-            role=UserRole.CLIENT,  # Новым пользователям даём роль CLIENT
-            last_sms_code=sms_code,
-            sms_code_valid_until=current_time + timedelta(hours=1),
-            is_active=True  # Новый аккаунт активен
-        )
-        db.add(user)
-        db.flush()  # Получаем ID пользователя
-        
-        # Генерируем цифровую подпись для нового пользователя
-        digital_signature = generate_digital_signature(
-            user_id=str(user.id),
-            phone_number=phone_number,
-            first_name=request.first_name,
-            last_name=request.last_name,
-            middle_name=request.middle_name
-        )
-        user.digital_signature = digital_signature
+            db.add(user)
+            db.flush()  # Получаем ID пользователя
+            
+            # Генерируем цифровую подпись для нового пользователя
+            digital_signature = generate_digital_signature(
+                user_id=str(user.id),
+                phone_number=phone_number,
+                first_name=request.first_name,
+                last_name=request.last_name,
+                middle_name=request.middle_name
+            )
+            user.digital_signature = digital_signature
     else:
-        # Существующий пользователь - проверяем, что не переданы лишние поля
+        # Существующий активный пользователь - проверяем, что не переданы лишние поля
         if request.first_name or request.last_name or request.middle_name:
             raise HTTPException(
                 status_code=400,
