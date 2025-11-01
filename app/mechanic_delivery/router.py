@@ -25,6 +25,7 @@ from app.push.utils import send_push_to_user_by_id, send_localized_notification_
 from app.wallet.utils import record_wallet_transaction
 from app.models.wallet_transaction_model import WalletTransactionType
 from app.guarantor.sms_utils import send_rental_start_sms, send_rental_complete_sms
+from app.admin.cars.utils import sort_car_photos
 
 class DeliveryReviewInput(BaseModel):
     """Схема для отзыва механика доставки"""
@@ -78,7 +79,7 @@ def get_delivery_vehicles(
             "body_type": car.body_type,
             "auto_class": car.auto_class,
             "year": car.year,
-            "photos": car.photos,
+            "photos": sort_car_photos(car.photos or []),
             "status": car.status,
             "vin": car.vin,
             "color": car.color,
@@ -481,7 +482,7 @@ def current_delivery(
         "drive_type": car.drive_type,
         "body_type": car.body_type,
         "auto_class": car.auto_class,
-        "photos": car.photos,
+        "photos": sort_car_photos(car.photos or []),
         "year": car.year,
         "delivery_coordinates": {
             "latitude": rental.delivery_latitude,

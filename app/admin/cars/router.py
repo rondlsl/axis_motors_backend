@@ -169,7 +169,7 @@ async def get_all_cars_for_admin(
             "lng": car.longitude or 0.0,
             "fuel": car.fuel_level or 0,
             "plate": car.plate_number,
-            "photos": car.photos or [],
+            "photos": sort_car_photos(car.photos or []),
             "course": car.course or 0,
             "user": current_renter_details,
             "vin": car.vin,

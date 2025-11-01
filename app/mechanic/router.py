@@ -21,6 +21,7 @@ from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.car_data import auto_lock_vehicle_after_rental
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.guarantor.sms_utils import send_rental_start_sms, send_rental_complete_sms
+from app.admin.cars.utils import sort_car_photos
 
 MechanicRouter = APIRouter(tags=["Mechanic"], prefix="/mechanic")
 
@@ -104,7 +105,7 @@ def get_all_vehicles_plain(
                 "transmission_type": car.transmission_type,
                 "body_type": car.body_type,
                 "auto_class": car.auto_class,
-                "photos": car.photos,
+                "photos": sort_car_photos(car.photos or []),
                 "description": car.description,
                 "owner_id": uuid_to_sid(car.owner_id),
                 "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
@@ -329,7 +330,7 @@ def get_pending_vehicles(
                 "transmission_type": car.transmission_type,
                 "body_type": car.body_type,
                 "auto_class": car.auto_class,
-                "photos": car.photos,
+                "photos": sort_car_photos(car.photos or []),
                 "owner_id": uuid_to_sid(car.owner_id),
                 "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
                 "status": car.status,
@@ -382,7 +383,7 @@ def get_in_use_vehicles(
                 "transmission_type": car.transmission_type,
                 "body_type": car.body_type,
                 "auto_class": car.auto_class,
-                "photos": car.photos,
+                "photos": sort_car_photos(car.photos or []),
                 "owner_id": uuid_to_sid(car.owner_id),
                 "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
                 "status": car.status,
@@ -513,7 +514,7 @@ def get_service_vehicles(
                 "transmission_type": car.transmission_type,
                 "body_type": car.body_type,
                 "auto_class": car.auto_class,
-                "photos": car.photos,
+                "photos": sort_car_photos(car.photos or []),
                 "owner_id": uuid_to_sid(car.owner_id),
                 "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
                 "status": car.status,
@@ -571,7 +572,7 @@ def search_vehicles(
                 "transmission_type": car.transmission_type,
                 "body_type": car.body_type,
                 "auto_class": car.auto_class,
-                "photos": car.photos,
+                "photos": sort_car_photos(car.photos or []),
                 "owner_id": uuid_to_sid(car.owner_id),
                 "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
                 "status": car.status,

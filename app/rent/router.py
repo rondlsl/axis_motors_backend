@@ -32,6 +32,7 @@ from app.gps_api.utils.car_data import auto_lock_vehicle_after_rental
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.guarantor.sms_utils import send_rental_start_sms, send_rental_complete_sms
 from app.owner.schemas import RouteData, RouteMapData
+from app.admin.cars.utils import sort_car_photos
 from app.rent.schemas import (
     AdvanceBookingRequest, 
     BookingResponse, 
@@ -2278,7 +2279,7 @@ async def get_my_bookings(
             "delivery_fee": rental.delivery_fee,
             "reservation_time": rental.reservation_time,
             "is_advance_booking": rental.is_advance_booking == "true",
-            "car_photos": car.photos,
+            "car_photos": sort_car_photos(car.photos or []),
             "car_vin": car.vin,
             "car_color": car.color
         }
@@ -2445,7 +2446,7 @@ async def get_available_cars_for_booking(
             "auto_class": car.auto_class,
             "body_type": car.body_type,
             "transmission_type": car.transmission_type,
-            "photos": car.photos,
+            "photos": sort_car_photos(car.photos or []),
             "description": car.description,
             "vin": car.vin,
             "color": car.color

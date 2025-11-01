@@ -27,6 +27,7 @@ from app.rent.utils.calculate_price import get_open_price
 from app.gps_api.schemas_telemetry import VehicleTelemetryResponse
 from app.gps_api.utils.glonassoft_client import glonassoft_client
 from app.gps_api.utils.telemetry_processor import process_glonassoft_data
+from app.admin.cars.utils import sort_car_photos
 
 Vehicle_Router = APIRouter(prefix="/vehicles", tags=["Vehicles"])
 
@@ -269,7 +270,7 @@ def get_vehicle_info(
                 "transmission_type": car.transmission_type,
                 "body_type": car.body_type,
                 "auto_class": car.auto_class,
-                "photos": car.photos,
+                "photos": sort_car_photos(car.photos or []),
                 "owner_id": uuid_to_sid(car.owner_id),
                 "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
                 "status": car.status,
@@ -409,7 +410,7 @@ def search_vehicles(
                 "transmission_type": car.transmission_type,
                 "body_type": car.body_type,
                 "auto_class": car.auto_class,
-                "photos": car.photos,
+                "photos": sort_car_photos(car.photos or []),
                 "owner_id": uuid_to_sid(car.owner_id),
                 "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
                 "status": car.status,
@@ -536,7 +537,7 @@ def get_frequently_used_vehicles(
                     "transmission_type": car.transmission_type,
                     "body_type": car.body_type,
                     "auto_class": car.auto_class,
-                    "photos": car.photos,
+                    "photos": sort_car_photos(car.photos or []),
                     "owner_id": uuid_to_sid(car.owner_id),
                     "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
                     "status": car.status,
@@ -578,7 +579,7 @@ def get_frequently_used_vehicles(
                         "transmission_type": car.transmission_type,
                         "body_type": car.body_type,
                         "auto_class": car.auto_class,
-                        "photos": car.photos,
+                        "photos": sort_car_photos(car.photos or []),
                         "owner_id": uuid_to_sid(car.owner_id),
                         "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
                         "status": car.status.value,

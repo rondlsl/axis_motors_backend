@@ -21,6 +21,7 @@ import logging
 
 from app.owner.utils import _clip_overlap_seconds, calculate_total_unavailable_seconds, calculate_month_availability_minutes, ALMATY_TZ
 from app.rent.utils.calculate_price import get_open_price
+from app.admin.cars.utils import sort_car_photos
 
 # Настройка логгера
 logger = logging.getLogger(__name__)
@@ -307,7 +308,7 @@ async def get_owner_cars_with_availability_timer(
             "body_type": car.body_type,
             "auto_class": car.auto_class,
             "year": car.year,
-            "photos": car.photos,
+            "photos": sort_car_photos(car.photos or []),
             "status": car.status,
             "price_per_minute": car.price_per_minute,
             "price_per_hour": car.price_per_hour,

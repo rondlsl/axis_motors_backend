@@ -23,6 +23,7 @@ from app.admin.users.schemas import (
     UserEditSchema, UserBlockSchema
 )
 from app.owner.router import calculate_owner_earnings
+from app.admin.cars.utils import sort_car_photos
 
 users_router = APIRouter(tags=["Admin Users"])
 
@@ -922,7 +923,7 @@ async def get_user_cars(
             available_minutes=available_minutes,
             earnings_current_month=earnings_data["current_month"],
             earnings_total=earnings_data["total"],
-            photos=car.photos if car.photos else [],
+            photos=sort_car_photos(car.photos or []),
             vin=car.vin,
             color=car.color
         ))

@@ -35,6 +35,7 @@ from app.rent.utils.calculate_price import get_open_price
 from app.owner.utils import calculate_month_availability_minutes, ALMATY_TZ
 from app.core.config import logger
 from app.models.guarantor_model import Guarantor
+from app.admin.cars.utils import sort_car_photos
 from app.utils.digital_signature import generate_digital_signature
 from app.utils.sid_converter import convert_uuid_response_to_sid
 import traceback
@@ -649,7 +650,7 @@ async def _get_user_me_data(db: Session, current_user: User):
             "body_type": car.body_type,
             "auto_class": car.auto_class,
             "year": car.year,
-            "photos": car.photos,
+            "photos": sort_car_photos(car.photos or []),
             "status": car.status,
             "price_per_minute": car.price_per_minute,
             "price_per_hour": car.price_per_hour,
@@ -891,7 +892,7 @@ async def _get_user_me_data(db: Session, current_user: User):
             "body_type": car.body_type,
             "auto_class": car.auto_class,
             "year": car.year,
-            "photos": car.photos,
+            "photos": sort_car_photos(car.photos or []),
             "description": car.description,
             "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
             "status": car.status,
