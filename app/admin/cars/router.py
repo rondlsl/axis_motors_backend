@@ -1110,21 +1110,13 @@ async def delete_car_photos(
         
         deleted_files = []
         
-        # Удаляем все файлы из директории
+        # Удаляем только файлы из директории
         if os.path.exists(photos_dir):
             for filename in os.listdir(photos_dir):
                 file_path = os.path.join(photos_dir, filename)
                 if os.path.isfile(file_path):
                     os.remove(file_path)
                     deleted_files.append(filename)
-            
-            # Удаляем саму директорию, если она пустая
-            try:
-                if not os.listdir(photos_dir):
-                    os.rmdir(photos_dir)
-            except OSError:
-                # Если директория не пустая или есть проблемы с удалением, продолжаем
-                pass
         
         # Также удаляем файлы, на которые есть ссылки в car.photos (на случай если пути отличаются)
         if car.photos:
