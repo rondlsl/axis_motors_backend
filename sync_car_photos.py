@@ -21,7 +21,9 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from app.core.config import DATABASE_URL
 from app.models.car_model import Car
-from app.models.user_model import User 
+from app.models.user_model import User
+from app.models.history_model import RentalHistory
+from app.models.car_comment_model import CarComment  
 from app.utils.plate_normalizer import normalize_plate_number
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
