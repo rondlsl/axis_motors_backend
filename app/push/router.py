@@ -24,9 +24,24 @@ class TokenRequest(BaseModel):
 async def save_fcm_token(payload: TokenRequest,
                          db: Session = Depends(get_db),
                          current_user: User = Depends(get_current_user)):
+    """
+    Save FCM token for push notifications.
+    """
+    print(f"📱 [SAVE_TOKEN] User {current_user.phone_number} - Token: {payload.fcm_token[:50]}...")
+    
     current_user.fcm_token = payload.fcm_token
+    db.add(current_user)
+    db.flush()
     db.commit()
-    return {"detail": "FCM token saved"}
+    db.refresh(current_user)
+    
+    print(f"✅ [SAVE_TOKEN] Token saved successfully")
+    
+    return {
+        "detail": "FCM token saved",
+        "user_id": str(current_user.id),
+        "phone": current_user.phone_number
+    }
 
 
 @router.post("/send_push")
