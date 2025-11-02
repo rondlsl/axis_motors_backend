@@ -62,8 +62,8 @@ RentRouter = APIRouter(tags=["Rent"], prefix="/rent")
 OFFSET_HOURS = 5
 
 # Цена за литр бензина (тг)
-FUEL_PRICE_PER_LITER = 450
-ELECTRIC_FUEL_PRICE_PER_LITER = 200
+FUEL_PRICE_PER_LITER = 350
+ELECTRIC_FUEL_PRICE_PER_LITER = 100
 
 
 def get_user_available_auto_classes(user: User, db: Session) -> List[str]:
