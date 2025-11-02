@@ -1062,6 +1062,996 @@ def create_mock_cars(db: Session, owner: User) -> None:
     else:
         print("BMW 540i 2024 уже существует")
 
+    # Mercedes G63
+    if not db.query(Car).filter(Car.plate_number == "x31").first():
+        car31 = Car(
+            name="Mercedes G63",
+            plate_number="x31",
+            latitude=43.530000,
+            longitude=77.230000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=70,
+            course=45,
+            price_per_minute=150,
+            price_per_hour=7500,
+            price_per_day=150000,
+            engine_volume=4.0,
+            year=2022,
+            drive_type=3,
+            body_type=CarBodyType.SUV,
+            auto_class=CarAutoClass.C,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Легендарный внедорожник Mercedes G63 в отличном состоянии.",
+            vin="WDC4632361A456789",
+            color="Черный"
+        )
+        car31.photos = get_car_photos("x31")
+        mock_cars_to_create.append(("Mercedes G63", car31))
+    else:
+        print("Mercedes G63 уже существует")
+
+    # Toyota Camry 2021
+    if not db.query(Car).filter(Car.plate_number == "x32").first():
+        car32 = Car(
+            name="Toyota Camry",
+            plate_number="x32",
+            latitude=43.540000,
+            longitude=77.240000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=80,
+            course=90,
+            price_per_minute=70,
+            price_per_hour=3500,
+            price_per_day=70000,
+            engine_volume=2.5,
+            year=2021,
+            drive_type=3,
+            body_type=CarBodyType.SEDAN,
+            auto_class=CarAutoClass.A,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Надежный седан Toyota Camry 2021 года.",
+            vin="JTNKARFU0L5123456",
+            color="Серый"
+        )
+        car32.photos = get_car_photos("x32")
+        mock_cars_to_create.append(("Toyota Camry 2021", car32))
+    else:
+        print("Toyota Camry 2021 уже существует")
+
+    # Toyota Highlander 2020
+    if not db.query(Car).filter(Car.plate_number == "x33").first():
+        car33 = Car(
+            name="Toyota Highlander",
+            plate_number="x33",
+            latitude=43.550000,
+            longitude=77.250000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=75,
+            course=135,
+            price_per_minute=90,
+            price_per_hour=4500,
+            price_per_day=90000,
+            engine_volume=2.5,
+            year=2020,
+            drive_type=3,
+            body_type=CarBodyType.CROSSOVER,
+            auto_class=CarAutoClass.A,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Просторный кроссовер Toyota Highlander для всей семьи.",
+            vin="JTEBU5JR2M5445678",
+            color="Белый"
+        )
+        car33.photos = get_car_photos("x33")
+        mock_cars_to_create.append(("Toyota Highlander 2020", car33))
+    else:
+        print("Toyota Highlander 2020 уже существует")
+
+    # Mercedes E-Class 2024
+    if not db.query(Car).filter(Car.plate_number == "x34").first():
+        car34 = Car(
+            name="Mercedes E-Class",
+            plate_number="x34",
+            latitude=43.560000,
+            longitude=77.260000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=75,
+            course=180,
+            price_per_minute=100,
+            price_per_hour=5000,
+            price_per_day=100000,
+            engine_volume=2.0,
+            year=2024,
+            drive_type=3,
+            body_type=CarBodyType.SEDAN,
+            auto_class=CarAutoClass.B,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Премиальный седан Mercedes E-Class 2024 года.",
+            vin="WDD2130641A567890",
+            color="Серый"
+        )
+        car34.photos = get_car_photos("x34")
+        mock_cars_to_create.append(("Mercedes E-Class 2024", car34))
+    else:
+        print("Mercedes E-Class 2024 уже существует")
+
+    # Toyota Land Cruiser 2019
+    if not db.query(Car).filter(Car.plate_number == "x35").first():
+        car35 = Car(
+            name="Toyota Land Cruiser",
+            plate_number="x35",
+            latitude=43.570000,
+            longitude=77.270000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=70,
+            course=225,
+            price_per_minute=120,
+            price_per_hour=6000,
+            price_per_day=120000,
+            engine_volume=4.6,
+            year=2019,
+            drive_type=3,
+            body_type=CarBodyType.SUV,
+            auto_class=CarAutoClass.B,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Легендарный внедорожник Toyota Land Cruiser для любых условий.",
+            vin="JTEBU5JR2M5556789",
+            color="Белый"
+        )
+        car35.photos = get_car_photos("x35")
+        mock_cars_to_create.append(("Toyota Land Cruiser 2019", car35))
+    else:
+        print("Toyota Land Cruiser 2019 уже существует")
+
+    # Lexus GX 550 2024
+    if not db.query(Car).filter(Car.plate_number == "x36").first():
+        car36 = Car(
+            name="Lexus GX 550",
+            plate_number="x36",
+            latitude=43.580000,
+            longitude=77.280000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=75,
+            course=270,
+            price_per_minute=130,
+            price_per_hour=6500,
+            price_per_day=130000,
+            engine_volume=3.4,
+            year=2024,
+            drive_type=3,
+            body_type=CarBodyType.SUV,
+            auto_class=CarAutoClass.B,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Премиальный внедорожник Lexus GX 550 последнего поколения.",
+            vin="JTHBE1D25N5567890",
+            color="Черный"
+        )
+        car36.photos = get_car_photos("x36")
+        mock_cars_to_create.append(("Lexus GX 550 2024", car36))
+    else:
+        print("Lexus GX 550 2024 уже существует")
+
+    # Toyota Land Cruiser 2022
+    if not db.query(Car).filter(Car.plate_number == "x37").first():
+        car37 = Car(
+            name="Toyota Land Cruiser",
+            plate_number="x37",
+            latitude=43.590000,
+            longitude=77.290000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=75,
+            course=315,
+            price_per_minute=125,
+            price_per_hour=6250,
+            price_per_day=125000,
+            engine_volume=3.5,
+            year=2022,
+            drive_type=3,
+            body_type=CarBodyType.SUV,
+            auto_class=CarAutoClass.B,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Современный внедорожник Toyota Land Cruiser 2022 года.",
+            vin="JTEBU5JR2M5678901",
+            color="Белый"
+        )
+        car37.photos = get_car_photos("x37")
+        mock_cars_to_create.append(("Toyota Land Cruiser 2022", car37))
+    else:
+        print("Toyota Land Cruiser 2022 уже существует")
+
+    # Kia K8 2025
+    if not db.query(Car).filter(Car.plate_number == "x38").first():
+        car38 = Car(
+            name="Kia K8",
+            plate_number="x38",
+            latitude=43.600000,
+            longitude=77.300000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=80,
+            course=0,
+            price_per_minute=85,
+            price_per_hour=4250,
+            price_per_day=85000,
+            engine_volume=2.5,
+            year=2025,
+            drive_type=3,
+            body_type=CarBodyType.SEDAN,
+            auto_class=CarAutoClass.A,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Премиальный седан Kia K8 новейшего поколения.",
+            vin="KNDJT2A26N8234567",
+            color="Черный"
+        )
+        car38.photos = get_car_photos("x38")
+        mock_cars_to_create.append(("Kia K8 2025", car38))
+    else:
+        print("Kia K8 2025 уже существует")
+
+    # Porsche Taycan Turbo 2022
+    if not db.query(Car).filter(Car.plate_number == "x39").first():
+        car39 = Car(
+            name="Porsche Taycan Turbo",
+            plate_number="x39",
+            latitude=43.610000,
+            longitude=77.310000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=100,
+            course=45,
+            price_per_minute=180,
+            price_per_hour=9000,
+            price_per_day=180000,
+            engine_volume=0.0,
+            year=2022,
+            drive_type=3,
+            body_type=CarBodyType.ELECTRIC,
+            auto_class=CarAutoClass.C,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Спортивный электромобиль Porsche Taycan Turbo.",
+            vin="WP0ZZZY1NNS456789",
+            color="Серый"
+        )
+        car39.photos = get_car_photos("x39")
+        mock_cars_to_create.append(("Porsche Taycan Turbo 2022", car39))
+    else:
+        print("Porsche Taycan Turbo 2022 уже существует")
+
+    # Hyundai Sonata N-Line 2021
+    if not db.query(Car).filter(Car.plate_number == "x40").first():
+        car40 = Car(
+            name="Hyundai Sonata N-Line",
+            plate_number="x40",
+            latitude=43.620000,
+            longitude=77.320000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=75,
+            course=90,
+            price_per_minute=75,
+            price_per_hour=3750,
+            price_per_day=75000,
+            engine_volume=2.5,
+            year=2021,
+            drive_type=3,
+            body_type=CarBodyType.SEDAN,
+            auto_class=CarAutoClass.A,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Спортивная версия седана Hyundai Sonata N-Line.",
+            vin="KM8J33CA2LU456789",
+            color="Красный"
+        )
+        car40.photos = get_car_photos("x40")
+        mock_cars_to_create.append(("Hyundai Sonata N-Line 2021", car40))
+    else:
+        print("Hyundai Sonata N-Line 2021 уже существует")
+
+    # Mercedes S 500 2013
+    if not db.query(Car).filter(Car.plate_number == "x41").first():
+        car41 = Car(
+            name="Mercedes S 500",
+            plate_number="x41",
+            latitude=43.630000,
+            longitude=77.330000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=65,
+            course=135,
+            price_per_minute=120,
+            price_per_hour=6000,
+            price_per_day=120000,
+            engine_volume=4.7,
+            year=2013,
+            drive_type=3,
+            body_type=CarBodyType.SEDAN,
+            auto_class=CarAutoClass.B,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Роскошный седан Mercedes S 500 в отличном состоянии.",
+            vin="WDD2211741A456789",
+            color="Черный"
+        )
+        car41.photos = get_car_photos("x41")
+        mock_cars_to_create.append(("Mercedes S 500 2013", car41))
+    else:
+        print("Mercedes S 500 2013 уже существует")
+
+    # Toyota Camry 2018
+    if not db.query(Car).filter(Car.plate_number == "x42").first():
+        car42 = Car(
+            name="Toyota Camry",
+            plate_number="x42",
+            latitude=43.640000,
+            longitude=77.340000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=70,
+            course=180,
+            price_per_minute=65,
+            price_per_hour=3250,
+            price_per_day=65000,
+            engine_volume=2.5,
+            year=2018,
+            drive_type=3,
+            body_type=CarBodyType.SEDAN,
+            auto_class=CarAutoClass.A,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Надежный седан Toyota Camry 2018 года.",
+            vin="JTNKARFU0L6123456",
+            color="Серый"
+        )
+        car42.photos = get_car_photos("x42")
+        mock_cars_to_create.append(("Toyota Camry 2018", car42))
+    else:
+        print("Toyota Camry 2018 уже существует")
+
+    # Lexus LX570 2019
+    if not db.query(Car).filter(Car.plate_number == "x43").first():
+        car43 = Car(
+            name="Lexus LX570",
+            plate_number="x43",
+            latitude=43.650000,
+            longitude=77.350000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=70,
+            course=225,
+            price_per_minute=140,
+            price_per_hour=7000,
+            price_per_day=140000,
+            engine_volume=5.7,
+            year=2019,
+            drive_type=3,
+            body_type=CarBodyType.SUV,
+            auto_class=CarAutoClass.C,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Премиальный внедорожник Lexus LX570 для комфортных поездок.",
+            vin="JTHBE1D25N5678901",
+            color="Черный"
+        )
+        car43.photos = get_car_photos("x43")
+        mock_cars_to_create.append(("Lexus LX570 2019", car43))
+    else:
+        print("Lexus LX570 2019 уже существует")
+
+    # BMW M5 2022
+    if not db.query(Car).filter(Car.plate_number == "x44").first():
+        car44 = Car(
+            name="BMW M5",
+            plate_number="x44",
+            latitude=43.660000,
+            longitude=77.360000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=65,
+            course=270,
+            price_per_minute=150,
+            price_per_hour=7500,
+            price_per_day=150000,
+            engine_volume=4.4,
+            year=2022,
+            drive_type=3,
+            body_type=CarBodyType.SEDAN,
+            auto_class=CarAutoClass.C,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Спортивный седан BMW M5 с мощным двигателем.",
+            vin="WBSFV9C50LC456789",
+            color="Черный"
+        )
+        car44.photos = get_car_photos("x44")
+        mock_cars_to_create.append(("BMW M5 2022", car44))
+    else:
+        print("BMW M5 2022 уже существует")
+
+    # BMW 530i 2025
+    if not db.query(Car).filter(Car.plate_number == "x45").first():
+        car45 = Car(
+            name="BMW 530i",
+            plate_number="x45",
+            latitude=43.670000,
+            longitude=77.370000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=75,
+            course=315,
+            price_per_minute=110,
+            price_per_hour=5500,
+            price_per_day=110000,
+            engine_volume=2.0,
+            year=2025,
+            drive_type=3,
+            body_type=CarBodyType.SEDAN,
+            auto_class=CarAutoClass.B,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Новейший седан BMW 530i 2025 года.",
+            vin="WBAFR9C50LC567890",
+            color="Серый"
+        )
+        car45.photos = get_car_photos("x45")
+        mock_cars_to_create.append(("BMW 530i 2025", car45))
+    else:
+        print("BMW 530i 2025 уже существует")
+
+    # Hyundai Sonata 2024
+    if not db.query(Car).filter(Car.plate_number == "x46").first():
+        car46 = Car(
+            name="Hyundai Sonata",
+            plate_number="x46",
+            latitude=43.680000,
+            longitude=77.380000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=80,
+            course=0,
+            price_per_minute=75,
+            price_per_hour=3750,
+            price_per_day=75000,
+            engine_volume=2.5,
+            year=2024,
+            drive_type=3,
+            body_type=CarBodyType.SEDAN,
+            auto_class=CarAutoClass.A,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Современный седан Hyundai Sonata 2024 года.",
+            vin="KM8J33CA2LU567890",
+            color="Белый"
+        )
+        car46.photos = get_car_photos("x46")
+        mock_cars_to_create.append(("Hyundai Sonata 2024", car46))
+    else:
+        print("Hyundai Sonata 2024 уже существует")
+
+    # Kia K5 2021
+    if not db.query(Car).filter(Car.plate_number == "x47").first():
+        car47 = Car(
+            name="Kia K5",
+            plate_number="x47",
+            latitude=43.690000,
+            longitude=77.390000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=75,
+            course=45,
+            price_per_minute=70,
+            price_per_hour=3500,
+            price_per_day=70000,
+            engine_volume=2.0,
+            year=2021,
+            drive_type=3,
+            body_type=CarBodyType.SEDAN,
+            auto_class=CarAutoClass.A,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Спортивный седан Kia K5 с современным дизайном.",
+            vin="KNDJT2A26N9345678",
+            color="Красный"
+        )
+        car47.photos = get_car_photos("x47")
+        mock_cars_to_create.append(("Kia K5 2021", car47))
+    else:
+        print("Kia K5 2021 уже существует")
+
+    # Kia K8 2021
+    if not db.query(Car).filter(Car.plate_number == "x48").first():
+        car48 = Car(
+            name="Kia K8",
+            plate_number="x48",
+            latitude=43.700000,
+            longitude=77.400000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=75,
+            course=90,
+            price_per_minute=85,
+            price_per_hour=4250,
+            price_per_day=85000,
+            engine_volume=2.5,
+            year=2021,
+            drive_type=3,
+            body_type=CarBodyType.SEDAN,
+            auto_class=CarAutoClass.A,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Премиальный седан Kia K8 2021 года.",
+            vin="KNDJT2A26N9456789",
+            color="Черный"
+        )
+        car48.photos = get_car_photos("x48")
+        mock_cars_to_create.append(("Kia K8 2021", car48))
+    else:
+        print("Kia K8 2021 уже существует")
+
+    # Kia K8 2022
+    if not db.query(Car).filter(Car.plate_number == "x49").first():
+        car49 = Car(
+            name="Kia K8",
+            plate_number="x49",
+            latitude=43.710000,
+            longitude=77.410000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=80,
+            course=135,
+            price_per_minute=85,
+            price_per_hour=4250,
+            price_per_day=85000,
+            engine_volume=2.5,
+            year=2022,
+            drive_type=3,
+            body_type=CarBodyType.SEDAN,
+            auto_class=CarAutoClass.A,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Премиальный седан Kia K8 2022 года.",
+            vin="KNDJT2A26N9567890",
+            color="Серый"
+        )
+        car49.photos = get_car_photos("x49")
+        mock_cars_to_create.append(("Kia K8 2022", car49))
+    else:
+        print("Kia K8 2022 уже существует")
+
+    # BMW X6M 2016
+    if not db.query(Car).filter(Car.plate_number == "x50").first():
+        car50 = Car(
+            name="BMW X6M",
+            plate_number="x50",
+            latitude=43.720000,
+            longitude=77.420000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=70,
+            course=180,
+            price_per_minute=140,
+            price_per_hour=7000,
+            price_per_day=140000,
+            engine_volume=4.4,
+            year=2016,
+            drive_type=3,
+            body_type=CarBodyType.CROSSOVER,
+            auto_class=CarAutoClass.C,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Спортивный кроссовер BMW X6M с мощным двигателем.",
+            vin="WBAFR9C50LC678901",
+            color="Черный"
+        )
+        car50.photos = get_car_photos("x50")
+        mock_cars_to_create.append(("BMW X6M 2016", car50))
+    else:
+        print("BMW X6M 2016 уже существует")
+
+    # Toyota Camry 2021 (третий)
+    if not db.query(Car).filter(Car.plate_number == "x51").first():
+        car51 = Car(
+            name="Toyota Camry",
+            plate_number="x51",
+            latitude=43.730000,
+            longitude=77.430000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=80,
+            course=225,
+            price_per_minute=70,
+            price_per_hour=3500,
+            price_per_day=70000,
+            engine_volume=2.5,
+            year=2021,
+            drive_type=3,
+            body_type=CarBodyType.SEDAN,
+            auto_class=CarAutoClass.A,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Надежный седан Toyota Camry 2021 года.",
+            vin="JTNKARFU0L7234567",
+            color="Белый"
+        )
+        car51.photos = get_car_photos("x51")
+        mock_cars_to_create.append(("Toyota Camry 2021 третий", car51))
+    else:
+        print("Toyota Camry 2021 третий уже существует")
+
+    # BMW 530d 2022
+    if not db.query(Car).filter(Car.plate_number == "x52").first():
+        car52 = Car(
+            name="BMW 530d",
+            plate_number="x52",
+            latitude=43.740000,
+            longitude=77.440000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=75,
+            course=270,
+            price_per_minute=105,
+            price_per_hour=5250,
+            price_per_day=105000,
+            engine_volume=2.0,
+            year=2022,
+            drive_type=3,
+            body_type=CarBodyType.SEDAN,
+            auto_class=CarAutoClass.B,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Дизельный седан BMW 530d с экономичным двигателем.",
+            vin="WBAFR9C50LC789012",
+            color="Серый"
+        )
+        car52.photos = get_car_photos("x52")
+        mock_cars_to_create.append(("BMW 530d 2022", car52))
+    else:
+        print("BMW 530d 2022 уже существует")
+
+    # Toyota Land Cruiser 2016
+    if not db.query(Car).filter(Car.plate_number == "x53").first():
+        car53 = Car(
+            name="Toyota Land Cruiser",
+            plate_number="x53",
+            latitude=43.750000,
+            longitude=77.450000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=70,
+            course=315,
+            price_per_minute=110,
+            price_per_hour=5500,
+            price_per_day=110000,
+            engine_volume=4.0,
+            year=2016,
+            drive_type=3,
+            body_type=CarBodyType.SUV,
+            auto_class=CarAutoClass.B,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Надежный внедорожник Toyota Land Cruiser 2016 года.",
+            vin="JTEBU5JR2M5789012",
+            color="Белый"
+        )
+        car53.photos = get_car_photos("x53")
+        mock_cars_to_create.append(("Toyota Land Cruiser 2016", car53))
+    else:
+        print("Toyota Land Cruiser 2016 уже существует")
+
+    # Kia K5 2020
+    if not db.query(Car).filter(Car.plate_number == "x54").first():
+        car54 = Car(
+            name="Kia K5",
+            plate_number="x54",
+            latitude=43.760000,
+            longitude=77.460000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=70,
+            course=0,
+            price_per_minute=65,
+            price_per_hour=3250,
+            price_per_day=65000,
+            engine_volume=1.6,
+            year=2020,
+            drive_type=3,
+            body_type=CarBodyType.SEDAN,
+            auto_class=CarAutoClass.A,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Компактный седан Kia K5 с экономичным двигателем.",
+            vin="KNDJT2A26N9678901",
+            color="Серый"
+        )
+        car54.photos = get_car_photos("x54")
+        mock_cars_to_create.append(("Kia K5 2020", car54))
+    else:
+        print("Kia K5 2020 уже существует")
+
+    # Hyundai Palisade 2023
+    if not db.query(Car).filter(Car.plate_number == "x55").first():
+        car55 = Car(
+            name="Hyundai Palisade",
+            plate_number="x55",
+            latitude=43.770000,
+            longitude=77.470000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=75,
+            course=45,
+            price_per_minute=95,
+            price_per_hour=4750,
+            price_per_day=95000,
+            engine_volume=3.8,
+            year=2023,
+            drive_type=3,
+            body_type=CarBodyType.SUV,
+            auto_class=CarAutoClass.A,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Просторный внедорожник Hyundai Palisade для комфортных поездок.",
+            vin="KM8J33CA2LU678901",
+            color="Белый"
+        )
+        car55.photos = get_car_photos("x55")
+        mock_cars_to_create.append(("Hyundai Palisade 2023", car55))
+    else:
+        print("Hyundai Palisade 2023 уже существует")
+
+    # Kia Sportage 2022
+    if not db.query(Car).filter(Car.plate_number == "x56").first():
+        car56 = Car(
+            name="Kia Sportage",
+            plate_number="x56",
+            latitude=43.780000,
+            longitude=77.480000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=75,
+            course=90,
+            price_per_minute=75,
+            price_per_hour=3750,
+            price_per_day=75000,
+            engine_volume=2.0,
+            year=2022,
+            drive_type=3,
+            body_type=CarBodyType.CROSSOVER,
+            auto_class=CarAutoClass.A,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Современный кроссовер Kia Sportage с стильным дизайном.",
+            vin="KNDJT2A26N9789012",
+            color="Белый"
+        )
+        car56.photos = get_car_photos("x56")
+        mock_cars_to_create.append(("Kia Sportage 2022", car56))
+    else:
+        print("Kia Sportage 2022 уже существует")
+
+    # Lexus RX350 2019
+    if not db.query(Car).filter(Car.plate_number == "x57").first():
+        car57 = Car(
+            name="Lexus RX350",
+            plate_number="x57",
+            latitude=43.790000,
+            longitude=77.490000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=80,
+            course=135,
+            price_per_minute=100,
+            price_per_hour=5000,
+            price_per_day=100000,
+            engine_volume=3.5,
+            year=2019,
+            drive_type=3,
+            body_type=CarBodyType.CROSSOVER,
+            auto_class=CarAutoClass.B,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Премиальный кроссовер Lexus RX350 для комфорта и надежности.",
+            vin="JTHBE1D25N5789012",
+            color="Белый"
+        )
+        car57.photos = get_car_photos("x57")
+        mock_cars_to_create.append(("Lexus RX350 2019", car57))
+    else:
+        print("Lexus RX350 2019 уже существует")
+
+    # BMW X5 2022
+    if not db.query(Car).filter(Car.plate_number == "x58").first():
+        car58 = Car(
+            name="BMW X5",
+            plate_number="x58",
+            latitude=43.800000,
+            longitude=77.500000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=75,
+            course=180,
+            price_per_minute=120,
+            price_per_hour=6000,
+            price_per_day=120000,
+            engine_volume=3.0,
+            year=2022,
+            drive_type=3,
+            body_type=CarBodyType.CROSSOVER,
+            auto_class=CarAutoClass.B,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Спортивный кроссовер BMW X5 с отличными ходовыми качествами.",
+            vin="WBAFR9C50LC890123",
+            color="Черный"
+        )
+        car58.photos = get_car_photos("x58")
+        mock_cars_to_create.append(("BMW X5 2022", car58))
+    else:
+        print("BMW X5 2022 уже существует")
+
+    # BMW X5 2021
+    if not db.query(Car).filter(Car.plate_number == "x59").first():
+        car59 = Car(
+            name="BMW X5",
+            plate_number="x59",
+            latitude=43.810000,
+            longitude=77.510000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=70,
+            course=225,
+            price_per_minute=115,
+            price_per_hour=5750,
+            price_per_day=115000,
+            engine_volume=3.0,
+            year=2021,
+            drive_type=3,
+            body_type=CarBodyType.CROSSOVER,
+            auto_class=CarAutoClass.B,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Спортивный кроссовер BMW X5 2021 года.",
+            vin="WBAFR9C50LC901234",
+            color="Серый"
+        )
+        car59.photos = get_car_photos("x59")
+        mock_cars_to_create.append(("BMW X5 2021", car59))
+    else:
+        print("BMW X5 2021 уже существует")
+
+    # Toyota RAV4 2020
+    if not db.query(Car).filter(Car.plate_number == "x60").first():
+        car60 = Car(
+            name="Toyota RAV4",
+            plate_number="x60",
+            latitude=43.820000,
+            longitude=77.520000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=75,
+            course=270,
+            price_per_minute=70,
+            price_per_hour=3500,
+            price_per_day=70000,
+            engine_volume=2.0,
+            year=2020,
+            drive_type=3,
+            body_type=CarBodyType.CROSSOVER,
+            auto_class=CarAutoClass.A,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Популярный кроссовер Toyota RAV4 для городских поездок.",
+            vin="JTEBU5JR2M5890123",
+            color="Белый"
+        )
+        car60.photos = get_car_photos("x60")
+        mock_cars_to_create.append(("Toyota RAV4 2020", car60))
+    else:
+        print("Toyota RAV4 2020 уже существует")
+
+    # Range Rover 2019
+    if not db.query(Car).filter(Car.plate_number == "x61").first():
+        car61 = Car(
+            name="Range Rover",
+            plate_number="x61",
+            latitude=43.830000,
+            longitude=77.530000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=70,
+            course=315,
+            price_per_minute=130,
+            price_per_hour=6500,
+            price_per_day=130000,
+            engine_volume=5.0,
+            year=2019,
+            drive_type=3,
+            body_type=CarBodyType.SUV,
+            auto_class=CarAutoClass.C,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Премиальный внедорожник Range Rover для роскошных поездок.",
+            vin="SALGS2SE6HA456789",
+            color="Черный"
+        )
+        car61.photos = get_car_photos("x61")
+        mock_cars_to_create.append(("Range Rover 2019", car61))
+    else:
+        print("Range Rover 2019 уже существует")
+
+    # BMW X7 2021
+    if not db.query(Car).filter(Car.plate_number == "x62").first():
+        car62 = Car(
+            name="BMW X7",
+            plate_number="x62",
+            latitude=43.840000,
+            longitude=77.540000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=75,
+            course=0,
+            price_per_minute=135,
+            price_per_hour=6750,
+            price_per_day=135000,
+            engine_volume=3.0,
+            year=2021,
+            drive_type=3,
+            body_type=CarBodyType.SUV,
+            auto_class=CarAutoClass.C,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Просторный внедорожник BMW X7 для всей семьи.",
+            vin="WBAFR9C50LC012345",
+            color="Белый"
+        )
+        car62.photos = get_car_photos("x62")
+        mock_cars_to_create.append(("BMW X7 2021", car62))
+    else:
+        print("BMW X7 2021 уже существует")
+
+    # BMW 530 2018
+    if not db.query(Car).filter(Car.plate_number == "x63").first():
+        car63 = Car(
+            name="BMW 530",
+            plate_number="x63",
+            latitude=43.850000,
+            longitude=77.550000,
+            gps_id=None,
+            gps_imei=None,
+            fuel_level=70,
+            course=45,
+            price_per_minute=95,
+            price_per_hour=4750,
+            price_per_day=95000,
+            engine_volume=2.0,
+            year=2018,
+            drive_type=3,
+            body_type=CarBodyType.SEDAN,
+            auto_class=CarAutoClass.B,
+            owner_id=owner.id,
+            status=CarStatus.OCCUPIED,
+            description="Спортивный седан BMW 530 2018 года.",
+            vin="WBAFR9C50LC123456",
+            color="Серый"
+        )
+        car63.photos = get_car_photos("x63")
+        mock_cars_to_create.append(("BMW 530 2018", car63))
+    else:
+        print("BMW 530 2018 уже существует")
+
     # Добавляем все моковые автомобили одним commit'ом
     if mock_cars_to_create:
         for name, car in mock_cars_to_create:
