@@ -8,12 +8,14 @@ import httpx
 
 from alembic import command
 from alembic.config import Config
-from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Form
-from fastapi.responses import ORJSONResponse
+from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Form, status
+from fastapi.responses import ORJSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.requests import Request
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from sqlalchemy.orm import Session
 from app.auth.router import Auth_router
@@ -221,6 +223,67 @@ def init_app(app: FastAPI):
             logger.error(f"Ошибка остановки планировщика: {e}")
 
 
+# Настройка пароля для Swagger UI
+SWAGGER_USERNAME = os.getenv("SWAGGER_USERNAME", "azv_admin")
+SWAGGER_PASSWORD = os.getenv("SWAGGER_PASSWORD", "dev789456")
+
+# HTTP Basic для защиты Swagger
+swagger_security = HTTPBasic()
+
+def verify_swagger_credentials(credentials: HTTPBasicCredentials):
+    """Проверка credentials для доступа к Swagger UI"""
+    correct_username = credentials.username == SWAGGER_USERNAME
+    correct_password = credentials.password == SWAGGER_PASSWORD
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
+
+class SwaggerAuthMiddleware(BaseHTTPMiddleware):
+    """Middleware для защиты Swagger UI паролем"""
+    async def dispatch(self, request: Request, call_next):
+        # Проверяем, является ли запрос к Swagger документации
+        if request.url.path.startswith("/docs") or request.url.path.startswith("/redoc") or request.url.path.startswith("/openapi.json"):
+            # Проверяем наличие авторизации
+            authorization = request.headers.get("Authorization")
+            if not authorization or not authorization.startswith("Basic "):
+                return Response(
+                    content="Unauthorized",
+                    status_code=401,
+                    headers={"WWW-Authenticate": "Basic realm=\"Swagger UI\""},
+                    media_type="text/plain"
+                )
+            
+            # Декодируем Basic Auth
+            try:
+                import base64
+                encoded = authorization.split(" ")[1]
+                decoded = base64.b64decode(encoded).decode("utf-8")
+                username, password = decoded.split(":", 1)
+                
+                # Проверяем credentials
+                if username != SWAGGER_USERNAME or password != SWAGGER_PASSWORD:
+                    return Response(
+                        content="Unauthorized",
+                        status_code=401,
+                        headers={"WWW-Authenticate": "Basic realm=\"Swagger UI\""},
+                        media_type="text/plain"
+                    )
+            except Exception:
+                return Response(
+                    content="Unauthorized",
+                    status_code=401,
+                    headers={"WWW-Authenticate": "Basic realm=\"Swagger UI\""},
+                    media_type="text/plain"
+                )
+        
+        response = await call_next(request)
+        return response
+
+app.add_middleware(SwaggerAuthMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
