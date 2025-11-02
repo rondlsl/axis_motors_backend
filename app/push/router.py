@@ -65,53 +65,64 @@ async def test_push_by_phone(
     """
     Тестовый endpoint для отправки push-уведомления по номеру телефона.
     Доступен только администраторам и механикам для тестирования.
-    
-    Args:
-        phone: Номер телефона пользователя (например: 77777777772)
-        title: Заголовок уведомления (по умолчанию: "Тестовое уведомление")
-        body: Текст уведомления
-    
-    Returns:
-        Информацию об успешности отправки и детали
     """
     from app.models.user_model import UserRole
     
-    # Отладочный вывод для проверки роли
-    print(f"🔍 Current user: phone={current_user.phone_number}, role={current_user.role}, role_value={current_user.role.value if current_user.role else None}")
-    print(f"🔍 UserRole.ADMIN={UserRole.ADMIN}, UserRole.MECHANIC={UserRole.MECHANIC}")
-    print(f"🔍 Comparison: role == ADMIN: {current_user.role == UserRole.ADMIN}, role == MECHANIC: {current_user.role == UserRole.MECHANIC}")
+    import sys
     
-    # Проверяем права доступа (только админ и механик могут тестировать)
+    print("="*80)
+    print("🔔 [TEST_PUSH_BY_PHONE] Запрос получен")
+    print(f"📱 Ищем пользователя: {payload.phone}")
+    print(f"👤 От: {current_user.phone_number} (роль: {current_user.role.value if current_user.role else None})")
+    print(f"📝 Заголовок: {payload.title}")
+    print(f"📝 Текст: {payload.body}")
+    sys.stdout.flush()
+    
+    # Проверяем права доступа
     if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
+        print(f"❌ Доступ запрещен - роль {current_user.role}")
         raise HTTPException(
             status_code=403, 
             detail=f"Only admins and mechanics can use test endpoints. Your role: {current_user.role.value if current_user.role else None}"
         )
     
-    # Находим пользователя по номеру телефона
+    # Находим пользователя
     target_user = db.query(User).filter(User.phone_number == payload.phone).first()
     
     if not target_user:
-        raise HTTPException(
-            status_code=404, 
-            detail=f"User with phone {payload.phone} not found"
-        )
+        print(f"❌ Пользователь {payload.phone} не найден")
+        raise HTTPException(status_code=404, detail=f"User with phone {payload.phone} not found")
     
-    # Проверяем наличие FCM токена
+    print(f"✅ Пользователь найден: {target_user.id}")
+    print(f"   Имя: {target_user.first_name} {target_user.last_name}")
+    
+    # Проверяем токен
     if not target_user.fcm_token:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"User {target_user.phone_number} doesn't have FCM token. User needs to login to the app first."
-        )
+        print(f"❌ У пользователя нет FCM токена")
+        raise HTTPException(status_code=400, detail=f"User {target_user.phone_number} doesn't have FCM token")
     
-    # Отправляем push-уведомление
+    print(f"✅ FCM токен найден: {target_user.fcm_token[:50]}...")
+    print(f"🚀 Начинаем отправку push-уведомления...")
+    print("-"*80)
+    sys.stdout.flush()
+    
+    # Отправляем push
     success = await send_push_notification_async(
         token=target_user.fcm_token,
         title=payload.title,
         body=payload.body
     )
     
-    # Формируем полное имя
+    print("-"*80)
+    if success:
+        print(f"✅ [TEST_PUSH_BY_PHONE] Push отправлен успешно!")
+    else:
+        print(f"❌ [TEST_PUSH_BY_PHONE] Ошибка отправки push")
+    print("="*80)
+    print()
+    sys.stdout.flush()
+    
+    # Формируем ответ
     full_name = f"{target_user.first_name or ''} {target_user.last_name or ''} {target_user.middle_name or ''}".strip() or "Не указано"
     
     return {
