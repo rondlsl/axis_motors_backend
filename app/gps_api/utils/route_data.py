@@ -37,7 +37,7 @@ async def get_gps_route_data(
         except Exception as e:
             logger.warning(f"Ошибка обработки end_date: {e}")
         
-        url = f"http://195.93.152.69:8666/vehicles/{device_id}/gps?start_date={start_date.split('T')[0]}&end_date={end_date_for_api}"
+        url = f"http://195.93.152.69:8667/vehicles/{device_id}/gps?start_date={start_date.split('T')[0]}&end_date={end_date_for_api}"
         headers = {"accept": "application/json"}
         
         

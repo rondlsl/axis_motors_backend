@@ -1713,7 +1713,7 @@ async def check_vehicle_status_for_completion(vehicle_imei: str) -> Dict[str, An
     """
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get(f"http://195.93.152.69:8666/vehicles/?skip=0&limit=100")
+            response = await client.get(f"http://195.93.152.69:8667/vehicles/?skip=0&limit=100")
             response.raise_for_status()
             vehicles = response.json()
             
