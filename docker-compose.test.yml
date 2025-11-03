@@ -1,6 +1,6 @@
 version: '3.8'
 services:
-  back:
+  back-test:
     build: .
     ports:
       - "7141:7141"
@@ -9,13 +9,15 @@ services:
     env_file:
       - .env.test
     depends_on:
-      - db
+      - db-test
     command: /bin/sh -c "uvicorn main:app --host 0.0.0.0 --port 7141 --ws auto"
     volumes:
       - ./uploads:/app/uploads
       - ./contracts:/app/contracts
+    networks:
+      - test-network
 
-  db:
+  db-test:
     image: postgres:15
     restart: always
     ports:
@@ -26,8 +28,13 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_test_data_v2:/var/lib/postgresql/data
+    networks:
+      - test-network
 
 volumes:
   postgres_test_data_v2:
 
+networks:
+  test-network:
+    driver: bridge
 
