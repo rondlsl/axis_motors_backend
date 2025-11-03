@@ -1875,11 +1875,6 @@ async def complete_rental(
     rental.mileage_after = car.mileage
     rental.rental_status = RentalStatus.COMPLETED
     
-    # Рассчитываем продолжительность поездки в минутах
-    if rental.start_time:
-        duration_seconds = (now - rental.start_time).total_seconds()
-        rental.duration = int(duration_seconds / 60)
-    
     # Обновляем время последней активности пользователя
     current_user.last_activity_at = now
 
@@ -2023,7 +2018,10 @@ async def complete_rental(
             current_user.wallet_balance -= amount_to_charge
             rental.already_payed = rental.total_price
 
-    # 12) Окончательная блокировка двигателя при завершении аренды
+    # 12) Рассчитываем и сохраняем фактическую продолжительность поездки в минутах для истории
+    rental.duration = rounded_minutes
+    
+    # 13) Окончательная блокировка двигателя при завершении аренды
     try:
         from app.gps_api.utils.auth_api import get_auth_token
         from app.gps_api.utils.car_data import execute_gps_sequence
@@ -2041,7 +2039,7 @@ async def complete_rental(
     except Exception as e:
         print(f"Ошибка блокировки двигателя: {e}")
 
-    # 13) Коммит и уведомление механиков
+    # 14) Коммит и уведомление механиков
     db.commit()
     try:
         await send_localized_notification_to_all_mechanics(

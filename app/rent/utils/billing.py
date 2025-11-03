@@ -452,7 +452,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                     "overtime_charges",
                                     "out_of_tariff_charges",
                                     {
-                                        "charge": charge,
+                                        "charge": fee_total_ov,
                                         "extra": extra
                                     }
                                 ))

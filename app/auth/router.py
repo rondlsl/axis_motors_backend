@@ -1524,12 +1524,43 @@ async def upload_documents(
         current_user.narcology_certificate_url = narcology_path
         current_user.pension_contributions_certificate_url = pension_path
 
-        # Стартовый этап после загрузки документов — ожидание финансиста
-        current_user.role = UserRole.PENDINGTOFIRST
-        current_user.documents_verified = True
-    
         # Создаем/обновляем заявку для проверки документов (idempotent)
         existing_application = db.query(Application).filter(Application.user_id == current_user.id).first()
+
+        # Проверяем статус заявки для определения, нужно ли менять роль
+        should_reset_role = True
+        should_reset_application = False
+        if existing_application:
+            # Если заявка уже полностью одобрена (финансистом И МВД), не меняем роль
+            if existing_application.financier_status == ApplicationStatus.APPROVED and existing_application.mvd_status == ApplicationStatus.APPROVED:
+                should_reset_role = False
+            # Если пользователь был отклонен, проверяем причину
+            elif existing_application.financier_status == ApplicationStatus.REJECTED:
+                # Сбрасываем статус заявки только если отказ был из-за документов
+                if current_user.role == UserRole.REJECTFIRSTDOC or current_user.role == UserRole.REJECTFIRSTCERT:
+                    should_reset_application = True
+            else:
+                existing_application.updated_at = datetime.utcnow()
+        else:
+            application = Application(
+                user_id=current_user.id,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            db.add(application)
+        
+        # Сбрасываем статус заявки только если была причина в документах
+        if should_reset_application:
+            existing_application.financier_status = ApplicationStatus.PENDING
+            existing_application.financier_rejected_at = None
+            existing_application.financier_user_id = None
+            existing_application.reason = None
+            existing_application.updated_at = datetime.utcnow()
+
+        # Обновляем роль только если заявка не была полностью одобрена
+        if should_reset_role:
+            current_user.role = UserRole.PENDINGTOFIRST
+        current_user.documents_verified = True
 
         # Логика для email верификации:
         # Если пользователь повторно загружает документы (был отклонен), но email уже подтвержден - сбрасываем верификацию
@@ -1549,23 +1580,6 @@ async def upload_documents(
         elif not current_user.is_verified_email:
             # Email еще не был подтвержден
             email_needs_verification = True
-        if existing_application:
-            # Если пользователь был отклонен финансистом из-за документов, сбрасываем статус заявки
-            if existing_application.financier_status == ApplicationStatus.REJECTED:
-                existing_application.financier_status = ApplicationStatus.PENDING
-                existing_application.financier_rejected_at = None
-                existing_application.financier_user_id = None
-                existing_application.reason = None
-                existing_application.updated_at = datetime.utcnow()
-            else:
-                existing_application.updated_at = datetime.utcnow()
-        else:
-            application = Application(
-                user_id=current_user.id,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
-            )
-            db.add(application)
 
         # Обновляем имя в заявках гаранта, где этот пользователь является гарантом
         try:
