@@ -99,13 +99,14 @@ def calculate_owner_earnings(rental: RentalHistory, car: Car, current_user: User
     if rental.user_id == car.owner_id:
         return 0
     
-    # Владелец получает 50% только от базовых услуг (без delivery_fee, open_fee, fuel_fee)
-    base_earnings = (rental.base_price or 0) + (rental.overtime_fee or 0) + (rental.waiting_fee or 0) + (rental.distance_fee or 0)
+    # Владелец получает 50% только от базовых услуг (без delivery_fee, open_fee, distance_fee)
+    # distance_fee - это расходы на топливо, которые не идут в заработок владельца
+    base_earnings = (rental.base_price or 0) + (rental.overtime_fee or 0) + (rental.waiting_fee or 0)
     
     # Исключаем доходы от сервисов платформы:
     # - delivery_fee - сервис доставки платформы
     # - open_fee - сервис открытия дверей платформы  
-    # - fuel_fee - расходы на топливо клиента
+    # - distance_fee (fuel_fee) - расходы на топливо клиента
     
     owner_earnings = int(base_earnings * 0.5)
     
