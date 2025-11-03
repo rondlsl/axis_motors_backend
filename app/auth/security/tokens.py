@@ -33,9 +33,7 @@ def create_access_token(data: dict):
 def create_refresh_token(data: dict):
     phone_number = data.get("sub")
     encrypted_phone_number = encrypt_phone_number(phone_number)
-    to_encode = {"sub": encrypted_phone_number}
-    expire = datetime.now() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-    to_encode.update({"exp": expire, "token_type": "refresh"})
+    to_encode = {"sub": encrypted_phone_number, "token_type": "refresh"}
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
