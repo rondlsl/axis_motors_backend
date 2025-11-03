@@ -3,14 +3,14 @@ services:
   back:
     build: .
     ports:
-      - "7138:7138"
+      - "7139:7139"
     environment:
       - DEBUG_API_ERRORS=1
     env_file:
       - .env
     depends_on:
       - db
-    command: /bin/sh -c "uvicorn main:app --host 0.0.0.0 --port 7138 --ws auto"
+    command: /bin/sh -c "uvicorn main:app --host 0.0.0.0 --port 7139 --ws auto"
     volumes:
       - ./uploads:/app/uploads  # Монтируем всю директорию uploads
       - ./contracts:/app/contracts  # Монтируем папку contracts
