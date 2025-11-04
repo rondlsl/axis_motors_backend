@@ -188,8 +188,8 @@ def get_trip_history(
         # Расчёт топливного сбора для отображения
         fuel_fee_display = 0
         if rental.fuel_before is not None and rental.fuel_after is not None:
-            # Проверяем, что топливо реально расходовалось (fuel_before > fuel_after)
-            if rental.fuel_before > rental.fuel_after:
+            # Проверяем, что топливо реально уменьшилось
+            if rental.fuel_after < rental.fuel_before:
                 # Округляем в пользу платформы: fuel_before вверх, fuel_after вниз
                 fuel_before_rounded = ceil(rental.fuel_before)
                 fuel_after_rounded = floor(rental.fuel_after)
@@ -224,7 +224,7 @@ def get_trip_history(
             # Сдвиг +5 ч
             "date": apply_offset(rental.end_time),
             "car_name": car.name,
-            "total_price": total_price_without_fuel + fuel_fee_display,
+            "final_total_price": rental.total_price,
             "total_price_without_fuel": total_price_without_fuel,
             # Детализация
             "base_price": rental.base_price or 0,
@@ -296,23 +296,6 @@ async def get_trip_history_detail(
         + rental.overtime_fee
         + rental.distance_fee
     )
-    
-    # Вычисляем топливный сбор
-    fuel_fee_display = 0
-    if rental.fuel_before is not None and rental.fuel_after is not None:
-        # Проверяем, что топливо реально расходовалось (fuel_before > fuel_after)
-        if rental.fuel_before > rental.fuel_after:
-            fuel_before_rounded = ceil(rental.fuel_before)
-            fuel_after_rounded = floor(rental.fuel_after)
-            fuel_consumed = fuel_before_rounded - fuel_after_rounded
-            if fuel_consumed > 0:
-                is_owner = car.owner_id == rental.user_id
-                if is_owner or rental.rental_type in (RentalType.HOURS, RentalType.DAYS):
-                    if car.body_type == "ELECTRIC":
-                        price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
-                    else:
-                        price_per_liter = FUEL_PRICE_PER_LITER
-                    fuel_fee_display = int(fuel_consumed * price_per_liter)
 
     rental_detail = {
         "history_id": uuid_to_sid(rental.id),
@@ -327,14 +310,20 @@ async def get_trip_history_detail(
         "photos_before": rental.photos_before,
         "photos_after": rental.photos_after,
         "already_payed": rental.already_payed,
-        "total_price": total_price_without_fuel + fuel_fee_display,
+        "total_price": rental.total_price,
         "total_price_without_fuel": total_price_without_fuel,
         "rental_status": rental.rental_status.value,
         "base_price": rental.base_price,
         "open_fee": rental.open_fee,
         "delivery_fee": rental.delivery_fee,
         # Топливо: суммы и уровни
-        "fuel_fee": fuel_fee_display,
+        "fuel_fee": (lambda: (
+            int((ceil(rental.fuel_before) - floor(rental.fuel_after)) * (ELECTRIC_FUEL_PRICE_PER_LITER if car.body_type == "ELECTRIC" else FUEL_PRICE_PER_LITER))
+            if rental.fuel_before is not None and rental.fuel_after is not None and
+               rental.fuel_after < rental.fuel_before and
+               (ceil(rental.fuel_before) - floor(rental.fuel_after)) > 0 and
+               (car.owner_id == rental.user_id or rental.rental_type in (RentalType.HOURS, RentalType.DAYS)) else 0
+        ))(),
         "fuel_before": rental.fuel_before,
         "fuel_after": rental.fuel_after,
         "waiting_fee": rental.waiting_fee,
@@ -1971,8 +1960,8 @@ async def complete_rental(
     fuel_fee = 0
     fuel_consumed = 0
     if rental.fuel_before is not None and rental.fuel_after is not None:
-        # Проверяем, что топливо реально расходовалось (fuel_before > fuel_after)
-        if rental.fuel_before > rental.fuel_after:
+        # Проверяем, что топливо реально уменьшилось
+        if rental.fuel_after < rental.fuel_before:
             # Округляем в пользу платформы: fuel_before вверх, fuel_after вниз
             fuel_before_rounded = ceil(rental.fuel_before)
             fuel_after_rounded = floor(rental.fuel_after)
