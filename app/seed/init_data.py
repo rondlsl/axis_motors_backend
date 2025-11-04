@@ -41,7 +41,7 @@ def init_test_data(db: Session) -> None:
 
 def create_owner(db: Session) -> User:
     """Создает владельца автомобилей"""
-    owner_phone = "77000250400"
+    owner_phone = "71231111111"
     owner_iin = "980601523456" 
     owner = db.query(User).filter(User.phone_number == owner_phone).first()
     
