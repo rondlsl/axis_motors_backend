@@ -1527,6 +1527,25 @@ async def upload_documents(
         # Сохраняем старый email для сравнения ДО обновления
         old_email = current_user.email
         
+        # Проверка уникальности ИИН и паспорта среди активных пользователей (кроме текущего)
+        if document_data.iin:
+            exists_iin = db.query(User).filter(
+                User.iin == document_data.iin,
+                User.id != current_user.id,
+                User.is_active == True
+            ).first()
+            if exists_iin:
+                raise HTTPException(status_code=400, detail="Пользователь с таким ИИН уже существует")
+
+        if document_data.passport_number:
+            exists_passport = db.query(User).filter(
+                User.passport_number == document_data.passport_number,
+                User.id != current_user.id,
+                User.is_active == True
+            ).first()
+            if exists_passport:
+                raise HTTPException(status_code=400, detail="Пользователь с таким номером паспорта уже существует")
+
         # Обновление данных пользователя
         current_user.first_name = document_data.first_name
         current_user.last_name = document_data.last_name
