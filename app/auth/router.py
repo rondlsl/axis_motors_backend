@@ -1453,14 +1453,19 @@ async def upload_documents(
                 detail=f"Certificate {doc.filename} must be JPEG, PNG or PDF."
             )
 
+    # Нормализуем ИИН, паспорт и middle_name (пустые строки -> None)
+    normalized_iin = iin.strip() if iin and isinstance(iin, str) and iin.strip() else None
+    normalized_passport = passport_number.strip() if passport_number and isinstance(passport_number, str) and passport_number.strip() else None
+    normalized_middle_name = middle_name.strip() if middle_name and isinstance(middle_name, str) and middle_name.strip() else None
+    
     # Валидация данных через Pydantic-схему
     try:
         document_data = DocumentUploadRequest(
             first_name=first_name,
             last_name=last_name,
             birth_date=birth_date,
-            iin=iin,
-            passport_number=passport_number,
+            iin=normalized_iin,
+            passport_number=normalized_passport,
             id_card_expiry=id_card_expiry,
             drivers_license_expiry=drivers_license_expiry,
             is_citizen_kz=is_citizen_kz
@@ -1469,6 +1474,11 @@ async def upload_documents(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Validation error: {e}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid data: {str(e)}"
         )
 
     # Валидация для граждан Казахстана: если is_citizen_kz = true, то все 4 сертификата обязательны
@@ -1524,8 +1534,8 @@ async def upload_documents(
         if pension_contributions_certificate is not None:
             pension_path = await save_file(pension_contributions_certificate, current_user.id, "uploads/documents")
 
-        # Сохраняем старый email для сравнения ДО обновления
-        old_email = current_user.email
+        # Сохраняем старый email для сравнения ДО обновления (нормализуем для корректного сравнения)
+        old_email = (current_user.email or "").strip().lower() if current_user.email else None
         
         # Проверка уникальности ИИН и паспорта среди активных пользователей (кроме текущего)
         if document_data.iin:
@@ -1549,7 +1559,7 @@ async def upload_documents(
         # Обновление данных пользователя
         current_user.first_name = document_data.first_name
         current_user.last_name = document_data.last_name
-        current_user.middle_name = middle_name if middle_name and middle_name.strip() else None
+        current_user.middle_name = normalized_middle_name
         current_user.birth_date = datetime.strptime(document_data.birth_date, '%Y-%m-%d')
         current_user.email = normalized_email or None
         current_user.is_citizen_kz = document_data.is_citizen_kz
@@ -1615,18 +1625,21 @@ async def upload_documents(
         # Если email изменился - тоже сбрасываем верификацию
         # Если email новый и еще не подтвержден - оставляем как есть
 
+        # Приводим normalized_email к None, если это пустая строка для корректного сравнения
+        normalized_email_for_comparison = normalized_email if normalized_email else None
+        
         if existing_application and existing_application.financier_status == ApplicationStatus.REJECTED:
             # Пользователь повторно загружает документы после отказа
             if current_user.is_verified_email:
                 # Email был подтвержден, но нужна повторная верификация
                 current_user.is_verified_email = False
                 email_needs_verification = True
-        elif old_email != email:
+        elif old_email != normalized_email_for_comparison:
             # Пользователь изменил email - нужна верификация нового email
             current_user.is_verified_email = False
             email_needs_verification = True
-        elif not current_user.is_verified_email:
-            # Email еще не был подтвержден
+        elif not current_user.is_verified_email and normalized_email_for_comparison:
+            # Email еще не был подтвержден (только если email указан)
             email_needs_verification = True
 
         # Обновляем имя в заявках гаранта, где этот пользователь является гарантом
@@ -1718,8 +1731,12 @@ async def upload_documents(
             }
         }
 
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
+        error_message = str(e)
         try:
             logger.error(f"Error in /auth/upload-documents: {e}")
             logger.error(traceback.format_exc())
@@ -1727,7 +1744,7 @@ async def upload_documents(
             pass
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An error occurred while uploading documents and data"
+            detail=f"An error occurred while uploading documents and data: {error_message}"
         )
 
 
