@@ -23,6 +23,7 @@ def upgrade() -> None:
     
     # Create all tables
     create_users_table()
+    create_tokens_table()
     create_cars_table()
     create_applications_table()
     create_guarantor_requests_table()
@@ -310,6 +311,22 @@ def create_users_table():
         sa.UniqueConstraint('digital_signature')
     )
 
+
+def create_tokens_table():
+    """Create auth_tokens table"""
+    op.create_table('auth_tokens',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
+        sa.Column('user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False),
+        sa.Column('token_type', sa.String(20), nullable=False),
+        sa.Column('token', sa.Text(), nullable=False, unique=True),
+        sa.Column('last_used_at', sa.DateTime(), nullable=True),
+        sa.Column('expires_at', sa.DateTime(), nullable=True),
+        sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.func.now())
+    )
+    op.create_index('ix_auth_tokens_user_id', 'auth_tokens', ['user_id'])
+    op.create_index('ix_auth_tokens_token_type', 'auth_tokens', ['token_type'])
+    op.create_index('ix_auth_tokens_token', 'auth_tokens', ['token'])
 
 def create_cars_table():
     """Create cars table"""
@@ -645,6 +662,15 @@ def downgrade() -> None:
     # Drop indexes first (with existence check)
     op.execute("""
         DO $$ BEGIN
+            IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'ix_auth_tokens_token') THEN
+                DROP INDEX ix_auth_tokens_token;
+            END IF;
+            IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'ix_auth_tokens_token_type') THEN
+                DROP INDEX ix_auth_tokens_token_type;
+            END IF;
+            IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'ix_auth_tokens_user_id') THEN
+                DROP INDEX ix_auth_tokens_user_id;
+            END IF;
             IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_wallet_transactions_tracking_id') THEN
                 DROP INDEX idx_wallet_transactions_tracking_id;
             END IF;
@@ -671,6 +697,8 @@ def downgrade() -> None:
             END IF;
         END $$;
     """)
+    # Drop tokens table early due to FK to users
+    op.drop_table('auth_tokens')
     op.drop_table('support_messages')
     op.drop_table('support_chats')
     op.drop_table('wallet_transactions')

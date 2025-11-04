@@ -19,6 +19,8 @@ class JWTBearer(HTTPBearer):
                 )
             try:
                 payload = verify_token(credentials.credentials, self.expected_token_type)
+                # include raw token so downstream deps can check DB
+                payload["raw_token"] = credentials.credentials
                 return payload
             except HTTPException as e:
                 raise e

@@ -23,6 +23,9 @@ from app.auth.dependencies.save_documents import save_file
 from app.auth.schemas import SendSmsRequest, VerifySmsRequest, DocumentUploadRequest, LocaleUpdate, SelfieUploadResponse, UserRegistrationInfoResponse, VerifySmsResponse, ChangeEmailRequest, VerifyEmailChangeRequest, ChangeEmailResponse
 from app.auth.security.auth_bearer import JWTBearer
 from app.auth.security.tokens import create_refresh_token, create_access_token
+from app.models.token_model import TokenRecord
+from datetime import datetime, timedelta
+from app.core.config import ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS
 from app.core.config import SMS_TOKEN
 from app.dependencies.database.database import get_db
 from app.models.car_model import Car
@@ -442,6 +445,19 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
     
     access_token = create_access_token(data={"sub": user.phone_number})
     refresh_token = create_refresh_token(data={"sub": user.phone_number})
+
+    # Persist tokens
+    try:
+        now = datetime.utcnow()
+        access_expires = now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        refresh_expires = now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+        db.add_all([
+            TokenRecord(user_id=user.id, token_type="access", token=access_token, expires_at=access_expires, created_at=now, updated_at=now, last_used_at=now),
+            TokenRecord(user_id=user.id, token_type="refresh", token=refresh_token, expires_at=refresh_expires, created_at=now, updated_at=now)
+        ])
+        db.commit()
+    except Exception:
+        db.rollback()
 
     try:
         from app.models.guarantor_model import GuarantorRequest, GuarantorRequestStatus
@@ -1304,6 +1320,19 @@ async def refresh_token(db: Session = Depends(get_db), token: str = Depends(JWTB
 
     new_access_token = create_access_token(data={"sub": user.phone_number})
     new_refresh_token = create_refresh_token(data={"sub": user.phone_number})
+
+    # Save new tokens and optionally keep history
+    try:
+        now = datetime.utcnow()
+        access_expires = now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        refresh_expires = now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+        db.add_all([
+            TokenRecord(user_id=user.id, token_type="access", token=new_access_token, expires_at=access_expires, created_at=now, updated_at=now, last_used_at=now),
+            TokenRecord(user_id=user.id, token_type="refresh", token=new_refresh_token, expires_at=refresh_expires, created_at=now, updated_at=now)
+        ])
+        db.commit()
+    except Exception:
+        db.rollback()
 
     return {
         "access_token": new_access_token,

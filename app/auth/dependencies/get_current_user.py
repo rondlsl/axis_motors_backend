@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.security.auth_bearer import JWTBearer
 from app.models.user_model import User, UserRole  # обязательно импортируем UserRole
+from app.models.token_model import TokenRecord
 from app.dependencies.database.database import get_db
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -17,6 +18,7 @@ async def get_current_user(
         token: str = Depends(JWTBearer(expected_token_type="access"))
 ):
     phone_number: str = token.get("sub")
+    raw_token: str = token.get("raw_token")
     if phone_number is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -26,6 +28,30 @@ async def get_current_user(
     user = db.query(User).filter(User.phone_number == phone_number, User.is_active == True).first()
     if user is None:
         raise HTTPException(status_code=404, detail="User not found or inactive")
+    # Проверяем, что токен существует в БД и не истёк
+    if not raw_token:
+        raise HTTPException(status_code=401, detail="Token not provided")
+    token_row = (
+        db.query(TokenRecord)
+        .filter(
+            TokenRecord.user_id == user.id,
+            TokenRecord.token_type == "access",
+            TokenRecord.token == raw_token,
+        )
+        .first()
+    )
+    if token_row is None:
+        raise HTTPException(status_code=401, detail="Token is not valid")
+    # проверка истечения (если задано)
+    if token_row.expires_at is not None:
+        from datetime import datetime as _dt
+        if token_row.expires_at < _dt.utcnow():
+            raise HTTPException(status_code=401, detail="Token expired")
+    # обновляем last_used_at
+    from datetime import datetime as _dt
+    token_row.last_used_at = _dt.utcnow()
+    db.add(token_row)
+    db.commit()
     return user
 
 
