@@ -222,7 +222,7 @@ def get_trip_history(
             # Сдвиг +5 ч
             "date": apply_offset(rental.end_time),
             "car_name": car.name,
-            "final_total_price": rental.total_price,
+            "total_price": total_price_without_fuel + fuel_fee_display,
             "total_price_without_fuel": total_price_without_fuel,
             # Детализация
             "base_price": rental.base_price or 0,
@@ -294,6 +294,14 @@ async def get_trip_history_detail(
         + rental.overtime_fee
         + rental.distance_fee
     )
+    
+    # Вычисляем топливный сбор
+    fuel_fee_display = (lambda: (
+        int((ceil(rental.fuel_before) - floor(rental.fuel_after)) * (ELECTRIC_FUEL_PRICE_PER_LITER if car.body_type == "ELECTRIC" else FUEL_PRICE_PER_LITER))
+        if rental.fuel_before is not None and rental.fuel_after is not None and
+           (ceil(rental.fuel_before) - floor(rental.fuel_after)) > 0 and
+           (car.owner_id == rental.user_id or rental.rental_type in (RentalType.HOURS, RentalType.DAYS)) else 0
+    ))()
 
     rental_detail = {
         "history_id": uuid_to_sid(rental.id),
@@ -308,19 +316,14 @@ async def get_trip_history_detail(
         "photos_before": rental.photos_before,
         "photos_after": rental.photos_after,
         "already_payed": rental.already_payed,
-        "total_price": rental.total_price,
+        "total_price": total_price_without_fuel + fuel_fee_display,
         "total_price_without_fuel": total_price_without_fuel,
         "rental_status": rental.rental_status.value,
         "base_price": rental.base_price,
         "open_fee": rental.open_fee,
         "delivery_fee": rental.delivery_fee,
         # Топливо: суммы и уровни
-        "fuel_fee": (lambda: (
-            int((ceil(rental.fuel_before) - floor(rental.fuel_after)) * (ELECTRIC_FUEL_PRICE_PER_LITER if car.body_type == "ELECTRIC" else FUEL_PRICE_PER_LITER))
-            if rental.fuel_before is not None and rental.fuel_after is not None and
-               (ceil(rental.fuel_before) - floor(rental.fuel_after)) > 0 and
-               (car.owner_id == rental.user_id or rental.rental_type in (RentalType.HOURS, RentalType.DAYS)) else 0
-        ))(),
+        "fuel_fee": fuel_fee_display,
         "fuel_before": rental.fuel_before,
         "fuel_after": rental.fuel_after,
         "waiting_fee": rental.waiting_fee,
