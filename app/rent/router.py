@@ -1984,24 +1984,9 @@ async def complete_rental(
 
         rental.total_price = fuel_fee
         previous_paid = rental.already_payed or 0
-        
-        # Если была ошибочная оплата во время аренды (для владельца это не должно было произойти),
-        # возвращаем деньги обратно
-        if previous_paid > 0:
-            # Возвращаем ошибочно списанную сумму
-            record_wallet_transaction(
-                db,
-                user=current_user,
-                amount=previous_paid,
-                ttype=WalletTransactionType.REFUND,
-                description=f"Возврат ошибочно списанной суммы за аренду (владелец)"
-            )
-            current_user.wallet_balance += previous_paid
-            rental.already_payed = 0
-        
-        amount_to_charge = rental.total_price - rental.already_payed
+        amount_to_charge = rental.total_price - previous_paid
 
-        if amount_to_charge > 0:
+        if amount_to_charge != 0:
             record_wallet_transaction(
                 db,
                 user=current_user,
@@ -2010,7 +1995,7 @@ async def complete_rental(
                 description="Оплата топлива"
             )
             current_user.wallet_balance -= amount_to_charge
-            rental.already_payed = fuel_fee
+            rental.already_payed = (rental.already_payed or 0) + amount_to_charge
     else:
         # Итоговая сумма БЕЗ топлива (для отдельного отображения)
         total_price_without_fuel = (
