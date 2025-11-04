@@ -22,22 +22,16 @@ async def get_gps_route_data(
     :return: Данные маршрута или None при ошибке
     """
     try:
-        
-        # API GlonassSoft требует диапазон дат, включая будущую дату
-        # Если end_date в прошлом/настоящем, добавляем +1 день
-        end_date_for_api = end_date
+    
+        start_q = start_date
+        end_q = end_date
         try:
-            end_date_obj = datetime.strptime(end_date.split('T')[0], "%Y-%m-%d")
-            today = datetime.now().date()
-            
-            if end_date_obj.date() <= today:
-                # Если end_date сегодня или в прошлом, добавляем завтрашний день
-                end_date_for_api = (end_date_obj + timedelta(days=1)).strftime("%Y-%m-%d")
-                logger.info(f"Расширяем диапазон до завтрашнего дня: {end_date_for_api}")
-        except Exception as e:
-            logger.warning(f"Ошибка обработки end_date: {e}")
-        
-        url = f"http://195.93.152.69:8667/vehicles/{device_id}/gps?start_date={start_date.split('T')[0]}&end_date={end_date_for_api}"
+            start_q = start_date.replace("Z", "")
+            end_q = end_date.replace("Z", "")
+        except Exception:
+            pass
+
+        url = f"http://195.93.152.69:8667/vehicles/{device_id}/gps?start_date={start_q}&end_date={end_q}"
         headers = {"accept": "application/json"}
         
         
@@ -90,7 +84,7 @@ async def get_gps_route_data(
                         # Продолжаем с другими координатами
                         continue
                 
-                # Группируем координаты по дням
+                # Фильтруем координаты по временному диапазону и группируем по дням
                 daily_routes = _group_coordinates_by_day(coordinates, start_date, end_date)
                 
                 route_data = RouteData(
@@ -132,7 +126,6 @@ def _group_coordinates_by_day(
     if not coordinates:
         return []
     
-    # Парсим строковые даты в datetime объекты
     try:
         start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
         end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
@@ -140,53 +133,25 @@ def _group_coordinates_by_day(
         logger.error(f"Error parsing dates: start_date={start_date}, end_date={end_date}, error={e}")
         return []
     
-    daily_routes = []
-    
-    # Определяем все дни в диапазоне поездки
-    current_date = start_dt.date()
-    end_date_only = end_dt.date()
-    
-    while current_date <= end_date_only:
-        day_coordinates = []
-        
-        if current_date == start_dt.date() and current_date == end_date_only:
-            # Поездка в один день - все координаты
-            day_coordinates = coordinates
-        elif current_date == start_dt.date():
-            # Первый день - вычисляем долю дня от общего времени поездки
-            total_duration = (end_dt - start_dt).total_seconds()
-            if total_duration > 0:
-                # Время до конца дня
-                end_of_day = datetime.combine(current_date, datetime.max.time().replace(microsecond=0))
-                first_day_duration = (end_of_day - start_dt).total_seconds()
-                ratio = min(first_day_duration / total_duration, 1.0)
-                split_index = max(1, int(len(coordinates) * ratio))
-                day_coordinates = coordinates[:split_index]
-            else:
-                day_coordinates = coordinates
-        elif current_date == end_date_only:
-            # Последний день - оставшиеся координаты
-            days_passed = (current_date - start_dt.date()).days
-            total_days = (end_date_only - start_dt.date()).days + 1
-            if total_days > 1:
-                start_index = int(len(coordinates) * (days_passed / total_days))
-                day_coordinates = coordinates[start_index:]
-            else:
-                day_coordinates = coordinates
-        else:
-            # Промежуточный день (полный день)
-            days_passed = (current_date - start_dt.date()).days
-            total_days = (end_date_only - start_dt.date()).days + 1
-            start_index = int(len(coordinates) * (days_passed / total_days))
-            end_index = int(len(coordinates) * ((days_passed + 1) / total_days))
-            day_coordinates = coordinates[start_index:end_index]
-        
-        if day_coordinates:
-            daily_routes.append(DailyRoute(
-                date=current_date.strftime("%Y-%m-%d"),
-                coordinates=day_coordinates
-            ))
-        
-        current_date += timedelta(days=1)
-    
+    def _parse_ts(ts: str) -> datetime:
+        try:
+            return datetime.fromisoformat(ts.replace('Z', '+00:00'))
+        except Exception:
+            return datetime.strptime(ts.split('T')[0], '%Y-%m-%d')
+
+    filtered = [c for c in coordinates if start_dt <= _parse_ts(c.timestamp) <= end_dt]
+    if not filtered:
+        return []
+
+    # 2) Группируем по дате timestamp реальных точек (без пропорциональных разрезов)
+    buckets: dict[str, list[GPSCoordinate]] = {}
+    for c in filtered:
+        d = _parse_ts(c.timestamp).date().strftime('%Y-%m-%d')
+        buckets.setdefault(d, []).append(c)
+
+    # 3) Собираем список по возрастанию даты
+    daily_routes: List[DailyRoute] = []
+    for day in sorted(buckets.keys()):
+        daily_routes.append(DailyRoute(date=day, coordinates=buckets[day]))
+
     return daily_routes
