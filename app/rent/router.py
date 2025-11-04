@@ -207,12 +207,23 @@ def get_trip_history(
                     # Для клиентов топливо включено в стоимость только для часов/дней
                     fuel_fee_display = int(fuel_consumed * price_per_liter)
         
+        # Вычисляем сумму без топлива для отображения
+        total_price_without_fuel = (
+            (rental.base_price or 0)
+            + rental.open_fee
+            + rental.delivery_fee
+            + rental.waiting_fee
+            + rental.overtime_fee
+            + rental.distance_fee
+        )
+        
         result.append({
             "history_id": rental.sid,
             # Сдвиг +5 ч
             "date": apply_offset(rental.end_time),
             "car_name": car.name,
             "final_total_price": rental.total_price,
+            "total_price_without_fuel": total_price_without_fuel,
             # Детализация
             "base_price": rental.base_price or 0,
             "open_fee": rental.open_fee or 0,
@@ -274,6 +285,16 @@ async def get_trip_history_detail(
 
     car = db.query(Car).get(rental.car_id)
 
+    # Вычисляем сумму без топлива для отображения
+    total_price_without_fuel = (
+        (rental.base_price or 0)
+        + rental.open_fee
+        + rental.delivery_fee
+        + rental.waiting_fee
+        + rental.overtime_fee
+        + rental.distance_fee
+    )
+
     rental_detail = {
         "history_id": uuid_to_sid(rental.id),
         "user_id": uuid_to_sid(rental.user_id),
@@ -288,6 +309,7 @@ async def get_trip_history_detail(
         "photos_after": rental.photos_after,
         "already_payed": rental.already_payed,
         "total_price": rental.total_price,
+        "total_price_without_fuel": total_price_without_fuel,
         "rental_status": rental.rental_status.value,
         "base_price": rental.base_price,
         "open_fee": rental.open_fee,
@@ -1970,8 +1992,8 @@ async def complete_rental(
             current_user.wallet_balance -= amount_to_charge
             rental.already_payed = (rental.already_payed or 0) + amount_to_charge
     else:
-        # Итоговая сумма БЕЗ топлива (топливо списываем отдельно)
-        rental.total_price = (
+        # Итоговая сумма БЕЗ топлива (для отдельного отображения)
+        total_price_without_fuel = (
             (rental.base_price or 0)
             + rental.open_fee
             + rental.delivery_fee
@@ -1979,6 +2001,9 @@ async def complete_rental(
             + rental.overtime_fee
             + rental.distance_fee
         )
+        # Итоговая сумма ВКЛЮЧАЯ топливо
+        rental.total_price = total_price_without_fuel + fuel_fee
+        
         previous_paid = rental.already_payed or 0
         amount_to_charge = rental.total_price - previous_paid
 
