@@ -23,14 +23,9 @@ async def get_gps_route_data(
     """
     try:
     
-        start_q = start_date
-        end_q = end_date
-        try:
-            start_q = start_date.replace("Z", "")
-            end_q = end_date.replace("Z", "")
-        except Exception:
-            pass
-
+        # Сервис ожидает даты в формате YYYY-MM-DD
+        start_q = start_date.split('T')[0]
+        end_q = end_date.split('T')[0]
         url = f"http://195.93.152.69:8667/vehicles/{device_id}/gps?start_date={start_q}&end_date={end_q}"
         headers = {"accept": "application/json"}
         
