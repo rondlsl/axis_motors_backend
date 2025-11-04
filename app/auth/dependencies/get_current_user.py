@@ -15,7 +15,7 @@ from app.dependencies.database.database import get_db
 
 async def get_current_user(
         db: Session = Depends(get_db),
-        token: str = Depends(JWTBearer(expected_token_type="access"))
+        token: str = Depends(JWTBearer(expected_token_type="any"))
 ):
     phone_number: str = token.get("sub")
     raw_token: str = token.get("raw_token")
@@ -35,8 +35,8 @@ async def get_current_user(
         db.query(TokenRecord)
         .filter(
             TokenRecord.user_id == user.id,
-            TokenRecord.token_type == "access",
             TokenRecord.token == raw_token,
+            TokenRecord.token_type.in_(["access", "refresh"]),
         )
         .first()
     )

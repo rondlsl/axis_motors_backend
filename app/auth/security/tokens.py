@@ -42,7 +42,7 @@ def verify_token(token: str, expected_token_type: str):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         token_type = payload.get("token_type")
-        if token_type != expected_token_type:
+        if expected_token_type != "any" and token_type != expected_token_type:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail=f"Invalid token type: expected {expected_token_type}, got {token_type}")
         encrypted_phone_number = payload.get("sub")
