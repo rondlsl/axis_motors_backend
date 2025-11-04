@@ -1,11 +1,43 @@
 import httpx
 import logging
+import urllib.parse
+import re
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from app.owner.schemas import RouteData, DailyRoute, GPSCoordinate
 
 # Настройка логгера
 logger = logging.getLogger(__name__)
+
+
+def _normalize_date_for_cars_api(date_str: str) -> str:
+    if not date_str:
+        return date_str
+    
+    s = date_str.strip()
+    
+    if ' ' in s and 'T' not in s:
+        parts = s.split('.')
+        return parts[0]
+    
+    if 'T' in s:
+        s = s.replace('T', ' ')
+        if s.endswith('Z'):
+            s = s[:-1]
+        s = re.sub(r'[+-]\d{2}:\d{2}$', '', s).strip()
+        
+        if '.' in s:
+            s = s.split('.')[0]
+        
+        if len(s) == 10:
+            s = s + ' 00:00:00'
+        
+        return s
+    
+    if len(s) == 10 and s.count('-') == 2:
+        return s + ' 00:00:00'
+    
+    return s
 
 
 async def get_gps_route_data(
@@ -17,16 +49,18 @@ async def get_gps_route_data(
     Получает данные маршрута от внешнего GPS API.
     
     :param device_id: ID GPS устройства (gps_id из таблицы cars)
-    :param start_date: Дата и время начала поездки в ISO формате (после apply_offset)
-    :param end_date: Дата и время окончания поездки в ISO формате (после apply_offset)
+    :param start_date: Дата и время начала поездки (ISO или формат БД: 2025-11-02 16:20:27.125412)
+    :param end_date: Дата и время окончания поездки (ISO или формат БД: 2025-11-02 16:20:27.125412)
     :return: Данные маршрута или None при ошибке
     """
     try:
-    
-        # Сервис ожидает даты в формате YYYY-MM-DD
-        start_q = start_date.split('T')[0]
-        end_q = end_date.split('T')[0]
-        url = f"http://195.93.152.69:8667/vehicles/{device_id}/gps?start_date={start_q}&end_date={end_q}"
+        start_q = _normalize_date_for_cars_api(start_date)
+        end_q = _normalize_date_for_cars_api(end_date)
+        
+        start_encoded = urllib.parse.quote(start_q)
+        end_encoded = urllib.parse.quote(end_q)
+        
+        url = f"http://195.93.152.69:8667/vehicles/{device_id}/gps?start_date={start_encoded}&end_date={end_encoded}"
         headers = {"accept": "application/json"}
         
         
