@@ -50,6 +50,10 @@ def calculate_fuel_cost(rental: RentalHistory, car: Car, current_user: User) -> 
     if rental.fuel_before is None or rental.fuel_after is None:
         return 0
     
+    # Проверяем, что топливо реально уменьшилось
+    if rental.fuel_after >= rental.fuel_before:
+        return 0
+    
     # Округляем в пользу платформы:
     # fuel_before округляем вверх (больше топлива в начале)
     # fuel_after округляем вниз (меньше топлива в конце)
