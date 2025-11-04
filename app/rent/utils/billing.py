@@ -352,6 +352,10 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
 
             # === IN_USE stage ===
             elif rental.rental_status == RentalStatus.IN_USE:
+                # Пропускаем списание для владельца - он платит только за топливо при завершении
+                if rental.user_id == car.owner_id:
+                    continue
+                
                 elapsed = (now - rental.start_time).total_seconds() / 60
 
                 if rental.rental_type == RentalType.MINUTES:
