@@ -69,11 +69,8 @@ async def get_gps_route_data(
         start_q = _normalize_date_for_cars_api(start_date)
         end_q = _normalize_date_for_cars_api(end_date)
         
-        start_q_offset = _add_timezone_offset_for_api(start_q, hours_offset=5)
-        end_q_offset = _add_timezone_offset_for_api(end_q, hours_offset=5)
-        
-        start_encoded = urllib.parse.quote(start_q_offset)
-        end_encoded = urllib.parse.quote(end_q_offset)
+        start_encoded = urllib.parse.quote(start_q)
+        end_encoded = urllib.parse.quote(end_q)
         
         url = f"http://195.93.152.69:8667/vehicles/{device_id}/gps?start_date={start_encoded}&end_date={end_encoded}"
         headers = {"accept": "application/json"}
@@ -83,8 +80,6 @@ async def get_gps_route_data(
         print(f"GPS API Request - Original end_date: {end_date}")
         print(f"GPS API Request - Normalized start_q: {start_q}")
         print(f"GPS API Request - Normalized end_q: {end_q}")
-        print(f"GPS API Request - With offset (+5h) start_q_offset: {start_q_offset}")
-        print(f"GPS API Request - With offset (+5h) end_q_offset: {end_q_offset}")
         print(f"GPS API Request - Encoded start: {start_encoded}")
         print(f"GPS API Request - Encoded end: {end_encoded}")
         print(f"GPS API Request - Full URL: {url}")
@@ -93,8 +88,6 @@ async def get_gps_route_data(
         logger.info(f"GPS API Request - Original end_date: {end_date}")
         logger.info(f"GPS API Request - Normalized start_q: {start_q}")
         logger.info(f"GPS API Request - Normalized end_q: {end_q}")
-        logger.info(f"GPS API Request - With offset (+5h) start_q_offset: {start_q_offset}")
-        logger.info(f"GPS API Request - With offset (+5h) end_q_offset: {end_q_offset}")
         logger.info(f"GPS API Request - Encoded start: {start_encoded}")
         logger.info(f"GPS API Request - Encoded end: {end_encoded}")
         logger.info(f"GPS API Request - Full URL: {url}")
