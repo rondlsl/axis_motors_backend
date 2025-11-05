@@ -217,8 +217,16 @@ def _group_coordinates_by_day(
         return []
     
     try:
-        start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
-        end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+        start_dt_str = start_date.replace('Z', '+00:00') if 'Z' in start_date else start_date
+        end_dt_str = end_date.replace('Z', '+00:00') if 'Z' in end_date else end_date
+        
+        start_dt = datetime.fromisoformat(start_dt_str)
+        end_dt = datetime.fromisoformat(end_dt_str)
+        
+        if start_dt.tzinfo:
+            start_dt = start_dt.replace(tzinfo=None)
+        if end_dt.tzinfo:
+            end_dt = end_dt.replace(tzinfo=None)
     except ValueError as e:
         logger.error(f"Error parsing dates: start_date={start_date}, end_date={end_date}, error={e}")
         return []
@@ -226,26 +234,42 @@ def _group_coordinates_by_day(
     period_start_dt = None
     if period_start:
         try:
-            period_start_dt = datetime.fromisoformat(period_start.replace('Z', '+00:00'))
+            period_start_str = period_start.replace('Z', '+00:00') if 'Z' in period_start else period_start
+            period_start_dt = datetime.fromisoformat(period_start_str)
+            if period_start_dt.tzinfo:
+                period_start_dt = period_start_dt.replace(tzinfo=None)
         except Exception as e:
             logger.warning(f"Error parsing period_start: {period_start}, error: {e}")
     
     def _parse_ts(ts) -> datetime:
         if isinstance(ts, int):
             if period_start_dt:
-                return period_start_dt + timedelta(seconds=ts)
+                result = period_start_dt + timedelta(seconds=ts)
             else:
-                return start_dt + timedelta(seconds=ts)
+                result = start_dt + timedelta(seconds=ts)
+            if result.tzinfo:
+                result = result.replace(tzinfo=None)
+            return result
         elif isinstance(ts, str):
             try:
-                return datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                ts_str = ts.replace('Z', '+00:00') if 'Z' in ts else ts
+                result = datetime.fromisoformat(ts_str)
+                if result.tzinfo:
+                    result = result.replace(tzinfo=None)
+                return result
             except Exception:
                 try:
                     return datetime.strptime(ts.split('T')[0], '%Y-%m-%d')
                 except Exception:
-                    return start_dt
+                    result = start_dt
+                    if result.tzinfo:
+                        result = result.replace(tzinfo=None)
+                    return result
         else:
-            return start_dt
+            result = start_dt
+            if result.tzinfo:
+                result = result.replace(tzinfo=None)
+            return result
 
     filtered = [c for c in coordinates if start_dt <= _parse_ts(c.timestamp) <= end_dt]
     if not filtered:
