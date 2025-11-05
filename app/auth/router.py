@@ -1058,6 +1058,12 @@ async def _get_user_me_data(db: Session, current_user: User):
             "available_auto_classes": available_auto_classes,
             "application": {
                 "reason": getattr(user_application, "reason", None) if user_application else None,
+                "financier_status": user_application.financier_status.value if user_application and user_application.financier_status else None,
+                "mvd_status": user_application.mvd_status.value if user_application and user_application.mvd_status else None,
+                "financier_approved_at": user_application.financier_approved_at.isoformat() if user_application and user_application.financier_approved_at else None,
+                "financier_rejected_at": user_application.financier_rejected_at.isoformat() if user_application and user_application.financier_rejected_at else None,
+                "mvd_approved_at": user_application.mvd_approved_at.isoformat() if user_application and user_application.mvd_approved_at else None,
+                "mvd_rejected_at": user_application.mvd_rejected_at.isoformat() if user_application and user_application.mvd_rejected_at else None,
             },
             "documents": {
                 "documents_verified": current_user.documents_verified,
