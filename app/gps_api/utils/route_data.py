@@ -6,7 +6,6 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from app.owner.schemas import RouteData, DailyRoute, GPSCoordinate
 
-# Настройка логгера
 logger = logging.getLogger(__name__)
 
 
@@ -40,6 +39,19 @@ def _normalize_date_for_cars_api(date_str: str) -> str:
     return s
 
 
+def _add_timezone_offset_for_api(date_str: str, hours_offset: int = 5) -> str:
+    if not date_str:
+        return date_str
+    
+    try:
+        dt = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
+        dt_offset = dt + timedelta(hours=hours_offset)
+        return dt_offset.strftime('%Y-%m-%d %H:%M:%S')
+    except (ValueError, AttributeError) as e:
+        logger.warning(f"Error adding timezone offset to date '{date_str}': {e}")
+        return date_str
+
+
 async def get_gps_route_data(
     device_id: str, 
     start_date: str, 
@@ -57,8 +69,11 @@ async def get_gps_route_data(
         start_q = _normalize_date_for_cars_api(start_date)
         end_q = _normalize_date_for_cars_api(end_date)
         
-        start_encoded = urllib.parse.quote(start_q)
-        end_encoded = urllib.parse.quote(end_q)
+        start_q_offset = _add_timezone_offset_for_api(start_q, hours_offset=5)
+        end_q_offset = _add_timezone_offset_for_api(end_q, hours_offset=5)
+        
+        start_encoded = urllib.parse.quote(start_q_offset)
+        end_encoded = urllib.parse.quote(end_q_offset)
         
         url = f"http://195.93.152.69:8667/vehicles/{device_id}/gps?start_date={start_encoded}&end_date={end_encoded}"
         headers = {"accept": "application/json"}
@@ -68,7 +83,6 @@ async def get_gps_route_data(
             try:
                 response = await client.get(url, headers=headers)
                 
-                # Выводим сырой ответ для диагностики
                 response_text = response.text
                 
                 if response.status_code != 200:
@@ -110,10 +124,8 @@ async def get_gps_route_data(
                     except Exception as coord_e:
                         logger.error(f"DEBUG GPS: Error processing coordinate {i}: {coord_e}")
                         logger.error(f"DEBUG GPS: Problematic coordinate: {coord}")
-                        # Продолжаем с другими координатами
                         continue
                 
-                # Фильтруем координаты по временному диапазону и группируем по дням
                 daily_routes = _group_coordinates_by_day(coordinates, start_date, end_date)
                 
                 route_data = RouteData(
@@ -172,13 +184,11 @@ def _group_coordinates_by_day(
     if not filtered:
         return []
 
-    # 2) Группируем по дате timestamp реальных точек (без пропорциональных разрезов)
     buckets: dict[str, list[GPSCoordinate]] = {}
     for c in filtered:
         d = _parse_ts(c.timestamp).date().strftime('%Y-%m-%d')
         buckets.setdefault(d, []).append(c)
 
-    # 3) Собираем список по возрастанию даты
     daily_routes: List[DailyRoute] = []
     for day in sorted(buckets.keys()):
         daily_routes.append(DailyRoute(date=day, coordinates=buckets[day]))
