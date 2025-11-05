@@ -78,6 +78,16 @@ async def get_gps_route_data(
         url = f"http://195.93.152.69:8667/vehicles/{device_id}/gps?start_date={start_encoded}&end_date={end_encoded}"
         headers = {"accept": "application/json"}
         
+        logger.info(f"GPS API Request - device_id: {device_id}")
+        logger.info(f"GPS API Request - Original start_date: {start_date}")
+        logger.info(f"GPS API Request - Original end_date: {end_date}")
+        logger.info(f"GPS API Request - Normalized start_q: {start_q}")
+        logger.info(f"GPS API Request - Normalized end_q: {end_q}")
+        logger.info(f"GPS API Request - With offset (+5h) start_q_offset: {start_q_offset}")
+        logger.info(f"GPS API Request - With offset (+5h) end_q_offset: {end_q_offset}")
+        logger.info(f"GPS API Request - Encoded start: {start_encoded}")
+        logger.info(f"GPS API Request - Encoded end: {end_encoded}")
+        logger.info(f"GPS API Request - Full URL: {url}")
         
         async with httpx.AsyncClient(timeout=15.0) as client:
             try:
