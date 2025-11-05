@@ -78,6 +78,16 @@ async def get_gps_route_data(
         url = f"http://195.93.152.69:8667/vehicles/{device_id}/gps?start_date={start_encoded}&end_date={end_encoded}"
         headers = {"accept": "application/json"}
         
+        print(f"GPS API Request - device_id: {device_id}")
+        print(f"GPS API Request - Original start_date: {start_date}")
+        print(f"GPS API Request - Original end_date: {end_date}")
+        print(f"GPS API Request - Normalized start_q: {start_q}")
+        print(f"GPS API Request - Normalized end_q: {end_q}")
+        print(f"GPS API Request - With offset (+5h) start_q_offset: {start_q_offset}")
+        print(f"GPS API Request - With offset (+5h) end_q_offset: {end_q_offset}")
+        print(f"GPS API Request - Encoded start: {start_encoded}")
+        print(f"GPS API Request - Encoded end: {end_encoded}")
+        print(f"GPS API Request - Full URL: {url}")
         logger.info(f"GPS API Request - device_id: {device_id}")
         logger.info(f"GPS API Request - Original start_date: {start_date}")
         logger.info(f"GPS API Request - Original end_date: {end_date}")
