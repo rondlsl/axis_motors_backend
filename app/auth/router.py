@@ -449,11 +449,9 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
     # Persist tokens
     try:
         now = datetime.utcnow()
-        access_expires = now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        refresh_expires = None 
         db.add_all([
-            TokenRecord(user_id=user.id, token_type="access", token=access_token, expires_at=access_expires, created_at=now, updated_at=now, last_used_at=now),
-            TokenRecord(user_id=user.id, token_type="refresh", token=refresh_token, expires_at=refresh_expires, created_at=now, updated_at=now)
+            TokenRecord(user_id=user.id, token_type="access", token=access_token, expires_at=None, created_at=now, updated_at=now, last_used_at=now),
+            TokenRecord(user_id=user.id, token_type="refresh", token=refresh_token, expires_at=None, created_at=now, updated_at=now)
         ])
         db.commit()
     except Exception:
@@ -1324,11 +1322,9 @@ async def refresh_token(db: Session = Depends(get_db), token: str = Depends(JWTB
     # Save new tokens and optionally keep history
     try:
         now = datetime.utcnow()
-        access_expires = now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        refresh_expires = None 
         db.add_all([
-            TokenRecord(user_id=user.id, token_type="access", token=new_access_token, expires_at=access_expires, created_at=now, updated_at=now, last_used_at=now),
-            TokenRecord(user_id=user.id, token_type="refresh", token=new_refresh_token, expires_at=refresh_expires, created_at=now, updated_at=now)
+            TokenRecord(user_id=user.id, token_type="access", token=new_access_token, expires_at=None, created_at=now, updated_at=now, last_used_at=now),
+            TokenRecord(user_id=user.id, token_type="refresh", token=new_refresh_token, expires_at=None, created_at=now, updated_at=now)
         ])
         db.commit()
     except Exception:
