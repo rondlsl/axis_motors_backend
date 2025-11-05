@@ -147,8 +147,11 @@ async def get_gps_route_data(
                 print(f"DEBUG GPS: Successfully processed {len(coordinates)} coordinates")
                 print(f"DEBUG GPS: Calling _group_coordinates_by_day with start_date={start_date}, end_date={end_date}")
                 
+                period_start = data.get("period", {}).get("start") if data else None
+                print(f"DEBUG GPS: Period start from API: {period_start}")
+                
                 try:
-                    daily_routes = _group_coordinates_by_day(coordinates, start_date, end_date)
+                    daily_routes = _group_coordinates_by_day(coordinates, start_date, end_date, period_start)
                     print(f"DEBUG GPS: Created {len(daily_routes)} daily routes")
                 except Exception as daily_e:
                     print(f"DEBUG GPS: Error in _group_coordinates_by_day: {daily_e}")
@@ -198,7 +201,8 @@ async def get_gps_route_data(
 def _group_coordinates_by_day(
     coordinates: List[GPSCoordinate], 
     start_date: str, 
-    end_date: str
+    end_date: str,
+    period_start: Optional[str] = None
 ) -> List[DailyRoute]:
     """
     Группирует координаты по дням.
@@ -206,6 +210,7 @@ def _group_coordinates_by_day(
     :param coordinates: Список всех координат
     :param start_date: Дата начала поездки в ISO формате (после apply_offset)
     :param end_date: Дата окончания поездки в ISO формате (после apply_offset)
+    :param period_start: Начало периода из API (для вычисления timestamp)
     :return: Список маршрутов по дням
     """
     if not coordinates:
@@ -218,11 +223,29 @@ def _group_coordinates_by_day(
         logger.error(f"Error parsing dates: start_date={start_date}, end_date={end_date}, error={e}")
         return []
     
-    def _parse_ts(ts: str) -> datetime:
+    period_start_dt = None
+    if period_start:
         try:
-            return datetime.fromisoformat(ts.replace('Z', '+00:00'))
-        except Exception:
-            return datetime.strptime(ts.split('T')[0], '%Y-%m-%d')
+            period_start_dt = datetime.fromisoformat(period_start.replace('Z', '+00:00'))
+        except Exception as e:
+            logger.warning(f"Error parsing period_start: {period_start}, error: {e}")
+    
+    def _parse_ts(ts) -> datetime:
+        if isinstance(ts, int):
+            if period_start_dt:
+                return period_start_dt + timedelta(seconds=ts)
+            else:
+                return start_dt + timedelta(seconds=ts)
+        elif isinstance(ts, str):
+            try:
+                return datetime.fromisoformat(ts.replace('Z', '+00:00'))
+            except Exception:
+                try:
+                    return datetime.strptime(ts.split('T')[0], '%Y-%m-%d')
+                except Exception:
+                    return start_dt
+        else:
+            return start_dt
 
     filtered = [c for c in coordinates if start_dt <= _parse_ts(c.timestamp) <= end_dt]
     if not filtered:
