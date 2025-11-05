@@ -122,9 +122,11 @@ async def get_gps_route_data(
                     
                 coordinates_list = data["coordinates"]
                 if not coordinates_list:
+                    print("DEBUG GPS: Empty coordinates list")
                     logger.warning("DEBUG GPS: Empty coordinates list")
                     return None
                 
+                print(f"DEBUG GPS: Processing {len(coordinates_list)} coordinates")
                 coordinates = []
                 for i, coord in enumerate(coordinates_list):
                     try:
@@ -136,31 +138,59 @@ async def get_gps_route_data(
                         )
                         coordinates.append(gps_coord)
                     except Exception as coord_e:
+                        print(f"DEBUG GPS: Error processing coordinate {i}: {coord_e}")
+                        print(f"DEBUG GPS: Problematic coordinate: {coord}")
                         logger.error(f"DEBUG GPS: Error processing coordinate {i}: {coord_e}")
                         logger.error(f"DEBUG GPS: Problematic coordinate: {coord}")
                         continue
                 
-                daily_routes = _group_coordinates_by_day(coordinates, start_date, end_date)
+                print(f"DEBUG GPS: Successfully processed {len(coordinates)} coordinates")
+                print(f"DEBUG GPS: Calling _group_coordinates_by_day with start_date={start_date}, end_date={end_date}")
                 
-                route_data = RouteData(
-                    device_id=data.get("device_id", device_id),
-                    start_date=start_date,
-                    end_date=end_date,
-                    total_coordinates=data.get("count", len(coordinates)),
-                    daily_routes=daily_routes,
-                    fuel_start=data.get("fuel", {}).get("start") if data.get("fuel") else None,
-                    fuel_end=data.get("fuel", {}).get("end") if data.get("fuel") else None
-                )
+                try:
+                    daily_routes = _group_coordinates_by_day(coordinates, start_date, end_date)
+                    print(f"DEBUG GPS: Created {len(daily_routes)} daily routes")
+                except Exception as daily_e:
+                    print(f"DEBUG GPS: Error in _group_coordinates_by_day: {daily_e}")
+                    logger.error(f"DEBUG GPS: Error in _group_coordinates_by_day: {daily_e}")
+                    import traceback
+                    logger.error(f"DEBUG GPS: Traceback: {traceback.format_exc()}")
+                    raise
                 
-                return route_data
+                print(f"DEBUG GPS: Creating RouteData object")
+                try:
+                    route_data = RouteData(
+                        device_id=data.get("device_id", device_id),
+                        start_date=start_date,
+                        end_date=end_date,
+                        total_coordinates=data.get("count", len(coordinates)),
+                        daily_routes=daily_routes,
+                        fuel_start=data.get("fuel", {}).get("start") if data.get("fuel") else None,
+                        fuel_end=data.get("fuel", {}).get("end") if data.get("fuel") else None
+                    )
+                    print(f"DEBUG GPS: RouteData created successfully")
+                    print(f"DEBUG GPS: RouteData device_id={route_data.device_id}, total_coordinates={route_data.total_coordinates}, daily_routes_count={len(route_data.daily_routes)}")
+                    return route_data
+                except Exception as route_e:
+                    print(f"DEBUG GPS: Error creating RouteData: {route_e}")
+                    logger.error(f"DEBUG GPS: Error creating RouteData: {route_e}")
+                    import traceback
+                    logger.error(f"DEBUG GPS: Traceback: {traceback.format_exc()}")
+                    raise
                 
             except Exception as e:
+                print(f"DEBUG GPS: Request failed: {e}")
+                import traceback
+                print(f"DEBUG GPS: Traceback: {traceback.format_exc()}")
                 logger.error(f"DEBUG GPS: Request failed: {e}")
+                logger.error(f"DEBUG GPS: Traceback: {traceback.format_exc()}")
                 return None
             
     except Exception as e:
-        logger.error(f"DEBUG GPS: Exception occurred for device {device_id}: {e}")
+        print(f"DEBUG GPS: Exception occurred for device {device_id}: {e}")
         import traceback
+        print(f"DEBUG GPS: Full traceback: {traceback.format_exc()}")
+        logger.error(f"DEBUG GPS: Exception occurred for device {device_id}: {e}")
         logger.error(f"DEBUG GPS: Full traceback: {traceback.format_exc()}")
         return None
 
