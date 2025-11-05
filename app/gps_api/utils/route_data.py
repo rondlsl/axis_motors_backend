@@ -83,20 +83,17 @@ async def get_gps_route_data(
         print(f"GPS API Request - Encoded start: {start_encoded}")
         print(f"GPS API Request - Encoded end: {end_encoded}")
         print(f"GPS API Request - Full URL: {url}")
-        logger.info(f"GPS API Request - device_id: {device_id}")
-        logger.info(f"GPS API Request - Original start_date: {start_date}")
-        logger.info(f"GPS API Request - Original end_date: {end_date}")
-        logger.info(f"GPS API Request - Normalized start_q: {start_q}")
-        logger.info(f"GPS API Request - Normalized end_q: {end_q}")
-        logger.info(f"GPS API Request - Encoded start: {start_encoded}")
-        logger.info(f"GPS API Request - Encoded end: {end_encoded}")
-        logger.info(f"GPS API Request - Full URL: {url}")
         
         async with httpx.AsyncClient(timeout=15.0) as client:
             try:
                 response = await client.get(url, headers=headers)
                 
                 response_text = response.text
+                
+                print(f"GPS API Response - Status code: {response.status_code}")
+                print(f"GPS API Response - Response text: {response_text[:500]}")  # Первые 500 символов
+                logger.info(f"GPS API Response - Status code: {response.status_code}")
+                logger.info(f"GPS API Response - Response text: {response_text}")
                 
                 if response.status_code != 200:
                     logger.error(f"DEBUG GPS: Non-200 status code: {response.status_code}")
@@ -105,9 +102,13 @@ async def get_gps_route_data(
                 
                 try:
                     data = response.json()
+                    print(f"GPS API Response - Parsed JSON keys: {list(data.keys()) if data else 'None'}")
+                    print(f"GPS API Response - Coordinates count: {len(data.get('coordinates', [])) if data and 'coordinates' in data else 0}")
+                    logger.info(f"GPS API Response - Parsed JSON: {data}")
                 except Exception as json_e:
                     logger.error(f"DEBUG GPS: JSON parse error: {json_e}")
                     logger.error(f"DEBUG GPS: Response text: {response_text}")
+                    print(f"GPS API Response - JSON parse error: {json_e}")
                     return None
                 
                 if not data:
