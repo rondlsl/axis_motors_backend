@@ -23,9 +23,7 @@ def create_access_token(data: dict):
     print(data)
     print(phone_number)
     encrypted_phone_number = encrypt_phone_number(phone_number)
-    to_encode = {"sub": encrypted_phone_number}
-    expire = datetime.now() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire, "token_type": "access"})
+    to_encode = {"sub": encrypted_phone_number, "token_type": "access"}
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
@@ -40,7 +38,7 @@ def create_refresh_token(data: dict):
 
 def verify_token(token: str, expected_token_type: str):
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_exp": False})
         token_type = payload.get("token_type")
         if expected_token_type != "any" and token_type != expected_token_type:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
