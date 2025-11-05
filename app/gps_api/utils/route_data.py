@@ -1,12 +1,9 @@
 import httpx
-import logging
 import urllib.parse
 import re
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from app.owner.schemas import RouteData, DailyRoute, GPSCoordinate
-
-logger = logging.getLogger(__name__)
 
 
 def _normalize_date_for_cars_api(date_str: str) -> str:
@@ -47,8 +44,7 @@ def _add_timezone_offset_for_api(date_str: str, hours_offset: int = 5) -> str:
         dt = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
         dt_offset = dt + timedelta(hours=hours_offset)
         return dt_offset.strftime('%Y-%m-%d %H:%M:%S')
-    except (ValueError, AttributeError) as e:
-        logger.warning(f"Error adding timezone offset to date '{date_str}': {e}")
+    except (ValueError, AttributeError):
         return date_str
 
 
@@ -75,60 +71,27 @@ async def get_gps_route_data(
         url = f"http://195.93.152.69:8667/vehicles/{device_id}/gps?start_date={start_encoded}&end_date={end_encoded}"
         headers = {"accept": "application/json"}
         
-        print(f"GPS API Request - device_id: {device_id}")
-        print(f"GPS API Request - Original start_date: {start_date}")
-        print(f"GPS API Request - Original end_date: {end_date}")
-        print(f"GPS API Request - Normalized start_q: {start_q}")
-        print(f"GPS API Request - Normalized end_q: {end_q}")
-        print(f"GPS API Request - Encoded start: {start_encoded}")
-        print(f"GPS API Request - Encoded end: {end_encoded}")
-        print(f"GPS API Request - Full URL: {url}")
-        
         async with httpx.AsyncClient(timeout=15.0) as client:
             try:
                 response = await client.get(url, headers=headers)
                 
-                response_text = response.text
-                
-                print(f"GPS API Response - Status code: {response.status_code}")
-                print(f"GPS API Response - Response text: {response_text[:500]}")  # Первые 500 символов
-                logger.info(f"GPS API Response - Status code: {response.status_code}")
-                logger.info(f"GPS API Response - Response text: {response_text}")
-                
                 if response.status_code != 200:
-                    logger.error(f"DEBUG GPS: Non-200 status code: {response.status_code}")
-                    logger.error(f"DEBUG GPS: Response text: {response_text}")
                     return None
                 
                 try:
                     data = response.json()
-                    print(f"GPS API Response - Parsed JSON keys: {list(data.keys()) if data else 'None'}")
-                    print(f"GPS API Response - Coordinates count: {len(data.get('coordinates', [])) if data and 'coordinates' in data else 0}")
-                    logger.info(f"GPS API Response - Parsed JSON: {data}")
-                except Exception as json_e:
-                    logger.error(f"DEBUG GPS: JSON parse error: {json_e}")
-                    logger.error(f"DEBUG GPS: Response text: {response_text}")
-                    print(f"GPS API Response - JSON parse error: {json_e}")
+                except Exception:
                     return None
                 
-                if not data:
-                    logger.warning("DEBUG GPS: No data in response")
-                    return None
-                    
-                if "coordinates" not in data:
-                    logger.warning("DEBUG GPS: No coordinates key in response")
-                    logger.warning(f"DEBUG GPS: Available keys: {list(data.keys())}")
+                if not data or "coordinates" not in data:
                     return None
                     
                 coordinates_list = data["coordinates"]
                 if not coordinates_list:
-                    print("DEBUG GPS: Empty coordinates list")
-                    logger.warning("DEBUG GPS: Empty coordinates list")
                     return None
                 
-                print(f"DEBUG GPS: Processing {len(coordinates_list)} coordinates")
                 coordinates = []
-                for i, coord in enumerate(coordinates_list):
+                for coord in coordinates_list:
                     try:
                         gps_coord = GPSCoordinate(
                             lat=coord["lat"],
@@ -137,64 +100,29 @@ async def get_gps_route_data(
                             timestamp=coord["timestamp"]
                         )
                         coordinates.append(gps_coord)
-                    except Exception as coord_e:
-                        print(f"DEBUG GPS: Error processing coordinate {i}: {coord_e}")
-                        print(f"DEBUG GPS: Problematic coordinate: {coord}")
-                        logger.error(f"DEBUG GPS: Error processing coordinate {i}: {coord_e}")
-                        logger.error(f"DEBUG GPS: Problematic coordinate: {coord}")
+                    except Exception:
                         continue
                 
-                print(f"DEBUG GPS: Successfully processed {len(coordinates)} coordinates")
-                print(f"DEBUG GPS: Calling _group_coordinates_by_day with start_date={start_date}, end_date={end_date}")
-                
                 period_start = data.get("period", {}).get("start") if data else None
-                print(f"DEBUG GPS: Period start from API: {period_start}")
                 
-                try:
-                    daily_routes = _group_coordinates_by_day(coordinates, start_date, end_date, period_start)
-                    print(f"DEBUG GPS: Created {len(daily_routes)} daily routes")
-                except Exception as daily_e:
-                    print(f"DEBUG GPS: Error in _group_coordinates_by_day: {daily_e}")
-                    logger.error(f"DEBUG GPS: Error in _group_coordinates_by_day: {daily_e}")
-                    import traceback
-                    logger.error(f"DEBUG GPS: Traceback: {traceback.format_exc()}")
-                    raise
+                daily_routes = _group_coordinates_by_day(coordinates, start_date, end_date, period_start)
                 
-                print(f"DEBUG GPS: Creating RouteData object")
-                try:
-                    route_data = RouteData(
-                        device_id=data.get("device_id", device_id),
-                        start_date=start_date,
-                        end_date=end_date,
-                        total_coordinates=data.get("count", len(coordinates)),
-                        daily_routes=daily_routes,
-                        fuel_start=data.get("fuel", {}).get("start") if data.get("fuel") else None,
-                        fuel_end=data.get("fuel", {}).get("end") if data.get("fuel") else None
-                    )
-                    print(f"DEBUG GPS: RouteData created successfully")
-                    print(f"DEBUG GPS: RouteData device_id={route_data.device_id}, total_coordinates={route_data.total_coordinates}, daily_routes_count={len(route_data.daily_routes)}")
-                    return route_data
-                except Exception as route_e:
-                    print(f"DEBUG GPS: Error creating RouteData: {route_e}")
-                    logger.error(f"DEBUG GPS: Error creating RouteData: {route_e}")
-                    import traceback
-                    logger.error(f"DEBUG GPS: Traceback: {traceback.format_exc()}")
-                    raise
+                route_data = RouteData(
+                    device_id=data.get("device_id", device_id),
+                    start_date=start_date,
+                    end_date=end_date,
+                    total_coordinates=data.get("count", len(coordinates)),
+                    daily_routes=daily_routes,
+                    fuel_start=data.get("fuel", {}).get("start") if data.get("fuel") else None,
+                    fuel_end=data.get("fuel", {}).get("end") if data.get("fuel") else None
+                )
                 
-            except Exception as e:
-                print(f"DEBUG GPS: Request failed: {e}")
-                import traceback
-                print(f"DEBUG GPS: Traceback: {traceback.format_exc()}")
-                logger.error(f"DEBUG GPS: Request failed: {e}")
-                logger.error(f"DEBUG GPS: Traceback: {traceback.format_exc()}")
+                return route_data
+                
+            except Exception:
                 return None
             
-    except Exception as e:
-        print(f"DEBUG GPS: Exception occurred for device {device_id}: {e}")
-        import traceback
-        print(f"DEBUG GPS: Full traceback: {traceback.format_exc()}")
-        logger.error(f"DEBUG GPS: Exception occurred for device {device_id}: {e}")
-        logger.error(f"DEBUG GPS: Full traceback: {traceback.format_exc()}")
+    except Exception:
         return None
 
 
@@ -227,8 +155,7 @@ def _group_coordinates_by_day(
             start_dt = start_dt.replace(tzinfo=None)
         if end_dt.tzinfo:
             end_dt = end_dt.replace(tzinfo=None)
-    except ValueError as e:
-        logger.error(f"Error parsing dates: start_date={start_date}, end_date={end_date}, error={e}")
+    except ValueError:
         return []
     
     period_start_dt = None
@@ -238,8 +165,8 @@ def _group_coordinates_by_day(
             period_start_dt = datetime.fromisoformat(period_start_str)
             if period_start_dt.tzinfo:
                 period_start_dt = period_start_dt.replace(tzinfo=None)
-        except Exception as e:
-            logger.warning(f"Error parsing period_start: {period_start}, error: {e}")
+        except Exception:
+            pass
     
     def _parse_ts(ts) -> datetime:
         if isinstance(ts, int):
