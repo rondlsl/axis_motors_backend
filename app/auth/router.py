@@ -446,51 +446,32 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
     access_token = create_access_token(data={"sub": user.phone_number})
     refresh_token = create_refresh_token(data={"sub": user.phone_number})
 
-    # Update or create tokens
+    # Create new tokens (always create new records to support multiple devices)
     try:
         now = datetime.utcnow()
         
-        # Update or create access token
-        access_token_record = db.query(TokenRecord).filter(
-            TokenRecord.user_id == user.id,
-            TokenRecord.token_type == "access"
-        ).first()
+        # Create new access token
+        access_token_record = TokenRecord(
+            user_id=user.id, 
+            token_type="access", 
+            token=access_token, 
+            expires_at=None, 
+            created_at=now, 
+            updated_at=now, 
+            last_used_at=now
+        )
+        db.add(access_token_record)
         
-        if access_token_record:
-            access_token_record.token = access_token
-            access_token_record.updated_at = now
-            access_token_record.last_used_at = now
-        else:
-            access_token_record = TokenRecord(
-                user_id=user.id, 
-                token_type="access", 
-                token=access_token, 
-                expires_at=None, 
-                created_at=now, 
-                updated_at=now, 
-                last_used_at=now
-            )
-            db.add(access_token_record)
-        
-        # Update or create refresh token
-        refresh_token_record = db.query(TokenRecord).filter(
-            TokenRecord.user_id == user.id,
-            TokenRecord.token_type == "refresh"
-        ).first()
-        
-        if refresh_token_record:
-            refresh_token_record.token = refresh_token
-            refresh_token_record.updated_at = now
-        else:
-            refresh_token_record = TokenRecord(
-                user_id=user.id, 
-                token_type="refresh", 
-                token=refresh_token, 
-                expires_at=None, 
-                created_at=now, 
-                updated_at=now
-            )
-            db.add(refresh_token_record)
+        # Create new refresh token
+        refresh_token_record = TokenRecord(
+            user_id=user.id, 
+            token_type="refresh", 
+            token=refresh_token, 
+            expires_at=None, 
+            created_at=now, 
+            updated_at=now
+        )
+        db.add(refresh_token_record)
         
         db.commit()
     except Exception:
@@ -1364,51 +1345,32 @@ async def refresh_token(db: Session = Depends(get_db), token: str = Depends(JWTB
     new_access_token = create_access_token(data={"sub": user.phone_number})
     new_refresh_token = create_refresh_token(data={"sub": user.phone_number})
 
-    # Update or create tokens
+    # Create new tokens (always create new records to support multiple devices)
     try:
         now = datetime.utcnow()
         
-        # Update or create access token
-        access_token_record = db.query(TokenRecord).filter(
-            TokenRecord.user_id == user.id,
-            TokenRecord.token_type == "access"
-        ).first()
+        # Create new access token
+        access_token_record = TokenRecord(
+            user_id=user.id, 
+            token_type="access", 
+            token=new_access_token, 
+            expires_at=None, 
+            created_at=now, 
+            updated_at=now, 
+            last_used_at=now
+        )
+        db.add(access_token_record)
         
-        if access_token_record:
-            access_token_record.token = new_access_token
-            access_token_record.updated_at = now
-            access_token_record.last_used_at = now
-        else:
-            access_token_record = TokenRecord(
-                user_id=user.id, 
-                token_type="access", 
-                token=new_access_token, 
-                expires_at=None, 
-                created_at=now, 
-                updated_at=now, 
-                last_used_at=now
-            )
-            db.add(access_token_record)
-        
-        # Update or create refresh token
-        refresh_token_record = db.query(TokenRecord).filter(
-            TokenRecord.user_id == user.id,
-            TokenRecord.token_type == "refresh"
-        ).first()
-        
-        if refresh_token_record:
-            refresh_token_record.token = new_refresh_token
-            refresh_token_record.updated_at = now
-        else:
-            refresh_token_record = TokenRecord(
-                user_id=user.id, 
-                token_type="refresh", 
-                token=new_refresh_token, 
-                expires_at=None, 
-                created_at=now, 
-                updated_at=now
-            )
-            db.add(refresh_token_record)
+        # Create new refresh token
+        refresh_token_record = TokenRecord(
+            user_id=user.id, 
+            token_type="refresh", 
+            token=new_refresh_token, 
+            expires_at=None, 
+            created_at=now, 
+            updated_at=now
+        )
+        db.add(refresh_token_record)
         
         db.commit()
     except Exception:
