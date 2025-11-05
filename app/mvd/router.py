@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, exists
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
@@ -9,6 +9,7 @@ from app.utils.short_id import uuid_to_sid, safe_sid_to_uuid
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole
 from app.models.application_model import Application, ApplicationStatus
+from app.models.guarantor_model import Guarantor
 from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
 
 MvdRouter = APIRouter(prefix="/mvd", tags=["MVD"])
@@ -27,17 +28,37 @@ async def get_pending_applications(
         db: Session = Depends(get_db),
         current_mvd: User = Depends(get_current_mvd_user)
 ) -> Dict[str, Any]:
-    """Получить заявки, одобренные финансистом и ожидающие проверки МВД"""
+    """Получить заявки, одобренные финансистом и ожидающие проверки МВД.
+    Также показывает пользователей с REJECTFIRST (отказ по финансу), у которых есть одобренный гарант."""
+    
+    # Подзапрос для проверки наличия активного гаранта
+    has_active_guarantor = exists().where(
+        and_(
+            Guarantor.client_id == User.id,
+            Guarantor.is_active == True
+        )
+    )
+    
+    # Базовый фильтр: обычные заявки (PENDINGTOSECOND) или REJECTFIRST с активным гарантом
+    base_filter = or_(
+        # Обычный случай: одобрен финансистом, ждёт МВД
+        and_(
+            Application.financier_status == ApplicationStatus.APPROVED,
+            Application.mvd_status == ApplicationStatus.PENDING,
+            User.is_verified_email == True
+        ),
+        # Случай с отказом по финансу: роль REJECTFIRST, есть активный гарант, mvd_status = PENDING
+        and_(
+            User.role == UserRole.REJECTFIRST,
+            Application.mvd_status == ApplicationStatus.PENDING,
+            User.is_verified_email == True,
+            has_active_guarantor
+        )
+    )
     
     query = db.query(Application).options(
         joinedload(Application.user)
-    ).filter(
-        and_(
-            Application.financier_status == ApplicationStatus.APPROVED,  # Только одобренные финансистом
-            Application.mvd_status == ApplicationStatus.PENDING,
-            User.is_verified_email == True
-        )
-    )
+    ).filter(base_filter)
     
     # Поиск по имени, телефону, ИИН или номеру паспорта
     if search:
@@ -252,8 +273,19 @@ async def approve_application(
     if application.mvd_status != ApplicationStatus.PENDING:
         raise HTTPException(status_code=400, detail="Заявка уже обработана")
     
-    if application.financier_status != ApplicationStatus.APPROVED:
-        raise HTTPException(status_code=400, detail="Заявка не одобрена")
+    # Проверяем, что заявка либо одобрена финансистом, либо пользователь с REJECTFIRST (отказ по финансу)
+    user = application.user
+    is_rejectfirst_with_guarantor = (
+        user and 
+        user.role == UserRole.REJECTFIRST and
+        db.query(Guarantor).filter(
+            Guarantor.client_id == user.id,
+            Guarantor.is_active == True
+        ).first() is not None
+    )
+    
+    if application.financier_status != ApplicationStatus.APPROVED and not is_rejectfirst_with_guarantor:
+        raise HTTPException(status_code=400, detail="Заявка не одобрена финансистом или нет активного гаранта")
     
     # Обновляем заявку
     application.mvd_status = ApplicationStatus.APPROVED
@@ -262,8 +294,8 @@ async def approve_application(
     application.updated_at = datetime.utcnow()
 
     # Переводим пользователя в полноценного USER
-    user = application.user
-    if user:
+    # НО если у пользователя роль REJECTFIRST (отказ по финансу), не меняем роль
+    if user and user.role != UserRole.REJECTFIRST:
         user.role = UserRole.USER
     
     db.commit()
@@ -305,8 +337,19 @@ async def reject_application(
     if application.mvd_status != ApplicationStatus.PENDING:
         raise HTTPException(status_code=400, detail="Заявка уже обработана")
     
-    if application.financier_status != ApplicationStatus.APPROVED:
-        raise HTTPException(status_code=400, detail="Заявка не одобрена")
+    # Проверяем, что заявка либо одобрена финансистом, либо пользователь с REJECTFIRST (отказ по финансу)
+    user = application.user
+    is_rejectfirst_with_guarantor = (
+        user and 
+        user.role == UserRole.REJECTFIRST and
+        db.query(Guarantor).filter(
+            Guarantor.client_id == user.id,
+            Guarantor.is_active == True
+        ).first() is not None
+    )
+    
+    if application.financier_status != ApplicationStatus.APPROVED and not is_rejectfirst_with_guarantor:
+        raise HTTPException(status_code=400, detail="Заявка не одобрена финансистом или нет активного гаранта")
     
     # Обновляем заявку
     application.mvd_status = ApplicationStatus.REJECTED
@@ -316,14 +359,14 @@ async def reject_application(
     application.reason = reason
 
     # Блокируем доступ пользователя: роль REJECTSECOND, деактивируем
-    user = application.user
-    if user:
+    # НО если у пользователя роль REJECTFIRST (отказ по финансу), не меняем роль
+    if user and user.role != UserRole.REJECTFIRST:
         user.role = UserRole.REJECTSECOND
         user.is_active = False
-    
-    # Если пользователь был гарантом, отменяем все его заявки
-    from app.guarantor.router import cancel_guarantor_requests_on_rejection
-    await cancel_guarantor_requests_on_rejection(str(user.id), db)
+        
+        # Если пользователь был гарантом, отменяем все его заявки
+        from app.guarantor.router import cancel_guarantor_requests_on_rejection
+        await cancel_guarantor_requests_on_rejection(str(user.id), db)
     
     db.commit()
     
