@@ -13,7 +13,7 @@ from app.models.car_model import Car
 from app.models.history_model import RentalHistory, RentalStatus, RentalType
 from app.models.user_model import User, UserRole
 from app.wallet.utils import record_wallet_transaction
-from app.models.wallet_transaction_model import WalletTransactionType
+from app.models.wallet_transaction_model import WalletTransactionType, WalletTransaction
 from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
 from app.core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.gps_api.utils.auth_api import get_auth_token
@@ -419,13 +419,28 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                     )
 
                 if rental.rental_type == RentalType.MINUTES:
+                    # Списываем строго по 1 минуте за раз с баланса
                     elapsed_min = math.ceil(elapsed)
-                    due = elapsed_min * car.price_per_minute
-                    prev = rental.overtime_fee or 0
-                    charge = due - prev
+                    # Сколько минут уже было списано с баланса
+                    prev_minutes_charged = flags.get("minutes_charged", 0)
+                    # Сколько новых минут прошло
+                    new_minutes = elapsed_min - prev_minutes_charged
                     
-                    # Списываем поминутно во время поездки
-                    if charge > 0:
+                    # Списываем только если прошла хотя бы 1 новая минута
+                    if new_minutes > 0:
+                        # Сохраняем баланс до списания
+                        balance_before_charge = user.wallet_balance
+                        
+                        # С баланса списываем только за 1 минуту (чтобы баланс не ушел в минус)
+                        charge_per_minute = car.price_per_minute
+                        user.wallet_balance -= charge_per_minute
+                        
+                        # Обновляем счетчик списанных минут
+                        new_minutes_charged = prev_minutes_charged + 1
+                        flags["minutes_charged"] = new_minutes_charged
+                        
+                        # Обновляем overtime_fee и total_price накопленной суммой
+                        due = new_minutes_charged * car.price_per_minute
                         rental.overtime_fee = due
                         rental.total_price = (
                                 (rental.base_price or 0) +
@@ -435,9 +450,32 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                 rental.overtime_fee +
                                 (rental.distance_fee or 0)
                         )
-                        rental.already_payed = (rental.already_payed or 0) + charge
-                        record_wallet_transaction(db, user=user, amount=-charge, ttype=WalletTransactionType.RENT_MINUTE_CHARGE, description=f"Поминутное списание {elapsed_min} мин", related_rental=rental)
-                        user.wallet_balance -= charge
+                        rental.already_payed = (rental.already_payed or 0) + charge_per_minute
+                        
+                        # Находим или создаем транзакцию для поминутного списания
+                        existing_tx = db.query(WalletTransaction).filter(
+                            WalletTransaction.related_rental_id == rental.id,
+                            WalletTransaction.transaction_type == WalletTransactionType.RENT_MINUTE_CHARGE
+                        ).order_by(WalletTransaction.created_at.desc()).first()
+                        
+                        if existing_tx:
+                            # Обновляем существующую транзакцию
+                            existing_tx.amount = -due  # накопленная сумма
+                            existing_tx.description = f"Поминутное списание {new_minutes_charged} мин"
+                            existing_tx.balance_after = user.wallet_balance
+                        else:
+                            # Создаем новую транзакцию вручную, т.к. баланс уже списан
+                            tx = WalletTransaction(
+                                user_id=user.id,
+                                amount=-due,  # накопленная сумма
+                                transaction_type=WalletTransactionType.RENT_MINUTE_CHARGE,
+                                description=f"Поминутное списание {new_minutes_charged} мин",
+                                balance_before=balance_before_charge,
+                                balance_after=user.wallet_balance,
+                                related_rental_id=rental.id
+                            )
+                            db.add(tx)
+                        
                         db.commit()
 
                         # Уведомление когда остается сумма на 10 минут
@@ -495,16 +533,27 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
 
                     overtime = max(0, elapsed - planned)
                     if overtime > 0:
-                        # Списываем поминутно: каждая минута сверхлимита списывается сразу
+                        # Списываем строго по 1 минуте за раз с баланса после истечения основного тарифа
                         extra_minutes = math.ceil(overtime)
-                        prev_ov_minutes = math.floor((rental.overtime_fee or 0) / car.price_per_minute) if car.price_per_minute > 0 else 0
-                        new_minutes_to_charge = extra_minutes - prev_ov_minutes
+                        # Сколько минут сверхлимита уже было списано с баланса
+                        prev_ov_minutes_charged = flags.get("overtime_minutes_charged", 0)
+                        # Сколько новых минут сверхлимита прошло
+                        new_ov_minutes = extra_minutes - prev_ov_minutes_charged
                         
-                        if new_minutes_to_charge > 0:
-                            # Списываем только новые минуты (по 1 минуте за раз)
-                            charge_ov = new_minutes_to_charge * car.price_per_minute
-                            fee_total_ov = extra_minutes * car.price_per_minute
+                        if new_ov_minutes > 0:
+                            # Сохраняем баланс до списания
+                            balance_before_charge = user.wallet_balance
                             
+                            # С баланса списываем только за 1 минуту (чтобы баланс не ушел в минус)
+                            charge_ov_per_minute = car.price_per_minute
+                            user.wallet_balance -= charge_ov_per_minute
+                            
+                            # Обновляем счетчик списанных минут сверхлимита
+                            new_ov_minutes_charged = prev_ov_minutes_charged + 1
+                            flags["overtime_minutes_charged"] = new_ov_minutes_charged
+                            
+                            # Обновляем overtime_fee и total_price накопленной суммой
+                            fee_total_ov = new_ov_minutes_charged * car.price_per_minute
                             rental.overtime_fee = fee_total_ov
                             rental.total_price = (
                                 (rental.base_price or 0)
@@ -514,9 +563,32 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                 + rental.overtime_fee
                                 + (rental.distance_fee or 0)
                             )
-                            rental.already_payed = (rental.already_payed or 0) + charge_ov
-                            record_wallet_transaction(db, user=user, amount=-charge_ov, ttype=WalletTransactionType.RENT_OVERTIME_FEE, description=f"Сверхтариф {new_minutes_to_charge} мин", related_rental=rental)
-                            user.wallet_balance -= charge_ov
+                            rental.already_payed = (rental.already_payed or 0) + charge_ov_per_minute
+                            
+                            # Находим или создаем транзакцию для сверхтарифа
+                            existing_tx = db.query(WalletTransaction).filter(
+                                WalletTransaction.related_rental_id == rental.id,
+                                WalletTransaction.transaction_type == WalletTransactionType.RENT_OVERTIME_FEE
+                            ).order_by(WalletTransaction.created_at.desc()).first()
+                            
+                            if existing_tx:
+                                # Обновляем существующую транзакцию
+                                existing_tx.amount = -fee_total_ov  # накопленная сумма
+                                existing_tx.description = f"Сверхтариф {new_ov_minutes_charged} мин"
+                                existing_tx.balance_after = user.wallet_balance
+                            else:
+                                # Создаем новую транзакцию вручную, т.к. баланс уже списан
+                                tx = WalletTransaction(
+                                    user_id=user.id,
+                                    amount=-fee_total_ov,  # накопленная сумма
+                                    transaction_type=WalletTransactionType.RENT_OVERTIME_FEE,
+                                    description=f"Сверхтариф {new_ov_minutes_charged} мин",
+                                    balance_before=balance_before_charge,
+                                    balance_after=user.wallet_balance,
+                                    related_rental_id=rental.id
+                                )
+                                db.add(tx)
+                            
                             db.commit()
 
                             # Уведомление когда остается сумма на 10 минут
