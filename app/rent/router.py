@@ -25,7 +25,7 @@ from app.push.utils import send_notification_to_all_mechanics_async, send_push_t
 from app.rent.exceptions import InsufficientBalanceException
 from app.wallet.utils import record_wallet_transaction
 from app.models.wallet_transaction_model import WalletTransactionType, WalletTransaction
-from app.rent.utils.calculate_price import calculate_total_price, get_open_price
+from app.rent.utils.calculate_price import calculate_total_price, get_open_price, calc_required_balance
 from app.gps_api.utils.route_data import get_gps_route_data
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.car_data import auto_lock_vehicle_after_rental
@@ -607,32 +607,26 @@ async def reserve_car(
         }
 
     # НЕ владельцу – проверка баланса
+    required_balance = calc_required_balance(
+        rental_type=rental_type,
+        duration=duration,
+        car=car,
+        include_delivery=False,
+        is_owner=False
+    )
+    
+    if current_user.wallet_balance < required_balance:
+        raise InsufficientBalanceException(required_amount=required_balance)
+    
     if rental_type == RentalType.MINUTES:
-        # требуемая сумма: открытие + 2 часа
-        required_balance = open_fee + price_per_hour * 2
-        if current_user.wallet_balance < required_balance:
-            raise InsufficientBalanceException(required_amount=required_balance)
         base = 0
-
     elif rental_type == RentalType.HOURS:
         if duration is None:
             raise HTTPException(status_code=400, detail="Duration обязателен для аренды по часам.")
-        # требуемая сумма: (duration + 2) * price_per_hour + открытие
-        required_balance = (duration + 2) * price_per_hour + open_fee
-        if current_user.wallet_balance < required_balance:
-            raise InsufficientBalanceException(required_amount=required_balance)
-
         base = calculate_total_price(rental_type, duration, price_per_hour, price_per_day)
-
     else:  # RentalType.DAYS
         if duration is None:
             raise HTTPException(status_code=400, detail="Duration обязателен для посуточной аренды.")
-        # требуемая сумма: duration * price_per_day + 2 часа (без open_fee)
-        two_hours_fee = price_per_hour * 2
-        required_balance = duration * price_per_day + two_hours_fee
-        if current_user.wallet_balance < required_balance:
-            raise InsufficientBalanceException(required_amount=required_balance)
-
         base = calculate_total_price(rental_type, duration, price_per_hour, price_per_day)
 
     # Если всё ок, создаём бронь
@@ -753,36 +747,33 @@ async def reserve_delivery(
         # НЕ владелец — сбор за доставку
         delivery_fee = extra_fee
 
+        # Проверка минимального баланса
+        required_balance = calc_required_balance(
+            rental_type=rental_type,
+            duration=duration,
+            car=car,
+            include_delivery=True,
+            is_owner=False
+        )
+        
+        if current_user.wallet_balance < required_balance:
+            raise InsufficientBalanceException(required_amount=required_balance)
+        
         if rental_type == RentalType.MINUTES:
-            # требуемая сумма: открытие + 2 часа + доставка
-            required_balance = open_fee + price_per_hour * 2 + delivery_fee
-            if current_user.wallet_balance < required_balance:
-                raise InsufficientBalanceException(required_amount=required_balance)
-
             base_price = 0
             total_price = delivery_fee  # пока в total_price только плата за доставку
 
         elif rental_type == RentalType.HOURS:
             if duration is None:
                 raise HTTPException(status_code=400, detail="Duration обязателен для аренды по часам.")
-            # требуемая сумма: (duration + 2)×price_per_hour + открытие + доставка
-            required_balance = (duration + 2) * price_per_hour + open_fee + delivery_fee
-            if current_user.wallet_balance < required_balance:
-                raise InsufficientBalanceException(required_amount=required_balance)
-
             base_price = calculate_total_price(rental_type, duration, price_per_hour, price_per_day)
             total_price = base_price + open_fee + delivery_fee
 
         else:  # RentalType.DAYS
             if duration is None:
                 raise HTTPException(status_code=400, detail="Duration обязателен для посуточной аренды.")
-            # требуемая сумма: duration×price_per_day + 2 часа + доставка (без open_fee)
-            two_hours_fee = price_per_hour * 2
-            required_balance = duration * price_per_day + two_hours_fee + delivery_fee
-            if current_user.wallet_balance < required_balance:
-                raise InsufficientBalanceException(required_amount=required_balance)
             base_price = calculate_total_price(rental_type, duration, price_per_hour, price_per_day)
-            total_price = base_price + two_hours_fee + delivery_fee
+            total_price = base_price + delivery_fee
 
         # Если не владелец — проверим баланс сейчас, само списание сделаем после создания rental
         # (чтобы связать транзакцию с related_rental)
@@ -1168,18 +1159,36 @@ async def start_rental(
         # Обновляем время последней активности пользователя
         current_user.last_activity_at = datetime.utcnow()
 
-        total_cost = rental.total_price
-
-        if total_cost > 0:
-            if current_user.wallet_balance < total_cost:
-                raise HTTPException(
-                    status_code=402,
-                    detail=f"Нужно минимум {total_cost} ₸ для старта. Пополните кошелёк!"
-                )
-            # списание предоплаты (база + открытие/доставка, если включено)
-            record_wallet_transaction(db, user=current_user, amount=-total_cost, ttype=WalletTransactionType.RENT_BASE_CHARGE, description="Предоплата за аренду")
-            current_user.wallet_balance -= total_cost
-            rental.already_payed = total_cost
+        # Для суточного и часового тарифа списываем полную стоимость сразу
+        # Для минутного тарифа списываем только open_fee (поминутный тариф списывается во время поездки)
+        if rental.rental_type in [RentalType.HOURS, RentalType.DAYS]:
+            # Списываем полную стоимость за выбранный период (base_price + open_fee + delivery_fee)
+            total_cost = (rental.base_price or 0) + (rental.open_fee or 0) + (rental.delivery_fee or 0)
+            
+            if total_cost > 0:
+                if current_user.wallet_balance < total_cost:
+                    raise HTTPException(
+                        status_code=402,
+                        detail=f"Нужно минимум {total_cost} ₸ для старта. Пополните кошелёк!"
+                    )
+                record_wallet_transaction(db, user=current_user, amount=-total_cost, ttype=WalletTransactionType.RENT_BASE_CHARGE, description=f"Оплата за аренду: {rental.duration} {'час(ов)' if rental.rental_type == RentalType.HOURS else 'день(дней)'}")
+                current_user.wallet_balance -= total_cost
+                rental.already_payed = total_cost
+        elif rental.rental_type == RentalType.MINUTES:
+            # Для минутного тарифа списываем только open_fee
+            open_fee = rental.open_fee or 0
+            delivery_fee = rental.delivery_fee or 0
+            total_cost = open_fee + delivery_fee
+            
+            if total_cost > 0:
+                if current_user.wallet_balance < total_cost:
+                    raise HTTPException(
+                        status_code=402,
+                        detail=f"Нужно минимум {total_cost} ₸ для старта. Пополните кошелёк!"
+                    )
+                record_wallet_transaction(db, user=current_user, amount=-total_cost, ttype=WalletTransactionType.RENT_BASE_CHARGE, description="Оплата открытия и доставки")
+                current_user.wallet_balance -= total_cost
+                rental.already_payed = total_cost
 
         # Обновляем машину: меняем статус на IN_USE
         car.status = CarStatus.IN_USE
@@ -1982,20 +1991,10 @@ async def complete_rental(
         rental.overtime_fee = 0
         rental.distance_fee = 0
 
+        # Рассчитываем итоговую сумму (топливо уже списано во время поездки)
         rental.total_price = fuel_fee
-        previous_paid = rental.already_payed or 0
-        amount_to_charge = rental.total_price - previous_paid
-
-        if amount_to_charge != 0:
-            record_wallet_transaction(
-                db,
-                user=current_user,
-                amount=-amount_to_charge,
-                ttype=WalletTransactionType.RENT_FUEL_FEE,
-                description="Оплата топлива"
-            )
-            current_user.wallet_balance -= amount_to_charge
-            rental.already_payed = (rental.already_payed or 0) + amount_to_charge
+        # Обновляем already_payed (все списания уже произошли во время поездки)
+        rental.already_payed = rental.already_payed or 0
     else:
         # Итоговая сумма БЕЗ топлива (для отдельного отображения)
         total_price_without_fuel = (
@@ -2009,44 +2008,9 @@ async def complete_rental(
         # Итоговая сумма ВКЛЮЧАЯ топливо
         rental.total_price = total_price_without_fuel + fuel_fee
         
-        previous_paid = rental.already_payed or 0
-        amount_to_charge = rental.total_price - previous_paid
-
-        # Сначала списываем топливо отдельной транзакцией (если есть)
-        if fuel_fee > 0:
-            record_wallet_transaction(
-                db,
-                user=current_user,
-                amount=-fuel_fee,
-                ttype=WalletTransactionType.RENT_FUEL_FEE,
-                description=f"Оплата топлива: {round(fuel_consumed, 1)} л × {FUEL_PRICE_PER_LITER} = {fuel_fee}",
-            )
-            current_user.wallet_balance -= fuel_fee
-
-        # Затем списываем остальную сумму: сверхтариф + базовая плата
-        if amount_to_charge > 0:
-            overtime_to_charge = rental.overtime_fee or 0
-            remainder = amount_to_charge
-            if overtime_to_charge > 0:
-                charge_now = min(overtime_to_charge, amount_to_charge)
-                record_wallet_transaction(
-                    db,
-                    user=current_user,
-                    amount=-charge_now,
-                    ttype=WalletTransactionType.RENT_OVERTIME_FEE,
-                    description=f"Сверхтариф {overtime_mins} мин",
-                )
-                remainder -= charge_now
-            if remainder > 0:
-                record_wallet_transaction(
-                    db,
-                    user=current_user,
-                    amount=-remainder,
-                    ttype=WalletTransactionType.RENT_BASE_CHARGE,
-                    description="Завершение аренды: финальное списание",
-                )
-            current_user.wallet_balance -= amount_to_charge
-            rental.already_payed = rental.total_price
+        # Все списания уже произошли во время поездки
+        # Обновляем already_payed (все списания уже произошли во время поездки)
+        rental.already_payed = rental.already_payed or 0
 
     # 12) Рассчитываем и сохраняем фактическую продолжительность поездки в минутах для истории
     rental.duration = rounded_minutes
@@ -2115,7 +2079,7 @@ async def complete_rental(
         "rental_details": {
             "total_duration_minutes": rounded_minutes,
             "total_price": rental.total_price,
-            "amount_charged_now": amount_to_charge,
+            "amount_already_paid": rental.already_payed or 0,
             "current_wallet_balance": float(current_user.wallet_balance)
         },
         "review": {

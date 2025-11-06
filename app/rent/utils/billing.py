@@ -2,6 +2,7 @@ import asyncio
 import math
 from datetime import datetime
 import uuid
+from math import ceil, floor
 
 import httpx
 from sqlalchemy import or_
@@ -17,6 +18,9 @@ from app.push.utils import send_push_to_user_by_id, send_localized_notification_
 from app.core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.car_data import send_lock_engine
+
+FUEL_PRICE_PER_LITER = 350
+ELECTRIC_FUEL_PRICE_PER_LITER = 100
 
 # Кэш флагов уведомлений: rental_id -> flags (в т.ч. timestamp нулевого баланса)
 _notification_flags: dict[int, dict[str, object]] = {}
@@ -354,14 +358,74 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
             elif rental.rental_status == RentalStatus.IN_USE:
                 elapsed = (now - rental.start_time).total_seconds() / 60
 
+                # Списываем топливо во время поездки (для всех тарифов кроме минутного, включая владельца)
+                if rental.rental_type != RentalType.MINUTES and rental.fuel_before is not None and car.fuel_level is not None:
+                    # Проверяем, что топливо уменьшилось
+                    if car.fuel_level < rental.fuel_before:
+                        # Получаем последнее списанное топливо из flags (начальное значение - fuel_before)
+                        last_charged_fuel = flags.get("last_charged_fuel")
+                        if last_charged_fuel is None:
+                            last_charged_fuel = rental.fuel_before
+                        
+                        # Рассчитываем новое потребление топлива
+                        fuel_before_rounded = ceil(rental.fuel_before)
+                        fuel_current_rounded = floor(car.fuel_level)
+                        
+                        # Рассчитываем, сколько уже было списано (от fuel_before до last_charged_fuel)
+                        last_charged_fuel_rounded = floor(last_charged_fuel)
+                        fuel_already_charged_liters = fuel_before_rounded - last_charged_fuel_rounded
+                        
+                        # Рассчитываем общее потребление от начала до текущего момента
+                        fuel_consumed_total_liters = fuel_before_rounded - fuel_current_rounded
+                        
+                        # Рассчитываем новое потребление для списания (разница между общим и уже списанным)
+                        fuel_to_charge_liters = fuel_consumed_total_liters - fuel_already_charged_liters
+                        
+                        if fuel_to_charge_liters > 0:
+                            # Определяем цену за литр в зависимости от типа автомобиля
+                            if car.body_type == "ELECTRIC":
+                                price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
+                            else:
+                                price_per_liter = FUEL_PRICE_PER_LITER
+                            
+                            fuel_fee = int(fuel_to_charge_liters * price_per_liter)
+                            
+                            if fuel_fee > 0:
+                                # Списываем топливо сразу (1 литр = сразу списание)
+                                rental.already_payed = (rental.already_payed or 0) + fuel_fee
+                                record_wallet_transaction(db, user=user, amount=-fuel_fee, ttype=WalletTransactionType.RENT_FUEL_FEE, description=f"Оплата топлива: {fuel_to_charge_liters} л × {price_per_liter} = {fuel_fee}₸", related_rental=rental)
+                                user.wallet_balance -= fuel_fee
+                                flags["last_charged_fuel"] = fuel_current_rounded
+                                db.commit()
+                                
+                                # Уведомление когда остается сумма на 10 минут (для поминутного тарифа)
+                                ten_minutes_cost = 10 * car.price_per_minute
+                                if 0 < user.wallet_balance <= ten_minutes_cost and not flags["low_balance_1000"] and user.fcm_token:
+                                    flags["low_balance_1000"] = True
+                                    push_notifications.append((
+                                        user.id,
+                                        "low_balance_alert",
+                                        "low_balance_warning",
+                                        {
+                                            "balance": int(user.wallet_balance),
+                                            "minutes_left": int(user.wallet_balance / car.price_per_minute) if car.price_per_minute > 0 else 0
+                                        }
+                                    ))
+                                
+                                if user.wallet_balance <= 0 and not flags["low_balance_zero"] and user.fcm_token:
+                                    flags["low_balance_zero"] = True
+                                    telegram_alerts.append(
+                                        f"🔔 Баланс исчерпан. Клиент {user.phone_number}, авто {car.name} (ID {car.id}). Через 10 минут будет блокировка двигателя, если баланс не пополнится."
+                                    )
+
                 if rental.rental_type == RentalType.MINUTES:
                     elapsed_min = math.ceil(elapsed)
                     due = elapsed_min * car.price_per_minute
                     prev = rental.overtime_fee or 0
                     charge = due - prev
                     
-                    # Создаем транзакцию только один раз за весь период аренды
-                    if charge > 0 and prev == 0:
+                    # Списываем поминутно во время поездки
+                    if charge > 0:
                         rental.overtime_fee = due
                         rental.total_price = (
                                 (rental.base_price or 0) +
@@ -376,8 +440,19 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                         user.wallet_balance -= charge
                         db.commit()
 
-                        if 0 < user.wallet_balance <= 1000 and not flags["low_balance_1000"] and user.fcm_token:
+                        # Уведомление когда остается сумма на 10 минут
+                        ten_minutes_cost = 10 * car.price_per_minute
+                        if 0 < user.wallet_balance <= ten_minutes_cost and not flags["low_balance_1000"] and user.fcm_token:
                             flags["low_balance_1000"] = True
+                            push_notifications.append((
+                                user.id,
+                                "low_balance_alert",
+                                "low_balance_warning",
+                                {
+                                    "balance": int(user.wallet_balance),
+                                    "minutes_left": int(user.wallet_balance / car.price_per_minute) if car.price_per_minute > 0 else 0
+                                }
+                            ))
 
                         # Нулевой баланс → помечаем время и предупреждаем о предстоящей блокировке через 10 минут
                         if user.wallet_balance <= 0:
@@ -420,10 +495,16 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
 
                     overtime = max(0, elapsed - planned)
                     if overtime > 0:
-                        extra = math.ceil(overtime)
-                        fee_total_ov = math.ceil(extra * car.price_per_minute)
-                        prev_ov = rental.overtime_fee or 0
-                        if fee_total_ov != prev_ov:
+                        # Списываем поминутно: каждая минута сверхлимита списывается сразу
+                        extra_minutes = math.ceil(overtime)
+                        prev_ov_minutes = math.floor((rental.overtime_fee or 0) / car.price_per_minute) if car.price_per_minute > 0 else 0
+                        new_minutes_to_charge = extra_minutes - prev_ov_minutes
+                        
+                        if new_minutes_to_charge > 0:
+                            # Списываем только новые минуты (по 1 минуте за раз)
+                            charge_ov = new_minutes_to_charge * car.price_per_minute
+                            fee_total_ov = extra_minutes * car.price_per_minute
+                            
                             rental.overtime_fee = fee_total_ov
                             rental.total_price = (
                                 (rental.base_price or 0)
@@ -433,10 +514,24 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                 + rental.overtime_fee
                                 + (rental.distance_fee or 0)
                             )
+                            rental.already_payed = (rental.already_payed or 0) + charge_ov
+                            record_wallet_transaction(db, user=user, amount=-charge_ov, ttype=WalletTransactionType.RENT_OVERTIME_FEE, description=f"Сверхтариф {new_minutes_to_charge} мин", related_rental=rental)
+                            user.wallet_balance -= charge_ov
                             db.commit()
 
-                            if 0 < user.wallet_balance <= 1000 and not flags["low_balance_1000"] and user.fcm_token:
+                            # Уведомление когда остается сумма на 10 минут
+                            ten_minutes_cost = 10 * car.price_per_minute
+                            if 0 < user.wallet_balance <= ten_minutes_cost and not flags["low_balance_1000"] and user.fcm_token:
                                 flags["low_balance_1000"] = True
+                                push_notifications.append((
+                                    user.id,
+                                    "low_balance_alert",
+                                    "low_balance_warning",
+                                    {
+                                        "balance": int(user.wallet_balance),
+                                        "minutes_left": int(user.wallet_balance / car.price_per_minute) if car.price_per_minute > 0 else 0
+                                    }
+                                ))
 
                             if user.wallet_balance <= 0 and not flags["low_balance_zero"] and user.fcm_token:
                                 flags["low_balance_zero"] = True

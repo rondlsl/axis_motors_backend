@@ -2,8 +2,12 @@ from typing import Optional
 
 from fastapi import HTTPException
 
-from app.models.car_model import Car
+from app.models.car_model import Car, CarBodyType
 from app.models.history_model import RentalType
+
+FUEL_PRICE_PER_LITER = 350
+ELECTRIC_FUEL_PRICE_PER_LITER = 100
+FULL_TANK_LITERS = 100  # Стандартный объем полного бака
 
 
 def get_open_price(car: Car) -> int:
@@ -60,24 +64,53 @@ def calc_required_balance(
         include_delivery: bool,
         is_owner: bool,
 ) -> int:
-    """Считаем, сколько должно лежать на кошельке до брони/доставки."""
-    open_fee = getattr(car, "open_fee", 0)  # плата за «открыть»
-    two_hours_cost = car.price_per_hour * 2  # запас на +2 ч
-
+    """
+    Рассчитывает минимальный баланс для аренды:
+    - Стоимость аренды (base_price)
+    - 2 часа минутной аренды (120 минут * price_per_minute)
+    - Полный бак топлива (100 литров * цена за литр)
+    - open_fee (для MINUTES и HOURS)
+    - delivery_fee (если есть)
+    """
+    if is_owner:
+        # Для владельца минимальный баланс = только delivery_fee (если есть)
+        if include_delivery:
+            return 5000  # только доставка для владельца
+        return 0
+    
+    # Определяем цену за литр в зависимости от типа автомобиля
+    if car.body_type == CarBodyType.ELECTRIC:
+        price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
+    else:
+        price_per_liter = FUEL_PRICE_PER_LITER
+    
+    # Полный бак топлива
+    full_tank_cost = FULL_TANK_LITERS * price_per_liter
+    
+    # 2 часа минутной аренды (120 минут)
+    two_hours_minute_cost = 120 * car.price_per_minute
+    
+    # open_fee (только для MINUTES и HOURS)
+    open_fee = get_open_price(car) if rental_type in (RentalType.MINUTES, RentalType.HOURS) else 0
+    
+    # Стоимость аренды
     if rental_type == RentalType.MINUTES:
-        required = open_fee + two_hours_cost  # минута +2 ч + open
+        base_price = 0  # для минутной аренды базовая цена не списывается сразу
     elif rental_type == RentalType.HOURS:
         if duration is None:
             raise HTTPException(status_code=400,
                                 detail="duration обязателен для почасовой аренды.")
-        required = open_fee + (duration + 2) * car.price_per_hour
+        base_price = calculate_total_price(rental_type, duration, car.price_per_hour, car.price_per_day)
     else:  # RentalType.DAYS
         if duration is None:
             raise HTTPException(status_code=400,
                                 detail="duration обязателен для посуточной аренды.")
-        required = duration * car.price_per_day + two_hours_cost  # без open_fee
-
-    if include_delivery and not is_owner:
-        required += DELIVERY_EXTRA_FEE
-
-    return required
+        base_price = calculate_total_price(rental_type, duration, car.price_per_hour, car.price_per_day)
+    
+    # delivery_fee
+    delivery_fee = DELIVERY_EXTRA_FEE if include_delivery else 0
+    
+    # Итого минимальный баланс
+    required = base_price + two_hours_minute_cost + full_tank_cost + open_fee + delivery_fee
+    
+    return int(required)
