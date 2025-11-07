@@ -617,7 +617,7 @@ async def reserve_car(
     
     if current_user.wallet_balance < required_balance:
         raise InsufficientBalanceException(required_amount=required_balance)
-    
+
     if rental_type == RentalType.MINUTES:
         base = 0
     elif rental_type == RentalType.HOURS:
@@ -758,7 +758,7 @@ async def reserve_delivery(
         
         if current_user.wallet_balance < required_balance:
             raise InsufficientBalanceException(required_amount=required_balance)
-        
+
         if rental_type == RentalType.MINUTES:
             base_price = 0
             total_price = delivery_fee  # пока в total_price только плата за доставку
@@ -1164,13 +1164,13 @@ async def start_rental(
         if rental.rental_type in [RentalType.HOURS, RentalType.DAYS]:
             # Списываем полную стоимость за выбранный период (base_price + open_fee + delivery_fee)
             total_cost = (rental.base_price or 0) + (rental.open_fee or 0) + (rental.delivery_fee or 0)
-            
-            if total_cost > 0:
-                if current_user.wallet_balance < total_cost:
-                    raise HTTPException(
-                        status_code=402,
-                        detail=f"Нужно минимум {total_cost} ₸ для старта. Пополните кошелёк!"
-                    )
+
+        if total_cost > 0:
+            if current_user.wallet_balance < total_cost:
+                raise HTTPException(
+                    status_code=402,
+                    detail=f"Нужно минимум {total_cost} ₸ для старта. Пополните кошелёк!"
+                )
                 record_wallet_transaction(db, user=current_user, amount=-total_cost, ttype=WalletTransactionType.RENT_BASE_CHARGE, description=f"Оплата за аренду: {rental.duration} {'час(ов)' if rental.rental_type == RentalType.HOURS else 'день(дней)'}")
                 current_user.wallet_balance -= total_cost
                 rental.already_payed = total_cost
@@ -1187,8 +1187,8 @@ async def start_rental(
                         detail=f"Нужно минимум {total_cost} ₸ для старта. Пополните кошелёк!"
                     )
                 record_wallet_transaction(db, user=current_user, amount=-total_cost, ttype=WalletTransactionType.RENT_BASE_CHARGE, description="Оплата открытия и доставки")
-                current_user.wallet_balance -= total_cost
-                rental.already_payed = total_cost
+            current_user.wallet_balance -= total_cost
+            rental.already_payed = total_cost
 
         # Обновляем машину: меняем статус на IN_USE
         car.status = CarStatus.IN_USE
