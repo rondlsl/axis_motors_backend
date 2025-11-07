@@ -31,38 +31,29 @@ async def get_pending_applications(
     """Получить заявки, одобренные финансистом и ожидающие проверки МВД.
     Также показывает пользователей с REJECTFIRST (отказ по финансу), у которых есть одобренный гарант."""
     
-    has_active_guarantor_subquery = (
-        select(Guarantor.id)
-        .join(GuarantorRequest, Guarantor.request_id == GuarantorRequest.id)
-        .where(
+    query = db.query(Application).join(User, Application.user_id == User.id).options(
+        joinedload(Application.user)
+    ).filter(
+        Application.mvd_status == ApplicationStatus.PENDING,
+        User.is_verified_email == True,
+        or_(
+            Application.financier_status == ApplicationStatus.APPROVED,
             and_(
-                Guarantor.client_id == User.id,
-                Guarantor.is_active == True,
-                GuarantorRequest.status == GuarantorRequestStatus.ACCEPTED
+                Application.financier_status == ApplicationStatus.REJECTED,
+                User.role == UserRole.REJECTFIRST,
+                exists(
+                    select(1)
+                    .select_from(Guarantor)
+                    .join(GuarantorRequest, Guarantor.request_id == GuarantorRequest.id)
+                    .where(
+                        Guarantor.client_id == User.id,
+                        Guarantor.is_active == True,
+                        GuarantorRequest.status == GuarantorRequestStatus.ACCEPTED
+                    )
+                )
             )
         )
-        .correlate(User)
-        .exists()
     )
-    
-    base_filter = or_(
-        and_(
-            Application.financier_status == ApplicationStatus.APPROVED,
-            Application.mvd_status == ApplicationStatus.PENDING,
-            User.is_verified_email == True
-        ),
-        and_(
-            Application.financier_status == ApplicationStatus.REJECTED,
-            User.role == UserRole.REJECTFIRST,
-            Application.mvd_status == ApplicationStatus.PENDING,
-            User.is_verified_email == True,
-            has_active_guarantor_subquery
-        )
-    )
-    
-    query = db.query(Application).options(
-        joinedload(Application.user)
-    ).filter(base_filter)
     
     if search:
         search_filter = or_(
