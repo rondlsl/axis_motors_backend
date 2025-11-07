@@ -44,6 +44,7 @@ async def get_pending_applications(
         and_(
             Application.financier_status == ApplicationStatus.APPROVED,
             Application.mvd_status == ApplicationStatus.PENDING,
+            User.role == UserRole.PENDINGTOSECOND,
             User.is_verified_email == True
         ),
         and_(

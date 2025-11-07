@@ -186,7 +186,10 @@ def _group_coordinates_by_day(
                 return result
             except Exception:
                 try:
-                    return datetime.strptime(ts.split('T')[0], '%Y-%m-%d')
+                    result = datetime.strptime(ts.split('T')[0], '%Y-%m-%d')
+                    if result.tzinfo:
+                        result = result.replace(tzinfo=None)
+                    return result
                 except Exception:
                     result = start_dt
                     if result.tzinfo:
