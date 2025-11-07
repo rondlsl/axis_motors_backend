@@ -14,10 +14,13 @@ class SupportNotificationService:
     async def send_new_chat_notification(self, chat_data: dict):
         """Отправить уведомление о новом чате в группу поддержки"""
         try:
+            telegram_username = f"@{chat_data.get('user_telegram_username')}" if chat_data.get('user_telegram_username') else "Не указан"
+            
             message_text = (
                 f"🔔 **Новое обращение в поддержку**\n\n"
                 f"👤 **Клиент:** {chat_data['user_name']}\n"
                 f"📞 **Телефон:** {chat_data['user_phone']}\n"
+                f"📱 **Telegram:** {telegram_username}\n"
                 f"🆔 **AZV ID:** {chat_data.get('azv_user_id', 'Не найден')}\n"
                 f"📝 **Сообщение:** {chat_data['message_text']}\n\n"
                 f"**ID чата:** `{chat_data['chat_id']}`\n"
@@ -32,10 +35,13 @@ class SupportNotificationService:
     async def send_new_message_notification(self, chat_data: dict, message_text: str):
         """Отправить уведомление о новом сообщении в группу поддержки"""
         try:
+            telegram_username = f"@{chat_data.get('user_telegram_username')}" if chat_data.get('user_telegram_username') else "Не указан"
+            
             notification_text = (
                 f"💬 **Новое сообщение от клиента**\n\n"
                 f"👤 **Клиент:** {chat_data['user_name']}\n"
                 f"📞 **Телефон:** {chat_data['user_phone']}\n"
+                f"📱 **Telegram:** {telegram_username}\n"
                 f"💬 **Сообщение:** {message_text}\n\n"
                 f"**ID чата:** `{chat_data['chat_id']}`"
             )

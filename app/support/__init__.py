@@ -37,6 +37,7 @@ async def test_support_notifications():
     test_chat_data = {
         'user_name': 'Иван Иванов',
         'user_phone': '+77001234567',
+        'user_telegram_username': 'ivanov_test',
         'azv_user_id': 'test-user-123',
         'message_text': 'Тестовое сообщение от клиента',
         'chat_id': 'test-chat-456',

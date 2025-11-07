@@ -28,8 +28,9 @@ from app.models.wallet_transaction_model import WalletTransactionType, WalletTra
 from app.rent.utils.calculate_price import calculate_total_price, get_open_price, calc_required_balance
 from app.gps_api.utils.route_data import get_gps_route_data
 from app.gps_api.utils.auth_api import get_auth_token
-from app.gps_api.utils.car_data import auto_lock_vehicle_after_rental
+from app.gps_api.utils.car_data import auto_lock_vehicle_after_rental, execute_gps_sequence, send_open, send_unlock_engine
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
+from app.utils.atomic_operations import delete_uploaded_files
 from app.guarantor.sms_utils import send_rental_start_sms, send_rental_complete_sms
 from app.owner.schemas import RouteData, RouteMapData
 from app.admin.cars.utils import sort_car_photos
@@ -1129,12 +1130,6 @@ async def start_rental(
         
         # Автоматическая разблокировка двигателя при начале аренды (для владельца)
         try:
-            from app.gps_api.utils.auth_api import get_auth_token
-            from app.gps_api.utils.car_data import send_unlock_engine
-            
-            # Получаем токен для GPS API
-            from app.gps_api.utils.car_data import execute_gps_sequence
-            from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
             auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
             
             # Универсальная последовательность: разблокировать двигатель
@@ -1199,9 +1194,6 @@ async def start_rental(
         try:
             car = db.query(Car).get(rental.car_id)
             if car and car.gps_imei:
-                from app.gps_api.utils.auth_api import get_auth_token
-                from app.gps_api.utils.car_data import execute_gps_sequence
-                from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
                 auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
                 # Универсальная последовательность: разблокировать двигатель → выдать ключ
                 result = await execute_gps_sequence(car.gps_imei, auth_token, "interior")
@@ -1269,6 +1261,8 @@ async def upload_photos_before(
     validate_photos([selfie], 'selfie')
     validate_photos(car_photos, 'car_photos')
 
+    uploaded_files = []
+    
     try:
         # 1) Сверяем селфи клиента с документом из профиля
         try:
@@ -1283,40 +1277,42 @@ async def upload_photos_before(
         # 2) Если верификация успешна — сохраняем фото
         urls = list(rental.photos_before or [])
         # save selfie
-        urls.append(await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/before/selfie/"))
+        selfie_url = await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/before/selfie/")
+        urls.append(selfie_url)
+        uploaded_files.append(selfie_url)
         # save exterior
         for p in car_photos:
-            urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/car/"))
+            car_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/car/")
+            urls.append(car_url)
+            uploaded_files.append(car_url)
 
         rental.photos_before = urls
-        db.commit()
         
-        try:
-            car = db.query(Car).get(rental.car_id)
-            if car and car.gps_imei:
-                from app.gps_api.utils.auth_api import get_auth_token
-                from app.gps_api.utils.car_data import execute_gps_sequence
-                from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
-                
-                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-                
-                # Универсальная последовательность: открыть замки → выдать ключ → открыть замки → забрать ключ
-                result = await execute_gps_sequence(car.gps_imei, auth_token, "selfie_exterior")
-                if not result["success"]:
-                    print(f"Ошибка GPS последовательности для селфи+кузов: {result.get('error', 'Unknown error')}")
-                else:
-                    print(f"GPS последовательность выполнена успешно: {result.get('executed_commands', [])}")
+        car = db.query(Car).get(rental.car_id)
+        if car and car.gps_imei:
+            
+            auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+            
+            # Универсальная последовательность: открыть замки → выдать ключ → открыть замки → забрать ключ
+            result = await execute_gps_sequence(car.gps_imei, auth_token, "selfie_exterior")
+            if not result["success"]:
+                error_msg = result.get('error', 'Unknown error')
+                print(f"Ошибка GPS последовательности для селфи+кузов: {error_msg}")
+                raise Exception(f"GPS sequence failed: {error_msg}")
             else:
-                pass
-        except Exception as e:
-            print(f"Ошибка GPS команд после загрузки селфи+кузов: {e}")
-            import traceback
-            traceback.print_exc()
+                print(f"GPS последовательность выполнена успешно: {result.get('executed_commands', [])}")
+        
+        db.commit()
         
         return {"message": "Photos before (selfie+car) uploaded", "photo_count": len(urls)}
     except HTTPException:
         db.rollback()
+        delete_uploaded_files(uploaded_files)
         raise
+    except Exception as e:
+        db.rollback()
+        delete_uploaded_files(uploaded_files) 
+        raise HTTPException(status_code=500, detail=f"Error uploading before photos: {str(e)}")
 
 
 @RentRouter.post("/upload-photos-before-interior")
@@ -1344,16 +1340,21 @@ async def upload_photos_before_interior(
 
     validate_photos(interior_photos, 'interior_photos')
 
+    uploaded_files = []
+    
     try:
         urls = list(rental.photos_before or [])
         for p in interior_photos:
-            urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/interior/"))
+            interior_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/interior/")
+            urls.append(interior_url)
+            uploaded_files.append(interior_url)
         rental.photos_before = urls
         db.commit()
         return {"message": "Photos before (interior) uploaded", "photo_count": len(interior_photos)}
-    except Exception:
+    except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Error uploading before interior photos")
+        delete_uploaded_files(uploaded_files)
+        raise HTTPException(status_code=500, detail=f"Error uploading before interior photos: {str(e)}")
 
 
 @RentRouter.post("/upload-photos-after")
@@ -1423,36 +1424,45 @@ async def upload_photos_after(
     except Exception:
         pass
 
+    uploaded_files = []
+    
     try:
         # Сохраняем фотографии
         urls = list(rental.photos_after or [])
-        urls.append(await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/after/selfie/"))
+        selfie_url = await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/after/selfie/")
+        urls.append(selfie_url)
+        uploaded_files.append(selfie_url)
+        
         for p in interior_photos:
-            urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/interior/"))
+            interior_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/interior/")
+            urls.append(interior_url)
+            uploaded_files.append(interior_url)
 
         rental.photos_after = urls
-        db.commit()
         
         # После загрузки селфи+салона: заблокировать двигатель → забрать ключ → закрыть замки
-        try:
-            car = db.query(Car).get(rental.car_id)
-            if car and car.gps_imei:
-                from app.gps_api.utils.auth_api import get_auth_token
-                from app.gps_api.utils.car_data import execute_gps_sequence
-                from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
-                
-                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-                # Универсальная последовательность: заблокировать двигатель → забрать ключ → закрыть замки
-                result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_selfie_interior")
-                if not result["success"]:
-                    print(f"Ошибка GPS последовательности для завершения селфи+салон: {result.get('error', 'Unknown error')}")
-        except Exception as e:
-            print(f"Ошибка GPS команд после загрузки селфи+салон: {e}")
+        car = db.query(Car).get(rental.car_id)
+        if car and car.gps_imei:
+            
+            auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+            # Универсальная последовательность: заблокировать двигатель → забрать ключ → закрыть замки
+            result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_selfie_interior")
+            if not result["success"]:
+                error_msg = result.get('error', 'Unknown error')
+                print(f"Ошибка GPS последовательности для завершения селфи+салон: {error_msg}")
+                raise Exception(f"GPS sequence failed: {error_msg}")
+        
+        db.commit()
         
         return {"message": "Photos after (selfie+interior) uploaded", "photo_count": len(interior_photos) + 1}
     except HTTPException:
         db.rollback()
+        delete_uploaded_files(uploaded_files)
         raise
+    except Exception as e:
+        db.rollback()
+        delete_uploaded_files(uploaded_files)
+        raise HTTPException(status_code=500, detail=f"Error uploading after photos: {str(e)}")
 
 
 @RentRouter.post("/upload-photos-after-car")
@@ -1519,36 +1529,39 @@ async def upload_photos_after_car(
 
     validate_photos(car_photos, 'car_photos')
 
+    uploaded_files = []
+    
     try:
         urls = list(rental.photos_after or [])
         for p in car_photos:
-            urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/car/"))
+            car_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/car/")
+            urls.append(car_url)
+            uploaded_files.append(car_url)
+        
         rental.photos_after = urls
-        db.commit()
         
         # После загрузки кузова: заблокировать двигатель → забрать ключ → закрыть замки
-        try:
-            if car and car.gps_imei:
-                from app.gps_api.utils.auth_api import get_auth_token
-                from app.gps_api.utils.car_data import execute_gps_sequence
-                from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
-                
-                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-                # Универсальная последовательность: заблокировать двигатель → забрать ключ → закрыть замки
-                result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_exterior")
-                if not result["success"]:
-                    print(f"Ошибка GPS последовательности для завершения кузова: {result.get('error', 'Unknown error')}")
-        except Exception as e:
-            print(f"Ошибка GPS команд после загрузки кузова: {e}")
+        if car and car.gps_imei:
+            
+            auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+            # Универсальная последовательность: заблокировать двигатель → забрать ключ → закрыть замки
+            result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_exterior")
+            if not result["success"]:
+                error_msg = result.get('error', 'Unknown error')
+                print(f"Ошибка GPS последовательности для завершения кузова: {error_msg}")
+                raise Exception(f"GPS sequence failed: {error_msg}")
+        
+        db.commit()
         
         return {
             "message": "Photos after (car) uploaded successfully", 
             "photo_count": len(car_photos),
             "rental_completed": False
         }
-    except Exception:
+    except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Error uploading after car photos")
+        delete_uploaded_files(uploaded_files)
+        raise HTTPException(status_code=500, detail=f"Error uploading after car photos: {str(e)}")
 
 
 # Owner endpoints (без селфи)
@@ -1570,31 +1583,34 @@ async def upload_photos_before_owner(
         raise HTTPException(status_code=403, detail="Not your car")
     validate_photos(car_photos, 'car_photos')
 
+    uploaded_files = []
+    
     try:
         urls = list(rental.photos_before or [])
         for p in car_photos:
-            urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/car/"))
+            car_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/car/")
+            urls.append(car_url)
+            uploaded_files.append(car_url)
 
         rental.photos_before = urls
-        db.commit()
         
         # Открываем замки после успешной загрузки фото
-        try:
-            car = db.query(Car).get(rental.car_id)
-            if car and car.gps_imei:
-                from app.gps_api.utils.auth_api import get_auth_token
-                from app.gps_api.utils.car_data import send_open
-                from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
-                
-                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-                open_result = await send_open(car.gps_imei, auth_token)
-        except Exception as e:
-            print(f"Ошибка открытия замков после загрузки фото владельцем: {e}")
+        if car and car.gps_imei:
+            
+            auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+            open_result = await send_open(car.gps_imei, auth_token)
+            if not open_result.get("success"):
+                error_msg = open_result.get('error', 'Unknown error')
+                print(f"Ошибка открытия замков после загрузки фото владельцем: {error_msg}")
+                raise Exception(f"GPS open command failed: {error_msg}")
+        
+        db.commit()
         
         return {"message": "Owner photos before (car) uploaded", "photo_count": len(car_photos)}
-    except Exception:
+    except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Error uploading owner photos before")
+        delete_uploaded_files(uploaded_files)
+        raise HTTPException(status_code=500, detail=f"Error uploading owner photos before: {str(e)}")
 
 
 @RentRouter.post("/upload-photos-before-owner-interior")
@@ -1620,17 +1636,22 @@ async def upload_photos_before_owner_interior(
         raise HTTPException(status_code=400, detail="Сначала загрузите внешние фото")
     validate_photos(interior_photos, 'interior_photos')
 
+    uploaded_files = []
+    
     try:
         urls = list(rental.photos_before or [])
         for p in interior_photos:
-            urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/interior/"))
+            interior_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/interior/")
+            urls.append(interior_url)
+            uploaded_files.append(interior_url)
 
         rental.photos_before = urls
         db.commit()
         return {"message": "Owner photos before (interior) uploaded", "photo_count": len(interior_photos)}
-    except Exception:
+    except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Error uploading owner photos before (interior)")
+        delete_uploaded_files(uploaded_files)
+        raise HTTPException(status_code=500, detail=f"Error uploading owner photos before (interior): {str(e)}")
 
 
 @RentRouter.post("/upload-photos-after-owner")
@@ -1670,34 +1691,37 @@ async def upload_photos_after_owner(
         error_message = "Перед завершением аренды:\n" + "\n".join(vehicle_status["errors"])
         raise HTTPException(status_code=400, detail=error_message)
 
+    uploaded_files = []
+    
     try:
         # Сохраняем фотографии
         urls = list(rental.photos_after or [])
         for p in interior_photos:
-            urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/interior/"))
+            interior_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/interior/")
+            urls.append(interior_url)
+            uploaded_files.append(interior_url)
+        
         rental.photos_after = urls
-        db.commit()
         
         # После загрузки салона владельцем: заблокировать двигатель → забрать ключ → закрыть замки
-        try:
-            car = db.query(Car).get(rental.car_id)
-            if car and car.gps_imei:
-                from app.gps_api.utils.auth_api import get_auth_token
-                from app.gps_api.utils.car_data import execute_gps_sequence
-                from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
-                
-                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-                # Универсальная последовательность: заблокировать двигатель → забрать ключ → закрыть замки
-                result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_selfie_interior")
-                if not result["success"]:
-                    print(f"Ошибка GPS последовательности для завершения салона владельцем: {result.get('error', 'Unknown error')}")
-        except Exception as e:
-            print(f"Ошибка GPS команд после загрузки салона владельцем: {e}")
+        car = db.query(Car).get(rental.car_id)
+        if car and car.gps_imei:
+            
+            auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+            # Универсальная последовательность: заблокировать двигатель → забрать ключ → закрыть замки
+            result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_selfie_interior")
+            if not result["success"]:
+                error_msg = result.get('error', 'Unknown error')
+                print(f"Ошибка GPS последовательности для завершения салона владельцем: {error_msg}")
+                raise Exception(f"GPS sequence failed: {error_msg}")
+        
+        db.commit()
         
         return {"message": "Owner photos after (interior) uploaded", "photo_count": len(interior_photos)}
-    except Exception:
+    except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Error uploading owner photos after (interior)")
+        delete_uploaded_files(uploaded_files)
+        raise HTTPException(status_code=500, detail=f"Error uploading owner photos after (interior): {str(e)}")
 
 
 @RentRouter.post("/upload-photos-after-owner-car")
@@ -1723,16 +1747,22 @@ async def upload_photos_after_owner_car(
         raise HTTPException(status_code=400, detail="Сначала загрузите фото салона")
     validate_photos(car_photos, 'car_photos')
 
+    uploaded_files = []
+    
     try:
         urls = list(rental.photos_after or [])
         for p in car_photos:
-            urls.append(await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/car/"))
+            car_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/car/")
+            urls.append(car_url)
+            uploaded_files.append(car_url)
+        
         rental.photos_after = urls
         db.commit()
         return {"message": "Owner photos after (car) uploaded", "photo_count": len(car_photos)}
-    except Exception:
+    except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Error uploading owner photos after (car)")
+        delete_uploaded_files(uploaded_files)
+        raise HTTPException(status_code=500, detail=f"Error uploading owner photos after (car): {str(e)}")
 
 
 class RentalReviewInput(BaseModel):
@@ -2017,11 +2047,6 @@ async def complete_rental(
     
     # 13) Окончательная блокировка двигателя при завершении аренды
     try:
-        from app.gps_api.utils.auth_api import get_auth_token
-        from app.gps_api.utils.car_data import execute_gps_sequence
-        
-        # Получаем токен для GPS API
-        from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
         auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
         
         # Универсальная последовательность: заблокировать двигатель

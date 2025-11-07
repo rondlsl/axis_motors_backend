@@ -265,10 +265,13 @@ class SupportBot:
             # Get first message text safely
             first_message = chat.messages[0].message_text if chat.messages and len(chat.messages) > 0 else "Нет сообщения"
             
+            telegram_username = f"@{chat.user_telegram_username}" if chat.user_telegram_username else "Не указан"
+            
             notification_text = (
                 f"🔔 Новое обращение в поддержку\n\n"
                 f"👤 Клиент: {chat.user_name}\n"
                 f"📞 Телефон: {chat.user_phone}\n"
+                f"📱 Telegram: {telegram_username}\n"
                 f"🆔 AZV ID: {chat.azv_user.sid if chat.azv_user else 'Не найден'}\n"
                 f"📝 Сообщение: {first_message}\n\n"
                 f"ID чата: {chat.sid}"
@@ -282,10 +285,13 @@ class SupportBot:
     async def send_message_notification_to_support_group(self, chat, message_text):
         """Отправить уведомление о новом сообщении в группу поддержки"""
         try:
+            telegram_username = f"@{chat.user_telegram_username}" if chat.user_telegram_username else "Не указан"
+            
             notification_text = (
                 f"💬 Новое сообщение от клиента\n\n"
                 f"👤 Клиент: {chat.user_name}\n"
                 f"📞 Телефон: {chat.user_phone}\n"
+                f"📱 Telegram: {telegram_username}\n"
                 f"💬 Сообщение: {message_text}\n\n"
                 f"ID чата: {chat.sid}"
             )
