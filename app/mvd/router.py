@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import and_, or_, exists
+from sqlalchemy import and_, or_, exists, select
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
@@ -31,13 +31,18 @@ async def get_pending_applications(
     """Получить заявки, одобренные финансистом и ожидающие проверки МВД.
     Также показывает пользователей с REJECTFIRST (отказ по финансу), у которых есть одобренный гарант."""
     
-    has_active_guarantor = exists().where(
-        and_(
-            Guarantor.client_id == User.id,
-            Guarantor.is_active == True,
-            GuarantorRequest.id == Guarantor.request_id,
-            GuarantorRequest.status == GuarantorRequestStatus.ACCEPTED
+    has_active_guarantor_subquery = (
+        select(Guarantor.id)
+        .join(GuarantorRequest, Guarantor.request_id == GuarantorRequest.id)
+        .where(
+            and_(
+                Guarantor.client_id == User.id,
+                Guarantor.is_active == True,
+                GuarantorRequest.status == GuarantorRequestStatus.ACCEPTED
+            )
         )
+        .correlate(User)
+        .exists()
     )
     
     base_filter = or_(
@@ -51,7 +56,7 @@ async def get_pending_applications(
             User.role == UserRole.REJECTFIRST,
             Application.mvd_status == ApplicationStatus.PENDING,
             User.is_verified_email == True,
-            has_active_guarantor
+            has_active_guarantor_subquery
         )
     )
     
