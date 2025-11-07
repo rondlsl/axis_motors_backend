@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, desc, func
 from typing import List, Optional, Tuple
 from uuid import UUID
@@ -55,6 +55,7 @@ class SupportService:
         
         self.db.add(first_message)
         self.db.commit()
+        self.db.refresh(chat)
         
         return chat
 
@@ -62,17 +63,26 @@ class SupportService:
         """Получить чат по sid"""
         try:
             chat_uuid = safe_sid_to_uuid(chat_sid)
-            return self.db.query(SupportChat).filter(SupportChat.id == chat_uuid).first()
+            return self.db.query(SupportChat).options(
+                joinedload(SupportChat.messages),
+                joinedload(SupportChat.azv_user)
+            ).filter(SupportChat.id == chat_uuid).first()
         except ValueError:
             return None
 
     def get_chat_by_id(self, chat_id: UUID) -> Optional[SupportChat]:
         """Получить чат по ID"""
-        return self.db.query(SupportChat).filter(SupportChat.id == chat_id).first()
+        return self.db.query(SupportChat).options(
+            joinedload(SupportChat.messages),
+            joinedload(SupportChat.azv_user)
+        ).filter(SupportChat.id == chat_id).first()
 
     def get_chat_by_telegram_id(self, telegram_id: int) -> Optional[SupportChat]:
         """Получить активный чат по Telegram ID пользователя"""
-        return self.db.query(SupportChat).filter(
+        return self.db.query(SupportChat).options(
+            joinedload(SupportChat.messages),
+            joinedload(SupportChat.azv_user)
+        ).filter(
             and_(
                 SupportChat.user_telegram_id == telegram_id,
                 SupportChat.status.in_([

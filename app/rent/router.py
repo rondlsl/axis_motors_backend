@@ -616,8 +616,8 @@ async def reserve_car(
         is_owner=False
     )
     
-    if current_user.wallet_balance < required_balance:
-        raise InsufficientBalanceException(required_amount=required_balance)
+        if current_user.wallet_balance < required_balance:
+            raise InsufficientBalanceException(required_amount=required_balance)
 
     if rental_type == RentalType.MINUTES:
         base = 0
@@ -757,8 +757,8 @@ async def reserve_delivery(
             is_owner=False
         )
         
-        if current_user.wallet_balance < required_balance:
-            raise InsufficientBalanceException(required_amount=required_balance)
+            if current_user.wallet_balance < required_balance:
+                raise InsufficientBalanceException(required_amount=required_balance)
 
         if rental_type == RentalType.MINUTES:
             base_price = 0
@@ -1262,7 +1262,7 @@ async def upload_photos_before(
     validate_photos(car_photos, 'car_photos')
 
     uploaded_files = []
-    
+
     try:
         # 1) Сверяем селфи клиента с документом из профиля
         try:
@@ -1288,19 +1288,19 @@ async def upload_photos_before(
 
         rental.photos_before = urls
         
-        car = db.query(Car).get(rental.car_id)
-        if car and car.gps_imei:
-            
-            auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-            
-            # Универсальная последовательность: открыть замки → выдать ключ → открыть замки → забрать ключ
-            result = await execute_gps_sequence(car.gps_imei, auth_token, "selfie_exterior")
-            if not result["success"]:
+            car = db.query(Car).get(rental.car_id)
+            if car and car.gps_imei:
+                
+                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                
+                # Универсальная последовательность: открыть замки → выдать ключ → открыть замки → забрать ключ
+                result = await execute_gps_sequence(car.gps_imei, auth_token, "selfie_exterior")
+                if not result["success"]:
                 error_msg = result.get('error', 'Unknown error')
                 print(f"Ошибка GPS последовательности для селфи+кузов: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
-            else:
-                print(f"GPS последовательность выполнена успешно: {result.get('executed_commands', [])}")
+                else:
+                    print(f"GPS последовательность выполнена успешно: {result.get('executed_commands', [])}")
         
         db.commit()
         
@@ -1341,7 +1341,7 @@ async def upload_photos_before_interior(
     validate_photos(interior_photos, 'interior_photos')
 
     uploaded_files = []
-    
+
     try:
         urls = list(rental.photos_before or [])
         for p in interior_photos:
@@ -1425,7 +1425,7 @@ async def upload_photos_after(
         pass
 
     uploaded_files = []
-    
+
     try:
         # Сохраняем фотографии
         urls = list(rental.photos_after or [])
@@ -1441,13 +1441,13 @@ async def upload_photos_after(
         rental.photos_after = urls
         
         # После загрузки селфи+салона: заблокировать двигатель → забрать ключ → закрыть замки
-        car = db.query(Car).get(rental.car_id)
-        if car and car.gps_imei:
-            
-            auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-            # Универсальная последовательность: заблокировать двигатель → забрать ключ → закрыть замки
-            result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_selfie_interior")
-            if not result["success"]:
+            car = db.query(Car).get(rental.car_id)
+            if car and car.gps_imei:
+                
+                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                # Универсальная последовательность: заблокировать двигатель → забрать ключ → закрыть замки
+                result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_selfie_interior")
+                if not result["success"]:
                 error_msg = result.get('error', 'Unknown error')
                 print(f"Ошибка GPS последовательности для завершения селфи+салон: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
@@ -1530,7 +1530,7 @@ async def upload_photos_after_car(
     validate_photos(car_photos, 'car_photos')
 
     uploaded_files = []
-    
+
     try:
         urls = list(rental.photos_after or [])
         for p in car_photos:
@@ -1541,12 +1541,12 @@ async def upload_photos_after_car(
         rental.photos_after = urls
         
         # После загрузки кузова: заблокировать двигатель → забрать ключ → закрыть замки
-        if car and car.gps_imei:
-            
-            auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-            # Универсальная последовательность: заблокировать двигатель → забрать ключ → закрыть замки
-            result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_exterior")
-            if not result["success"]:
+            if car and car.gps_imei:
+                
+                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                # Универсальная последовательность: заблокировать двигатель → забрать ключ → закрыть замки
+                result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_exterior")
+                if not result["success"]:
                 error_msg = result.get('error', 'Unknown error')
                 print(f"Ошибка GPS последовательности для завершения кузова: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
@@ -1584,7 +1584,7 @@ async def upload_photos_before_owner(
     validate_photos(car_photos, 'car_photos')
 
     uploaded_files = []
-    
+
     try:
         urls = list(rental.photos_before or [])
         for p in car_photos:
@@ -1595,10 +1595,10 @@ async def upload_photos_before_owner(
         rental.photos_before = urls
         
         # Открываем замки после успешной загрузки фото
-        if car and car.gps_imei:
-            
-            auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-            open_result = await send_open(car.gps_imei, auth_token)
+            if car and car.gps_imei:
+                
+                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                open_result = await send_open(car.gps_imei, auth_token)
             if not open_result.get("success"):
                 error_msg = open_result.get('error', 'Unknown error')
                 print(f"Ошибка открытия замков после загрузки фото владельцем: {error_msg}")
@@ -1637,7 +1637,7 @@ async def upload_photos_before_owner_interior(
     validate_photos(interior_photos, 'interior_photos')
 
     uploaded_files = []
-    
+
     try:
         urls = list(rental.photos_before or [])
         for p in interior_photos:
@@ -1692,7 +1692,7 @@ async def upload_photos_after_owner(
         raise HTTPException(status_code=400, detail=error_message)
 
     uploaded_files = []
-    
+
     try:
         # Сохраняем фотографии
         urls = list(rental.photos_after or [])
@@ -1704,13 +1704,13 @@ async def upload_photos_after_owner(
         rental.photos_after = urls
         
         # После загрузки салона владельцем: заблокировать двигатель → забрать ключ → закрыть замки
-        car = db.query(Car).get(rental.car_id)
-        if car and car.gps_imei:
-            
-            auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-            # Универсальная последовательность: заблокировать двигатель → забрать ключ → закрыть замки
-            result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_selfie_interior")
-            if not result["success"]:
+            car = db.query(Car).get(rental.car_id)
+            if car and car.gps_imei:
+                
+                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                # Универсальная последовательность: заблокировать двигатель → забрать ключ → закрыть замки
+                result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_selfie_interior")
+                if not result["success"]:
                 error_msg = result.get('error', 'Unknown error')
                 print(f"Ошибка GPS последовательности для завершения салона владельцем: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
@@ -1748,7 +1748,7 @@ async def upload_photos_after_owner_car(
     validate_photos(car_photos, 'car_photos')
 
     uploaded_files = []
-    
+
     try:
         urls = list(rental.photos_after or [])
         for p in car_photos:
