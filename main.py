@@ -206,7 +206,8 @@ def init_app(app: FastAPI):
         
         # Запускаем систему поддержки
         try:
-            start_support_task = setup_support_system(app, get_db)
+            from app.dependencies.database.database import SessionLocal
+            start_support_task = setup_support_system(app, SessionLocal)
             await start_support_task()
             print("Система поддержки запущена успешно")
         except Exception as e:
