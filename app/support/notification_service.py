@@ -19,7 +19,7 @@ class SupportNotificationService:
                 f"👤 **Клиент:** {chat_data['user_name']}\n"
                 f"📞 **Телефон:** {chat_data['user_phone']}\n"
                 f"🆔 **AZV ID:** {chat_data.get('azv_user_id', 'Не найден')}\n"
-                f"📝 **Сообщение:** {chat_data['message_text'][:100]}...\n\n"
+                f"📝 **Сообщение:** {chat_data['message_text']}\n\n"
                 f"**ID чата:** `{chat_data['chat_id']}`\n"
                 f"**Telegram ID:** `{chat_data['user_telegram_id']}`"
             )
@@ -36,7 +36,7 @@ class SupportNotificationService:
                 f"💬 **Новое сообщение от клиента**\n\n"
                 f"👤 **Клиент:** {chat_data['user_name']}\n"
                 f"📞 **Телефон:** {chat_data['user_phone']}\n"
-                f"💬 **Сообщение:** {message_text[:100]}...\n\n"
+                f"💬 **Сообщение:** {message_text}\n\n"
                 f"**ID чата:** `{chat_data['chat_id']}`"
             )
             
@@ -93,22 +93,67 @@ class SupportNotificationService:
             logger.error(f"Error sending status change notification: {e}")
     
     async def _send_to_group(self, text: str):
-        """Отправить сообщение в группу поддержки"""
+        """Отправить сообщение в группу поддержки (с разбивкой на части, если превышает лимит Telegram)"""
         try:
-            url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
+            MAX_MESSAGE_LENGTH = 4096
             
-            payload = {
-                "chat_id": self.support_group_id,
-                "text": text,
-                "parse_mode": "Markdown",
-                "disable_web_page_preview": True
-            }
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.post(url, json=payload)
-                response.raise_for_status()
+            if len(text) <= MAX_MESSAGE_LENGTH:
+                url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
+                payload = {
+                    "chat_id": self.support_group_id,
+                    "text": text,
+                    "parse_mode": "Markdown",
+                    "disable_web_page_preview": True
+                }
                 
-                logger.info(f"Support notification sent to group: {self.support_group_id}")
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(url, json=payload)
+                    response.raise_for_status()
+                    
+                    logger.info(f"Support notification sent to group: {self.support_group_id}")
+            else:
+                parts = []
+                current_part = ""
+                lines = text.split('\n')
+                
+                for line in lines:
+                    if len(line) > MAX_MESSAGE_LENGTH:
+                        if current_part:
+                            parts.append(current_part.strip())
+                            current_part = ""
+                        for i in range(0, len(line), MAX_MESSAGE_LENGTH):
+                            parts.append(line[i:i + MAX_MESSAGE_LENGTH])
+                    elif len(current_part) + len(line) + 1 <= MAX_MESSAGE_LENGTH:
+                        current_part += line + '\n' if current_part else line + '\n'
+                    else:
+                        if current_part:
+                            parts.append(current_part.strip())
+                        current_part = line + '\n'
+                
+                if current_part:
+                    parts.append(current_part.strip())
+                
+                async with httpx.AsyncClient() as client:
+                    for i, part in enumerate(parts):
+                        part_text = part
+                        if len(parts) > 1:
+                            part_text = f"*[Часть {i + 1} из {len(parts)}]*\n\n{part}"
+                        
+                        url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
+                        payload = {
+                            "chat_id": self.support_group_id,
+                            "text": part_text,
+                            "parse_mode": "Markdown",
+                            "disable_web_page_preview": True
+                        }
+                        
+                        response = await client.post(url, json=payload)
+                        response.raise_for_status()
+                        
+                        if i < len(parts) - 1:
+                            await asyncio.sleep(0.1)
+                    
+                    logger.info(f"Support notification sent to group ({len(parts)} parts): {self.support_group_id}")
                 
         except Exception as e:
             logger.error(f"Failed to send support notification: {e}")

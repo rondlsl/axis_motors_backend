@@ -264,14 +264,13 @@ class SupportBot:
         try:
             # Get first message text safely
             first_message = chat.messages[0].message_text if chat.messages and len(chat.messages) > 0 else "Нет сообщения"
-            message_preview = first_message[:100] if len(first_message) > 100 else first_message
             
             notification_text = (
                 f"🔔 Новое обращение в поддержку\n\n"
                 f"👤 Клиент: {chat.user_name}\n"
                 f"📞 Телефон: {chat.user_phone}\n"
                 f"🆔 AZV ID: {chat.azv_user.sid if chat.azv_user else 'Не найден'}\n"
-                f"📝 Сообщение: {message_preview}...\n\n"
+                f"📝 Сообщение: {first_message}\n\n"
                 f"ID чата: {chat.sid}"
             )
             
@@ -287,7 +286,7 @@ class SupportBot:
                 f"💬 Новое сообщение от клиента\n\n"
                 f"👤 Клиент: {chat.user_name}\n"
                 f"📞 Телефон: {chat.user_phone}\n"
-                f"💬 Сообщение: {message_text[:100]}...\n\n"
+                f"💬 Сообщение: {message_text}\n\n"
                 f"ID чата: {chat.sid}"
             )
             
@@ -297,24 +296,68 @@ class SupportBot:
             logger.error(f"Error sending message notification: {e}")
 
     async def send_to_support_group(self, text: str):
-        """Отправить сообщение в группу поддержки"""
+        """Отправить сообщение в группу поддержки (с разбивкой на части, если превышает лимит Telegram)"""
         try:
             from app.core.config import SUPPORT_GROUP_ID
             
             if not SUPPORT_GROUP_ID:
                 logger.warning("SUPPORT_GROUP_ID не установлен")
                 return
+            
+            MAX_MESSAGE_LENGTH = 4096
+            
+            if len(text) <= MAX_MESSAGE_LENGTH:
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN_2}/sendMessage",
+                        json={
+                            "chat_id": SUPPORT_GROUP_ID,
+                            "text": text
+                        }
+                    )
+                    response.raise_for_status()
+                    logger.info(f"Уведомление отправлено в группу поддержки: {SUPPORT_GROUP_ID}")
+            else:
+                parts = []
+                current_part = ""
+                lines = text.split('\n')
                 
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN_2}/sendMessage",
-                    json={
-                        "chat_id": SUPPORT_GROUP_ID,
-                        "text": text
-                    }
-                )
-                response.raise_for_status()
-                logger.info(f"Уведомление отправлено в группу поддержки: {SUPPORT_GROUP_ID}")
+                for line in lines:
+                    if len(line) > MAX_MESSAGE_LENGTH:
+                        if current_part:
+                            parts.append(current_part.strip())
+                            current_part = ""
+                        for i in range(0, len(line), MAX_MESSAGE_LENGTH):
+                            parts.append(line[i:i + MAX_MESSAGE_LENGTH])
+                    elif len(current_part) + len(line) + 1 <= MAX_MESSAGE_LENGTH:
+                        current_part += line + '\n' if current_part else line + '\n'
+                    else:
+                        if current_part:
+                            parts.append(current_part.strip())
+                        current_part = line + '\n'
+                
+                if current_part:
+                    parts.append(current_part.strip())
+                
+                async with httpx.AsyncClient() as client:
+                    for i, part in enumerate(parts):
+                        part_text = part
+                        if len(parts) > 1:
+                            part_text = f"[Часть {i + 1} из {len(parts)}]\n\n{part}"
+                        
+                        response = await client.post(
+                            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN_2}/sendMessage",
+                            json={
+                                "chat_id": SUPPORT_GROUP_ID,
+                                "text": part_text
+                            }
+                        )
+                        response.raise_for_status()
+                        
+                        if i < len(parts) - 1:
+                            await asyncio.sleep(0.1)
+                    
+                    logger.info(f"Уведомление отправлено в группу поддержки ({len(parts)} частей): {SUPPORT_GROUP_ID}")
                 
         except Exception as e:
             logger.error(f"Ошибка отправки в группу поддержки: {e}")

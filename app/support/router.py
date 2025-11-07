@@ -305,24 +305,70 @@ async def send_support_message(
 
 
 async def send_message_to_client(telegram_id: int, message_text: str):
-    """Отправить сообщение клиенту в Telegram"""
+    """Отправить сообщение клиенту в Telegram (с разбивкой на части, если превышает лимит Telegram)"""
     try:
         from app.core.config import TELEGRAM_BOT_TOKEN_2
+        import asyncio
         
         if not TELEGRAM_BOT_TOKEN_2:
             logger.warning("TELEGRAM_BOT_TOKEN_2 не установлен")
             return
+        
+        full_text = f"📞 Поддержка:\n\n{message_text}"
+        MAX_MESSAGE_LENGTH = 4096
+        
+        if len(full_text) <= MAX_MESSAGE_LENGTH:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN_2}/sendMessage",
+                    json={
+                        "chat_id": telegram_id,
+                        "text": full_text
+                    }
+                )
+                response.raise_for_status()
+                logger.info(f"Сообщение отправлено клиенту {telegram_id}")
+        else:
+            parts = []
+            current_part = ""
+            lines = full_text.split('\n')
             
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN_2}/sendMessage",
-                json={
-                    "chat_id": telegram_id,
-                    "text": f"📞 Поддержка:\n\n{message_text}"
-                }
-            )
-            response.raise_for_status()
-            logger.info(f"Сообщение отправлено клиенту {telegram_id}")
+            for line in lines:
+                if len(line) > MAX_MESSAGE_LENGTH:
+                    if current_part:
+                        parts.append(current_part.strip())
+                        current_part = ""
+                    for i in range(0, len(line), MAX_MESSAGE_LENGTH):
+                        parts.append(line[i:i + MAX_MESSAGE_LENGTH])
+                elif len(current_part) + len(line) + 1 <= MAX_MESSAGE_LENGTH:
+                    current_part += line + '\n' if current_part else line + '\n'
+                else:
+                    if current_part:
+                        parts.append(current_part.strip())
+                    current_part = line + '\n'
+            
+            if current_part:
+                parts.append(current_part.strip())
+            
+            async with httpx.AsyncClient() as client:
+                for i, part in enumerate(parts):
+                    part_text = part
+                    if len(parts) > 1:
+                        part_text = f"📞 Поддержка (часть {i + 1} из {len(parts)}):\n\n{part}"
+                    
+                    response = await client.post(
+                        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN_2}/sendMessage",
+                        json={
+                            "chat_id": telegram_id,
+                            "text": part_text
+                        }
+                    )
+                    response.raise_for_status()
+                    
+                    if i < len(parts) - 1:
+                        await asyncio.sleep(0.1)
+                
+                logger.info(f"Сообщение отправлено клиенту {telegram_id} ({len(parts)} частей)")
             
     except Exception as e:
         logger.error(f"Ошибка отправки сообщения клиенту: {e}")
