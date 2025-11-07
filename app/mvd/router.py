@@ -25,6 +25,8 @@ def get_current_mvd_user(current_user: User = Depends(get_current_user)) -> User
 @MvdRouter.get("/pending", summary="Получить заявки на рассмотрении")
 async def get_pending_applications(
         search: Optional[str] = Query(None, description="Поиск по имени, телефону, ИИН или номеру паспорта"),
+        page: int = Query(1, ge=1, description="Номер страницы"),
+        per_page: int = Query(10, ge=1, le=100, description="Количество элементов на странице"),
         db: Session = Depends(get_db),
         current_mvd: User = Depends(get_current_mvd_user)
 ) -> Dict[str, Any]:
@@ -65,7 +67,8 @@ async def get_pending_applications(
         )
         query = query.filter(search_filter)
     
-    applications = query.all()
+    total = query.count()
+    applications = query.offset((page - 1) * per_page).limit(per_page).all()
     
     applications_data = []
     for app in applications:
@@ -116,18 +119,28 @@ async def get_pending_applications(
             "reason": app.reason
         })
     
-    return {"applications": applications_data}
+    return {
+        "applications": applications_data,
+        "pagination": {
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": (total + per_page - 1) // per_page
+        }
+    }
 
 
 @MvdRouter.get("/approved", summary="Получить одобренные заявки")
 async def get_approved_applications(
         search: Optional[str] = Query(None, description="Поиск по имени, телефону, ИИН или номеру паспорта"),
+        page: int = Query(1, ge=1, description="Номер страницы"),
+        per_page: int = Query(10, ge=1, le=100, description="Количество элементов на странице"),
         db: Session = Depends(get_db),
         current_mvd: User = Depends(get_current_mvd_user)
 ) -> Dict[str, Any]:
     """Получить заявки, одобренные МВД"""
     
-    query = db.query(Application).options(
+    query = db.query(Application).join(User, Application.user_id == User.id).options(
         joinedload(Application.user)
     ).filter(
         and_(
@@ -147,7 +160,8 @@ async def get_approved_applications(
         )
         query = query.filter(search_filter)
     
-    applications = query.all()
+    total = query.count()
+    applications = query.offset((page - 1) * per_page).limit(per_page).all()
     
     applications_data = []
     for app in applications:
@@ -186,18 +200,28 @@ async def get_approved_applications(
             "reason": app.reason
         })
     
-    return {"applications": applications_data}
+    return {
+        "applications": applications_data,
+        "pagination": {
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": (total + per_page - 1) // per_page
+        }
+    }
 
 
 @MvdRouter.get("/rejected", summary="Получить отклоненные заявки")
 async def get_rejected_applications(
         search: Optional[str] = Query(None, description="Поиск по имени, телефону, ИИН или номеру паспорта"),
+        page: int = Query(1, ge=1, description="Номер страницы"),
+        per_page: int = Query(10, ge=1, le=100, description="Количество элементов на странице"),
         db: Session = Depends(get_db),
         current_mvd: User = Depends(get_current_mvd_user)
 ) -> Dict[str, Any]:
     """Получить заявки, отклоненные МВД"""
     
-    query = db.query(Application).options(
+    query = db.query(Application).join(User, Application.user_id == User.id).options(
         joinedload(Application.user)
     ).filter(
         and_(
@@ -217,7 +241,8 @@ async def get_rejected_applications(
         )
         query = query.filter(search_filter)
     
-    applications = query.all()
+    total = query.count()
+    applications = query.offset((page - 1) * per_page).limit(per_page).all()
     
     applications_data = []
     for app in applications:
@@ -256,7 +281,15 @@ async def get_rejected_applications(
             "reason": app.reason
         })
     
-    return {"applications": applications_data}
+    return {
+        "applications": applications_data,
+        "pagination": {
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": (total + per_page - 1) // per_page
+        }
+    }
 
 
 @MvdRouter.post("/approve/{application_id}", summary="Одобрить заявку")
