@@ -18,6 +18,7 @@ from app.gps_api.utils.car_data import send_command_to_terminal, send_open, send
 from app.gps_api.utils.auth_api import get_auth_token
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.utils.atomic_operations import delete_uploaded_files
+from app.utils.telegram_logger import log_error_to_telegram
 from app.models.history_model import RentalStatus, RentalHistory, RentalReview
 from app.models.car_model import Car, CarStatus
 from app.models.rental_actions_model import ActionType, RentalAction
@@ -208,6 +209,22 @@ async def start_delivery(
                 print(f"Ошибка GPS последовательности при старте доставки: {result.get('error', 'Unknown error')}")
     except Exception as e:
         print(f"Ошибка GPS команд при старте доставки: {e}")
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_mechanic,
+                additional_context={
+                    "action": "mechanic_delivery_start_gps",
+                    "car_id": str(car.id) if car else None,
+                    "car_name": car.name if car else None,
+                    "gps_imei": car.gps_imei if car else None,
+                    "rental_id": str(rental.id),
+                    "mechanic_id": str(current_mechanic.id)
+                }
+            )
+        except:
+            pass
 
     user = db.query(User).filter(User.id == rental.user_id).first()
     if user and user.fcm_token:
@@ -345,6 +362,22 @@ async def complete_delivery(
                 print(f"Ошибка GPS последовательности при окончательной блокировке доставки: {result.get('error', 'Unknown error')}")
     except Exception as e:
         print(f"Ошибка GPS команд при окончательной блокировке доставки: {e}")
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_mechanic,
+                additional_context={
+                    "action": "mechanic_delivery_complete_lock_gps",
+                    "car_id": str(car.id) if car else None,
+                    "car_name": car.name if car else None,
+                    "gps_imei": car.gps_imei if car else None,
+                    "rental_id": str(rental.id),
+                    "mechanic_id": str(current_mechanic.id)
+                }
+            )
+        except:
+            pass
 
     db.commit()
     db.refresh(rental)

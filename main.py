@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.auth.router import Auth_router
 from app.core.config import logger, TELEGRAM_BOT_TOKEN_2
 from app.dependencies.database.database import get_db
+from app.middleware.error_logger_middleware import ErrorLoggerMiddleware
 import logging
 
 # Настройка логирования для вывода в консоль Docker
@@ -285,6 +286,7 @@ class SwaggerAuthMiddleware(BaseHTTPMiddleware):
         return response
 
 app.add_middleware(SwaggerAuthMiddleware)
+app.add_middleware(ErrorLoggerMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

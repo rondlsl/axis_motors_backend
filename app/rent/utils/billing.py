@@ -18,6 +18,7 @@ from app.push.utils import send_push_to_user_by_id, send_localized_notification_
 from app.core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.car_data import send_lock_engine
+from app.utils.telegram_logger import telegram_error_logger
 
 FUEL_PRICE_PER_LITER = 350
 ELECTRIC_FUEL_PRICE_PER_LITER = 100
@@ -101,6 +102,25 @@ async def billing_job():
                     # Отправка во второй бот
                     for chat_id in (965048905, 5941825713, 860991388):
                         asyncio.create_task(_send_telegram(err, chat_id, TELEGRAM_BOT_TOKEN_2))
+                    
+                    # Логируем критическую ошибку в Telegram Monitor
+                    user = db.query(User).filter(User.id == user_id).first()
+                    asyncio.create_task(telegram_error_logger.send_error(
+                        error=e,
+                        user_info={
+                            "id": user_id,
+                            "name": f"{user.first_name} {user.last_name}" if user else None,
+                            "phone": user.phone_number if user else None,
+                            "role": user.role.value if user else None
+                        } if user else {"id": user_id},
+                        request_info=None,
+                        additional_context={
+                            "job": "billing_job",
+                            "action": "lock_engine",
+                            "imei": imei,
+                            "car_name": car_name
+                        }
+                    ))
     except Exception as e:
         error_msg = f"⚠️ Ошибка при обработке блокировок двигателя: {e}"
         # Отправка в первый бот
@@ -109,6 +129,18 @@ async def billing_job():
         # Отправка во второй бот
         for chat_id in (965048905, 5941825713, 860991388):
             asyncio.create_task(_send_telegram(error_msg, chat_id, TELEGRAM_BOT_TOKEN_2))
+        
+        # Логируем критическую ошибку в Telegram Monitor
+        asyncio.create_task(telegram_error_logger.send_error(
+            error=e,
+            user_info=None,
+            request_info=None,
+            additional_context={
+                "job": "billing_job",
+                "action": "process_lock_requests",
+                "lock_requests_count": len(lock_requests) if lock_requests else 0
+            }
+        ))
 
     # 6) Yield back to event loop
     await asyncio.sleep(0)

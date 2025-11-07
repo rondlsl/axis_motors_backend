@@ -3,6 +3,7 @@ from typing import Dict, Any, Optional
 import logging
 
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
+from app.utils.telegram_logger import log_error_to_telegram
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,18 @@ class GlonassoftClient:
             print(f"[GLONASSOFT AUTH ERROR] Authentication error: {e}")
             import traceback
             print(f"[GLONASSOFT AUTH ERROR] Traceback: {traceback.format_exc()}")
+            try:
+                await log_error_to_telegram(
+                    error=e,
+                    request=None,
+                    user=None,
+                    additional_context={
+                        "action": "glonassoft_authenticate",
+                        "username": GLONASSSOFT_USERNAME
+                    }
+                )
+            except:
+                pass
             return False
     
     async def get_vehicle_data(self, vehicle_imei: str) -> Optional[Dict[str, Any]]:
@@ -94,6 +107,18 @@ class GlonassoftClient:
             print(f"[GLONASSOFT ERROR] Error getting vehicle data for {vehicle_imei}: {e}")
             import traceback
             print(f"[GLONASSOFT ERROR] Traceback: {traceback.format_exc()}")
+            try:
+                await log_error_to_telegram(
+                    error=e,
+                    request=None,
+                    user=None,
+                    additional_context={
+                        "action": "glonassoft_get_vehicle_data",
+                        "vehicle_imei": vehicle_imei
+                    }
+                )
+            except:
+                pass
             return None
     
     async def get_last_vehicles_data(self, vehicle_ids: list) -> Optional[list]:
@@ -120,6 +145,17 @@ class GlonassoftClient:
                 
         except Exception as e:
             logger.error(f"Error getting last vehicles data: {e}")
+            try:
+                await log_error_to_telegram(
+                    error=e,
+                    request=None,
+                    user=None,
+                    additional_context={
+                        "action": "glonassoft_get_last_vehicles_data"
+                    }
+                )
+            except:
+                pass
             return None
     
     async def close(self):

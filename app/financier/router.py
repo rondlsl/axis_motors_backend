@@ -10,6 +10,7 @@ from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole
 from app.models.application_model import Application, ApplicationStatus
 from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
+from app.utils.telegram_logger import log_error_to_telegram
 
 FinancierRouter = APIRouter(prefix="/financier", tags=["Financier"])
 
@@ -333,8 +334,22 @@ async def approve_application(
             "application_approved_financier",
             auto_class=auto_class
         )
-    except Exception:
-        pass
+    except Exception as e:
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_financier,
+                additional_context={
+                    "action": "financier_approve_notification",
+                    "application_id": str(application_uuid),
+                    "user_id": str(application.user.id),
+                    "financier_id": str(current_financier.id),
+                    "auto_class": auto_class
+                }
+            )
+        except:
+            pass
     
     return {
         "message": "Заявка одобрена",
@@ -429,8 +444,23 @@ async def reject_application(
             translation_key, 
             "application_rejected_financier"
         )
-    except Exception:
-        pass
+    except Exception as e:
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_financier,
+                additional_context={
+                    "action": "financier_reject_notification",
+                    "application_id": str(application_uuid),
+                    "user_id": str(application.user.id),
+                    "financier_id": str(current_financier.id),
+                    "reason_type": reason_type,
+                    "reason": application.reason
+                }
+            )
+        except:
+            pass
     
     return {
         "message": "Заявка отклонена",

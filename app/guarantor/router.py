@@ -10,6 +10,7 @@ import logging
 logger = logging.getLogger(__name__)
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
 from app.utils.sid_converter import convert_uuid_response_to_sid
+from app.utils.telegram_logger import log_error_to_telegram
 
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
@@ -80,6 +81,19 @@ async def cancel_guarantor_requests_on_rejection(guarantor_user_id: str, db: Ses
     except Exception as e:
         logger.error(f"Ошибка при отмене заявок гаранта {guarantor_user_id}: {e}")
         db.rollback()
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=None,
+                additional_context={
+                    "action": "cancel_guarantor_requests",
+                    "guarantor_user_id": guarantor_user_id,
+                    "function": "cancel_guarantor_requests_on_rejection"
+                }
+            )
+        except:
+            pass
         return False
 
 guarantor_router = APIRouter(prefix="/guarantor", tags=["Guarantor"])

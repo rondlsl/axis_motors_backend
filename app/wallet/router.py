@@ -14,6 +14,7 @@ from app.auth.dependencies.get_current_user import get_current_user
 from app.dependencies.database.database import get_db
 from app.models.user_model import User, UserRole
 from app.models.wallet_transaction_model import WalletTransaction, WalletTransactionType
+from app.utils.telegram_logger import log_error_to_telegram
 from app.wallet.schemas import (
     WalletTransactionsListOut,
     WalletTransactionsSummaryOut,

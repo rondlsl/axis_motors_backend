@@ -22,6 +22,7 @@ import logging
 from app.owner.utils import _clip_overlap_seconds, calculate_total_unavailable_seconds, calculate_month_availability_minutes, ALMATY_TZ
 from app.rent.utils.calculate_price import get_open_price
 from app.admin.cars.utils import sort_car_photos
+from app.utils.telegram_logger import log_error_to_telegram
 
 # Настройка логгера
 logger = logging.getLogger(__name__)
@@ -664,6 +665,19 @@ async def get_trip_details(
                 route_data = None
         except Exception as e:
             logger.error(f"GPS fetch error: {e}")
+            try:
+                await log_error_to_telegram(
+                    error=e,
+                    request=None,
+                    user=current_user,
+                    additional_context={
+                        "action": "owner_get_trip_gps_data",
+                        "user_id": str(current_user.id),
+                        "trip_id": trip_id
+                    }
+                )
+            except:
+                pass
             route_data = None
     else:
         # GPS данные недоступны

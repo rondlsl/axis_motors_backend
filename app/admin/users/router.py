@@ -24,6 +24,7 @@ from app.admin.users.schemas import (
 )
 from app.owner.router import calculate_owner_earnings
 from app.admin.cars.utils import sort_car_photos
+from app.utils.telegram_logger import log_error_to_telegram
 
 users_router = APIRouter(tags=["Admin Users"])
 

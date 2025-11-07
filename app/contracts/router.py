@@ -16,6 +16,7 @@ from app.models.guarantor_model import Guarantor
 from app.models.car_model import Car
 from app.gps_api.utils.auth_api import get_auth_token
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
+from app.utils.telegram_logger import log_error_to_telegram
 from app.contracts.schemas import (
     ContractFileResponse,
     SignContractRequest,

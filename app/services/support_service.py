@@ -9,6 +9,7 @@ import httpx
 from app.core.config import TELEGRAM_BOT_TOKEN_2
 
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
+from app.utils.telegram_logger import log_error_to_telegram
 from app.models.support_chat_model import SupportChat, SupportChatStatus
 from app.models.support_message_model import SupportMessage, SupportMessageSenderType
 from app.models.user_model import User, UserRole

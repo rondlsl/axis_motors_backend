@@ -6,6 +6,7 @@ from httpx import Response
 
 from app.RateLimitedHTTPClient import RateLimitedHTTPClient
 from app.core.config import logger
+from app.utils.telegram_logger import log_error_to_telegram
 import asyncio
 
 
@@ -59,6 +60,20 @@ async def send_command_to_terminal(
 
     except Exception as e:
         logger.error(f"Ошибка отправки команды для {vehicle_id}, {command}, {e}")
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=None,
+                additional_context={
+                    "action": "send_command_to_terminal",
+                    "vehicle_id": vehicle_id,
+                    "command": command,
+                    "retries": retries
+                }
+            )
+        except:
+            pass
         raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {command}, {e}")
 
 

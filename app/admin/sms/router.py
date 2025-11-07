@@ -7,6 +7,7 @@ from app.models.user_model import User, UserRole
 from app.admin.sms.schemas import SendSmsRequest, SendSmsResponse
 from app.guarantor.sms_utils import send_sms_mobizon
 from app.core.config import SMS_TOKEN
+from app.utils.telegram_logger import log_error_to_telegram
 
 sms_router = APIRouter(tags=["Admin SMS"])
 
@@ -69,6 +70,19 @@ async def send_custom_sms(
         )
     except Exception as e:
         print(f"SMS sending error: {e}")
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "admin_send_custom_sms",
+                    "phone_number": request.phone_number,
+                    "admin_id": str(current_user.id)
+                }
+            )
+        except:
+            pass
         return SendSmsResponse(
             success=False,
             message="SMS sending failed",

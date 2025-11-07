@@ -27,6 +27,7 @@ from app.admin.cars.utils import car_to_detail_schema, status_display, _get_driv
 from app.gps_api.utils.route_data import get_gps_route_data
 from app.models.support_action_model import SupportAction
 from app.utils.plate_normalizer import normalize_plate_number
+from app.utils.telegram_logger import log_error_to_telegram
 
 cars_router = APIRouter(tags=["Admin Cars"])
 
@@ -218,6 +219,20 @@ async def change_car_status(
         }
     except Exception as e:
         db.rollback()
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "admin_change_car_status",
+                    "car_id": car_id,
+                    "new_status": new_status.value,
+                    "admin_id": str(current_user.id)
+                }
+            )
+        except:
+            pass
         raise HTTPException(status_code=500, detail=f"Ошибка изменения статуса: {e}")
 
 
@@ -297,6 +312,19 @@ async def delete_car(
         raise
     except Exception as e:
         db.rollback()
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "admin_delete_car",
+                    "car_id": car_id,
+                    "admin_id": str(current_user.id)
+                }
+            )
+        except:
+            pass
         raise HTTPException(status_code=500, detail=f"Ошибка удаления автомобиля: {e}")
 
 

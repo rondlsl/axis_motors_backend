@@ -14,6 +14,7 @@ from app.admin.support.schemas import (
     SupportActionItemSchema,
     SupportUserSchema,
 )
+from app.utils.telegram_logger import log_error_to_telegram
 
 
 support_router = APIRouter(tags=["Admin Support"])

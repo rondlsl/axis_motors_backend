@@ -31,6 +31,7 @@ from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.car_data import auto_lock_vehicle_after_rental, execute_gps_sequence, send_open, send_unlock_engine
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.utils.atomic_operations import delete_uploaded_files
+from app.utils.telegram_logger import log_error_to_telegram
 from app.guarantor.sms_utils import send_rental_start_sms, send_rental_complete_sms
 from app.owner.schemas import RouteData, RouteMapData
 from app.admin.cars.utils import sort_car_photos
@@ -616,8 +617,8 @@ async def reserve_car(
         is_owner=False
     )
     
-        if current_user.wallet_balance < required_balance:
-            raise InsufficientBalanceException(required_amount=required_balance)
+    if current_user.wallet_balance < required_balance:
+        raise InsufficientBalanceException(required_amount=required_balance)
 
     if rental_type == RentalType.MINUTES:
         base = 0
@@ -757,8 +758,8 @@ async def reserve_delivery(
             is_owner=False
         )
         
-            if current_user.wallet_balance < required_balance:
-                raise InsufficientBalanceException(required_amount=required_balance)
+        if current_user.wallet_balance < required_balance:
+            raise InsufficientBalanceException(required_amount=required_balance)
 
         if rental_type == RentalType.MINUTES:
             base_price = 0
@@ -936,6 +937,21 @@ async def cancel_reservation(
             }
         except Exception as e:
             db.rollback()
+            try:
+                await log_error_to_telegram(
+                    error=e,
+                    request=None,
+                    user=current_user,
+                    additional_context={
+                        "action": "cancel_rental_reservation",
+                        "rental_id": str(rental.id),
+                        "car_id": str(rental.car_id),
+                        "user_id": str(current_user.id),
+                        "cancellation_fee": fee
+                    }
+                )
+            except:
+                pass
             raise HTTPException(
                 status_code=500,
                 detail=f"Ошибка при отмене брони: {str(e)}"
@@ -1140,6 +1156,22 @@ async def start_rental(
                 print(f"Ошибка GPS последовательности для владельца: {result.get('error', 'Unknown error')}")
         except Exception as e:
             print(f"Ошибка разблокировки двигателя при начале аренды (владелец): {e}")
+            # Логируем критическую ошибку GPS команды
+            try:
+                await log_error_to_telegram(
+                    error=e,
+                    request=None,
+                    user=current_user,
+                    additional_context={
+                        "action": "start_rental_owner_unlock_engine",
+                        "car_id": car_id,
+                        "car_name": car.name,
+                        "gps_imei": car.gps_imei,
+                        "rental_id": str(rental.id)
+                    }
+                )
+            except:
+                pass
         
         is_owner_rental = True
     else:
@@ -1201,6 +1233,24 @@ async def start_rental(
                     print(f"Ошибка GPS последовательности при старте: {result.get('error', 'Unknown error')}")
         except Exception as e:
             print(f"Ошибка GPS команд при старте аренды: {e}")
+            # Логируем критическую ошибку GPS команды
+            try:
+                await log_error_to_telegram(
+                    error=e,
+                    request=None,
+                    user=current_user,
+                    additional_context={
+                        "action": "start_rental_unlock_engine",
+                        "car_id": car_id,
+                        "car_name": car.name,
+                        "gps_imei": car.gps_imei,
+                        "rental_id": str(rental.id),
+                        "rental_type": rental.rental_type.value,
+                        "total_cost": total_cost
+                    }
+                )
+            except:
+                pass
 
         is_owner_rental = False
 
@@ -1262,7 +1312,7 @@ async def upload_photos_before(
     validate_photos(car_photos, 'car_photos')
 
     uploaded_files = []
-
+    
     try:
         # 1) Сверяем селфи клиента с документом из профиля
         try:
@@ -1288,19 +1338,19 @@ async def upload_photos_before(
 
         rental.photos_before = urls
         
-            car = db.query(Car).get(rental.car_id)
-            if car and car.gps_imei:
-                
-                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-                
-                # Универсальная последовательность: открыть замки → выдать ключ → открыть замки → забрать ключ
-                result = await execute_gps_sequence(car.gps_imei, auth_token, "selfie_exterior")
-                if not result["success"]:
+        car = db.query(Car).get(rental.car_id)
+        if car and car.gps_imei:
+            
+            auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+            
+            # Универсальная последовательность: открыть замки → выдать ключ → открыть замки → забрать ключ
+            result = await execute_gps_sequence(car.gps_imei, auth_token, "selfie_exterior")
+            if not result["success"]:
                 error_msg = result.get('error', 'Unknown error')
                 print(f"Ошибка GPS последовательности для селфи+кузов: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
-                else:
-                    print(f"GPS последовательность выполнена успешно: {result.get('executed_commands', [])}")
+            else:
+                print(f"GPS последовательность выполнена успешно: {result.get('executed_commands', [])}")
         
         db.commit()
         
@@ -1311,7 +1361,21 @@ async def upload_photos_before(
         raise
     except Exception as e:
         db.rollback()
-        delete_uploaded_files(uploaded_files) 
+        delete_uploaded_files(uploaded_files)
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "upload_photos_before",
+                    "rental_id": str(rental.id) if rental else None,
+                    "user_id": str(current_user.id),
+                    "files_uploaded": len(uploaded_files)
+                }
+            )
+        except:
+            pass
         raise HTTPException(status_code=500, detail=f"Error uploading before photos: {str(e)}")
 
 
@@ -1341,7 +1405,7 @@ async def upload_photos_before_interior(
     validate_photos(interior_photos, 'interior_photos')
 
     uploaded_files = []
-
+    
     try:
         urls = list(rental.photos_before or [])
         for p in interior_photos:
@@ -1354,6 +1418,20 @@ async def upload_photos_before_interior(
     except Exception as e:
         db.rollback()
         delete_uploaded_files(uploaded_files)
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "upload_photos_before_interior",
+                    "rental_id": str(rental.id) if rental else None,
+                    "user_id": str(current_user.id),
+                    "files_uploaded": len(uploaded_files)
+                }
+            )
+        except:
+            pass
         raise HTTPException(status_code=500, detail=f"Error uploading before interior photos: {str(e)}")
 
 
@@ -1425,7 +1503,7 @@ async def upload_photos_after(
         pass
 
     uploaded_files = []
-
+    
     try:
         # Сохраняем фотографии
         urls = list(rental.photos_after or [])
@@ -1441,13 +1519,13 @@ async def upload_photos_after(
         rental.photos_after = urls
         
         # После загрузки селфи+салона: заблокировать двигатель → забрать ключ → закрыть замки
-            car = db.query(Car).get(rental.car_id)
-            if car and car.gps_imei:
-                
-                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-                # Универсальная последовательность: заблокировать двигатель → забрать ключ → закрыть замки
-                result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_selfie_interior")
-                if not result["success"]:
+        car = db.query(Car).get(rental.car_id)
+        if car and car.gps_imei:
+            
+            auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+            # Универсальная последовательность: заблокировать двигатель → забрать ключ → закрыть замки
+            result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_selfie_interior")
+            if not result["success"]:
                 error_msg = result.get('error', 'Unknown error')
                 print(f"Ошибка GPS последовательности для завершения селфи+салон: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
@@ -1462,6 +1540,20 @@ async def upload_photos_after(
     except Exception as e:
         db.rollback()
         delete_uploaded_files(uploaded_files)
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "upload_photos_after",
+                    "rental_id": str(rental.id) if rental else None,
+                    "user_id": str(current_user.id),
+                    "files_uploaded": len(uploaded_files)
+                }
+            )
+        except:
+            pass
         raise HTTPException(status_code=500, detail=f"Error uploading after photos: {str(e)}")
 
 
@@ -1530,7 +1622,7 @@ async def upload_photos_after_car(
     validate_photos(car_photos, 'car_photos')
 
     uploaded_files = []
-
+    
     try:
         urls = list(rental.photos_after or [])
         for p in car_photos:
@@ -1541,12 +1633,12 @@ async def upload_photos_after_car(
         rental.photos_after = urls
         
         # После загрузки кузова: заблокировать двигатель → забрать ключ → закрыть замки
-            if car and car.gps_imei:
-                
-                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-                # Универсальная последовательность: заблокировать двигатель → забрать ключ → закрыть замки
-                result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_exterior")
-                if not result["success"]:
+        if car and car.gps_imei:
+            
+            auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+            # Универсальная последовательность: заблокировать двигатель → забрать ключ → закрыть замки
+            result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_exterior")
+            if not result["success"]:
                 error_msg = result.get('error', 'Unknown error')
                 print(f"Ошибка GPS последовательности для завершения кузова: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
@@ -1561,6 +1653,20 @@ async def upload_photos_after_car(
     except Exception as e:
         db.rollback()
         delete_uploaded_files(uploaded_files)
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "upload_photos_after_car",
+                    "rental_id": str(rental.id) if rental else None,
+                    "user_id": str(current_user.id),
+                    "files_uploaded": len(uploaded_files)
+                }
+            )
+        except:
+            pass
         raise HTTPException(status_code=500, detail=f"Error uploading after car photos: {str(e)}")
 
 
@@ -1584,7 +1690,7 @@ async def upload_photos_before_owner(
     validate_photos(car_photos, 'car_photos')
 
     uploaded_files = []
-
+    
     try:
         urls = list(rental.photos_before or [])
         for p in car_photos:
@@ -1595,10 +1701,10 @@ async def upload_photos_before_owner(
         rental.photos_before = urls
         
         # Открываем замки после успешной загрузки фото
-            if car and car.gps_imei:
-                
-                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-                open_result = await send_open(car.gps_imei, auth_token)
+        if car and car.gps_imei:
+            
+            auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+            open_result = await send_open(car.gps_imei, auth_token)
             if not open_result.get("success"):
                 error_msg = open_result.get('error', 'Unknown error')
                 print(f"Ошибка открытия замков после загрузки фото владельцем: {error_msg}")
@@ -1610,6 +1716,20 @@ async def upload_photos_before_owner(
     except Exception as e:
         db.rollback()
         delete_uploaded_files(uploaded_files)
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "upload_photos_before_owner",
+                    "rental_id": str(rental.id) if rental else None,
+                    "user_id": str(current_user.id),
+                    "files_uploaded": len(uploaded_files)
+                }
+            )
+        except:
+            pass
         raise HTTPException(status_code=500, detail=f"Error uploading owner photos before: {str(e)}")
 
 
@@ -1637,7 +1757,7 @@ async def upload_photos_before_owner_interior(
     validate_photos(interior_photos, 'interior_photos')
 
     uploaded_files = []
-
+    
     try:
         urls = list(rental.photos_before or [])
         for p in interior_photos:
@@ -1651,6 +1771,20 @@ async def upload_photos_before_owner_interior(
     except Exception as e:
         db.rollback()
         delete_uploaded_files(uploaded_files)
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "upload_photos_before_owner_interior",
+                    "rental_id": str(rental.id) if rental else None,
+                    "user_id": str(current_user.id),
+                    "files_uploaded": len(uploaded_files)
+                }
+            )
+        except:
+            pass
         raise HTTPException(status_code=500, detail=f"Error uploading owner photos before (interior): {str(e)}")
 
 
@@ -1692,7 +1826,7 @@ async def upload_photos_after_owner(
         raise HTTPException(status_code=400, detail=error_message)
 
     uploaded_files = []
-
+    
     try:
         # Сохраняем фотографии
         urls = list(rental.photos_after or [])
@@ -1704,13 +1838,13 @@ async def upload_photos_after_owner(
         rental.photos_after = urls
         
         # После загрузки салона владельцем: заблокировать двигатель → забрать ключ → закрыть замки
-            car = db.query(Car).get(rental.car_id)
-            if car and car.gps_imei:
-                
-                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-                # Универсальная последовательность: заблокировать двигатель → забрать ключ → закрыть замки
-                result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_selfie_interior")
-                if not result["success"]:
+        car = db.query(Car).get(rental.car_id)
+        if car and car.gps_imei:
+            
+            auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+            # Универсальная последовательность: заблокировать двигатель → забрать ключ → закрыть замки
+            result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_selfie_interior")
+            if not result["success"]:
                 error_msg = result.get('error', 'Unknown error')
                 print(f"Ошибка GPS последовательности для завершения салона владельцем: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
@@ -1721,6 +1855,20 @@ async def upload_photos_after_owner(
     except Exception as e:
         db.rollback()
         delete_uploaded_files(uploaded_files)
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "upload_photos_after_owner_interior",
+                    "rental_id": str(rental.id) if rental else None,
+                    "user_id": str(current_user.id),
+                    "files_uploaded": len(uploaded_files)
+                }
+            )
+        except:
+            pass
         raise HTTPException(status_code=500, detail=f"Error uploading owner photos after (interior): {str(e)}")
 
 
@@ -1748,7 +1896,7 @@ async def upload_photos_after_owner_car(
     validate_photos(car_photos, 'car_photos')
 
     uploaded_files = []
-
+    
     try:
         urls = list(rental.photos_after or [])
         for p in car_photos:
@@ -1762,6 +1910,20 @@ async def upload_photos_after_owner_car(
     except Exception as e:
         db.rollback()
         delete_uploaded_files(uploaded_files)
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "upload_photos_after_owner_car",
+                    "rental_id": str(rental.id) if rental else None,
+                    "user_id": str(current_user.id),
+                    "files_uploaded": len(uploaded_files)
+                }
+            )
+        except:
+            pass
         raise HTTPException(status_code=500, detail=f"Error uploading owner photos after (car): {str(e)}")
 
 
@@ -2057,6 +2219,25 @@ async def complete_rental(
             print(f"Ошибка GPS последовательности при окончательной блокировке: {result.get('error', 'Unknown error')}")
     except Exception as e:
         print(f"Ошибка блокировки двигателя: {e}")
+        # Логируем критическую ошибку GPS команды
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "complete_rental_lock_engine",
+                    "car_id": str(car.id),
+                    "car_name": car.name,
+                    "gps_imei": car.gps_imei,
+                    "rental_id": str(rental.id),
+                    "rental_type": rental.rental_type.value,
+                    "total_price": rental.total_price,
+                    "duration_minutes": rounded_minutes
+                }
+            )
+        except:
+            pass
 
     # 14) Коммит и уведомление механиков
     db.commit()

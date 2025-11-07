@@ -27,6 +27,7 @@ from app.rent.utils.calculate_price import get_open_price
 from app.gps_api.schemas_telemetry import VehicleTelemetryResponse
 from app.gps_api.utils.glonassoft_client import glonassoft_client
 from app.gps_api.utils.telemetry_processor import process_glonassoft_data
+from app.utils.telegram_logger import log_error_to_telegram
 from app.admin.cars.utils import sort_car_photos
 
 Vehicle_Router = APIRouter(prefix="/vehicles", tags=["Vehicles"])
@@ -618,6 +619,21 @@ async def open_vehicle(
         try:
             AUTH_TOKEN = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
         except Exception as e:
+            try:
+                await log_error_to_telegram(
+                    error=e,
+                    request=None,
+                    user=current_user,
+                    additional_context={
+                        "action": "open_vehicle_get_auth_token",
+                        "car_id": str(car.id),
+                        "car_name": car.name,
+                        "gps_imei": car.gps_imei,
+                        "rental_id": str(rental.id)
+                    }
+                )
+            except:
+                pass
             raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
     
     # логируем действие
@@ -627,11 +643,31 @@ async def open_vehicle(
         action_type=ActionType.OPEN_VEHICLE
     )
     db.add(action)
-    # отправляем команду
-    cmd = await send_open(car.gps_imei, AUTH_TOKEN)
-    db.commit()
-
-    return cmd
+    
+    try:
+        # отправляем команду
+        cmd = await send_open(car.gps_imei, AUTH_TOKEN)
+        db.commit()
+        return cmd
+    except Exception as e:
+        db.rollback()
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "open_vehicle_send_command",
+                    "car_id": str(car.id),
+                    "car_name": car.name,
+                    "gps_imei": car.gps_imei,
+                    "rental_id": str(rental.id),
+                    "command": "open"
+                }
+            )
+        except:
+            pass
+        raise HTTPException(status_code=500, detail=f"Ошибка открытия автомобиля: {str(e)}")
 
 
 @Vehicle_Router.post("/close")
@@ -649,6 +685,21 @@ async def close_vehicle(
         try:
             AUTH_TOKEN = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
         except Exception as e:
+            try:
+                await log_error_to_telegram(
+                    error=e,
+                    request=None,
+                    user=current_user,
+                    additional_context={
+                        "action": "close_vehicle_get_auth_token",
+                        "car_id": str(car.id),
+                        "car_name": car.name,
+                        "gps_imei": car.gps_imei,
+                        "rental_id": str(rental.id)
+                    }
+                )
+            except:
+                pass
             raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
     
     action = RentalAction(
@@ -657,10 +708,30 @@ async def close_vehicle(
         action_type=ActionType.CLOSE_VEHICLE
     )
     db.add(action)
-    cmd = await send_close(car.gps_imei, AUTH_TOKEN)
-    db.commit()
-
-    return cmd
+    
+    try:
+        cmd = await send_close(car.gps_imei, AUTH_TOKEN)
+        db.commit()
+        return cmd
+    except Exception as e:
+        db.rollback()
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "close_vehicle_send_command",
+                    "car_id": str(car.id),
+                    "car_name": car.name,
+                    "gps_imei": car.gps_imei,
+                    "rental_id": str(rental.id),
+                    "command": "close"
+                }
+            )
+        except:
+            pass
+        raise HTTPException(status_code=500, detail=f"Ошибка закрытия автомобиля: {str(e)}")
 
 
 @Vehicle_Router.post("/give_key")
@@ -678,17 +749,26 @@ async def give_key(
         try:
             AUTH_TOKEN = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
         except Exception as e:
+            try:
+                await log_error_to_telegram(error=e, request=None, user=current_user, additional_context={"action": "give_key_get_auth_token", "car_id": str(car.id), "car_name": car.name, "gps_imei": car.gps_imei, "rental_id": str(rental.id)})
+            except:
+                pass
             raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
     
-    action = RentalAction(
-        rental_id=rental.id,
-        user_id=current_user.id,
-        action_type=ActionType.GIVE_KEY
-    )
+    action = RentalAction(rental_id=rental.id, user_id=current_user.id, action_type=ActionType.GIVE_KEY)
     db.add(action)
-    cmd = await send_give_key(car.gps_imei, AUTH_TOKEN)
-    db.commit()
-    return cmd
+    
+    try:
+        cmd = await send_give_key(car.gps_imei, AUTH_TOKEN)
+        db.commit()
+        return cmd
+    except Exception as e:
+        db.rollback()
+        try:
+            await log_error_to_telegram(error=e, request=None, user=current_user, additional_context={"action": "give_key_send_command", "car_id": str(car.id), "car_name": car.name, "gps_imei": car.gps_imei, "rental_id": str(rental.id), "command": "give_key"})
+        except:
+            pass
+        raise HTTPException(status_code=500, detail=f"Ошибка выдачи ключа: {str(e)}")
 
 
 @Vehicle_Router.post("/take_key")
@@ -706,17 +786,26 @@ async def take_key(
         try:
             AUTH_TOKEN = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
         except Exception as e:
+            try:
+                await log_error_to_telegram(error=e, request=None, user=current_user, additional_context={"action": "take_key_get_auth_token", "car_id": str(car.id), "car_name": car.name, "gps_imei": car.gps_imei, "rental_id": str(rental.id)})
+            except:
+                pass
             raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
     
-    action = RentalAction(
-        rental_id=rental.id,
-        user_id=current_user.id,
-        action_type=ActionType.TAKE_KEY
-    )
+    action = RentalAction(rental_id=rental.id, user_id=current_user.id, action_type=ActionType.TAKE_KEY)
     db.add(action)
-    cmd = await send_take_key(car.gps_imei, AUTH_TOKEN)
-    db.commit()
-    return cmd
+    
+    try:
+        cmd = await send_take_key(car.gps_imei, AUTH_TOKEN)
+        db.commit()
+        return cmd
+    except Exception as e:
+        db.rollback()
+        try:
+            await log_error_to_telegram(error=e, request=None, user=current_user, additional_context={"action": "take_key_send_command", "car_id": str(car.id), "car_name": car.name, "gps_imei": car.gps_imei, "rental_id": str(rental.id), "command": "take_key"})
+        except:
+            pass
+        raise HTTPException(status_code=500, detail=f"Ошибка забора ключа: {str(e)}")
 
 
 @Vehicle_Router.post("/lock_engine", summary="Заблокировать двигатель")
@@ -735,17 +824,26 @@ async def lock_engine(
         try:
             AUTH_TOKEN = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
         except Exception as e:
+            try:
+                await log_error_to_telegram(error=e, request=None, user=current_user, additional_context={"action": "lock_engine_get_auth_token", "car_id": str(car.id), "car_name": car.name, "gps_imei": car.gps_imei, "rental_id": str(rental.id)})
+            except:
+                pass
             raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
     
-    action = RentalAction(
-        rental_id=rental.id,
-        user_id=current_user.id,
-        action_type=ActionType.LOCK_ENGINE
-    )
+    action = RentalAction(rental_id=rental.id, user_id=current_user.id, action_type=ActionType.LOCK_ENGINE)
     db.add(action)
-    cmd = await send_lock_engine(car.gps_imei, AUTH_TOKEN)
-    db.commit()
-    return cmd
+    
+    try:
+        cmd = await send_lock_engine(car.gps_imei, AUTH_TOKEN)
+        db.commit()
+        return cmd
+    except Exception as e:
+        db.rollback()
+        try:
+            await log_error_to_telegram(error=e, request=None, user=current_user, additional_context={"action": "lock_engine_send_command", "car_id": str(car.id), "car_name": car.name, "gps_imei": car.gps_imei, "rental_id": str(rental.id), "command": "lock_engine"})
+        except:
+            pass
+        raise HTTPException(status_code=500, detail=f"Ошибка блокировки двигателя: {str(e)}")
 
 
 @Vehicle_Router.post("/unlock_engine", summary="Разблокировать двигатель")
@@ -764,17 +862,26 @@ async def unlock_engine(
         try:
             AUTH_TOKEN = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
         except Exception as e:
+            try:
+                await log_error_to_telegram(error=e, request=None, user=current_user, additional_context={"action": "unlock_engine_get_auth_token", "car_id": str(car.id), "car_name": car.name, "gps_imei": car.gps_imei, "rental_id": str(rental.id)})
+            except:
+                pass
             raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
     
-    action = RentalAction(
-        rental_id=rental.id,
-        user_id=current_user.id,
-        action_type=ActionType.UNLOCK_ENGINE
-    )
+    action = RentalAction(rental_id=rental.id, user_id=current_user.id, action_type=ActionType.UNLOCK_ENGINE)
     db.add(action)
-    cmd = await send_unlock_engine(car.gps_imei, AUTH_TOKEN)
-    db.commit()
-    return cmd
+    
+    try:
+        cmd = await send_unlock_engine(car.gps_imei, AUTH_TOKEN)
+        db.commit()
+        return cmd
+    except Exception as e:
+        db.rollback()
+        try:
+            await log_error_to_telegram(error=e, request=None, user=current_user, additional_context={"action": "unlock_engine_send_command", "car_id": str(car.id), "car_name": car.name, "gps_imei": car.gps_imei, "rental_id": str(rental.id), "command": "unlock_engine"})
+        except:
+            pass
+        raise HTTPException(status_code=500, detail=f"Ошибка разблокировки двигателя: {str(e)}")
 
 
 @Vehicle_Router.get("/rented", response_model=List[RentedCar], summary="Список машин в аренде")

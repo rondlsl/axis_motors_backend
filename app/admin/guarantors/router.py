@@ -15,6 +15,7 @@ from app.admin.guarantors.schemas import (
     AdminRejectGuarantorSchema
 )
 from app.utils.sid_converter import convert_uuid_response_to_sid
+from app.utils.telegram_logger import log_error_to_telegram
 
 guarantors_router = APIRouter(tags=["Admin Guarantors"])
 
@@ -107,6 +108,21 @@ async def approve_guarantor_request(
             )
         except Exception as e:
             print(f"Failed to send SMS to guarantor: {e}")
+            try:
+                await log_error_to_telegram(
+                    error=e,
+                    request=None,
+                    user=current_user,
+                    additional_context={
+                        "action": "admin_approve_guarantor_sms",
+                        "guarantor_request_id": request_id,
+                        "guarantor_id": str(request.guarantor_id),
+                        "requestor_id": str(request.requestor_id),
+                        "admin_id": str(current_user.id)
+                    }
+                )
+            except:
+                pass
     
     return {
         "message": "Заявка одобрена",
@@ -151,6 +167,21 @@ async def reject_guarantor_request(
             )
         except Exception as e:
             print(f"Failed to send SMS to user: {e}")
+            try:
+                await log_error_to_telegram(
+                    error=e,
+                    request=None,
+                    user=current_user,
+                    additional_context={
+                        "action": "admin_reject_guarantor_sms",
+                        "guarantor_request_id": request_id,
+                        "requestor_id": str(request.requestor_id),
+                        "admin_id": str(current_user.id),
+                        "rejection_reason": rejection_data.rejection_reason
+                    }
+                )
+            except:
+                pass
 
     return {"message": "Заявка отклонена"}
 

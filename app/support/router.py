@@ -18,6 +18,7 @@ from app.schemas.support_schemas import (
     SupportChatAssignRequest, SupportChatStatusUpdate, SupportStatsResponse,
     SupportMessageReply
 )
+from app.utils.telegram_logger import log_error_to_telegram
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,19 @@ async def create_support_chat(
         chat = support_service.create_chat(chat_data)
         return SupportChatResponse.from_orm_with_sid(chat)
     except Exception as e:
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=None,
+                additional_context={
+                    "action": "create_support_chat",
+                    "telegram_id": chat_data.user_telegram_id,
+                    "message": chat_data.message
+                }
+            )
+        except:
+            pass
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -372,6 +386,19 @@ async def send_message_to_client(telegram_id: int, message_text: str):
             
     except Exception as e:
         logger.error(f"Ошибка отправки сообщения клиенту: {e}")
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=None,
+                additional_context={
+                    "action": "send_message_to_client_telegram",
+                    "telegram_id": telegram_id,
+                    "message_length": len(message_text) if message_text else 0
+                }
+            )
+        except:
+            pass
 
 
 async def send_status_change_notification_to_client(telegram_id: int, new_status: str, chat_id: str):

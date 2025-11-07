@@ -21,6 +21,7 @@ from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.car_data import auto_lock_vehicle_after_rental, execute_gps_sequence
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.utils.atomic_operations import delete_uploaded_files
+from app.utils.telegram_logger import log_error_to_telegram
 from app.guarantor.sms_utils import send_rental_start_sms, send_rental_complete_sms
 from app.admin.cars.utils import sort_car_photos
 
@@ -750,6 +751,22 @@ async def start_rental(
                 print(f"Ошибка GPS последовательности при старте проверки механиком: {result.get('error', 'Unknown error')}")
     except Exception as e:
         print(f"Ошибка GPS команд при старте проверки механиком: {e}")
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_mechanic,
+                additional_context={
+                    "action": "mechanic_start_inspection_gps",
+                    "car_id": str(car.id) if car else None,
+                    "car_name": car.name if car else None,
+                    "gps_imei": car.gps_imei if car else None,
+                    "rental_id": str(rental.id),
+                    "mechanic_id": str(current_mechanic.id)
+                }
+            )
+        except:
+            pass
     
     # try:
     #     name_parts = []
@@ -823,6 +840,18 @@ async def cancel_reservation(
         }
     except Exception as e:
         db.rollback()
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_mechanic,
+                additional_context={
+                    "action": "mechanic_cancel_inspection",
+                    "mechanic_id": str(current_mechanic.id)
+                }
+            )
+        except:
+            pass
         raise HTTPException(status_code=500, detail=f"Ошибка при отмене проверки: {str(e)}")
 
 @MechanicRouter.post("/upload-photos-before")
@@ -936,6 +965,23 @@ async def upload_photos_before(
         print(f"Rolling back database and deleting uploaded files...")
         db.rollback()
         delete_uploaded_files(uploaded_files)
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_mechanic,
+                additional_context={
+                    "action": "mechanic_upload_photos_before",
+                    "car_id": str(car.id) if car else None,
+                    "car_name": car.name if car else None,
+                    "gps_imei": car.gps_imei if car else None,
+                    "rental_id": str(rental.id) if rental else None,
+                    "mechanic_id": str(current_mechanic.id),
+                    "files_uploaded": len(uploaded_files)
+                }
+            )
+        except:
+            pass
         raise HTTPException(status_code=500, detail=f"Ошибка при загрузке фотографий до проверки: {str(e)}")
 
 

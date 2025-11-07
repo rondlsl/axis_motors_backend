@@ -11,6 +11,7 @@ from app.models.user_model import User, UserRole
 from app.models.application_model import Application, ApplicationStatus
 from app.models.guarantor_model import Guarantor, GuarantorRequest, GuarantorRequestStatus
 from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
+from app.utils.telegram_logger import log_error_to_telegram
 
 MvdRouter = APIRouter(prefix="/mvd", tags=["MVD"])
 
@@ -346,8 +347,21 @@ async def approve_application(
             "mvd_approve", 
             "application_approved_mvd"
         )
-    except Exception:
-        pass
+    except Exception as e:
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_mvd,
+                additional_context={
+                    "action": "mvd_approve_notification",
+                    "application_id": str(application_uuid),
+                    "user_id": str(application.user.id),
+                    "mvd_officer_id": str(current_mvd.id)
+                }
+            )
+        except:
+            pass
     
     return {
         "message": "Заявка одобрена",
@@ -416,8 +430,22 @@ async def reject_application(
             "mvd_reject", 
             "application_rejected_mvd"
         )
-    except Exception:
-        pass
+    except Exception as e:
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_mvd,
+                additional_context={
+                    "action": "mvd_reject_notification",
+                    "application_id": str(application_uuid),
+                    "user_id": str(application.user.id),
+                    "mvd_officer_id": str(current_mvd.id),
+                    "reason": application.reason
+                }
+            )
+        except:
+            pass
 
     return {
         "message": "Заявка отклонена",

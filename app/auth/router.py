@@ -41,6 +41,7 @@ from app.models.guarantor_model import Guarantor
 from app.admin.cars.utils import sort_car_photos
 from app.utils.digital_signature import generate_digital_signature
 from app.utils.sid_converter import convert_uuid_response_to_sid
+from app.utils.telegram_logger import log_error_to_telegram
 import traceback
 
 Auth_router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -121,8 +122,20 @@ async def resend_email_code(current_user: User = Depends(get_current_user), db: 
                 logger.warning(f"SMTP not configured; verification code for {current_user.email}: {code}")
             except Exception:
                 pass
-    except Exception:
-        pass
+    except Exception as e:
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "resend_email_code_smtp",
+                    "email": current_user.email,
+                    "user_id": str(current_user.id)
+                }
+            )
+        except:
+            pass
     try:
         from app.core.config import logger
         logger.warning(f"Email verification code for {current_user.email}: {code}")
@@ -321,6 +334,19 @@ ID клиента: {user.id}
             logger.warning("SMS_TOKEN is not configured; skipping Mobizon send")
     except Exception as e:
         logger.error(f"Mobizon send error: {e}")
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=None,
+                additional_context={
+                    "action": "send_sms_mobizon",
+                    "phone_number": phone_number,
+                    "user_id": str(user.id) if user else None
+                }
+            )
+        except:
+            pass
 
     return {"message": "SMS code sent successfully"}
 
@@ -1321,6 +1347,19 @@ async def upload_selfie(
         
     except Exception as e:
         db.rollback()
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "upload_selfie",
+                    "user_id": str(current_user.id),
+                    "content_type": selfie.content_type
+                }
+            )
+        except:
+            pass
         raise HTTPException(
             status_code=500,
             detail=f"Ошибка при загрузке селфи: {str(e)}"
@@ -1782,6 +1821,16 @@ async def upload_documents(
         try:
             logger.error(f"Error in /auth/upload-documents: {e}")
             logger.error(traceback.format_exc())
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "upload_documents",
+                    "user_id": str(current_user.id),
+                    "email": email
+                }
+            )
         except Exception:
             pass
         raise HTTPException(
