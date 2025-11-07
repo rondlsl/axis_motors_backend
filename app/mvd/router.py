@@ -47,8 +47,9 @@ async def get_pending_applications(
             Application.mvd_status == ApplicationStatus.PENDING,
             User.is_verified_email == True
         ),
-        # Случай с отказом по финансу: роль REJECTFIRST, есть активный гарант, mvd_status = PENDING
+        # Случай с отказом по финансу: финансист отказал (REJECTED), роль REJECTFIRST, есть активный гарант, mvd_status = PENDING
         and_(
+            Application.financier_status == ApplicationStatus.REJECTED,
             User.role == UserRole.REJECTFIRST,
             Application.mvd_status == ApplicationStatus.PENDING,
             User.is_verified_email == True,
@@ -273,16 +274,20 @@ async def approve_application(
     if application.mvd_status != ApplicationStatus.PENDING:
         raise HTTPException(status_code=400, detail="Заявка уже обработана")
     
-    # Проверяем, что заявка либо одобрена финансистом, либо пользователь с REJECTFIRST (отказ по финансу)
+    # Проверяем, что заявка либо одобрена финансистом, либо пользователь с REJECTFIRST (отказ по финансу) с активным гарантом
     user = application.user
     is_rejectfirst_with_guarantor = (
         user and 
         user.role == UserRole.REJECTFIRST and
+        application.financier_status == ApplicationStatus.REJECTED and
         db.query(Guarantor).filter(
             Guarantor.client_id == user.id,
             Guarantor.is_active == True
         ).first() is not None
     )
+    
+    if application.financier_status == ApplicationStatus.PENDING:
+        raise HTTPException(status_code=400, detail="Финансист еще не рассмотрел заявку")
     
     if application.financier_status != ApplicationStatus.APPROVED and not is_rejectfirst_with_guarantor:
         raise HTTPException(status_code=400, detail="Заявка не одобрена финансистом или нет активного гаранта")
@@ -337,16 +342,20 @@ async def reject_application(
     if application.mvd_status != ApplicationStatus.PENDING:
         raise HTTPException(status_code=400, detail="Заявка уже обработана")
     
-    # Проверяем, что заявка либо одобрена финансистом, либо пользователь с REJECTFIRST (отказ по финансу)
+    # Проверяем, что заявка либо одобрена финансистом, либо пользователь с REJECTFIRST (отказ по финансу) с активным гарантом
     user = application.user
     is_rejectfirst_with_guarantor = (
         user and 
         user.role == UserRole.REJECTFIRST and
+        application.financier_status == ApplicationStatus.REJECTED and
         db.query(Guarantor).filter(
             Guarantor.client_id == user.id,
             Guarantor.is_active == True
         ).first() is not None
     )
+    
+    if application.financier_status == ApplicationStatus.PENDING:
+        raise HTTPException(status_code=400, detail="Финансист еще не рассмотрел заявку")
     
     if application.financier_status != ApplicationStatus.APPROVED and not is_rejectfirst_with_guarantor:
         raise HTTPException(status_code=400, detail="Заявка не одобрена финансистом или нет активного гаранта")
