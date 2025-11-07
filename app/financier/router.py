@@ -24,6 +24,8 @@ def get_current_financier(current_user: User = Depends(get_current_user)) -> Use
 @FinancierRouter.get("/pending", summary="Получить заявки на рассмотрении")
 async def get_pending_applications(
         search: Optional[str] = Query(None, description="Поиск по имени, телефону, ИИН или номеру паспорта"),
+        page: int = Query(1, ge=1, description="Номер страницы"),
+        per_page: int = Query(10, ge=1, le=100, description="Количество элементов на странице"),
         db: Session = Depends(get_db),
         current_financier: User = Depends(get_current_financier)
 ) -> Dict[str, Any]:
@@ -38,7 +40,6 @@ async def get_pending_applications(
         )
     )
     
-    # Поиск по имени, телефону, ИИН или номеру паспорта
     if search:
         search_filter = or_(
             User.first_name.ilike(f"%{search}%"),
@@ -49,7 +50,8 @@ async def get_pending_applications(
         )
         query = query.filter(search_filter)
     
-    applications = query.all()
+    total = query.count()
+    applications = query.offset((page - 1) * per_page).limit(per_page).all()
     
     applications_data = []
     for app in applications:
@@ -85,12 +87,22 @@ async def get_pending_applications(
             "reason": app.reason
         })
     
-    return {"applications": applications_data}
+    return {
+        "applications": applications_data,
+        "pagination": {
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": (total + per_page - 1) // per_page
+        }
+    }
 
 
 @FinancierRouter.get("/approved", summary="Получить одобренные заявки")
 async def get_approved_applications(
         search: Optional[str] = Query(None, description="Поиск по имени, телефону, ИИН или номеру паспорта"),
+        page: int = Query(1, ge=1, description="Номер страницы"),
+        per_page: int = Query(10, ge=1, le=100, description="Количество элементов на странице"),
         db: Session = Depends(get_db),
         current_financier: User = Depends(get_current_financier)
 ) -> Dict[str, Any]:
@@ -105,7 +117,6 @@ async def get_approved_applications(
         )
     )
     
-    # Поиск по имени, телефону, ИИН или номеру паспорта
     if search:
         search_filter = or_(
             User.first_name.ilike(f"%{search}%"),
@@ -116,7 +127,8 @@ async def get_approved_applications(
         )
         query = query.filter(search_filter)
     
-    applications = query.all()
+    total = query.count()
+    applications = query.offset((page - 1) * per_page).limit(per_page).all()
     
     applications_data = []
     for app in applications:
@@ -154,12 +166,22 @@ async def get_approved_applications(
             "reason": app.reason
         })
     
-    return {"applications": applications_data}
+    return {
+        "applications": applications_data,
+        "pagination": {
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": (total + per_page - 1) // per_page
+        }
+    }
 
 
 @FinancierRouter.get("/rejected", summary="Получить отклоненные заявки")
 async def get_rejected_applications(
         search: Optional[str] = Query(None, description="Поиск по имени, телефону, ИИН или номеру паспорта"),
+        page: int = Query(1, ge=1, description="Номер страницы"),
+        per_page: int = Query(10, ge=1, le=100, description="Количество элементов на странице"),
         db: Session = Depends(get_db),
         current_financier: User = Depends(get_current_financier)
 ) -> Dict[str, Any]:
@@ -174,7 +196,6 @@ async def get_rejected_applications(
         )
     )
     
-    # Поиск по имени, телефону, ИИН или номеру паспорта
     if search:
         search_filter = or_(
             User.first_name.ilike(f"%{search}%"),
@@ -185,7 +206,8 @@ async def get_rejected_applications(
         )
         query = query.filter(search_filter)
     
-    applications = query.all()
+    total = query.count()
+    applications = query.offset((page - 1) * per_page).limit(per_page).all()
     
     applications_data = []
     for app in applications:
@@ -222,7 +244,15 @@ async def get_rejected_applications(
             "reason": app.reason
         })
     
-    return {"applications": applications_data}
+    return {
+        "applications": applications_data,
+        "pagination": {
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": (total + per_page - 1) // per_page
+        }
+    }
 
 
 @FinancierRouter.post("/approve/{application_id}", summary="Одобрить заявку")
