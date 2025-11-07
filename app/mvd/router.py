@@ -79,12 +79,22 @@ async def get_pending_applications(
     applications_data = []
     for app in applications:
         user = app.user
+        
+        has_guarantor = db.query(Guarantor).join(
+            GuarantorRequest, Guarantor.request_id == GuarantorRequest.id
+        ).filter(
+            Guarantor.client_id == user.id,
+            Guarantor.is_active == True,
+            GuarantorRequest.status == GuarantorRequestStatus.ACCEPTED
+        ).first() is not None
+        
         applications_data.append({
             "application_id": uuid_to_sid(app.id),
             "user_id": uuid_to_sid(user.id),
             "role": user.role.value if user.role else None,
             "financier_status": app.financier_status.value if app.financier_status else None,
             "mvd_status": app.mvd_status.value if app.mvd_status else None,
+            "has_active_guarantor": has_guarantor,
             "first_name": user.first_name,
             "last_name": user.last_name,
             "middle_name": user.middle_name,
