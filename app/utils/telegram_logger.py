@@ -39,6 +39,7 @@ class TelegramErrorLogger:
         try:
             # Формируем сообщение
             message_parts = ["🚨 <b>ОШИБКА В ПРИЛОЖЕНИИ</b>"]
+            message_parts.append("🖥️ <b>Источник:</b> BACKEND")
             
             # Время
             message_parts.append(f"\n⏰ <b>Время:</b> {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")

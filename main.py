@@ -49,6 +49,7 @@ from app.wallet.router import WalletRouter
 from app.contracts.router import ContractsRouter
 from app.support.router import router as SupportRouter
 from app.support import setup_support_system
+from app.monitoring.router import router as MonitoringRouter
 
 # === APP ===
 app = FastAPI(
@@ -331,6 +332,7 @@ app.include_router(MvdRouter)
 app.include_router(WalletRouter)
 app.include_router(ContractsRouter)
 app.include_router(SupportRouter)
+app.include_router(MonitoringRouter)
 
 @app.get("/")
 async def root(db: Session = Depends(get_db)):
