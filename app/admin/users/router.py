@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, func
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
+from decimal import Decimal
 import uuid
 
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
@@ -1070,16 +1071,17 @@ async def add_company_bonus(
             raise HTTPException(status_code=404, detail="Пользователь не найден")
         
         # Сохраняем баланс до операции
-        balance_before = float(user.wallet_balance)
+        balance_before = float(user.wallet_balance or 0)
+        bonus_amount_decimal = Decimal(str(bonus_data.amount))
         
         # Начисляем бонус
-        user.wallet_balance += bonus_data.amount
+        user.wallet_balance = (user.wallet_balance or Decimal('0')) + bonus_amount_decimal
         balance_after = float(user.wallet_balance)
         
         # Записываем транзакцию
         transaction = WalletTransaction(
             user_id=user.id,
-            amount=bonus_data.amount,
+            amount=float(bonus_amount_decimal),
             transaction_type=WalletTransactionType.PROMO_BONUS,
             description=bonus_data.description,
             balance_before=balance_before,
