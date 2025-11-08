@@ -12,6 +12,7 @@ from app.utils.short_id import uuid_to_sid, safe_sid_to_uuid
 from app.push.schemas import PushPayload, NotificationListResponse
 from app.push.utils import send_push_notification_async
 from app.push.enums import NotificationStatus
+from app.utils.telegram_logger import log_error_to_telegram
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -27,27 +28,62 @@ async def save_fcm_token(payload: TokenRequest,
     """
     Save FCM token for push notifications.
     """
-    print(f"📱 [SAVE_TOKEN] User {current_user.phone_number} - Token: {payload.fcm_token[:50]}...")
-    
-    current_user.fcm_token = payload.fcm_token
-    db.add(current_user)
-    db.flush()
-    db.commit()
-    db.refresh(current_user)
-    
-    print(f"✅ [SAVE_TOKEN] Token saved successfully")
-    
-    return {
-        "detail": "FCM token saved",
-        "user_id": str(current_user.id),
-        "phone": current_user.phone_number
-    }
+    try:
+        print(f"📱 [SAVE_TOKEN] User {current_user.phone_number} - Token: {payload.fcm_token[:50]}...")
+        
+        current_user.fcm_token = payload.fcm_token
+        db.add(current_user)
+        db.flush()
+        db.commit()
+        db.refresh(current_user)
+        
+        print(f"✅ [SAVE_TOKEN] Token saved successfully")
+        
+        return {
+            "detail": "FCM token saved",
+            "user_id": str(current_user.id),
+            "phone": current_user.phone_number
+        }
+    except Exception as e:
+        db.rollback()
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "save_fcm_token",
+                    "user_id": str(current_user.id),
+                    "phone": current_user.phone_number,
+                    "token_preview": payload.fcm_token[:50] if payload.fcm_token else None
+                }
+            )
+        except:
+            pass
+        raise HTTPException(status_code=500, detail=f"Ошибка сохранения push-токена: {str(e)}")
 
 
 @router.post("/send_push")
 async def send_push(payload: PushPayload):
-    success = await send_push_notification_async(payload.token, payload.title, payload.body)
-    return {"success": success}
+    try:
+        success = await send_push_notification_async(payload.token, payload.title, payload.body)
+        return {"success": success}
+    except Exception as e:
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=None,
+                additional_context={
+                    "action": "send_push_manual",
+                    "token_preview": payload.token[:50] if payload.token else None,
+                    "title": payload.title,
+                    "body": payload.body[:100] if payload.body else None
+                }
+            )
+        except:
+            pass
+        raise HTTPException(status_code=500, detail=f"Ошибка отправки push: {str(e)}")
 
 
 class TestPushRequest(BaseModel):
