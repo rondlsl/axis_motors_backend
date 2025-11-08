@@ -9,7 +9,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.dependencies.database.database import SessionLocal
-from app.models.car_model import Car
+from app.models.car_model import Car, CarBodyType
 from app.models.history_model import RentalHistory, RentalStatus, RentalType
 from app.models.user_model import User, UserRole
 from app.wallet.utils import record_wallet_transaction
@@ -390,8 +390,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
             elif rental.rental_status == RentalStatus.IN_USE:
                 elapsed = (now - rental.start_time).total_seconds() / 60
 
-                # Списываем топливо во время поездки (для всех тарифов кроме минутного, включая владельца)
-                if rental.rental_type != RentalType.MINUTES and rental.fuel_before is not None and car.fuel_level is not None:
+                # Списываем топливо во время поездки (для ВСЕХ тарифов, включая минутный)
+                if rental.fuel_before is not None and car.fuel_level is not None:
                     # Проверяем, что топливо уменьшилось
                     if car.fuel_level < rental.fuel_before:
                         # Получаем последнее списанное топливо из flags (начальное значение - fuel_before)
@@ -415,17 +415,24 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                         
                         if fuel_to_charge_liters > 0:
                             # Определяем цену за литр в зависимости от типа автомобиля
-                            if car.body_type == "ELECTRIC":
-                                price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
+                            # Электрокар: 100₸/л, Обычный: 350₸/л
+                            if car.body_type == CarBodyType.ELECTRIC:
+                                price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER  # 100₸
                             else:
-                                price_per_liter = FUEL_PRICE_PER_LITER
+                                price_per_liter = FUEL_PRICE_PER_LITER  # 350₸
                             
                             fuel_fee = int(fuel_to_charge_liters * price_per_liter)
                             
                             if fuel_fee > 0:
-                                # Списываем топливо сразу (1 литр = сразу списание)
+                                # Формируем описание в зависимости от типа автомобиля
+                                fuel_amount = int(fuel_to_charge_liters)
+                                if car.body_type == CarBodyType.ELECTRIC:
+                                    fuel_description = f"Оплата заряда: {fuel_amount}% × {price_per_liter}₸ = {fuel_fee:,}₸"
+                                else:
+                                    fuel_description = f"Оплата топлива: {fuel_amount} л × {price_per_liter}₸ = {fuel_fee:,}₸"
+                                
                                 rental.already_payed = (rental.already_payed or 0) + fuel_fee
-                                record_wallet_transaction(db, user=user, amount=-fuel_fee, ttype=WalletTransactionType.RENT_FUEL_FEE, description=f"Оплата топлива: {fuel_to_charge_liters} л × {price_per_liter} = {fuel_fee}₸", related_rental=rental)
+                                record_wallet_transaction(db, user=user, amount=-fuel_fee, ttype=WalletTransactionType.RENT_FUEL_FEE, description=fuel_description, related_rental=rental)
                                 user.wallet_balance -= fuel_fee
                                 flags["last_charged_fuel"] = fuel_current_rounded
                                 db.commit()

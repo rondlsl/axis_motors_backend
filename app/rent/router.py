@@ -18,7 +18,7 @@ from app.models.history_model import RentalType, RentalStatus, RentalHistory, Re
 from app.models.promo_codes_model import PromoCode, UserPromoCode, UserPromoStatus
 from app.models.user_model import User, UserRole
 from app.models.application_model import Application, ApplicationStatus
-from app.models.car_model import Car, CarStatus, CarAutoClass
+from app.models.car_model import Car, CarStatus, CarAutoClass, CarBodyType
 from app.models.contract_model import UserContractSignature, ContractFile, ContractType
 from app.models.guarantor_model import Guarantor
 from app.push.utils import send_notification_to_all_mechanics_async, send_push_to_user_by_id, send_localized_notification_to_user, send_localized_notification_to_all_mechanics
@@ -199,10 +199,11 @@ def get_trip_history(
                 if fuel_consumed > 0:
                     is_owner = car.owner_id == rental.user_id
                     # Определяем цену за литр в зависимости от типа автомобиля
-                    if car.body_type == "ELECTRIC":
-                        price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
+                    # Электрокар: 100₸/л, Обычный: 350₸/л
+                    if car.body_type == CarBodyType.ELECTRIC:
+                        price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER  # 100₸
                     else:
-                        price_per_liter = FUEL_PRICE_PER_LITER
+                        price_per_liter = FUEL_PRICE_PER_LITER  # 350₸
                     
                     if is_owner:
                         # Владелец платит полную стоимость топлива
@@ -320,7 +321,7 @@ async def get_trip_history_detail(
         "delivery_fee": rental.delivery_fee,
         # Топливо: суммы и уровни
         "fuel_fee": (lambda: (
-            int((ceil(rental.fuel_before) - floor(rental.fuel_after)) * (ELECTRIC_FUEL_PRICE_PER_LITER if car.body_type == "ELECTRIC" else FUEL_PRICE_PER_LITER))
+            int((ceil(rental.fuel_before) - floor(rental.fuel_after)) * (ELECTRIC_FUEL_PRICE_PER_LITER if car.body_type == CarBodyType.ELECTRIC else FUEL_PRICE_PER_LITER))
             if rental.fuel_before is not None and rental.fuel_after is not None and
                rental.fuel_after < rental.fuel_before and
                (ceil(rental.fuel_before) - floor(rental.fuel_after)) > 0 and
@@ -2172,10 +2173,11 @@ async def complete_rental(
             fuel_consumed = fuel_before_rounded - fuel_after_rounded
             if fuel_consumed > 0:
                 # Определяем цену за литр в зависимости от типа автомобиля
-                if car.body_type == "ELECTRIC":
-                    price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
+                # Электрокар: 100₸/л, Обычный: 350₸/л
+                if car.body_type == CarBodyType.ELECTRIC:
+                    price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER  # 100₸
                 else:
-                    price_per_liter = FUEL_PRICE_PER_LITER
+                    price_per_liter = FUEL_PRICE_PER_LITER  # 350₸
                 fuel_fee = int(fuel_consumed * price_per_liter)
 
     if car.owner_id == current_user.id:
