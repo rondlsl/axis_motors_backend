@@ -147,18 +147,16 @@ async def _send_single_message(base_url: str, chat_id: str, text: str):
         logger.error(f"Ошибка HTTP-запроса в Telegram: {e}")
 
 
-@router.post("/log-frontend-error", status_code=status.HTTP_200_OK)
+@router.post("/error", status_code=status.HTTP_200_OK)
 async def log_frontend_error(error_data: FrontendErrorRequest):
     """
-    Endpoint для отправки ошибок от фронтенда в Telegram группу мониторинга
-    
-    Фронтенд может отправлять сюда любые JavaScript ошибки, которые нужно отслеживать.
+    Endpoint для отправки ошибок от фронтенда
     
     Пример использования на фронтенде:
     ```javascript
     window.addEventListener('error', async (event) => {
         try {
-            await fetch('https://api.azvmotors.kz/api/monitoring/log-frontend-error', {
+            await fetch('https://api.azvmotors.kz/api/monitoring/error', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -167,8 +165,8 @@ async def log_frontend_error(error_data: FrontendErrorRequest):
                     stack_trace: event.error?.stack,
                     page_url: window.location.href,
                     user_agent: navigator.userAgent,
-                    user_id: getCurrentUserId(), // ваша функция
-                    user_phone: getCurrentUserPhone(), // ваша функция
+                    user_id: getCurrentUserId(),
+                    user_phone: getCurrentUserPhone(),
                     additional_context: {
                         timestamp: new Date().toISOString(),
                         viewport: `${window.innerWidth}x${window.innerHeight}`
