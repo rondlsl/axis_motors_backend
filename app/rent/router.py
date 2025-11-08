@@ -1995,8 +1995,10 @@ async def check_vehicle_status_for_completion(vehicle_imei: str) -> Dict[str, An
                 errors.append("Для завершения аренды пожалуйста активируйте стояночный тормоз")
             
             # Проверка фар (должны быть выключены или в режиме AUTO)
-            if vehicle.get("are_lights_on", False) and not vehicle.get("is_light_auto_mode_on", False):
-                errors.append("Для завершения аренды пожалуйста выключите фары или переведите в режим AUTO")
+            # Пропускаем проверку для Hongqi e-qm5 (IMEI: 860803068139548)
+            if vehicle_imei != "860803068139548":
+                if vehicle.get("are_lights_on", False) and not vehicle.get("is_light_auto_mode_on", False):
+                    errors.append("Для завершения аренды пожалуйста выключите фары или переведите в режим AUTO")
             
             # Проверка двигателя (обороты должны быть 0)
             if vehicle.get("rpm", 0) > 0:
