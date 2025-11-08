@@ -15,16 +15,18 @@ from app.models.application_model import Application, ApplicationStatus
 from app.models.history_model import RentalHistory, RentalStatus
 from app.models.car_model import Car
 from app.models.guarantor_model import GuarantorRequest
+from app.models.wallet_transaction_model import WalletTransaction, WalletTransactionType
 from app.admin.users.schemas import (
     UserProfileSchema, UserRoleUpdateSchema, UserCardSchema, 
     UserListSchema, UserMapPositionSchema, UserCommentUpdateSchema,
     UserSearchFiltersSchema, GuarantorInfoSchema, TripSummarySchema,
     TripListItemSchema, TripDetailSchema, OwnerCarListItemSchema,
-    UserEditSchema, UserBlockSchema
+    UserEditSchema, UserBlockSchema, CompanyBonusSchema
 )
 from app.owner.router import calculate_owner_earnings
 from app.admin.cars.utils import sort_car_photos
 from app.utils.telegram_logger import log_error_to_telegram
+from app.push.utils import send_push_to_user_by_id
 
 users_router = APIRouter(tags=["Admin Users"])
 
@@ -1048,3 +1050,87 @@ def _calculate_car_earnings(car_id: str, owner_id: str, db: Session, month_start
             total_earnings += earnings
     
     return {"current_month": current_month_earnings, "total": total_earnings}
+
+
+@users_router.post("/{user_id}/bonus")
+async def add_company_bonus(
+    user_id: str,
+    bonus_data: CompanyBonusSchema,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Начисление бонуса от компании клиенту"""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    try:
+        user_uuid = safe_sid_to_uuid(user_id)
+        user = db.query(User).filter(User.id == user_uuid).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="Пользователь не найден")
+        
+        # Сохраняем баланс до операции
+        balance_before = float(user.wallet_balance)
+        
+        # Начисляем бонус
+        user.wallet_balance += bonus_data.amount
+        balance_after = float(user.wallet_balance)
+        
+        # Записываем транзакцию
+        transaction = WalletTransaction(
+            user_id=user.id,
+            amount=bonus_data.amount,
+            transaction_type=WalletTransactionType.PROMO_BONUS,
+            description=bonus_data.description,
+            balance_before=balance_before,
+            balance_after=balance_after
+        )
+        db.add(transaction)
+        db.commit()
+        db.refresh(user)
+        
+        # Отправляем push-уведомление
+        try:
+            await send_push_to_user_by_id(
+                db_session=db,
+                user_id=user.id,
+                title="Бонус от компании",
+                body=f"Вам начислен бонус - {bonus_data.amount:,.0f} тг на основной баланс. Спасибо, что выбираете нас!"
+            )
+        except Exception as push_error:
+            await log_error_to_telegram(
+                error=push_error,
+                user_info={"id": str(user.id), "phone": user.phone_number},
+                additional_context={
+                    "action": "send_bonus_notification",
+                    "bonus_amount": bonus_data.amount,
+                    "admin_id": str(current_user.id)
+                }
+            )
+        
+        return {
+            "message": "Бонус успешно начислен",
+            "user_id": uuid_to_sid(user.id),
+            "amount": bonus_data.amount,
+            "new_balance": float(user.wallet_balance),
+            "transaction_id": uuid_to_sid(transaction.id)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        await log_error_to_telegram(
+            error=e,
+            user_info={"id": str(current_user.id)},
+            additional_context={
+                "action": "add_company_bonus",
+                "target_user_id": user_id,
+                "bonus_amount": bonus_data.amount,
+                "description": bonus_data.description
+            }
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Ошибка при начислении бонуса. Администраторы уведомлены."
+        )

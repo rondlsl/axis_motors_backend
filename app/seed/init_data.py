@@ -190,7 +190,35 @@ def create_mechanic(db: Session) -> None:
 
 
 def create_system_users(db: Session) -> None:
-    """Создает системных пользователей (финансист, МВД)"""
+    """Создает системных пользователей (админ, финансист, МВД)"""
+    
+    # Админ
+    admin_phone = "70000000000"
+    admin_iin = "000000000000"  
+    admin = db.query(User).filter(User.phone_number == admin_phone).first()
+    if not admin:
+        admin = User(
+            phone_number=admin_phone,
+            first_name="Admin",
+            last_name="Admin",
+            role=UserRole.ADMIN,
+            documents_verified=True,
+            is_active=True,
+            iin=admin_iin,
+            digital_signature=str(uuid.uuid4()),
+            wallet_balance=0
+        )
+        db.add(admin)
+        db.commit()
+        db.refresh(admin)
+        print("Админ создан")
+    else:
+        print("Админ уже существует")
+        # Добавляем digital_signature если его нет
+        if not admin.digital_signature:
+            admin.digital_signature = str(uuid.uuid4())
+            db.commit()
+            print("Digital signature добавлена для админа")
     
     # Финансист
     financier_phone = "71234567899"

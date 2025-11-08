@@ -1187,34 +1187,101 @@ async def start_rental(
         total_cost = 0
         
         if rental.rental_type in [RentalType.HOURS, RentalType.DAYS]:
-            # Списываем полную стоимость за выбранный период (base_price + open_fee + delivery_fee)
+            # Проверяем достаточность баланса
             total_cost = (rental.base_price or 0) + (rental.open_fee or 0) + (rental.delivery_fee or 0)
             
-            if total_cost > 0:
-                if current_user.wallet_balance < total_cost:
-                    raise HTTPException(
-                        status_code=402,
-                        detail=f"Нужно минимум {total_cost} ₸ для старта. Пополните кошелёк!"
-                    )
-                record_wallet_transaction(db, user=current_user, amount=-total_cost, ttype=WalletTransactionType.RENT_BASE_CHARGE, description=f"Оплата за аренду: {rental.duration} {'час(ов)' if rental.rental_type == RentalType.HOURS else 'день(дней)'}")
-                current_user.wallet_balance -= total_cost
-                rental.already_payed = total_cost
+            if current_user.wallet_balance < total_cost:
+                raise HTTPException(
+                    status_code=402,
+                    detail=f"Нужно минимум {total_cost} ₸ для старта. Пополните кошелёк!"
+                )
+            
+            # Списываем ОТДЕЛЬНЫМИ транзакциями для прозрачности
+            total_charged = 0
+            
+            # 1. Базовая стоимость аренды
+            if rental.base_price and rental.base_price > 0:
+                record_wallet_transaction(
+                    db, 
+                    user=current_user, 
+                    amount=-rental.base_price, 
+                    ttype=WalletTransactionType.RENT_BASE_CHARGE, 
+                    description=f"Оплата аренды: {rental.duration} {'час(ов)' if rental.rental_type == RentalType.HOURS else 'день(дней)'}",
+                    related_rental=rental
+                )
+                current_user.wallet_balance -= rental.base_price
+                total_charged += rental.base_price
+            
+            # 2. Открытие дверей
+            if rental.open_fee and rental.open_fee > 0:
+                record_wallet_transaction(
+                    db, 
+                    user=current_user, 
+                    amount=-rental.open_fee, 
+                    ttype=WalletTransactionType.RENT_BASE_CHARGE, 
+                    description="Оплата открытия дверей",
+                    related_rental=rental
+                )
+                current_user.wallet_balance -= rental.open_fee
+                total_charged += rental.open_fee
+            
+            # 3. Доставка
+            if rental.delivery_fee and rental.delivery_fee > 0:
+                record_wallet_transaction(
+                    db, 
+                    user=current_user, 
+                    amount=-rental.delivery_fee, 
+                    ttype=WalletTransactionType.RENT_BASE_CHARGE, 
+                    description="Оплата доставки",
+                    related_rental=rental
+                )
+                current_user.wallet_balance -= rental.delivery_fee
+                total_charged += rental.delivery_fee
+            
+            rental.already_payed = total_charged
                 
         elif rental.rental_type == RentalType.MINUTES:
-            # Для минутного тарифа списываем только open_fee
+            # Для минутного тарифа списываем только open_fee и delivery_fee
             open_fee = rental.open_fee or 0
             delivery_fee = rental.delivery_fee or 0
             total_cost = open_fee + delivery_fee
             
-            if total_cost > 0:
-                if current_user.wallet_balance < total_cost:
-                    raise HTTPException(
-                        status_code=402,
-                        detail=f"Нужно минимум {total_cost} ₸ для старта. Пополните кошелёк!"
-                    )
-                record_wallet_transaction(db, user=current_user, amount=-total_cost, ttype=WalletTransactionType.RENT_BASE_CHARGE, description="Оплата открытия и доставки")
-                current_user.wallet_balance -= total_cost
-                rental.already_payed = total_cost
+            if current_user.wallet_balance < total_cost:
+                raise HTTPException(
+                    status_code=402,
+                    detail=f"Нужно минимум {total_cost} ₸ для старта. Пополните кошелёк!"
+                )
+            
+            # Списываем ОТДЕЛЬНЫМИ транзакциями для прозрачности
+            total_charged = 0
+            
+            # 1. Открытие дверей
+            if open_fee > 0:
+                record_wallet_transaction(
+                    db, 
+                    user=current_user, 
+                    amount=-open_fee, 
+                    ttype=WalletTransactionType.RENT_BASE_CHARGE, 
+                    description="Оплата открытия дверей",
+                    related_rental=rental
+                )
+                current_user.wallet_balance -= open_fee
+                total_charged += open_fee
+            
+            # 2. Доставка
+            if delivery_fee > 0:
+                record_wallet_transaction(
+                    db, 
+                    user=current_user, 
+                    amount=-delivery_fee, 
+                    ttype=WalletTransactionType.RENT_BASE_CHARGE, 
+                    description="Оплата доставки",
+                    related_rental=rental
+                )
+                current_user.wallet_balance -= delivery_fee
+                total_charged += delivery_fee
+            
+            rental.already_payed = total_charged
 
         # Обновляем машину: меняем статус на IN_USE
         car.status = CarStatus.IN_USE

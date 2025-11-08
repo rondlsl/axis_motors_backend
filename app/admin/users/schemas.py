@@ -213,3 +213,9 @@ class UserBlockSchema(BaseModel):
     """Схема для блокировки пользователя"""
     is_blocked: bool
     block_reason: Optional[str] = None
+
+
+class CompanyBonusSchema(BaseModel):
+    """Схема для начисления бонуса от компании"""
+    amount: float = Field(..., gt=0, description="Сумма бонуса (должна быть больше 0)")
+    description: str = Field(..., min_length=1, max_length=500, description="Описание бонуса")
