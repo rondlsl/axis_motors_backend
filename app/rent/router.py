@@ -205,12 +205,8 @@ def get_trip_history(
                     else:
                         price_per_liter = FUEL_PRICE_PER_LITER  # 350₸
                     
-                    if is_owner:
-                        # Владелец платит полную стоимость топлива
-                        fuel_fee_display = int(fuel_consumed * price_per_liter)
-                    elif rental.rental_type in (RentalType.HOURS, RentalType.DAYS):
-                        # Для клиентов топливо включено в стоимость только для часов/дней
-                        fuel_fee_display = int(fuel_consumed * price_per_liter)
+                    # Топливо оплачивается для всех тарифов (MINUTES, HOURS, DAYS)
+                    fuel_fee_display = int(fuel_consumed * price_per_liter)
         
         # Вычисляем сумму без топлива для отображения
         total_price_without_fuel = (
@@ -324,8 +320,7 @@ async def get_trip_history_detail(
             int((ceil(rental.fuel_before) - floor(rental.fuel_after)) * (ELECTRIC_FUEL_PRICE_PER_LITER if car.body_type == CarBodyType.ELECTRIC else FUEL_PRICE_PER_LITER))
             if rental.fuel_before is not None and rental.fuel_after is not None and
                rental.fuel_after < rental.fuel_before and
-               (ceil(rental.fuel_before) - floor(rental.fuel_after)) > 0 and
-               (car.owner_id == rental.user_id or rental.rental_type in (RentalType.HOURS, RentalType.DAYS)) else 0
+               (ceil(rental.fuel_before) - floor(rental.fuel_after)) > 0 else 0
         ))(),
         "fuel_before": rental.fuel_before,
         "fuel_after": rental.fuel_after,
