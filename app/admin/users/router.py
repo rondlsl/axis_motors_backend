@@ -1100,7 +1100,7 @@ async def add_company_bonus(
         except Exception as push_error:
             await log_error_to_telegram(
                 error=push_error,
-                user_info={"id": str(user.id), "phone": user.phone_number},
+                user=user,
                 additional_context={
                     "action": "send_bonus_notification",
                     "bonus_amount": bonus_data.amount,
@@ -1122,7 +1122,7 @@ async def add_company_bonus(
         db.rollback()
         await log_error_to_telegram(
             error=e,
-            user_info={"id": str(current_user.id)},
+            user=current_user,
             additional_context={
                 "action": "add_company_bonus",
                 "target_user_id": user_id,
