@@ -1188,19 +1188,22 @@ async def start_rental(
 
         # Для суточного и часового тарифа списываем полную стоимость сразу
         # Для минутного тарифа списываем только open_fee (поминутный тариф списывается во время поездки)
+        total_cost = 0
+        
         if rental.rental_type in [RentalType.HOURS, RentalType.DAYS]:
             # Списываем полную стоимость за выбранный период (base_price + open_fee + delivery_fee)
             total_cost = (rental.base_price or 0) + (rental.open_fee or 0) + (rental.delivery_fee or 0)
-
-        if total_cost > 0:
-            if current_user.wallet_balance < total_cost:
-                raise HTTPException(
-                    status_code=402,
-                    detail=f"Нужно минимум {total_cost} ₸ для старта. Пополните кошелёк!"
-                )
+            
+            if total_cost > 0:
+                if current_user.wallet_balance < total_cost:
+                    raise HTTPException(
+                        status_code=402,
+                        detail=f"Нужно минимум {total_cost} ₸ для старта. Пополните кошелёк!"
+                    )
                 record_wallet_transaction(db, user=current_user, amount=-total_cost, ttype=WalletTransactionType.RENT_BASE_CHARGE, description=f"Оплата за аренду: {rental.duration} {'час(ов)' if rental.rental_type == RentalType.HOURS else 'день(дней)'}")
                 current_user.wallet_balance -= total_cost
                 rental.already_payed = total_cost
+                
         elif rental.rental_type == RentalType.MINUTES:
             # Для минутного тарифа списываем только open_fee
             open_fee = rental.open_fee or 0
@@ -1214,8 +1217,8 @@ async def start_rental(
                         detail=f"Нужно минимум {total_cost} ₸ для старта. Пополните кошелёк!"
                     )
                 record_wallet_transaction(db, user=current_user, amount=-total_cost, ttype=WalletTransactionType.RENT_BASE_CHARGE, description="Оплата открытия и доставки")
-            current_user.wallet_balance -= total_cost
-            rental.already_payed = total_cost
+                current_user.wallet_balance -= total_cost
+                rental.already_payed = total_cost
 
         # Обновляем машину: меняем статус на IN_USE
         car.status = CarStatus.IN_USE
