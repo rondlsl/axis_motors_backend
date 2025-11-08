@@ -211,11 +211,11 @@ def get_trip_history(
         # Вычисляем сумму без топлива для отображения
         total_price_without_fuel = (
             (rental.base_price or 0)
-            + rental.open_fee
-            + rental.delivery_fee
-            + rental.waiting_fee
-            + rental.overtime_fee
-            + rental.distance_fee
+            + (rental.open_fee or 0)
+            + (rental.delivery_fee or 0)
+            + (rental.waiting_fee or 0)
+            + (rental.overtime_fee or 0)
+            + (rental.distance_fee or 0)
         )
         
         result.append({
@@ -289,11 +289,11 @@ async def get_trip_history_detail(
     # Вычисляем сумму без топлива для отображения
     total_price_without_fuel = (
         (rental.base_price or 0)
-        + rental.open_fee
-        + rental.delivery_fee
-        + rental.waiting_fee
-        + rental.overtime_fee
-        + rental.distance_fee
+        + (rental.open_fee or 0)
+        + (rental.delivery_fee or 0)
+        + (rental.waiting_fee or 0)
+        + (rental.overtime_fee or 0)
+        + (rental.distance_fee or 0)
     )
 
     rental_detail = {
@@ -2191,11 +2191,11 @@ async def complete_rental(
         # Итоговая сумма БЕЗ топлива (для отдельного отображения)
         total_price_without_fuel = (
             (rental.base_price or 0)
-            + rental.open_fee
-            + rental.delivery_fee
-            + rental.waiting_fee
-            + rental.overtime_fee
-            + rental.distance_fee
+            + (rental.open_fee or 0)
+            + (rental.delivery_fee or 0)
+            + (rental.waiting_fee or 0)
+            + (rental.overtime_fee or 0)
+            + (rental.distance_fee or 0)
         )
         # Итоговая сумма ВКЛЮЧАЯ топливо
         rental.total_price = total_price_without_fuel + fuel_fee
