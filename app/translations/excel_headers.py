@@ -55,18 +55,18 @@ def get_excel_headers(locale: str = "ru") -> dict:
     return EXCEL_HEADERS_TRANSLATIONS[locale]
 
 
-def get_excel_header_row(locale: str = "ru") -> str:
+def get_excel_header_row(locale: str = "ru", delimiter: str = ";") -> str:
     """
     Получить строку заголовков для CSV/Excel
     
     Args:
         locale: Язык пользователя (ru/en/kz)
+        delimiter: Разделитель для CSV (по умолчанию ; для русской локализации Excel)
         
     Returns:
-        str: Строка заголовков, разделенная запятыми
+        str: Строка заголовков, разделенная указанным разделителем
     """
     headers = get_excel_headers(locale)
-    # Экранируем запятые в заголовках, если они есть
     header_values = [
         headers['id'],
         headers['created_at'],
@@ -78,5 +78,5 @@ def get_excel_header_row(locale: str = "ru") -> str:
         headers['tracking_id'],
         headers['description']
     ]
-    return ",".join(header_values) + "\n"
+    return delimiter.join(header_values) + "\n"
 
