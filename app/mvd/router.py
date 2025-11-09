@@ -220,13 +220,13 @@ async def get_rejected_applications(
         db: Session = Depends(get_db),
         current_mvd: User = Depends(get_current_mvd_user)
 ) -> Dict[str, Any]:
-    """Получить заявки, отклоненные МВД"""
+    """Получить заявки, отклоненные МВД.
+    Показывает все заявки с mvd_status == REJECTED, независимо от статуса финансиста."""
     
     query = db.query(Application).join(User, Application.user_id == User.id).options(
         joinedload(Application.user)
     ).filter(
         and_(
-            Application.financier_status == ApplicationStatus.APPROVED,
             Application.mvd_status == ApplicationStatus.REJECTED,
             User.is_verified_email == True
         )
@@ -251,6 +251,7 @@ async def get_rejected_applications(
         applications_data.append({
             "application_id": uuid_to_sid(app.id),
             "user_id": uuid_to_sid(user.id),
+            "role": user.role.value if user.role else None,
             "first_name": user.first_name,
             "last_name": user.last_name,
             "middle_name": user.middle_name,
@@ -262,6 +263,7 @@ async def get_rejected_applications(
             "id_card_expiry": user.id_card_expiry.isoformat() if user.id_card_expiry else None,
             "drivers_license_expiry": user.drivers_license_expiry.isoformat() if user.drivers_license_expiry else None,
             "is_citizen_kz": user.is_citizen_kz,
+            "is_active": user.is_active,
             "documents": {
                 "id_card_front_url": user.id_card_front_url,
                 "id_card_back_url": user.id_card_back_url,
@@ -275,7 +277,10 @@ async def get_rejected_applications(
                 "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
             },
             "auto_class": app.user.auto_class,
+            "financier_status": app.financier_status.value if app.financier_status else None,
+            "mvd_status": app.mvd_status.value if app.mvd_status else None,
             "financier_approved_at": app.financier_approved_at.isoformat() if app.financier_approved_at else None,
+            "financier_rejected_at": app.financier_rejected_at.isoformat() if app.financier_rejected_at else None,
             "mvd_rejected_at": app.mvd_rejected_at.isoformat() if app.mvd_rejected_at else None,
             "created_at": app.created_at.isoformat(),
             "updated_at": app.updated_at.isoformat(),
