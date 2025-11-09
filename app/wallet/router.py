@@ -4,10 +4,9 @@ import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, HTTPException
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from io import BytesIO
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
 from app.utils.sid_converter import convert_uuid_response_to_sid
 
@@ -27,10 +26,10 @@ from app.wallet.schemas import (
 )
 
 
-def _escape_csv_field(field, delimiter: str = ";") -> str:
+def _escape_csv_field(field) -> str:
     """
     Экранирует поле CSV по стандарту RFC 4180
-    Если поле содержит разделитель, кавычки или переносы строк, оборачивает в двойные кавычки
+    Если поле содержит запятые, кавычки или переносы строк, оборачивает в двойные кавычки
     и удваивает кавычки внутри
     """
     if field is None:
@@ -40,7 +39,7 @@ def _escape_csv_field(field, delimiter: str = ";") -> str:
     if not field_str:
         return ""
     
-    if any(char in field_str for char in [delimiter, '"', '\n', '\r']):
+    if any(char in field_str for char in [',', '"', '\n', '\r']):
         field_str = field_str.replace('"', '""')
         return f'"{field_str}"'
     return field_str
@@ -103,42 +102,32 @@ def export_my_transactions_csv(
     # Получаем язык пользователя для локализации заголовков
     user_locale = current_user.locale or "ru"
     
-    # Используем точку с запятой как разделитель для лучшей совместимости с русской локализацией Excel
-    delimiter = ";"
-    
-    # Формируем CSV в памяти
-    csv_content = BytesIO()
-    # Добавляем UTF-8 BOM для корректного отображения в Excel
-    csv_content.write('\ufeff'.encode('utf-8'))
-    
-    # Используем локализованные заголовки
-    header_row = get_excel_header_row(user_locale, delimiter=delimiter)
-    csv_content.write(header_row.encode('utf-8'))
-    
-    # Записываем данные транзакций
-    for t in items:
-        row = [
-            _escape_csv_field(str(t.id), delimiter=delimiter),
-            _escape_csv_field(t.created_at.isoformat(), delimiter=delimiter),
-            _escape_csv_field(t.transaction_type.value, delimiter=delimiter),
-            _escape_csv_field(str(float(t.amount)), delimiter=delimiter),
-            _escape_csv_field(str(float(t.balance_before)), delimiter=delimiter),
-            _escape_csv_field(str(float(t.balance_after)), delimiter=delimiter),
-            _escape_csv_field(str(t.related_rental_id) if t.related_rental_id else "", delimiter=delimiter),
-            _escape_csv_field(str(t.tracking_id) if t.tracking_id else "", delimiter=delimiter),
-            _escape_csv_field(t.description if t.description else "", delimiter=delimiter)
-        ]
-        csv_row = delimiter.join(row) + "\n"
-        csv_content.write(csv_row.encode('utf-8'))
-    
-    csv_bytes = csv_content.getvalue()
-    csv_content.close()
-    
+    # Формируем CSV и отдаём как файл
+    def _iter_csv():
+        # Добавляем UTF-8 BOM для корректного отображения в Excel
+        yield '\ufeff'
+        # Используем локализованные заголовки
+        yield get_excel_header_row(user_locale)
+        for t in items:
+            row = [
+                _escape_csv_field(str(t.id)),
+                _escape_csv_field(t.created_at.isoformat()),
+                _escape_csv_field(t.transaction_type.value),
+                _escape_csv_field(str(float(t.amount))),
+                _escape_csv_field(str(float(t.balance_before))),
+                _escape_csv_field(str(float(t.balance_after))),
+                _escape_csv_field(str(t.related_rental_id) if t.related_rental_id else ""),
+                _escape_csv_field(str(t.tracking_id) if t.tracking_id else ""),
+                _escape_csv_field(t.description if t.description else "")
+            ]
+            yield ",".join(row) + "\n"
+
     filename = f"wallet_transactions_user_{current_user.id}.csv"
     headers = {
-        "Content-Disposition": f'attachment; filename="{filename}"'
+        "Content-Disposition": f"attachment; filename={filename}",
+        "Content-Type": "text/csv; charset=utf-8"
     }
-    return Response(content=csv_bytes, media_type="text/csv; charset=utf-8", headers=headers)
+    return StreamingResponse(_iter_csv(), media_type="text/csv; charset=utf-8", headers=headers)
 
 
 @WalletRouter.get("/transactions", response_model=WalletTransactionsListOut)
@@ -312,42 +301,31 @@ def export_my_transactions_legacy_path(
     # Получаем язык пользователя для локализации заголовков
     user_locale = current_user.locale or "ru"
 
-    # Используем точку с запятой как разделитель для лучшей совместимости с русской локализацией Excel
-    delimiter = ";"
-    
-    # Формируем CSV в памяти
-    csv_content = BytesIO()
-    # Добавляем UTF-8 BOM для корректного отображения в Excel
-    csv_content.write('\ufeff'.encode('utf-8'))
-    
-    # Используем локализованные заголовки
-    header_row = get_excel_header_row(user_locale, delimiter=delimiter)
-    csv_content.write(header_row.encode('utf-8'))
-    
-    # Записываем данные транзакций
-    for t in items:
-        row = [
-            _escape_csv_field(str(t.id), delimiter=delimiter),
-            _escape_csv_field(t.created_at.isoformat(), delimiter=delimiter),
-            _escape_csv_field(t.transaction_type.value, delimiter=delimiter),
-            _escape_csv_field(str(float(t.amount)), delimiter=delimiter),
-            _escape_csv_field(str(float(t.balance_before)), delimiter=delimiter),
-            _escape_csv_field(str(float(t.balance_after)), delimiter=delimiter),
-            _escape_csv_field(str(t.related_rental_id) if t.related_rental_id else "", delimiter=delimiter),
-            _escape_csv_field(str(t.tracking_id) if t.tracking_id else "", delimiter=delimiter),
-            _escape_csv_field(t.description if t.description else "", delimiter=delimiter)
-        ]
-        csv_row = delimiter.join(row) + "\n"
-        csv_content.write(csv_row.encode('utf-8'))
-    
-    csv_bytes = csv_content.getvalue()
-    csv_content.close()
-    
+    def _iter_csv():
+        # Добавляем UTF-8 BOM для корректного отображения в Excel
+        yield '\ufeff'
+        # Используем локализованные заголовки
+        yield get_excel_header_row(user_locale)
+        for t in items:
+            row = [
+                _escape_csv_field(str(t.id)),
+                _escape_csv_field(t.created_at.isoformat()),
+                _escape_csv_field(t.transaction_type.value),
+                _escape_csv_field(str(float(t.amount))),
+                _escape_csv_field(str(float(t.balance_before))),
+                _escape_csv_field(str(float(t.balance_after))),
+                _escape_csv_field(str(t.related_rental_id) if t.related_rental_id else ""),
+                _escape_csv_field(str(t.tracking_id) if t.tracking_id else ""),
+                _escape_csv_field(t.description if t.description else "")
+            ]
+            yield ",".join(row) + "\n"
+
     filename = f"wallet_transactions_user_{current_user.id}.csv"
     headers = {
-        "Content-Disposition": f'attachment; filename="{filename}"'
+        "Content-Disposition": f"attachment; filename={filename}",
+        "Content-Type": "text/csv; charset=utf-8"
     }
-    return Response(content=csv_bytes, media_type="text/csv; charset=utf-8", headers=headers)
+    return StreamingResponse(_iter_csv(), media_type="text/csv; charset=utf-8", headers=headers)
 
 
 @WalletRouter.get("/transactions/{transaction_id}", response_model=WalletTransactionOut)
