@@ -2,7 +2,7 @@ from math import floor, ceil
 import asyncio
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, status, Query
 from pydantic import BaseModel, constr, Field, conint
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 import httpx
@@ -20,7 +20,7 @@ from app.models.user_model import User, UserRole
 from app.models.application_model import Application, ApplicationStatus
 from app.models.car_model import Car, CarStatus, CarAutoClass, CarBodyType
 from app.models.contract_model import UserContractSignature, ContractFile, ContractType
-from app.models.guarantor_model import Guarantor
+from app.models.guarantor_model import Guarantor, GuarantorRequest, GuarantorRequestStatus
 from app.push.utils import send_notification_to_all_mechanics_async, send_push_to_user_by_id, send_localized_notification_to_user, send_localized_notification_to_all_mechanics
 from app.rent.exceptions import InsufficientBalanceException
 from app.wallet.utils import record_wallet_transaction
@@ -93,6 +93,18 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
     if current_user.role == UserRole.ADMIN:
         return  # Админы могут всё
     
+    # Проверяем статус заявки в applications для всех пользователей (кроме админов)
+    application = db.query(Application).filter(
+        Application.user_id == current_user.id
+    ).first()
+    
+    # Если заявка существует и МВД отклонил, блокируем аренду
+    if application and application.mvd_status == ApplicationStatus.REJECTED:
+        raise HTTPException(
+            status_code=403,
+            detail="Доступ к аренде недоступен. Обратитесь в поддержку."
+        )
+    
     # Блокированные пользователи не могут арендовать
     if current_user.role in [UserRole.REJECTSECOND]:
         raise HTTPException(
@@ -123,15 +135,28 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
     
     # Пользователи с финансовыми проблемами не могут арендовать
     if current_user.role == UserRole.REJECTFIRST:
-        active_guarantor = db.query(Guarantor).join(User, Guarantor.guarantor_id == User.id).filter(
+        # Проверяем наличие активного гаранта с одобренным запросом
+        active_guarantor = db.query(Guarantor).join(
+            GuarantorRequest, Guarantor.request_id == GuarantorRequest.id
+        ).options(
+            joinedload(Guarantor.guarantor_user)
+        ).filter(
             Guarantor.client_id == current_user.id,
-            Guarantor.is_active == True
+            Guarantor.is_active == True,
+            GuarantorRequest.status == GuarantorRequestStatus.ACCEPTED
         ).first()
         
-        if not active_guarantor or not active_guarantor.guarantor_user.auto_class:
+        if not active_guarantor or not active_guarantor.guarantor_user or not active_guarantor.guarantor_user.auto_class:
             raise HTTPException(
                 status_code=403, 
                 detail="Аренда недоступна по финансовым причинам. Обратитесь к гаранту"
+            )
+        
+        # Проверяем, что МВД одобрил заявку
+        if not application or application.mvd_status != ApplicationStatus.APPROVED:
+            raise HTTPException(
+                status_code=403,
+                detail="Ваша заявка находится на рассмотрении. Дождитесь одобрения"
             )
     
     # Пользователи в процессе верификации не могут арендовать
@@ -149,12 +174,7 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
                 detail="Для аренды необходимо пройти верификацию документов"
             )
         
-        # Проверяем одобрение финансиста и МВД
-        application = (
-            db.query(Application)
-            .filter(Application.user_id == current_user.id)
-            .first()
-        )
+        # Проверяем одобрение финансиста и МВД 
         if not application or application.financier_status != ApplicationStatus.APPROVED or application.mvd_status != ApplicationStatus.APPROVED:
             raise HTTPException(
                 status_code=403, 

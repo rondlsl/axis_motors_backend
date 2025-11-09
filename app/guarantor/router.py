@@ -1081,64 +1081,108 @@ async def sign_contract(
     
     db.add(signature)
     db.commit()
+    db.refresh(relationship)
 
-    # Отправляем push-уведомления после подписания договора
-    try:
-        client_user = db.query(User).filter(User.id == relationship.client_id).first()
+    # Проверяем, подписаны ли оба договора (GUARANTOR_CONTRACT и GUARANTOR_MAIN_CONTRACT)
+    guarantor_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+        UserContractSignature.user_id == current_user.id,
+        UserContractSignature.guarantor_relationship_id == relationship_uuid,
+        ContractFile.contract_type == ContractType.GUARANTOR_CONTRACT
+    ).first() is not None
 
-        guarantor_name_parts = [p for p in [current_user.first_name, current_user.last_name, current_user.middle_name] if p]
-        guarantor_full_name = " ".join(guarantor_name_parts) or "Гарант"
+    guarantor_main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+        UserContractSignature.user_id == current_user.id,
+        UserContractSignature.guarantor_relationship_id == relationship_uuid,
+        ContractFile.contract_type == ContractType.GUARANTOR_MAIN_CONTRACT
+    ).first() is not None
 
-        client_name_parts = [p for p in [client_user.first_name if client_user else None, client_user.last_name if client_user else None, client_user.middle_name if client_user else None] if p]
-        client_full_name = " ".join(client_name_parts) or "Клиент"
-
-        # Формируем ID пользователей в формате UUID
-        guarantor_id = str(current_user.id)
-        client_id = str(client_user.id) if client_user else None
-        
-        # Push уведомления
-        title_for_guarantor = "Подтверждение роли гаранта"
-        body_for_guarantor = (
-            f"Вы, {guarantor_full_name}, стали гарантом для пользователя {client_full_name}, {client_user.phone_number if client_user else 'неизвестно'}. "
-            f"Спасибо за подтверждение ответственности. Договор успешно подписан."
-        )
-        await send_push_to_user_by_id(db, current_user.id, title_for_guarantor, body_for_guarantor)
-
-        if client_user:
-            title_for_client = "Гарант подтвержден"
-            body_for_client = (
-                f"Пользователь {guarantor_full_name}, {current_user.phone_number} подтвердил статус гаранта для вас. "
-                f"Договор успешно подписан."
-            )
-            await send_push_to_user_by_id(db, client_user.id, title_for_client, body_for_client)
-        
-        # SMS уведомления
-        # Отправляем SMS гаранту
+    # Отправляем push-уведомления только после подписания обоих договоров
+    if guarantor_contract_signed and guarantor_main_contract_signed:
         try:
-            await send_guarantor_contract_signed_sms(
-                guarantor_phone=current_user.phone_number,
-                guarantor_full_name=guarantor_full_name,
-                guarantor_id=guarantor_id,
-                client_full_name=client_full_name,
-                client_id=client_id or "N/A"
+            client_user = db.query(User).filter(User.id == relationship.client_id).first()
+
+            guarantor_name_parts = [p for p in [current_user.first_name, current_user.last_name, current_user.middle_name] if p]
+            guarantor_full_name = " ".join(guarantor_name_parts) or "Гарант"
+
+            client_name_parts = [p for p in [client_user.first_name if client_user else None, client_user.last_name if client_user else None, client_user.middle_name if client_user else None] if p]
+            client_full_name = " ".join(client_name_parts) or "Клиент"
+
+            # Формируем ID пользователей в формате SID
+            guarantor_id = uuid_to_sid(current_user.id)
+            client_id = uuid_to_sid(client_user.id) if client_user else None
+            
+            # Push уведомление для гаранта
+            title_for_guarantor = "Поздравляем, вы стали гарантом!"
+            body_for_guarantor = (
+                f"Поздравляем! Договоры подписаны. Вы {guarantor_full_name}, {guarantor_id} стали гарантом и несете ответственность за Клиента {client_full_name}, {client_id}."
             )
-        except Exception as sms_e:
-            print(f"Ошибка отправки SMS гаранту: {sms_e}")
-        
-        # Отправляем SMS клиенту
-        if client_user:
+            await send_push_to_user_by_id(db, current_user.id, title_for_guarantor, body_for_guarantor)
+
+            # Push уведомление для клиента
+            if client_user:
+                title_for_client = "Гарант принял ваш запрос!"
+                body_for_client = (
+                    f"Поздравляем! Гарант {guarantor_full_name} (ID: {guarantor_id}) подтвердил ваш запрос на гаранта и взял ответственность по вашим договорам. Ваш ID: {client_id}, {client_full_name}."
+                )
+                await send_push_to_user_by_id(db, client_user.id, title_for_client, body_for_client)
+            
+            # SMS уведомления
+            # Отправляем SMS гаранту
             try:
-                await send_client_guarantor_confirmed_sms(
-                    client_phone=client_user.phone_number,
+                await send_guarantor_contract_signed_sms(
+                    guarantor_phone=current_user.phone_number,
                     guarantor_full_name=guarantor_full_name,
                     guarantor_id=guarantor_id,
                     client_full_name=client_full_name,
                     client_id=client_id or "N/A"
                 )
             except Exception as sms_e:
-                print(f"Ошибка отправки SMS клиенту: {sms_e}")
-    except Exception:
-        pass
+                logger.error(f"Ошибка отправки SMS гаранту: {sms_e}")
+                await log_error_to_telegram(
+                    error=sms_e,
+                    request=None,
+                    user=current_user,
+                    additional_context={
+                        "action": "send_guarantor_sms_after_contracts_signed",
+                        "guarantor_id": str(current_user.id),
+                        "client_id": str(client_user.id) if client_user else None
+                    }
+                )
+            
+            # Отправляем SMS клиенту
+            if client_user:
+                try:
+                    await send_client_guarantor_confirmed_sms(
+                        client_phone=client_user.phone_number,
+                        guarantor_full_name=guarantor_full_name,
+                        guarantor_id=guarantor_id,
+                        client_full_name=client_full_name,
+                        client_id=client_id or "N/A"
+                    )
+                except Exception as sms_e:
+                    logger.error(f"Ошибка отправки SMS клиенту: {sms_e}")
+                    await log_error_to_telegram(
+                        error=sms_e,
+                        request=None,
+                        user=client_user,
+                        additional_context={
+                            "action": "send_client_sms_after_contracts_signed",
+                            "guarantor_id": str(current_user.id),
+                            "client_id": str(client_user.id)
+                        }
+                    )
+        except Exception as e:
+            logger.error(f"Ошибка отправки push-уведомлений после подписания договоров: {e}")
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "send_push_after_contracts_signed",
+                    "guarantor_id": str(current_user.id),
+                    "relationship_id": str(relationship_uuid)
+                }
+            )
 
     return {"message": f"Договор {sign_data.contract_type} успешно подписан"}
 
