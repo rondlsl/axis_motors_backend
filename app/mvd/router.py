@@ -41,7 +41,7 @@ async def get_pending_applications(
         User.is_verified_email == True,
         or_(
             Application.financier_status == ApplicationStatus.APPROVED,
-        and_(
+            and_(
                 Application.financier_status == ApplicationStatus.REJECTED,
                 User.role == UserRole.REJECTFIRST,
                 exists(
@@ -52,8 +52,8 @@ async def get_pending_applications(
                         Guarantor.client_id == User.id,
                         Guarantor.is_active == True,
                         GuarantorRequest.status == GuarantorRequestStatus.ACCEPTED
-        )
-    )
+                    )
+                )
             )
         )
     )
@@ -344,8 +344,7 @@ async def approve_application(
         await send_localized_notification_to_user(
             db, 
             application.user.id, 
-            "mvd_approve", 
-            "application_approved_mvd"
+            "mvd_approve"
         )
     except Exception as e:
         try:
@@ -361,7 +360,7 @@ async def approve_application(
                 }
             )
         except:
-        pass
+            pass
     
     return {
         "message": "Заявка одобрена",
@@ -417,9 +416,9 @@ async def reject_application(
     if user and user.role != UserRole.REJECTFIRST:
         user.role = UserRole.REJECTSECOND
         user.is_active = False
-    
-    from app.guarantor.router import cancel_guarantor_requests_on_rejection
-    await cancel_guarantor_requests_on_rejection(str(user.id), db)
+        
+        from app.guarantor.router import cancel_guarantor_requests_on_rejection
+        await cancel_guarantor_requests_on_rejection(str(user.id), db)
     
     db.commit()
     
@@ -445,7 +444,7 @@ async def reject_application(
                 }
             )
         except:
-        pass
+            pass
 
     return {
         "message": "Заявка отклонена",
