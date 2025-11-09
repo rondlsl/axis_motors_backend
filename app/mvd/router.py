@@ -349,7 +349,8 @@ async def approve_application(
         await send_localized_notification_to_user(
             db, 
             application.user.id, 
-            "mvd_approve"
+            "mvd_approve",
+            "application_approved_mvd"
         )
     except Exception as e:
         try:
