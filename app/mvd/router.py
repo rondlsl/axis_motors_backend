@@ -413,7 +413,8 @@ async def reject_application(
     application.updated_at = datetime.utcnow()
     application.reason = reason
 
-    if user and user.role != UserRole.REJECTFIRST:
+    # При отклонении МВД всегда меняем роль на REJECTSECOND и деактивируем пользователя
+    if user:
         user.role = UserRole.REJECTSECOND
         user.is_active = False
         
