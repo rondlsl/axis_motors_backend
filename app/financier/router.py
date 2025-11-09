@@ -9,6 +9,7 @@ from app.utils.short_id import uuid_to_sid, safe_sid_to_uuid
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole
 from app.models.application_model import Application, ApplicationStatus
+from app.models.guarantor_model import Guarantor
 from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
 from app.utils.telegram_logger import log_error_to_telegram
 
@@ -294,7 +295,6 @@ async def approve_application(
     user.role = UserRole.PENDINGTOSECOND
     
     # Если у пользователя есть гарант, обновляем его auto_class тоже
-    from app.models.guarantor_model import Guarantor
     guarantor_relations = db.query(Guarantor).filter(
         Guarantor.client_id == user.id
     ).all()
@@ -401,7 +401,6 @@ async def reject_application(
     
     # Если у пользователя есть гарант, нужно пересчитать его auto_class
     # (убрать классы, которые были получены только от этого клиента)
-    from app.models.guarantor_model import Guarantor
     guarantor_relations = db.query(Guarantor).filter(
         Guarantor.client_id == user.id
     ).all()
@@ -468,4 +467,112 @@ async def reject_application(
         "user_id": uuid_to_sid(user.id),
         "reason": application.reason,
         "reason_type": reason_type
+    }
+
+
+@FinancierRouter.post("/recheck/{application_id}", summary="Запросить повторную проверку документов")
+async def request_documents_recheck(
+        application_id: str,
+        db: Session = Depends(get_db),
+        current_financier: User = Depends(get_current_financier)
+) -> Dict[str, Any]:
+    """Запросить повторную проверку документов пользователя.
+    
+    Переводит заявку в статус PENDINGTOFIRST и снимает одобрение МВД.
+    Пользователь должен будет заново загрузить документы."""
+    
+    application_uuid = safe_sid_to_uuid(application_id)
+    application = db.query(Application).options(
+        joinedload(Application.user)
+    ).filter(Application.id == application_uuid).first()
+    
+    if not application:
+        raise HTTPException(status_code=404, detail="Заявка не найдена")
+    
+    user = application.user
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    # Меняем роль пользователя на PENDINGTOFIRST (как при первой загрузке документов)
+    user.role = UserRole.PENDINGTOFIRST
+    
+    # Сбрасываем статусы в applications на PENDING
+    application.financier_status = ApplicationStatus.PENDING
+    application.mvd_status = ApplicationStatus.PENDING
+    
+    # Очищаем даты и IDs одобрения/отклонения МВД (снимаем одобрение МВД)
+    application.mvd_approved_at = None
+    application.mvd_rejected_at = None
+    application.mvd_user_id = None
+    
+    # Очищаем даты и IDs одобрения/отклонения финансиста (чтобы финансист мог снова проверить)
+    application.financier_approved_at = None
+    application.financier_rejected_at = None
+    application.financier_user_id = None
+    
+    # Очищаем причину отклонения
+    application.reason = None
+    
+    # Очищаем auto_class, чтобы финансист мог заново установить его при одобрении
+    user.auto_class = None
+    
+    # Если у пользователя есть гарант, нужно пересчитать его auto_class
+    # (убрать классы, которые были получены только от этого клиента)
+    guarantor_relations = db.query(Guarantor).filter(
+        Guarantor.client_id == user.id
+    ).all()
+    
+    for relation in guarantor_relations:
+        guarantor_user = db.query(User).filter(User.id == relation.guarantor_id).first()
+        if guarantor_user and guarantor_user.auto_class:
+            # Пересчитываем классы гаранта на основе оставшихся клиентов
+            client_relations = db.query(Guarantor).filter(
+                Guarantor.guarantor_id == guarantor_user.id
+            ).all()
+            
+            all_client_classes = []
+            for client_rel in client_relations:
+                client = db.query(User).filter(User.id == client_rel.client_id).first()
+                if client and client.auto_class and client.role not in [UserRole.REJECTFIRST, UserRole.REJECTSECOND, UserRole.PENDINGTOFIRST]:
+                    all_client_classes.extend(client.auto_class)
+            
+            # Убираем дубликаты и обновляем классы гаранта
+            guarantor_user.auto_class = list(set(all_client_classes)) if all_client_classes else None
+    
+    # Обновляем updated_at
+    application.updated_at = datetime.utcnow()
+    
+    db.commit()
+    
+    # Отправляем уведомление пользователю
+    try:
+        await send_localized_notification_to_user(
+            db,
+            user.id,
+            "financier_request_recheck",
+            "documents_recheck_required"
+        )
+    except Exception as e:
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_financier,
+                additional_context={
+                    "action": "financier_request_recheck_notification",
+                    "application_id": str(application_uuid),
+                    "user_id": str(user.id),
+                    "financier_id": str(current_financier.id)
+                }
+            )
+        except:
+            pass
+    
+    return {
+        "message": "Запрошена повторная проверка документов",
+        "application_id": uuid_to_sid(application_uuid),
+        "user_id": uuid_to_sid(user.id),
+        "user_role": user.role.value,
+        "financier_status": application.financier_status.value,
+        "mvd_status": application.mvd_status.value
     }
