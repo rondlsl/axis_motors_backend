@@ -223,12 +223,14 @@ def create_enums():
                 'delivery_cancelled', 'balance_exhausted', 'delivery_delay_penalty',
                 'application_rejected_financier', 'application_rejected_mvd',
                 'application_approved_financier', 'application_approved_mvd',
+                'guarantor_invitation', 'guarantor_accepted',
                 'MECHANIC_ASSIGNED', 'CAR_DELIVERED', 'DELIVERY_NEW_ORDER', 'DELIVERY_STARTED',
                 'NEW_CAR_FOR_INSPECTION', 'PAID_WAITING_SOON', 'PAID_WAITING_STARTED',
                 'LOW_BALANCE', 'BASIC_TARIFF_ENDING_SOON', 'OUT_OF_TARIFF_CHARGES',
                 'DELIVERY_CANCELLED', 'BALANCE_EXHAUSTED', 'DELIVERY_DELAY_PENALTY',
                 'APPLICATION_REJECTED_FINANCIER', 'APPLICATION_REJECTED_MVD',
-                'APPLICATION_APPROVED_FINANCIER', 'APPLICATION_APPROVED_MVD'
+                'APPLICATION_APPROVED_FINANCIER', 'APPLICATION_APPROVED_MVD',
+                'GUARANTOR_INVITATION', 'GUARANTOR_ACCEPTED'
             );
         EXCEPTION
             WHEN duplicate_object THEN null;
@@ -555,7 +557,7 @@ def create_notifications_table():
         sa.Column('body', sa.Text(), nullable=False),
         sa.Column('sent_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.Column('is_read', sa.Boolean(), nullable=False, server_default='false'),
-        sa.Column('status', postgresql.ENUM('mechanic_assigned', 'car_delivered', 'delivery_new_order', 'delivery_started', 'new_car_for_inspection', 'paid_waiting_soon', 'paid_waiting_started', 'low_balance', 'basic_tariff_ending_soon', 'out_of_tariff_charges', 'delivery_cancelled', 'balance_exhausted', 'delivery_delay_penalty', 'application_rejected_financier', 'application_rejected_mvd', 'application_approved_financier', 'application_approved_mvd', name='notificationstatus', create_type=False), nullable=True)
+        sa.Column('status', postgresql.ENUM('mechanic_assigned', 'car_delivered', 'delivery_new_order', 'delivery_started', 'new_car_for_inspection', 'paid_waiting_soon', 'paid_waiting_started', 'low_balance', 'basic_tariff_ending_soon', 'out_of_tariff_charges', 'delivery_cancelled', 'balance_exhausted', 'delivery_delay_penalty', 'application_rejected_financier', 'application_rejected_mvd', 'application_approved_financier', 'application_approved_mvd', 'guarantor_invitation', 'guarantor_accepted', name='notificationstatus', create_type=False), nullable=True)
     )
 
 

@@ -20,3 +20,5 @@ class NotificationStatus(str, Enum):
     APPLICATION_REJECTED_MVD = "application_rejected_mvd"  # Заявка отклонена МВД
     APPLICATION_APPROVED_FINANCIER = "application_approved_financier"  # Заявка одобрена финансистом
     APPLICATION_APPROVED_MVD = "application_approved_mvd"  # Заявка одобрена МВД
+    GUARANTOR_INVITATION = "guarantor_invitation"  # Приглашение стать гарантом
+    GUARANTOR_ACCEPTED = "guarantor_accepted"  # Гарант принял заявку

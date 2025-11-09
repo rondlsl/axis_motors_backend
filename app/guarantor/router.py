@@ -274,7 +274,7 @@ async def invite_guarantor(
             f"Пользователь {requestor_full_name}, {current_user.phone_number} выбрал вас гарантом. "
             f"Откройте приложение, чтобы принять или отклонить заявку."
         )
-        await send_push_to_user_by_id(db, guarantor_user.id, push_title, push_body)
+        await send_push_to_user_by_id(db, guarantor_user.id, push_title, push_body, "guarantor_invitation")
         sms_result = {"message": "Push notification sent successfully"}
     except Exception as _e:
         sms_result = {"message": "Push sending failed", "error": str(_e)}
@@ -1116,7 +1116,7 @@ async def sign_contract(
             body_for_guarantor = (
                 f"Поздравляем! Договоры подписаны. Вы {guarantor_full_name}, {guarantor_id} стали гарантом и несете ответственность за Клиента {client_full_name}, {client_id}."
             )
-            await send_push_to_user_by_id(db, current_user.id, title_for_guarantor, body_for_guarantor)
+            await send_push_to_user_by_id(db, current_user.id, title_for_guarantor, body_for_guarantor, "guarantor_accepted")
 
             # Push уведомление для клиента
             if client_user:
@@ -1124,7 +1124,7 @@ async def sign_contract(
                 body_for_client = (
                     f"Поздравляем! Гарант {guarantor_full_name} (ID: {guarantor_id}) подтвердил ваш запрос на гаранта и взял ответственность по вашим договорам. Ваш ID: {client_id}, {client_full_name}."
                 )
-                await send_push_to_user_by_id(db, client_user.id, title_for_client, body_for_client)
+                await send_push_to_user_by_id(db, client_user.id, title_for_client, body_for_client, "guarantor_accepted")
             
             # SMS уведомления
             # Отправляем SMS гаранту
