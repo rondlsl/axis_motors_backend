@@ -217,5 +217,7 @@ class UserBlockSchema(BaseModel):
 
 class CompanyBonusSchema(BaseModel):
     """Схема для начисления бонуса от компании"""
+    phone_number: str = Field(..., min_length=11, max_length=11, description="Номер телефона пользователя")
+    title: str = Field(..., min_length=1, max_length=100, description="Заголовок бонуса")
     amount: float = Field(..., gt=0, description="Сумма бонуса (должна быть больше 0)")
     description: str = Field(..., min_length=1, max_length=500, description="Описание бонуса")

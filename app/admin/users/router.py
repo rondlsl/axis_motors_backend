@@ -1053,9 +1053,8 @@ def _calculate_car_earnings(car_id: str, owner_id: str, db: Session, month_start
     return {"current_month": current_month_earnings, "total": total_earnings}
 
 
-@users_router.post("/{user_id}/bonus")
+@users_router.post("/bonus")
 async def add_company_bonus(
-    user_id: str,
     bonus_data: CompanyBonusSchema,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -1065,10 +1064,14 @@ async def add_company_bonus(
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
     try:
-        user_uuid = safe_sid_to_uuid(user_id)
-        user = db.query(User).filter(User.id == user_uuid).first()
+        # Проверяем формат номера телефона
+        if not bonus_data.phone_number.isdigit():
+            raise HTTPException(status_code=400, detail="Номер телефона должен содержать только цифры")
+        
+        # Ищем пользователя по номеру телефона
+        user = db.query(User).filter(User.phone_number == bonus_data.phone_number).first()
         if not user:
-            raise HTTPException(status_code=404, detail="Пользователь не найден")
+            raise HTTPException(status_code=404, detail="Пользователь с таким номером телефона не найден")
         
         # Сохраняем баланс до операции
         balance_before = float(user.wallet_balance or 0)
@@ -1082,7 +1085,7 @@ async def add_company_bonus(
         transaction = WalletTransaction(
             user_id=user.id,
             amount=float(bonus_amount_decimal),
-            transaction_type=WalletTransactionType.PROMO_BONUS,
+            transaction_type=WalletTransactionType.COMPANY_BONUS,
             description=bonus_data.description,
             balance_before=balance_before,
             balance_after=balance_after
@@ -1096,7 +1099,7 @@ async def add_company_bonus(
             await send_push_to_user_by_id(
                 db_session=db,
                 user_id=user.id,
-                title="Бонус от компании",
+                title=bonus_data.title,
                 body=f"Вам начислен бонус - {bonus_data.amount:,.0f} тг на основной баланс. Спасибо, что выбираете нас!"
             )
         except Exception as push_error:
@@ -1106,6 +1109,7 @@ async def add_company_bonus(
                 additional_context={
                     "action": "send_bonus_notification",
                     "bonus_amount": bonus_data.amount,
+                    "phone_number": bonus_data.phone_number,
                     "admin_id": str(current_user.id)
                 }
             )
@@ -1113,6 +1117,7 @@ async def add_company_bonus(
         return {
             "message": "Бонус успешно начислен",
             "user_id": uuid_to_sid(user.id),
+            "phone_number": user.phone_number,
             "amount": bonus_data.amount,
             "new_balance": float(user.wallet_balance),
             "transaction_id": uuid_to_sid(transaction.id)
@@ -1127,7 +1132,7 @@ async def add_company_bonus(
             user=current_user,
             additional_context={
                 "action": "add_company_bonus",
-                "target_user_id": user_id,
+                "phone_number": bonus_data.phone_number,
                 "bonus_amount": bonus_data.amount,
                 "description": bonus_data.description
             }

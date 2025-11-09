@@ -251,11 +251,11 @@ def create_enums():
     op.execute("""
         DO $$ BEGIN
             CREATE TYPE wallettransactiontype AS ENUM (
-                'deposit', 'promo_bonus', 'refund', 'rent_open_fee', 'rent_waiting_fee',
+                'deposit', 'promo_bonus', 'company_bonus', 'refund', 'rent_open_fee', 'rent_waiting_fee',
                 'rent_minute_charge', 'rent_overtime_fee', 'rent_distance_fee',
                 'rent_base_charge', 'rent_fuel_fee', 'delivery_fee', 'delivery_penalty',
                 'manual_adjustment', 'damage_penalty', 'fine_penalty',
-                'DEPOSIT', 'PROMO_BONUS', 'REFUND', 'RENT_OPEN_FEE', 'RENT_WAITING_FEE',
+                'DEPOSIT', 'PROMO_BONUS', 'COMPANY_BONUS', 'REFUND', 'RENT_OPEN_FEE', 'RENT_WAITING_FEE',
                 'RENT_MINUTE_CHARGE', 'RENT_OVERTIME_FEE', 'RENT_DISTANCE_FEE',
                 'RENT_BASE_CHARGE', 'RENT_FUEL_FEE', 'DELIVERY_FEE', 'DELIVERY_PENALTY',
                 'MANUAL_ADJUSTMENT', 'DAMAGE_PENALTY', 'FINE_PENALTY'

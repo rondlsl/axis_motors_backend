@@ -13,6 +13,7 @@ class WalletTransactionType(enum.Enum):
     # Пополнения/возвраты
     DEPOSIT = "deposit"
     PROMO_BONUS = "promo_bonus"
+    COMPANY_BONUS = "company_bonus"
     REFUND = "refund"
 
     # Клиент: аренда/штрафы/доставка

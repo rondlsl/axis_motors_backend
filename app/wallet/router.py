@@ -15,6 +15,7 @@ from app.dependencies.database.database import get_db
 from app.models.user_model import User, UserRole
 from app.models.wallet_transaction_model import WalletTransaction, WalletTransactionType
 from app.utils.telegram_logger import log_error_to_telegram
+from app.translations.excel_headers import get_excel_header_row
 from app.wallet.schemas import (
     WalletTransactionsListOut,
     WalletTransactionsSummaryOut,
@@ -78,9 +79,14 @@ def export_my_transactions_csv(
     q = db.query(WalletTransaction).filter(WalletTransaction.user_id == current_user.id)
     q = _apply_date_filters(q, date_from=date_from, date_to=date_to, year=year, month=month, day=day)
     items = q.order_by(WalletTransaction.created_at.desc()).all()
+    
+    # Получаем язык пользователя для локализации заголовков
+    user_locale = current_user.locale or "ru"
+    
     # Формируем CSV и отдаём как файл
     def _iter_csv():
-        yield "id,created_at,type,amount,balance_before,balance_after,related_rental_id,tracking_id,description\n"
+        # Используем локализованные заголовки
+        yield get_excel_header_row(user_locale)
         for t in items:
             row = [
                 str(t.id),
@@ -268,8 +274,12 @@ def export_my_transactions_legacy_path(
     q = _apply_date_filters(q, date_from=date_from, date_to=date_to, year=year, month=month, day=day)
     items = q.order_by(WalletTransaction.created_at.desc()).all()
 
+    # Получаем язык пользователя для локализации заголовков
+    user_locale = current_user.locale or "ru"
+
     def _iter_csv():
-        yield "id,created_at,type,amount,balance_before,balance_after,related_rental_id,tracking_id,description\n"
+        # Используем локализованные заголовки
+        yield get_excel_header_row(user_locale)
         for t in items:
             row = [
                 str(t.id),

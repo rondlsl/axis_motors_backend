@@ -47,6 +47,7 @@ class VerifySmsResponse(BaseModel):
     linked_guarantor_requests: int = Field(..., description="Количество связанных заявок гарантов")
     digital_signature: Optional[str] = Field(None, description="Цифровая подпись пользователя")
     client_info: ClientInfoResponse = Field(..., description="Информация о клиенте")
+    fcm_token: Optional[str] = Field(None, description="FCM token пользователя")
 
 
 class SendSmsRequest(BaseModel):
@@ -231,3 +232,9 @@ class ChangeEmailResponse(BaseModel):
     """Схема ответа на изменение email"""
     message: str = Field(..., description="Сообщение об успешной операции")
     email: Optional[str] = Field(None, description="Новый email адрес")
+
+
+class SendSmsResponse(BaseModel):
+    """Схема ответа на отправку SMS"""
+    message: str = Field(..., description="Сообщение об успешной отправке")
+    fcm_token: Optional[str] = Field(None, description="FCM token пользователя")

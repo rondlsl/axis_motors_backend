@@ -20,7 +20,7 @@ import traceback
 
 from app.auth.dependencies.get_current_user import get_current_user  
 from app.auth.dependencies.save_documents import save_file
-from app.auth.schemas import SendSmsRequest, VerifySmsRequest, DocumentUploadRequest, LocaleUpdate, SelfieUploadResponse, UserRegistrationInfoResponse, VerifySmsResponse, ChangeEmailRequest, VerifyEmailChangeRequest, ChangeEmailResponse
+from app.auth.schemas import SendSmsRequest, VerifySmsRequest, DocumentUploadRequest, LocaleUpdate, SelfieUploadResponse, UserRegistrationInfoResponse, VerifySmsResponse, ChangeEmailRequest, VerifyEmailChangeRequest, ChangeEmailResponse, SendSmsResponse
 from app.auth.security.auth_bearer import JWTBearer
 from app.auth.security.tokens import create_refresh_token, create_access_token
 from app.models.token_model import TokenRecord
@@ -190,7 +190,7 @@ async def send_sms_mobizon(recipient: str, sms_text: str, api_key: str):
         return response.text
 
 
-@Auth_router.post("/send_sms/")
+@Auth_router.post("/send_sms/", response_model=SendSmsResponse)
 async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
     """
     Отправка смс по номеру телефона:
@@ -224,12 +224,12 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Phone number must contain only digits.")
 
     sms_code = totp.now()
-    # Сначала проверяем, есть ли заблокированный пользователь с таким номером (независимо от is_active)
-    blocked = db.query(User).filter(
+    # Проверяем блокировку по номеру телефона (REJECTSECOND - независимо от is_active)
+    blocked_by_phone = db.query(User).filter(
         User.phone_number == phone_number,
         User.role == UserRole.REJECTSECOND
     ).first()
-    if blocked:
+    if blocked_by_phone:
         raise HTTPException(status_code=403, detail=(
             "Вынуждены отказать в регистрации. По результатам проверки ваших данных были выявлены несоответствия требованиям доступа к сервису. "
             "Обращаем внимание, что на основании п. 4.4 Договора, Арендодатель вправе по своему усмотрению отказаться от заключения Договора с Клиентом. "
@@ -247,6 +247,14 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
         ).first()
         
         if inactive_user:
+            # Проверяем, не заблокирован ли пользователь (REJECTSECOND)
+            if inactive_user.role == UserRole.REJECTSECOND:
+                raise HTTPException(status_code=403, detail=(
+                    "Вынуждены отказать в регистрации. По результатам проверки ваших данных были выявлены несоответствия требованиям доступа к сервису. "
+                    "Обращаем внимание, что на основании п. 4.4 Договора, Арендодатель вправе по своему усмотрению отказаться от заключения Договора с Клиентом. "
+                    "С уважением, Команда ≪AZV Motors≫."
+                ))
+            
             # Восстанавливаем удаленный аккаунт
             # Проверяем, что не переданы лишние поля (имя/фамилия уже есть в профиле)
             if request.first_name or request.last_name or request.middle_name:
@@ -348,7 +356,12 @@ ID клиента: {user.id}
         except:
             pass
 
-    return {"message": "SMS code sent successfully"}
+    # Возвращаем fcm_token из базы данных
+    fcm_token = user.fcm_token if user.fcm_token else None
+    return SendSmsResponse(
+        message="SMS code sent successfully",
+        fcm_token=fcm_token
+    )
 
 
 @Auth_router.get("/user/registration-info", response_model=UserRegistrationInfoResponse)
@@ -538,6 +551,8 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
     if not full_name:
         full_name = "Не указано"
     
+    # Возвращаем fcm_token из базы данных
+    fcm_token = user.fcm_token if user.fcm_token else None
     return VerifySmsResponse(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -549,7 +564,8 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
             "phone_number": user.phone_number,
             "user_id": uuid_to_sid(user.id),
             "digital_signature": user.digital_signature
-        }
+        },
+        fcm_token=fcm_token
     )
 
 
@@ -987,14 +1003,29 @@ async def _get_user_me_data(db: Session, current_user: User):
         
         guarantors = []
         for guarantor_relation, guarantor_user in guarantors_query:
-            guarantors.append({
-                "id": uuid_to_sid(guarantor_user.id),
-                "first_name": guarantor_user.first_name,
-                "last_name": guarantor_user.last_name,
-                "middle_name": guarantor_user.middle_name,
-                "phone_number": guarantor_user.phone_number,
-                "auto_class": guarantor_user.auto_class or []
-            })
+            # Проверяем, что гарант подписал оба договора
+            guarantor_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                UserContractSignature.user_id == guarantor_user.id,
+                UserContractSignature.guarantor_relationship_id == guarantor_relation.id,
+                ContractFile.contract_type == ContractType.GUARANTOR_CONTRACT
+            ).first() is not None
+            
+            guarantor_main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                UserContractSignature.user_id == guarantor_user.id,
+                UserContractSignature.guarantor_relationship_id == guarantor_relation.id,
+                ContractFile.contract_type == ContractType.GUARANTOR_MAIN_CONTRACT
+            ).first() is not None
+            
+            # Добавляем гарантора только если подписал оба договора
+            if guarantor_contract_signed and guarantor_main_contract_signed:
+                guarantors.append({
+                    "id": uuid_to_sid(guarantor_user.id),
+                    "first_name": guarantor_user.first_name,
+                    "last_name": guarantor_user.last_name,
+                    "middle_name": guarantor_user.middle_name,
+                    "phone_number": guarantor_user.phone_number,
+                    "auto_class": guarantor_user.auto_class or []
+                })
         
         guarantors_count = len(guarantors)
         
@@ -1618,8 +1649,20 @@ async def upload_documents(
         # Сохраняем старый email для сравнения ДО обновления (нормализуем для корректного сравнения)
         old_email = (current_user.email or "").strip().lower() if current_user.email else None
         
-        # Проверка уникальности ИИН и паспорта среди активных пользователей (кроме текущего)
+        # Проверка блокировки по ИИН (REJECTSECOND - независимо от is_active и текущего пользователя)
         if document_data.iin:
+            blocked_by_iin = db.query(User).filter(
+                User.iin == document_data.iin,
+                User.role == UserRole.REJECTSECOND
+            ).first()
+            if blocked_by_iin:
+                raise HTTPException(status_code=403, detail=(
+                    "Вынуждены отказать в регистрации. По результатам проверки ваших данных были выявлены несоответствия требованиям доступа к сервису. "
+                    "Обращаем внимание, что на основании п. 4.4 Договора, Арендодатель вправе по своему усмотрению отказаться от заключения Договора с Клиентом. "
+                    "С уважением, Команда ≪AZV Motors≫."
+                ))
+            
+            # Проверка уникальности ИИН среди активных пользователей (кроме текущего)
             exists_iin = db.query(User).filter(
                 User.iin == document_data.iin,
                 User.id != current_user.id,
@@ -1628,7 +1671,20 @@ async def upload_documents(
             if exists_iin:
                 raise HTTPException(status_code=400, detail="Пользователь с таким ИИН уже существует")
 
+        # Проверка блокировки по номеру паспорта (REJECTSECOND - независимо от is_active и текущего пользователя)
         if document_data.passport_number:
+            blocked_by_passport = db.query(User).filter(
+                User.passport_number == document_data.passport_number,
+                User.role == UserRole.REJECTSECOND
+            ).first()
+            if blocked_by_passport:
+                raise HTTPException(status_code=403, detail=(
+                    "Вынуждены отказать в регистрации. По результатам проверки ваших данных были выявлены несоответствия требованиям доступа к сервису. "
+                    "Обращаем внимание, что на основании п. 4.4 Договора, Арендодатель вправе по своему усмотрению отказаться от заключения Договора с Клиентом. "
+                    "С уважением, Команда ≪AZV Motors≫."
+                ))
+            
+            # Проверка уникальности паспорта среди активных пользователей (кроме текущего)
             exists_passport = db.query(User).filter(
                 User.passport_number == document_data.passport_number,
                 User.id != current_user.id,
