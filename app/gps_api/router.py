@@ -453,6 +453,7 @@ def get_frequently_used_vehicles(
         if active_rental:
             # Если есть активная аренда, показываем только эту машину
             cars = db.query(Car).filter(Car.id == active_rental.car_id).all()
+            rental_counts = None
         else:
             # Если нет активной аренды, показываем часто используемые машины
             rental_counts = (
@@ -463,8 +464,9 @@ def get_frequently_used_vehicles(
                 .all()
             )
 
+            # Если нет истории аренды, возвращаем пустой массив
             if not rental_counts:
-                raise HTTPException(status_code=404, detail="Вы ещё не арендовали ни одной машины")
+                return {"vehicles": []}
 
             car_ids = [r.car_id for r in rental_counts]
 
@@ -478,11 +480,9 @@ def get_frequently_used_vehicles(
                 .all()
             )
 
+        # Если нет машин, возвращаем пустой массив
         if not cars:
-            if active_rental:
-                raise HTTPException(status_code=404, detail="Машина не найдена")
-            else:
-                raise HTTPException(status_code=404, detail="Все часто используемые вами машины сейчас заняты")
+            return {"vehicles": []}
 
         vehicles_data = []
         
@@ -591,9 +591,7 @@ def get_frequently_used_vehicles(
                         "photo_before_interior_uploaded": photo_before_interior_uploaded
                     })
 
-        if not vehicles_data:
-            raise HTTPException(status_code=404, detail="Нет свободных машин из тех, что вы часто арендовали")
-
+        # Возвращаем массив данных (может быть пустым)
         return {"vehicles": vehicles_data}
 
     except HTTPException:
