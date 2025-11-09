@@ -26,6 +26,25 @@ from app.wallet.schemas import (
 )
 
 
+def _escape_csv_field(field) -> str:
+    """
+    Экранирует поле CSV по стандарту RFC 4180
+    Если поле содержит запятые, кавычки или переносы строк, оборачивает в двойные кавычки
+    и удваивает кавычки внутри
+    """
+    if field is None:
+        return ""
+    
+    field_str = str(field).strip() if isinstance(field, str) else str(field)
+    if not field_str:
+        return ""
+    
+    if any(char in field_str for char in [',', '"', '\n', '\r']):
+        field_str = field_str.replace('"', '""')
+        return f'"{field_str}"'
+    return field_str
+
+
 WalletRouter = APIRouter(tags=["Wallet"], prefix="/wallet")
 
 
@@ -85,25 +104,30 @@ def export_my_transactions_csv(
     
     # Формируем CSV и отдаём как файл
     def _iter_csv():
+        # Добавляем UTF-8 BOM для корректного отображения в Excel
+        yield '\ufeff'
         # Используем локализованные заголовки
         yield get_excel_header_row(user_locale)
         for t in items:
             row = [
-                str(t.id),
-                t.created_at.isoformat(),
-                t.transaction_type.value,
-                str(float(t.amount)),
-                str(float(t.balance_before)),
-                str(float(t.balance_after)),
-                str(t.related_rental_id or ""),
-                str(t.tracking_id or ""),
-                (t.description or "").replace(",", " ")
+                _escape_csv_field(str(t.id)),
+                _escape_csv_field(t.created_at.isoformat()),
+                _escape_csv_field(t.transaction_type.value),
+                _escape_csv_field(str(float(t.amount))),
+                _escape_csv_field(str(float(t.balance_before))),
+                _escape_csv_field(str(float(t.balance_after))),
+                _escape_csv_field(str(t.related_rental_id) if t.related_rental_id else ""),
+                _escape_csv_field(str(t.tracking_id) if t.tracking_id else ""),
+                _escape_csv_field(t.description if t.description else "")
             ]
             yield ",".join(row) + "\n"
 
     filename = f"wallet_transactions_user_{current_user.id}.csv"
-    headers = {"Content-Disposition": f"attachment; filename={filename}"}
-    return StreamingResponse(_iter_csv(), media_type="text/csv", headers=headers)
+    headers = {
+        "Content-Disposition": f"attachment; filename={filename}",
+        "Content-Type": "text/csv; charset=utf-8"
+    }
+    return StreamingResponse(_iter_csv(), media_type="text/csv; charset=utf-8", headers=headers)
 
 
 @WalletRouter.get("/transactions", response_model=WalletTransactionsListOut)
@@ -278,25 +302,30 @@ def export_my_transactions_legacy_path(
     user_locale = current_user.locale or "ru"
 
     def _iter_csv():
+        # Добавляем UTF-8 BOM для корректного отображения в Excel
+        yield '\ufeff'
         # Используем локализованные заголовки
         yield get_excel_header_row(user_locale)
         for t in items:
             row = [
-                str(t.id),
-                t.created_at.isoformat(),
-                t.transaction_type.value,
-                str(float(t.amount)),
-                str(float(t.balance_before)),
-                str(float(t.balance_after)),
-                str(t.related_rental_id or ""),
-                str(t.tracking_id or ""),
-                (t.description or "").replace(",", " ")
+                _escape_csv_field(str(t.id)),
+                _escape_csv_field(t.created_at.isoformat()),
+                _escape_csv_field(t.transaction_type.value),
+                _escape_csv_field(str(float(t.amount))),
+                _escape_csv_field(str(float(t.balance_before))),
+                _escape_csv_field(str(float(t.balance_after))),
+                _escape_csv_field(str(t.related_rental_id) if t.related_rental_id else ""),
+                _escape_csv_field(str(t.tracking_id) if t.tracking_id else ""),
+                _escape_csv_field(t.description if t.description else "")
             ]
             yield ",".join(row) + "\n"
 
     filename = f"wallet_transactions_user_{current_user.id}.csv"
-    headers = {"Content-Disposition": f"attachment; filename={filename}"}
-    return StreamingResponse(_iter_csv(), media_type="text/csv", headers=headers)
+    headers = {
+        "Content-Disposition": f"attachment; filename={filename}",
+        "Content-Type": "text/csv; charset=utf-8"
+    }
+    return StreamingResponse(_iter_csv(), media_type="text/csv; charset=utf-8", headers=headers)
 
 
 @WalletRouter.get("/transactions/{transaction_id}", response_model=WalletTransactionOut)
