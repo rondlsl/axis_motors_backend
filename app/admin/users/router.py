@@ -16,7 +16,7 @@ from app.models.application_model import Application, ApplicationStatus
 from app.models.history_model import RentalHistory, RentalStatus
 from app.models.car_model import Car
 from app.models.guarantor_model import GuarantorRequest
-from app.models.wallet_transaction_model import WalletTransaction, WalletTransactionType
+from app.models.wallet_transaction_model import WalletTransaction, WalletTransactionType, get_local_time
 from app.admin.users.schemas import (
     UserProfileSchema, UserRoleUpdateSchema, UserCardSchema, 
     UserListSchema, UserMapPositionSchema, UserCommentUpdateSchema,
@@ -1088,7 +1088,8 @@ async def add_company_bonus(
             transaction_type=WalletTransactionType.COMPANY_BONUS,
             description=bonus_data.description,
             balance_before=balance_before,
-            balance_after=balance_after
+            balance_after=balance_after,
+            created_at=get_local_time()
         )
         db.add(transaction)
         db.commit()

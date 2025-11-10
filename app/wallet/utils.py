@@ -2,7 +2,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.models.wallet_transaction_model import WalletTransaction, WalletTransactionType
+from app.models.wallet_transaction_model import WalletTransaction, WalletTransactionType, get_local_time
 from app.models.history_model import RentalHistory
 from app.models.user_model import User
 
@@ -63,6 +63,7 @@ def record_wallet_transaction(
         balance_after=new_balance,
         related_rental_id=related_rental.id if related_rental else None,
         tracking_id=tracking_id,
+        created_at=get_local_time(),
     )
     db.add(tx)
     # Обновление баланса на вызывающей стороне уже произведено.

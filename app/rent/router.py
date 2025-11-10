@@ -24,7 +24,7 @@ from app.models.guarantor_model import Guarantor, GuarantorRequest, GuarantorReq
 from app.push.utils import send_notification_to_all_mechanics_async, send_push_to_user_by_id, send_localized_notification_to_user, send_localized_notification_to_all_mechanics
 from app.rent.exceptions import InsufficientBalanceException
 from app.wallet.utils import record_wallet_transaction
-from app.models.wallet_transaction_model import WalletTransactionType, WalletTransaction
+from app.models.wallet_transaction_model import WalletTransactionType, WalletTransaction, get_local_time
 from app.rent.utils.calculate_price import calculate_total_price, get_open_price, calc_required_balance
 from app.gps_api.utils.route_data import get_gps_route_data
 from app.gps_api.utils.auth_api import get_auth_token
@@ -882,15 +882,15 @@ async def cancel_reservation(
         raise HTTPException(status_code=404, detail="Машина не найдена")
 
     now = datetime.utcnow()
-    # Если start_time ещё не установлен, используем время бронирования
-    if not rental.start_time:
-        rental.start_time = rental.reservation_time or datetime.utcnow()
-        db.commit()
+    # Для расчета времени используем reservation_time или start_time
+    base_time = rental.start_time or rental.reservation_time or now
 
     if car.owner_id == current_user.id:
         # Логика для владельца: аренда бесплатная, пропускаем комиссии
         rental.rental_status = RentalStatus.COMPLETED
         rental.end_time = now
+        if not rental.start_time:
+            rental.start_time = base_time
         rental.total_price = 0
         rental.already_payed = 0
         rental.end_latitude = car.latitude
@@ -911,28 +911,105 @@ async def cancel_reservation(
             "current_wallet_balance": float(current_user.wallet_balance)
         }
     else:
-        time_passed = (now - rental.start_time).total_seconds() / 60
+        # Рассчитываем время, прошедшее с момента бронирования
+        time_passed = (now - base_time).total_seconds() / 60
 
-        fee = 0
+        # Комиссия за ожидание при отмене (если прошло больше 15 минут)
+        # Рассчитываем полную сумму платного ожидания на момент отмены
+        total_waiting_fee = 0
         if time_passed > 15:
             extra_minutes = floor(time_passed - 15)
-            fee = int(extra_minutes * car.price_per_minute * 0.5)
+            total_waiting_fee = int(extra_minutes * car.price_per_minute * 0.5)
 
-            if current_user.wallet_balance < fee:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Недостаточно средств для отмены аренды с комиссией: {fee} тг"
+        # Уже начисленная сумма платного ожидания (из billing.py)
+        already_charged_waiting_fee = rental.waiting_fee or 0
+        
+        # Дополнительная сумма, которую нужно списать при отмене
+        additional_fee = max(0, total_waiting_fee - already_charged_waiting_fee)
+        
+        # Обновляем или создаем транзакцию платного ожидания
+        if total_waiting_fee > 0:
+            # Находим существующую транзакцию платного ожидания для этой аренды
+            existing_tx = db.query(WalletTransaction).filter(
+                WalletTransaction.user_id == current_user.id,
+                WalletTransaction.transaction_type == WalletTransactionType.RENT_WAITING_FEE,
+                WalletTransaction.related_rental_id == rental.id
+            ).first()
+            
+            if additional_fee > 0:
+                if current_user.wallet_balance < additional_fee:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Недостаточно средств для отмены аренды с комиссией: {additional_fee} тг"
+                    )
+            
+            if existing_tx:
+                # Обновляем существующую транзакцию
+                if additional_fee > 0:
+                    current_balance = float(current_user.wallet_balance or 0)
+                    new_balance_after = current_balance - additional_fee
+                    
+                    existing_tx.amount = -total_waiting_fee
+                    existing_tx.description = f"Платное ожидание за {int(time_passed - 15)} мин"
+                    existing_tx.balance_after = new_balance_after
+                    
+                    current_user.wallet_balance = new_balance_after
+                else:
+                    # Транзакция уже содержит правильную сумму, просто обновляем описание
+                    existing_tx.description = f"Платное ожидание за {int(time_passed - 15)} мин"
+            else:
+                # Создаем новую транзакцию, если её еще нет
+                if total_waiting_fee > 0:
+                    balance_before = float(current_user.wallet_balance or 0)
+                    new_balance = balance_before - total_waiting_fee
+                    
+                    if current_user.wallet_balance < total_waiting_fee:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Недостаточно средств для отмены аренды с комиссией: {total_waiting_fee} тг"
+                        )
+                    
+                    tx = WalletTransaction(
+                        user_id=current_user.id,
+                        amount=-total_waiting_fee,
+                        transaction_type=WalletTransactionType.RENT_WAITING_FEE,
+                        description=f"Платное ожидание за {int(time_passed - 15)} мин",
+                        balance_before=balance_before,
+                        balance_after=new_balance,
+                        related_rental_id=rental.id,
+                        created_at=get_local_time(),
+                    )
+                    db.add(tx)
+                    current_user.wallet_balance = new_balance
+            
+            # Обновляем waiting_fee в rental
+            rental.waiting_fee = total_waiting_fee
+        
+        # Итоговая сумма платного ожидания
+        final_waiting_fee = total_waiting_fee
+        
+        # Начисление 50% от суммы платного ожидания владельцу при отмене
+        if final_waiting_fee > 0 and car.owner_id:
+            owner = db.query(User).filter(User.id == car.owner_id).first()
+            if owner:
+                owner_earnings = int(final_waiting_fee * 0.5)
+                owner.wallet_balance = (owner.wallet_balance or 0) + owner_earnings
+                record_wallet_transaction(
+                    db, 
+                    user=owner, 
+                    amount=owner_earnings, 
+                    ttype=WalletTransactionType.OWNER_WAITING_FEE_SHARE, 
+                    description=f"50% от платного ожидания при отмене бронирования (аренда ID: {rental.id})",
+                    related_rental=rental
                 )
-
-            # комиссия за ожидание при отмене
-            record_wallet_transaction(db, user=current_user, amount=-fee, ttype=WalletTransactionType.RENT_WAITING_FEE, description="Комиссия за ожидание при отмене")
-            current_user.wallet_balance -= fee
 
         # Завершаем аренду
         rental.rental_status = RentalStatus.COMPLETED
         rental.end_time = now
-        rental.total_price = fee
-        rental.already_payed = fee
+        if not rental.start_time:
+            rental.start_time = base_time
+        rental.total_price = final_waiting_fee
+        rental.already_payed = final_waiting_fee
         
         # Рассчитываем продолжительность поездки в минутах
         if rental.start_time:
@@ -948,7 +1025,7 @@ async def cancel_reservation(
             return {
                 "message": "Аренда отменена",
                 "minutes_used": int(time_passed),
-                "cancellation_fee": fee,
+                "cancellation_fee": final_waiting_fee,
                 "current_wallet_balance": float(current_user.wallet_balance)
             }
         except Exception as e:
@@ -963,7 +1040,7 @@ async def cancel_reservation(
                         "rental_id": str(rental.id),
                         "car_id": str(rental.car_id),
                         "user_id": str(current_user.id),
-                        "cancellation_fee": fee
+                        "cancellation_fee": final_waiting_fee
                     }
                 )
             except:
