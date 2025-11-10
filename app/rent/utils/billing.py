@@ -253,7 +253,6 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                 (rental.overtime_fee or 0) +
                                 (rental.distance_fee or 0)
                         )
-                        rental.already_payed = (rental.already_payed or 0) + charge
                         record_wallet_transaction(db, user=user, amount=-charge, ttype=WalletTransactionType.RENT_WAITING_FEE, description=f"Платное ожидание {extra} мин", related_rental=rental)
                         user.wallet_balance -= charge
                         db.commit()
@@ -431,7 +430,6 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                 else:
                                     fuel_description = f"Оплата топлива: {fuel_amount} л × {price_per_liter}₸ = {fuel_fee:,}₸"
                                 
-                                rental.already_payed = (rental.already_payed or 0) + fuel_fee
                                 record_wallet_transaction(db, user=user, amount=-fuel_fee, ttype=WalletTransactionType.RENT_FUEL_FEE, description=fuel_description, related_rental=rental)
                                 user.wallet_balance -= fuel_fee
                                 flags["last_charged_fuel"] = fuel_current_rounded
@@ -489,7 +487,6 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                 rental.overtime_fee +
                                 (rental.distance_fee or 0)
                         )
-                        rental.already_payed = (rental.already_payed or 0) + charge_per_minute
                         
                         # Находим или создаем транзакцию для поминутного списания
                         existing_tx = db.query(WalletTransaction).filter(
@@ -602,7 +599,6 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                 + rental.overtime_fee
                                 + (rental.distance_fee or 0)
                             )
-                            rental.already_payed = (rental.already_payed or 0) + charge_ov_per_minute
                             
                             # Находим или создаем транзакцию для сверхтарифа
                             existing_tx = db.query(WalletTransaction).filter(

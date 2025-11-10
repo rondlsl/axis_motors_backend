@@ -2274,8 +2274,8 @@ async def complete_rental(
 
         # Рассчитываем итоговую сумму (топливо уже списано во время поездки)
         rental.total_price = fuel_fee
-        # Обновляем already_payed (все списания уже произошли во время поездки)
-        rental.already_payed = rental.already_payed or 0
+        # already_payed для владельца всегда 0 (не платит за аренду)
+        rental.already_payed = 0
     else:
         # Итоговая сумма БЕЗ топлива (для отдельного отображения)
         total_price_without_fuel = (
@@ -2289,9 +2289,15 @@ async def complete_rental(
         # Итоговая сумма ВКЛЮЧАЯ топливо
         rental.total_price = total_price_without_fuel + fuel_fee
         
-        # Все списания уже произошли во время поездки
-        # Обновляем already_payed (все списания уже произошли во время поездки)
-        rental.already_payed = rental.already_payed or 0
+        # already_payed - это только предоплата при старте аренды
+        # Для HOURS/DAYS: base_price + open_fee + delivery_fee
+        # Для MINUTES: open_fee + delivery_fee
+        if rental.rental_type in [RentalType.HOURS, RentalType.DAYS]:
+            rental.already_payed = (rental.base_price or 0) + (rental.open_fee or 0) + (rental.delivery_fee or 0)
+        elif rental.rental_type == RentalType.MINUTES:
+            rental.already_payed = (rental.open_fee or 0) + (rental.delivery_fee or 0)
+        else:
+            rental.already_payed = 0
 
     # 12) Рассчитываем и сохраняем фактическую продолжительность поездки в минутах для истории
     rental.duration = rounded_minutes
