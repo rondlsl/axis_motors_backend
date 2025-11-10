@@ -29,6 +29,7 @@ from app.gps_api.utils.glonassoft_client import glonassoft_client
 from app.gps_api.utils.telemetry_processor import process_glonassoft_data
 from app.utils.telegram_logger import log_error_to_telegram
 from app.admin.cars.utils import sort_car_photos
+from app.utils.fcm_token import ensure_user_has_unique_fcm_token
 
 Vehicle_Router = APIRouter(prefix="/vehicles", tags=["Vehicles"])
 
@@ -133,6 +134,17 @@ def get_vehicle_info(
         current_user: User = Depends(get_current_user)
 ) -> Dict[str, Any]:
     try:
+        # Проверяем и генерируем FCM токен, если необходимо
+        try:
+            token_updated = ensure_user_has_unique_fcm_token(db, current_user)
+            if token_updated:
+                db.commit()
+                db.refresh(current_user)
+        except Exception as e:
+            logger.error(f"Ошибка при генерации FCM токена в get_vehicle: {e}")
+            # Продолжаем выполнение даже если не удалось сгенерировать токен
+            db.rollback()
+        
         if current_user.role == UserRole.REJECTFIRSTCERT:
             return {"vehicles": []}
         
