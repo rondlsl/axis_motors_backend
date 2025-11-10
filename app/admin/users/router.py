@@ -13,16 +13,18 @@ from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole
 from app.models.application_model import Application, ApplicationStatus
-from app.models.history_model import RentalHistory, RentalStatus
+from app.models.history_model import RentalHistory, RentalStatus, RentalReview
 from app.models.car_model import Car
 from app.models.guarantor_model import GuarantorRequest
 from app.models.wallet_transaction_model import WalletTransaction, WalletTransactionType, get_local_time
+from app.models.rental_actions_model import RentalAction
+from app.models.contract_model import UserContractSignature
 from app.admin.users.schemas import (
     UserProfileSchema, UserRoleUpdateSchema, UserCardSchema, 
     UserListSchema, UserMapPositionSchema, UserCommentUpdateSchema,
     UserSearchFiltersSchema, GuarantorInfoSchema, TripSummarySchema,
     TripListItemSchema, TripDetailSchema, OwnerCarListItemSchema,
-    UserEditSchema, UserBlockSchema, CompanyBonusSchema
+    UserEditSchema, UserBlockSchema, CompanyBonusSchema, DeleteRentalsRequestSchema
 )
 from app.owner.router import calculate_owner_earnings
 from app.admin.cars.utils import sort_car_photos
@@ -1142,3 +1144,129 @@ async def add_company_bonus(
             status_code=500,
             detail="Ошибка при начислении бонуса. Администраторы уведомлены."
         )
+
+
+@users_router.delete("/rentals", summary="Удалить конкретные аренды")
+async def delete_rentals(
+    request: DeleteRentalsRequestSchema,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Удалить конкретные аренды из базы данных (включая связанные данные).
+    Удаляет: wallet_transactions, contract_signatures, rental_actions, rental_reviews, rental_history
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Недостаточно прав. Только администраторы могут удалять аренды")
+
+    if not request.rental_ids:
+        raise HTTPException(status_code=400, detail="Список ID аренд не может быть пустым")
+
+    try:
+        # Преобразуем sid в UUID
+        rental_uuids = []
+        invalid_ids = []
+        
+        for rental_id in request.rental_ids:
+            try:
+                rental_uuid = safe_sid_to_uuid(rental_id)
+                rental_uuids.append(rental_uuid)
+            except Exception:
+                invalid_ids.append(rental_id)
+        
+        if invalid_ids:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Некорректные ID аренд: {', '.join(invalid_ids)}"
+            )
+
+        # Получаем аренды по UUID
+        rentals = db.query(RentalHistory).filter(RentalHistory.id.in_(rental_uuids)).all()
+        
+        if not rentals:
+            return {
+                "message": "Аренды не найдены",
+                "deleted_rentals": 0,
+                "deleted_wallet_transactions": 0,
+                "deleted_contract_signatures": 0,
+                "deleted_rental_actions": 0,
+                "deleted_rental_reviews": 0
+            }
+
+        # Счетчики удаленных записей
+        deleted_rentals_count = len(rentals)
+        deleted_actions_count = 0
+        deleted_signatures_count = 0
+        deleted_transactions_count = 0
+        deleted_reviews_count = 0
+
+        # Для каждой аренды удаляем связанные данные в правильном порядке
+        for rental in rentals:
+            rental_uuid = rental.id
+
+            # 1. Удаляем wallet_transactions (related_rental_id)
+            transactions = db.query(WalletTransaction).filter(
+                WalletTransaction.related_rental_id == rental_uuid
+            ).all()
+            for transaction in transactions:
+                db.delete(transaction)
+                deleted_transactions_count += 1
+
+            # 2. Удаляем user_contract_signatures (rental_id)
+            signatures = db.query(UserContractSignature).filter(
+                UserContractSignature.rental_id == rental_uuid
+            ).all()
+            for signature in signatures:
+                db.delete(signature)
+                deleted_signatures_count += 1
+
+            # 3. Удаляем rental_actions (rental_id)
+            actions = db.query(RentalAction).filter(
+                RentalAction.rental_id == rental_uuid
+            ).all()
+            for action in actions:
+                db.delete(action)
+                deleted_actions_count += 1
+
+            # 4. Удаляем rental_reviews (rental_id)
+            review = db.query(RentalReview).filter(
+                RentalReview.rental_id == rental_uuid
+            ).first()
+            if review:
+                db.delete(review)
+                deleted_reviews_count += 1
+
+        # 5. Удаляем rental_history
+        for rental in rentals:
+            db.delete(rental)
+
+        db.commit()
+
+        return {
+            "message": "Аренды успешно удалены",
+            "deleted_rentals": deleted_rentals_count,
+            "deleted_wallet_transactions": deleted_transactions_count,
+            "deleted_contract_signatures": deleted_signatures_count,
+            "deleted_rental_actions": deleted_actions_count,
+            "deleted_rental_reviews": deleted_reviews_count,
+            "rental_ids": [uuid_to_sid(r.id) for r in rentals]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "admin_delete_rentals",
+                    "rental_ids": request.rental_ids,
+                    "admin_id": str(current_user.id)
+                }
+            )
+        except:
+            pass
+        raise HTTPException(status_code=500, detail=f"Ошибка удаления аренд: {str(e)}")

@@ -221,3 +221,8 @@ class CompanyBonusSchema(BaseModel):
     title: str = Field(..., min_length=1, max_length=100, description="Заголовок бонуса")
     amount: float = Field(..., gt=0, description="Сумма бонуса (должна быть больше 0)")
     description: str = Field(..., min_length=1, max_length=500, description="Описание бонуса")
+
+
+class DeleteRentalsRequestSchema(BaseModel):
+    """Схема для запроса удаления аренд"""
+    rental_ids: List[str] = Field(..., description="Список ID аренд для удаления")
