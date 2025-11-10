@@ -67,7 +67,11 @@ NOTIFICATIONS_TRANSLATIONS = {
         
         # Новая машина для осмотра
         "new_car_for_inspection_title": "Новая машина для осмотра",
-        "new_car_for_inspection_body": "Аренда автомобиля {car_name} ({plate_number}) завершена. Требуется осмотр."
+        "new_car_for_inspection_body": "Аренда автомобиля {car_name} ({plate_number}) завершена. Требуется осмотр.",
+
+        # Повторная проверка документов по запросу финансиста
+        "financier_request_recheck_title": "Требуется повторная проверка документов",
+        "financier_request_recheck_body": "Пожалуйста, загрузите документы повторно для повторной проверки."
     },
     
     "en": {
@@ -138,7 +142,11 @@ NOTIFICATIONS_TRANSLATIONS = {
         
         # New car for inspection
         "new_car_for_inspection_title": "New Car for Inspection",
-        "new_car_for_inspection_body": "Rental of car {car_name} ({plate_number}) completed. Inspection required."
+        "new_car_for_inspection_body": "Rental of car {car_name} ({plate_number}) completed. Inspection required.",
+
+        # Recheck requested by financier
+        "financier_request_recheck_title": "Documents Recheck Required",
+        "financier_request_recheck_body": "Please re-upload your documents for re-verification."
     },
     
     "kz": {
@@ -209,7 +217,11 @@ NOTIFICATIONS_TRANSLATIONS = {
         
         # Жаңа автомобильді тексеру
         "new_car_for_inspection_title": "Жаңа автомобильді тексеру",
-        "new_car_for_inspection_body": "{car_name} ({plate_number}) автомобилінің жалға алуы аяқталды. Тексеру қажет."
+        "new_car_for_inspection_body": "{car_name} ({plate_number}) автомобилінің жалға алуы аяқталды. Тексеру қажет.",
+
+        # Қаржы менеджерінің сұрауы бойынша құжаттарды қайта тексеру
+        "financier_request_recheck_title": "Құжаттарды қайта тексеру қажет",
+        "financier_request_recheck_body": "Қайта тексеру үшін құжаттарды қайта жүктеңіз."
     }
 }
 

@@ -16,6 +16,7 @@ class NotificationStatus(str, Enum):
     DELIVERY_CANCELLED = "delivery_cancelled"  # Доставка отменена
     BALANCE_EXHAUSTED = "balance_exhausted"  # Баланс исчерпан
     DELIVERY_DELAY_PENALTY = "delivery_delay_penalty"  # Штраф за задержку доставки
+    DOCUMENTS_RECHECK_REQUIRED = "documents_recheck_required"  # Требуется повторная проверка документов
     APPLICATION_REJECTED_FINANCIER = "application_rejected_financier"  # Заявка отклонена финансистом
     APPLICATION_REJECTED_MVD = "application_rejected_mvd"  # Заявка отклонена МВД
     APPLICATION_APPROVED_FINANCIER = "application_approved_financier"  # Заявка одобрена финансистом
