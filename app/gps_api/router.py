@@ -146,12 +146,12 @@ def get_vehicle_info(
             db.rollback()
         
         if current_user.role == UserRole.REJECTFIRSTCERT:
-            return {"vehicles": []}
+            return {"vehicles": [], "fcm_token": current_user.fcm_token}
         
         if current_user.role == UserRole.REJECTFIRST:
             available_classes = get_user_available_auto_classes(current_user, db)
             if not available_classes:
-                return {"vehicles": []}
+                return {"vehicles": [], "fcm_token": current_user.fcm_token}
         
         if current_user.role == UserRole.MECHANIC:
             query = db.query(Car)
@@ -299,7 +299,10 @@ def get_vehicle_info(
                 "photo_after_interior_uploaded": photo_after_interior_uploaded
             })
 
-        return {"vehicles": vehicles_data}
+        return {
+            "vehicles": vehicles_data,
+            "fcm_token": current_user.fcm_token
+        }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching vehicles data: {str(e)}")

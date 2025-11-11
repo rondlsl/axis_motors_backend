@@ -135,6 +135,33 @@ async def get_approved_applications(
     applications_data = []
     for app in applications:
         user = app.user
+        
+        # Находим клиентов, за которых этот user является гарантом
+        # (user является гарантом для других клиентов)
+        guarantor_relations = db.query(Guarantor).options(
+            joinedload(Guarantor.client_user)
+        ).filter(
+            and_(
+                Guarantor.guarantor_id == user.id,
+                Guarantor.is_active == True
+            )
+        ).all()
+        
+        # Формируем данные клиентов, за которых user является гарантом
+        clients_data = []
+        for relation in guarantor_relations:
+            client = relation.client_user
+            if client:
+                clients_data.append({
+                    "sid": uuid_to_sid(client.id),
+                    "first_name": client.first_name,
+                    "last_name": client.last_name,
+                    "middle_name": client.middle_name,
+                    "iin": client.iin,
+                    "passport_number": client.passport_number,
+                    "selfie_url": client.selfie_url
+                })
+        
         applications_data.append({
             "application_id": uuid_to_sid(app.id),
             "user_id": uuid_to_sid(user.id),
@@ -165,7 +192,8 @@ async def get_approved_applications(
             "approved_at": app.financier_approved_at.isoformat() if app.financier_approved_at else None,
             "created_at": app.created_at.isoformat(),
             "updated_at": app.updated_at.isoformat(),
-            "reason": app.reason
+            "reason": app.reason,
+            "guaranteed_clients": clients_data  # Клиенты, за которых этот user является гарантом
         })
     
     return {
@@ -214,6 +242,33 @@ async def get_rejected_applications(
     applications_data = []
     for app in applications:
         user = app.user
+        
+        # Находим гарантов этого клиента
+        # (кто является гарантом для этого user)
+        guarantor_relations = db.query(Guarantor).options(
+            joinedload(Guarantor.guarantor_user)
+        ).filter(
+            and_(
+                Guarantor.client_id == user.id,
+                Guarantor.is_active == True
+            )
+        ).all()
+        
+        # Формируем данные гарантов клиента
+        guarantors_data = []
+        for relation in guarantor_relations:
+            guarantor = relation.guarantor_user
+            if guarantor:
+                guarantors_data.append({
+                    "sid": uuid_to_sid(guarantor.id),
+                    "first_name": guarantor.first_name,
+                    "last_name": guarantor.last_name,
+                    "middle_name": guarantor.middle_name,
+                    "iin": guarantor.iin,
+                    "passport_number": guarantor.passport_number,
+                    "selfie_url": guarantor.selfie_url
+                })
+        
         applications_data.append({
             "application_id": uuid_to_sid(app.id),
             "user_id": uuid_to_sid(user.id),
@@ -243,7 +298,8 @@ async def get_rejected_applications(
             "rejected_at": app.financier_rejected_at.isoformat() if app.financier_rejected_at else None,
             "created_at": app.created_at.isoformat(),
             "updated_at": app.updated_at.isoformat(),
-            "reason": app.reason
+            "reason": app.reason,
+            "guarantors": guarantors_data  # Гаранты этого клиента
         })
     
     return {

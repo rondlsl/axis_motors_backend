@@ -2322,39 +2322,87 @@ async def complete_rental(
     rental.waiting_fee = rental.waiting_fee or 0
     rental.distance_fee = rental.distance_fee or 0
 
-    # 10) Рассчитать топливный сбор (включать только при необходимости)
     fuel_fee = 0
     fuel_consumed = 0
-    if rental.fuel_before is not None and rental.fuel_after is not None:
-        # Проверяем, что топливо реально уменьшилось
-        if rental.fuel_after < rental.fuel_before:
-            # Округляем в пользу платформы: fuel_before вверх, fuel_after вниз
-            fuel_before_rounded = ceil(rental.fuel_before)
-            fuel_after_rounded = floor(rental.fuel_after)
-            fuel_consumed = fuel_before_rounded - fuel_after_rounded
-            if fuel_consumed > 0:
-                # Определяем цену за литр в зависимости от типа автомобиля
-                # Электрокар: 100₸/л, Обычный: 350₸/л
-                if car.body_type == CarBodyType.ELECTRIC:
-                    price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER  # 100₸
-                else:
-                    price_per_liter = FUEL_PRICE_PER_LITER  # 350₸
-                fuel_fee = int(fuel_consumed * price_per_liter)
+    
+    if rental.rental_type == RentalType.MINUTES:
+        fuel_fee = 0
+    elif rental.rental_type in (RentalType.HOURS, RentalType.DAYS):
+        existing_fuel_tx = db.query(WalletTransaction).filter(
+            WalletTransaction.related_rental_id == rental.id,
+            WalletTransaction.transaction_type == WalletTransactionType.RENT_FUEL_FEE
+        ).first()
+        
+        if existing_fuel_tx:
+            fuel_fee = abs(existing_fuel_tx.amount)
+        else:
+            if rental.rental_type == RentalType.HOURS:
+                planned_minutes = rental.duration * 60
+            else:
+                planned_minutes = rental.duration * 24 * 60
+            
+            if actual_minutes <= planned_minutes:
+                if rental.fuel_before is not None and rental.fuel_after is not None:
+                    if rental.fuel_after < rental.fuel_before:
+                        fuel_before_rounded = ceil(rental.fuel_before)
+                        fuel_after_rounded = floor(rental.fuel_after)
+                        fuel_consumed = fuel_before_rounded - fuel_after_rounded
+                        if fuel_consumed > 0:
+                            if car.body_type == CarBodyType.ELECTRIC:
+                                price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
+                            else:
+                                price_per_liter = FUEL_PRICE_PER_LITER
+                            fuel_fee = int(fuel_consumed * price_per_liter)
+                            current_user.wallet_balance -= fuel_fee
+                            tx = WalletTransaction(
+                                user_id=current_user.id,
+                                amount=-fuel_fee,
+                                transaction_type=WalletTransactionType.RENT_FUEL_FEE,
+                                description=f"Оплата топлива: {int(fuel_consumed)} л × {price_per_liter}₸ = {fuel_fee:,}₸" if car.body_type != CarBodyType.ELECTRIC else f"Оплата заряда: {int(fuel_consumed)}% × {price_per_liter}₸ = {fuel_fee:,}₸",
+                                balance_before=float(current_user.wallet_balance) + fuel_fee,
+                                balance_after=float(current_user.wallet_balance),
+                                related_rental_id=rental.id,
+                                created_at=get_local_time()
+                            )
+                            db.add(tx)
+            else:
+                end_main_tariff_time = rental.start_time + timedelta(minutes=planned_minutes)
+                time_since_main_end = (now - end_main_tariff_time).total_seconds() / 60
+                
+                if time_since_main_end <= 2 and rental.fuel_before is not None and car.fuel_level is not None:
+                    if car.fuel_level < rental.fuel_before:
+                        fuel_before_rounded = ceil(rental.fuel_before)
+                        fuel_at_end_main_rounded = floor(car.fuel_level)
+                        fuel_consumed_main = fuel_before_rounded - fuel_at_end_main_rounded
+                        
+                        if fuel_consumed_main > 0:
+                            if car.body_type == CarBodyType.ELECTRIC:
+                                price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
+                            else:
+                                price_per_liter = FUEL_PRICE_PER_LITER
+                            fuel_fee = int(fuel_consumed_main * price_per_liter)
+                            current_user.wallet_balance -= fuel_fee
+                            tx = WalletTransaction(
+                                user_id=current_user.id,
+                                amount=-fuel_fee,
+                                transaction_type=WalletTransactionType.RENT_FUEL_FEE,
+                                description=f"Оплата топлива: {int(fuel_consumed_main)} л × {price_per_liter}₸ = {fuel_fee:,}₸" if car.body_type != CarBodyType.ELECTRIC else f"Оплата заряда: {int(fuel_consumed_main)}% × {price_per_liter}₸ = {fuel_fee:,}₸",
+                                balance_before=float(current_user.wallet_balance) + fuel_fee,
+                                balance_after=float(current_user.wallet_balance),
+                                related_rental_id=rental.id,
+                                created_at=get_local_time()
+                            )
+                            db.add(tx)
 
     if car.owner_id == current_user.id:
-        # Владелец платит только за топливо
         rental.base_price = 0
         rental.open_fee = 0
         rental.waiting_fee = 0
         rental.overtime_fee = 0
         rental.distance_fee = 0
-
-        # Рассчитываем итоговую сумму (топливо уже списано во время поездки)
         rental.total_price = fuel_fee
-        # already_payed для владельца всегда 0 (не платит за аренду)
         rental.already_payed = 0
     else:
-        # Итоговая сумма БЕЗ топлива (для отдельного отображения)
         total_price_without_fuel = (
             (rental.base_price or 0)
             + (rental.open_fee or 0)
@@ -2363,12 +2411,8 @@ async def complete_rental(
             + (rental.overtime_fee or 0)
             + (rental.distance_fee or 0)
         )
-        # Итоговая сумма ВКЛЮЧАЯ топливо
         rental.total_price = total_price_without_fuel + fuel_fee
         
-        # already_payed - это только предоплата при старте аренды
-        # Для HOURS/DAYS: base_price + open_fee + delivery_fee
-        # Для MINUTES: open_fee + delivery_fee
         if rental.rental_type in [RentalType.HOURS, RentalType.DAYS]:
             rental.already_payed = (rental.base_price or 0) + (rental.open_fee or 0) + (rental.delivery_fee or 0)
         elif rental.rental_type == RentalType.MINUTES:
