@@ -2366,7 +2366,10 @@ async def complete_rental(
                             )
                             db.add(tx)
             else:
-                if rental.fuel_before is not None and car.fuel_level is not None:
+                end_main_tariff_time = rental.start_time + timedelta(minutes=planned_minutes)
+                time_since_main_end = (now - end_main_tariff_time).total_seconds() / 60
+                
+                if time_since_main_end <= 0.5 and rental.fuel_before is not None and car.fuel_level is not None:
                     if car.fuel_level < rental.fuel_before:
                         fuel_before_rounded = ceil(rental.fuel_before)
                         fuel_at_end_main_rounded = floor(car.fuel_level)
