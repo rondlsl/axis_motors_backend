@@ -1335,7 +1335,10 @@ async def start_rental(
                 current_user.wallet_balance -= rental.delivery_fee
                 total_charged += rental.delivery_fee
             
-            rental.already_payed = total_charged
+            if current_user.wallet_balance >= 0:
+                rental.already_payed = total_charged
+            else:
+                rental.already_payed = 0
                 
         elif rental.rental_type == RentalType.MINUTES:
             # Для минутного тарифа списываем только open_fee и delivery_fee
@@ -1378,7 +1381,10 @@ async def start_rental(
                 current_user.wallet_balance -= delivery_fee
                 total_charged += delivery_fee
             
-            rental.already_payed = total_charged
+            if current_user.wallet_balance >= 0:
+                rental.already_payed = total_charged
+            else:
+                rental.already_payed = 0
 
         # Обновляем машину: меняем статус на IN_USE
         car.status = CarStatus.IN_USE
@@ -2413,12 +2419,27 @@ async def complete_rental(
         )
         rental.total_price = total_price_without_fuel + fuel_fee
         
-        if rental.rental_type in [RentalType.HOURS, RentalType.DAYS]:
-            rental.already_payed = (rental.base_price or 0) + (rental.open_fee or 0) + (rental.delivery_fee or 0)
-        elif rental.rental_type == RentalType.MINUTES:
-            rental.already_payed = (rental.open_fee or 0) + (rental.delivery_fee or 0)
+        if current_user.wallet_balance >= 0:
+            if rental.rental_type in [RentalType.HOURS, RentalType.DAYS]:
+                rental.already_payed = (
+                    (rental.base_price or 0) +
+                    (rental.open_fee or 0) +
+                    (rental.delivery_fee or 0) +
+                    (rental.waiting_fee or 0) +
+                    (rental.overtime_fee or 0) +
+                    fuel_fee
+                )
+            elif rental.rental_type == RentalType.MINUTES:
+                rental.already_payed = (
+                    (rental.open_fee or 0) +
+                    (rental.delivery_fee or 0) +
+                    (rental.overtime_fee or 0)
+                )
+            else:
+                rental.already_payed = 0
         else:
-            rental.already_payed = 0
+            if rental.already_payed is None:
+                rental.already_payed = 0
 
     # 12) Рассчитываем и сохраняем фактическую продолжительность поездки в минутах для истории
     rental.duration = rounded_minutes

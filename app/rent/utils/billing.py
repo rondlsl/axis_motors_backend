@@ -294,6 +294,23 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                 (rental.distance_fee or 0)
                         )
                         db.commit()
+                        if user.wallet_balance >= 0:
+                            if rental.rental_type in (RentalType.HOURS, RentalType.DAYS):
+                                rental.already_payed = (
+                                    (rental.base_price or 0) +
+                                    (rental.open_fee or 0) +
+                                    (rental.delivery_fee or 0) +
+                                    rental.waiting_fee +
+                                    (rental.overtime_fee or 0)
+                                )
+                            elif rental.rental_type == RentalType.MINUTES:
+                                rental.already_payed = (
+                                    (rental.open_fee or 0) +
+                                    (rental.delivery_fee or 0) +
+                                    rental.waiting_fee +
+                                    (rental.overtime_fee or 0)
+                                )
+                            db.commit()
 
                         # Low balance ≤1000 - уведомления отправляются через локализованную функцию
                         if 0 < user.wallet_balance <= 1000 and not flags["low_balance_1000"] and user.fcm_token:
@@ -384,6 +401,21 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                         record_wallet_transaction(db, user=user, amount=-charge, ttype=WalletTransactionType.RENT_WAITING_FEE, description=f"Платное ожидание {extra} мин", related_rental=rental)
                         user.wallet_balance -= charge
                         db.commit()
+                        if user.wallet_balance >= 0:
+                            if rental.rental_type in (RentalType.HOURS, RentalType.DAYS):
+                                rental.already_payed = (
+                                    (rental.base_price or 0) +
+                                    (rental.open_fee or 0) +
+                                    (rental.delivery_fee or 0) +
+                                    rental.waiting_fee
+                                )
+                            elif rental.rental_type == RentalType.MINUTES:
+                                rental.already_payed = (
+                                    (rental.open_fee or 0) +
+                                    (rental.delivery_fee or 0) +
+                                    rental.waiting_fee
+                                )
+                            db.commit()
 
                         # Low balance ≤1000 - уведомления отправляются через локализованную функцию
                         if 0 < user.wallet_balance <= 1000 and not flags["low_balance_1000"] and user.fcm_token:
@@ -507,6 +539,13 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                             db.add(tx)
                         
                         db.commit()
+                        if user.wallet_balance >= 0:
+                            rental.already_payed = (
+                                (rental.open_fee or 0) +
+                                (rental.delivery_fee or 0) +
+                                rental.overtime_fee
+                            )
+                            db.commit()
                         ten_minutes_cost = 10 * car.price_per_minute
                         if car.price_per_minute > 0:
                             minutes_left = user.wallet_balance / car.price_per_minute
@@ -593,6 +632,16 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                     )
                                     db.add(tx)
                                     db.commit()
+                                    if user.wallet_balance >= 0:
+                                        rental.already_payed = (
+                                            (rental.base_price or 0) +
+                                            (rental.open_fee or 0) +
+                                            (rental.delivery_fee or 0) +
+                                            (rental.waiting_fee or 0) +
+                                            (rental.overtime_fee or 0) +
+                                            total_fuel_fee
+                                        )
+                                        db.commit()
 
                     if 0 < remaining <= 10 and not flags["pre_overtime"] and user.fcm_token:
                         push_notifications.append((
@@ -627,7 +676,6 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                 + rental.overtime_fee
                                 + (rental.distance_fee or 0)
                             )
-                            
                             existing_tx = db.query(WalletTransaction).filter(
                                 WalletTransaction.related_rental_id == rental.id,
                                 WalletTransaction.transaction_type == WalletTransactionType.RENT_OVERTIME_FEE
@@ -651,6 +699,21 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                 db.add(tx)
                             
                             db.commit()
+                            existing_fuel_tx = db.query(WalletTransaction).filter(
+                                WalletTransaction.related_rental_id == rental.id,
+                                WalletTransaction.transaction_type == WalletTransactionType.RENT_FUEL_FEE
+                            ).first()
+                            fuel_fee = abs(existing_fuel_tx.amount) if existing_fuel_tx else 0
+                            if user.wallet_balance >= 0:
+                                rental.already_payed = (
+                                    (rental.base_price or 0) +
+                                    (rental.open_fee or 0) +
+                                    (rental.delivery_fee or 0) +
+                                    (rental.waiting_fee or 0) +
+                                    rental.overtime_fee +
+                                    fuel_fee
+                                )
+                                db.commit()
                             ten_minutes_cost = 10 * car.price_per_minute
                             if car.price_per_minute > 0:
                                 minutes_left = user.wallet_balance / car.price_per_minute
