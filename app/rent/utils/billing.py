@@ -415,7 +415,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                     (rental.delivery_fee or 0) +
                                     rental.waiting_fee
                                 )
-                            db.commit()
+                        db.commit()
 
                         # Low balance ≤1000 - уведомления отправляются через локализованную функцию
                         if 0 < user.wallet_balance <= 1000 and not flags["low_balance_1000"] and user.fcm_token:
