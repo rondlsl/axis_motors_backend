@@ -145,14 +145,6 @@ def get_vehicle_info(
             # Продолжаем выполнение даже если не удалось сгенерировать токен
             db.rollback()
         
-        if current_user.role == UserRole.REJECTFIRSTCERT:
-            return {"vehicles": [], "fcm_token": current_user.fcm_token}
-        
-        if current_user.role == UserRole.REJECTFIRST:
-            available_classes = get_user_available_auto_classes(current_user, db)
-            if not available_classes:
-                return {"vehicles": [], "fcm_token": current_user.fcm_token}
-        
         if current_user.role == UserRole.MECHANIC:
             query = db.query(Car)
         else:
@@ -194,7 +186,7 @@ def get_vehicle_info(
                 cars = []
             else:
                 cars = query.filter(Car.auto_class.in_(allowed_enum)).all()
-        elif current_user.role == UserRole.REJECTFIRST:
+        elif current_user.role in [UserRole.REJECTFIRST, UserRole.REJECTFIRSTCERT, UserRole.REJECTFIRSTDOC]:
             available_classes = get_user_available_auto_classes(current_user, db)
             
             if available_classes:
@@ -208,9 +200,9 @@ def get_vehicle_info(
                 if allowed_enum:
                     cars = query.filter(Car.auto_class.in_(allowed_enum)).all()
                 else:
-                    cars = []
+                    cars = query.all()
             else:
-                cars = []
+                cars = query.all()
         else:
             cars = query.all()
 
