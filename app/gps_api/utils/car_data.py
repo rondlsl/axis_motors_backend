@@ -82,7 +82,8 @@ def get_vehicle_id_by_imei(imei: str) -> int:
     imei_to_vehicle_id = {
         "860803068139548": 800283232,  # Hongqi
         "860803068143045": 800212421,  # Mercedes
-        "866011056063951": 800153076   # HAVAL
+        "866011056063951": 800153076,  # HAVAL
+        "860803068146253": 800339176   # Hyundai Tucson
     }
     return imei_to_vehicle_id.get(imei, 800153076)  # Дефолтный vehicle_id
 
@@ -107,6 +108,14 @@ def get_commands_by_imei(imei: str) -> dict:
             "unlock_engine": "chat UNLOCK|OUTPUT0 0"
         },
         "866011056063951": {  # HAVAL - vehicle_id 800153076
+            "open": "*!CEVT 1",
+            "close": "*!CEVT 2",
+            "give_key": "*!2Y",
+            "take_key": "*!2N",
+            "lock_engine": "*!1Y",
+            "unlock_engine": "*!1N"
+        },
+        "860803068146253": {  # Hyundai Tucson - vehicle_id 800339176
             "open": "*!CEVT 1",
             "close": "*!CEVT 2",
             "give_key": "*!2Y",

@@ -147,6 +147,9 @@ def get_vehicle_info(
         
         if current_user.role == UserRole.MECHANIC:
             query = db.query(Car)
+            # Машина 666AZV02 отображается только для пользователя с номером 77027227583
+            if current_user.phone_number != "77027227583":
+                query = query.filter(Car.plate_number != "666AZV02")
         else:
             active_rental = db.query(RentalHistory).filter(
                 RentalHistory.user_id == current_user.id,
@@ -157,6 +160,10 @@ def get_vehicle_info(
                 query = db.query(Car).filter(Car.id == active_rental.car_id)
             else:
                 query = db.query(Car).filter(Car.status.in_([CarStatus.FREE, CarStatus.OCCUPIED]))
+                
+                # Машина 666AZV02 отображается только для пользователя с номером 77027227583
+                if current_user.phone_number != "77027227583":
+                    query = query.filter(Car.plate_number != "666AZV02")
 
         if current_user.role == UserRole.USER and bool(current_user.documents_verified):
             available_classes = get_user_available_auto_classes(current_user, db)
@@ -316,12 +323,16 @@ def search_vehicles(
         # Ищем по имени или номеру
         if current_user.role == UserRole.MECHANIC:
             # Механики могут искать по всем статусам включая занятые
-            cars = db.query(Car).filter(
+            mechanic_query = db.query(Car).filter(
                 or_(
                     Car.name.ilike(f"%{query}%"),
                     Car.plate_number.ilike(f"%{query}%")
                 )
-            ).all()
+            )
+            # Машина 666AZV02 отображается только для пользователя с номером 77027227583
+            if current_user.phone_number != "77027227583":
+                mechanic_query = mechanic_query.filter(Car.plate_number != "666AZV02")
+            cars = mechanic_query.all()
         else:
             # Обычные пользователи ищут только среди машины, которую они забронировали или арендуют
             # Сначала ищем активную аренду пользователя
@@ -341,13 +352,19 @@ def search_vehicles(
                 ).all()
             else:
                 # Если нет активной аренды, ищем среди FREE и OCCUPIED
-                cars = db.query(Car).filter(
+                search_query = db.query(Car).filter(
                     or_(
                         Car.name.ilike(f"%{query}%"),
                         Car.plate_number.ilike(f"%{query}%")
                     ),
                     Car.status.in_([CarStatus.FREE, CarStatus.OCCUPIED])
-                ).all()
+                )
+                
+                # Машина 666AZV02 отображается только для пользователя с номером 77027227583
+                if current_user.phone_number != "77027227583":
+                    search_query = search_query.filter(Car.plate_number != "666AZV02")
+                
+                cars = search_query.all()
 
         vehicles_data = []
         for car in cars:

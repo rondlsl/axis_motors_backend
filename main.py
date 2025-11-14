@@ -2,6 +2,7 @@ import asyncio
 import base64
 import os
 from typing import Dict, Any
+from datetime import datetime
 
 import anyio
 import httpx
@@ -96,11 +97,23 @@ def _update_vehicle_data_sync(vehicles_data: list, db: Session) -> int:
             vehicle_id = str(vehicle["vehicle_id"])
             car = db.query(Car).filter(Car.gps_id == vehicle_id).first()
             if car:
-                # Обновляем координаты всегда
-                if vehicle.get("latitude") is not None:
-                    car.latitude = vehicle["latitude"]
-                if vehicle.get("longitude") is not None:
-                    car.longitude = vehicle["longitude"]
+                lat = vehicle.get("latitude")
+                lon = vehicle.get("longitude")
+                coordinates_updated = False
+                if lat is not None and lon is not None:
+                    if lat != 0.0 or lon != 0.0:
+                        car.latitude = lat
+                        car.longitude = lon
+                        coordinates_updated = True
+                elif lat is not None and lat != 0.0:
+                    car.latitude = lat
+                    coordinates_updated = True
+                elif lon is not None and lon != 0.0:
+                    car.longitude = lon
+                    coordinates_updated = True
+                
+                if coordinates_updated:
+                    car.updated_at = datetime.utcnow()
                 
                 # Обновляем fuel_level, если пришло валидное значение (не null и не 0)
                 fuel = vehicle.get("fuel_level")

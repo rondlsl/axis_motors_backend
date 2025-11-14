@@ -1,10 +1,11 @@
 from enum import Enum
 import uuid
 
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, JSON, Text
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, JSON, Text, DateTime
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
+from datetime import datetime
 from app.dependencies.database.database import Base
 
 
@@ -91,6 +92,7 @@ class Car(Base):
     current_renter_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
     status = Column(SAEnum(CarStatus), default=CarStatus.FREE, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=True)
 
     owner = relationship("User", foreign_keys=[owner_id], back_populates="owned_cars")
     current_renter = relationship("User", foreign_keys=[current_renter_id], back_populates="active_rental")
