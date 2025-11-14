@@ -24,6 +24,10 @@ class BotState:
 # Хранилище состояний пользователей
 user_states: Dict[int, Dict] = {}
 
+# Хранилище состояний ожидания ответа от поддержки (для работы в группе)
+# Ключ: user_id поддержки, Значение: {"chat_id": str, "client_telegram_id": int}
+support_reply_states: Dict[int, Dict] = {}
+
 
 class SupportBot:
     def __init__(self, db_session_factory):
@@ -40,6 +44,7 @@ class SupportBot:
         """Настройка обработчиков команд"""
         self.application.add_handler(CommandHandler("start", self.start_command))
         self.application.add_handler(CommandHandler("help", self.help_command))
+        self.application.add_handler(CommandHandler("cancel", self.cancel_command))
         self.application.add_handler(CallbackQueryHandler(self.button_callback))
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
 
@@ -73,6 +78,26 @@ class SupportBot:
             "Для обращения в поддержку нажмите кнопку 'Обратиться в техподдержку'"
         )
         await update.message.reply_text(help_text)
+    
+    async def cancel_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработка команды /cancel"""
+        user_id = update.effective_user.id
+        
+        # Отмена ответа в группе поддержки
+        if update.message.chat.type in ['group', 'supergroup']:
+            if user_id in support_reply_states:
+                del support_reply_states[user_id]
+                await update.message.reply_text("❌ Ответ отменен")
+            else:
+                await update.message.reply_text("ℹ️ Нет активного ответа для отмены")
+            return
+        
+        # Отмена в личном чате (если есть активное состояние)
+        if user_id in user_states:
+            del user_states[user_id]
+            await update.message.reply_text("❌ Операция отменена")
+        else:
+            await update.message.reply_text("ℹ️ Нет активной операции для отмены")
 
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка нажатий на кнопки"""
@@ -83,6 +108,10 @@ class SupportBot:
         
         if query.data == "start_support":
             await self.start_support_process(query)
+        elif query.data.startswith("reply_"):
+            # Обработка кнопки "Ответить" из группы
+            chat_id = query.data.replace("reply_", "")
+            await self.handle_reply_button(query, chat_id)
 
     async def start_support_process(self, query):
         """Начать процесс обращения в поддержку"""
@@ -120,14 +149,17 @@ class SupportBot:
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка текстовых сообщений"""
-        # Игнорируем сообщения в группах и супергруппах
-        if update.message.chat.type in ['group', 'supergroup']:
-            return
-            
         user = update.effective_user
         user_id = user.id
         message_text = update.message.text
         
+        # Обработка сообщений в группах (ответы от поддержки)
+        if update.message.chat.type in ['group', 'supergroup']:
+            if user_id in support_reply_states:
+                await self.handle_support_reply(update, message_text)
+            return
+        
+        # Обработка сообщений от клиентов (личные чаты)
         if user_id not in user_states:
             await self.start_command(update, context)
             return
@@ -277,7 +309,13 @@ class SupportBot:
                 f"ID чата: {chat.sid}"
             )
             
-            await self.send_to_support_group(notification_text)
+            # Создаем кнопку "Ответить"
+            keyboard = [
+                [InlineKeyboardButton("💬 Ответить", callback_data=f"reply_{chat.sid}")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await self.send_to_support_group(notification_text, reply_markup=reply_markup)
             
         except Exception as e:
             logger.error(f"Error sending notification: {e}")
@@ -296,12 +334,18 @@ class SupportBot:
                 f"ID чата: {chat.sid}"
             )
             
-            await self.send_to_support_group(notification_text)
+            # Создаем кнопку "Ответить"
+            keyboard = [
+                [InlineKeyboardButton("💬 Ответить", callback_data=f"reply_{chat.sid}")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await self.send_to_support_group(notification_text, reply_markup=reply_markup)
             
         except Exception as e:
             logger.error(f"Error sending message notification: {e}")
 
-    async def send_to_support_group(self, text: str):
+    async def send_to_support_group(self, text: str, reply_markup=None):
         """Отправить сообщение в группу поддержки (с разбивкой на части, если превышает лимит Telegram)"""
         try:
             from app.core.config import SUPPORT_GROUP_ID
@@ -312,14 +356,23 @@ class SupportBot:
             
             MAX_MESSAGE_LENGTH = 4096
             
+            # Подготовка payload
+            payload = {
+                "chat_id": SUPPORT_GROUP_ID,
+                "text": text
+            }
+            
+            # Добавляем клавиатуру, если есть
+            if reply_markup:
+                # Конвертируем InlineKeyboardMarkup в JSON
+                keyboard_json = reply_markup.to_dict()
+                payload["reply_markup"] = keyboard_json
+            
             if len(text) <= MAX_MESSAGE_LENGTH:
                 async with httpx.AsyncClient() as client:
                     response = await client.post(
                         f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN_2}/sendMessage",
-                        json={
-                            "chat_id": SUPPORT_GROUP_ID,
-                            "text": text
-                        }
+                        json=payload
                     )
                     response.raise_for_status()
                     logger.info(f"Уведомление отправлено в группу поддержки: {SUPPORT_GROUP_ID}")
@@ -351,12 +404,18 @@ class SupportBot:
                         if len(parts) > 1:
                             part_text = f"[Часть {i + 1} из {len(parts)}]\n\n{part}"
                         
+                        part_payload = {
+                            "chat_id": SUPPORT_GROUP_ID,
+                            "text": part_text
+                        }
+                        
+                        # Добавляем клавиатуру только к последней части
+                        if reply_markup and i == len(parts) - 1:
+                            part_payload["reply_markup"] = reply_markup.to_dict()
+                        
                         response = await client.post(
                             f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN_2}/sendMessage",
-                            json={
-                                "chat_id": SUPPORT_GROUP_ID,
-                                "text": part_text
-                            }
+                            json=part_payload
                         )
                         response.raise_for_status()
                         
@@ -368,6 +427,116 @@ class SupportBot:
         except Exception as e:
             logger.error(f"Ошибка отправки в группу поддержки: {e}")
 
+    async def handle_reply_button(self, query, chat_id: str):
+        """Обработка нажатия кнопки 'Ответить' в группе"""
+        try:
+            user_id = query.from_user.id
+            
+            # Получаем информацию о чате
+            db_gen = self.db_session_factory()
+            db = next(db_gen)
+            try:
+                support_service = SupportService(db)
+                chat = support_service.get_chat_by_sid(chat_id)
+                
+                if not chat:
+                    await query.answer("❌ Чат не найден", show_alert=True)
+                    return
+                
+                # Сохраняем состояние ожидания ответа
+                support_reply_states[user_id] = {
+                    "chat_id": chat_id,
+                    "client_telegram_id": chat.user_telegram_id
+                }
+                
+                # Отправляем подтверждение
+                await query.answer("✅ Теперь отправьте ваш ответ клиенту в эту группу")
+                
+                # Отправляем сообщение в группу с инструкцией
+                from app.core.config import SUPPORT_GROUP_ID
+                instruction_text = (
+                    f"👤 {query.from_user.first_name} готов ответить клиенту\n"
+                    f"📝 Отправьте ваше сообщение в эту группу, и оно будет доставлено клиенту\n"
+                    f"❌ Для отмены отправьте /cancel"
+                )
+                
+                async with httpx.AsyncClient() as client:
+                    await client.post(
+                        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN_2}/sendMessage",
+                        json={
+                            "chat_id": SUPPORT_GROUP_ID,
+                            "text": instruction_text,
+                            "reply_to_message_id": query.message.message_id
+                        }
+                    )
+                
+            finally:
+                db.close()
+                
+        except Exception as e:
+            logger.error(f"Ошибка в handle_reply_button: {e}")
+            await query.answer("❌ Произошла ошибка", show_alert=True)
+    
+    async def handle_support_reply(self, update: Update, message_text: str):
+        """Обработка ответа от поддержки в группе"""
+        try:
+            user_id = update.effective_user.id
+            
+            if user_id not in support_reply_states:
+                return
+            
+            reply_state = support_reply_states[user_id]
+            chat_id = reply_state["chat_id"]
+            client_telegram_id = reply_state["client_telegram_id"]
+            
+            # Отправляем сообщение клиенту
+            full_text = f"📞 Поддержка:\n\n{message_text}"
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN_2}/sendMessage",
+                    json={
+                        "chat_id": client_telegram_id,
+                        "text": full_text
+                    }
+                )
+                response.raise_for_status()
+            
+            # Сохраняем сообщение в БД
+            db_gen = self.db_session_factory()
+            db = next(db_gen)
+            try:
+                support_service = SupportService(db)
+                
+                message_data = SupportMessageCreate(
+                    chat_id=chat_id,
+                    sender_type=SupportMessageSenderType.SUPPORT,
+                    message_text=message_text
+                )
+                
+                support_service.add_message(message_data)
+                
+                # Обновляем статус чата на "В работе", если он был "Новое"
+                chat = support_service.get_chat_by_sid(chat_id)
+                if chat and chat.status == SupportChatStatus.NEW:
+                    support_service.update_chat_status(chat_id, SupportChatStatus.IN_PROGRESS)
+                
+            finally:
+                db.close()
+            
+            # Удаляем состояние ожидания ответа
+            del support_reply_states[user_id]
+            
+            # Подтверждение в группе
+            await update.message.reply_text("✅ Ответ отправлен клиенту!")
+            
+            logger.info(f"Ответ от поддержки отправлен клиенту {client_telegram_id}")
+            
+        except Exception as e:
+            logger.error(f"Ошибка в handle_support_reply: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await update.message.reply_text("❌ Ошибка при отправке ответа клиенту")
+    
     def get_status_text(self, status: str) -> str:
         """Получить текстовое описание статуса"""
         status_map = {
