@@ -479,9 +479,10 @@ class SupportBot:
     
     async def handle_support_reply(self, update: Update, message_text: str):
         """Обработка ответа от поддержки в группе"""
+        user_id = update.effective_user.id
+        message_sent_to_client = False
+        
         try:
-            user_id = update.effective_user.id
-            
             if user_id not in support_reply_states:
                 return
             
@@ -502,6 +503,9 @@ class SupportBot:
                 )
                 response.raise_for_status()
             
+            # Сообщение успешно отправлено клиенту
+            message_sent_to_client = True
+            
             # Сохраняем сообщение в БД
             db_gen = self.db_session_factory()
             db = next(db_gen)
@@ -519,13 +523,17 @@ class SupportBot:
                 # Обновляем статус чата на "В работе", если он был "Новое"
                 chat = support_service.get_chat_by_sid(chat_id)
                 if chat and chat.status == SupportChatStatus.NEW:
-                    support_service.update_chat_status(chat_id, SupportChatStatus.IN_PROGRESS)
+                    support_service.update_chat_status_by_sid(chat_id, SupportChatStatus.IN_PROGRESS)
                 
+            except Exception as db_error:
+                logger.error(f"Ошибка при сохранении в БД: {db_error}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
             finally:
                 db.close()
             
             # Удаляем состояние ожидания ответа
-            del support_reply_states[user_id]
+            if user_id in support_reply_states:
+                del support_reply_states[user_id]
             
             # Подтверждение в группе
             await update.message.reply_text("✅ Ответ отправлен клиенту!")
@@ -535,7 +543,19 @@ class SupportBot:
         except Exception as e:
             logger.error(f"Ошибка в handle_support_reply: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await update.message.reply_text("❌ Ошибка при отправке ответа клиенту")
+            
+            # Удаляем состояние, если сообщение было отправлено
+            if message_sent_to_client and user_id in support_reply_states:
+                del support_reply_states[user_id]
+            
+            # Отправляем соответствующее сообщение об ошибке
+            try:
+                if message_sent_to_client:
+                    await update.message.reply_text("⚠️ Сообщение отправлено клиенту, но произошла ошибка при сохранении в БД")
+                else:
+                    await update.message.reply_text("❌ Ошибка при отправке ответа клиенту")
+            except:
+                pass
     
     def get_status_text(self, status: str) -> str:
         """Получить текстовое описание статуса"""
