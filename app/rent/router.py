@@ -29,7 +29,7 @@ from app.rent.utils.calculate_price import calculate_total_price, get_open_price
 from app.gps_api.utils.route_data import get_gps_route_data
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.car_data import auto_lock_vehicle_after_rental, execute_gps_sequence, send_open, send_unlock_engine
-from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
+from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD, TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2
 from app.utils.atomic_operations import delete_uploaded_files
 from app.utils.telegram_logger import log_error_to_telegram
 from app.guarantor.sms_utils import send_rental_start_sms, send_rental_complete_sms
@@ -1422,6 +1422,50 @@ async def start_rental(
                 pass
 
         is_owner_rental = False
+
+    # Отправляем уведомление в Telegram на оба бота о начале аренды
+    try:
+        name_parts = []
+        if current_user.first_name:
+            name_parts.append(current_user.first_name)
+        if current_user.middle_name:
+            name_parts.append(current_user.middle_name)
+        if current_user.last_name:
+            name_parts.append(current_user.last_name)
+        full_name = " ".join(name_parts) if name_parts else "Не указано"
+        
+        notification_text = (
+            f"Начало аренды\n\n"
+            f"Клиент: {full_name}\n"
+            f"Телефон: {current_user.phone_number or 'Не указан'}\n"
+            f"Машина: {car.name}\n"
+            f"Гос. номер: {car.plate_number or 'Не указан'}\n"
+            f"ID аренды: {uuid_to_sid(rental.id)}"
+        )
+        
+        async def _send_telegram_notification(text: str, chat_id: int, bot_token: str):
+            try:
+                async with httpx.AsyncClient() as client:
+                    await client.post(
+                        f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                        json={"chat_id": chat_id, "text": text}
+                    )
+            except Exception as e:
+                print(f"Ошибка отправки Telegram уведомления в {chat_id}: {e}")
+        
+        # Список чатов для уведомлений
+        chat_ids = [965048905, 5941825713, 860991388]
+        
+        if TELEGRAM_BOT_TOKEN:
+            for chat_id in chat_ids:
+                asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN))
+        
+        if TELEGRAM_BOT_TOKEN_2:
+            for chat_id in chat_ids:
+                asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN_2))
+                
+    except Exception as e:
+        print(f"Ошибка отправки уведомления о начале аренды в Telegram: {e}")
 
     # try:
     #     name_parts = []
