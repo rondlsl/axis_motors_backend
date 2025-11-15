@@ -242,78 +242,86 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                     flags["pre_waiting"] = True
 
                 # Charge waiting fee after 15 min
-                # Платное ожидание начисляется каждый раз, когда прошло больше 15 минут
-                # Аренда остается в статусе RESERVED, но платное ожидание начисляется
+                # Платное ожидание начисляется если прошло больше 15 минут:
+                # - Если была доставка - от delivery_end_time
+                # - Если доставки не было - от reservation_time
+                # Если доставка в процессе (waited = 0), платное ожидание не начисляется
                 if waited > 15:
-                    extra = math.ceil(waited - 15)
-                    fee_total_wait = math.ceil(extra * car.price_per_minute * 0.5)
-                    prev_wait = rental.waiting_fee or 0
-                    charge = fee_total_wait - prev_wait
-                    
-                    # Обновляем платное ожидание каждый раз, когда есть изменения
-                    if charge != 0:
-                        # Находим существующую транзакцию платного ожидания для этой аренды
-                        existing_tx = db.query(WalletTransaction).filter(
-                            WalletTransaction.user_id == user.id,
-                            WalletTransaction.transaction_type == WalletTransactionType.RENT_WAITING_FEE,
-                            WalletTransaction.related_rental_id == rental.id
-                        ).first()
+                    # Проверяем условия перед созданием транзакции
+                    # Если доставка в процессе - не списываем платное ожидание
+                    if rental.delivery_start_time and not rental.delivery_end_time:
+                        # Доставка в процессе - пропускаем
+                        pass
+                    else:
+                        extra = math.ceil(waited - 15)
+                        fee_total_wait = math.ceil(extra * car.price_per_minute * 0.5)
+                        prev_wait = rental.waiting_fee or 0
+                        charge = fee_total_wait - prev_wait
                         
-                        if existing_tx:
-                            # Обновляем существующую транзакцию
-                            # Старая сумма уже списана, нужно списать только разницу
-                            current_balance = float(user.wallet_balance or 0)
-                            new_balance_after = current_balance - charge
+                        # Обновляем платное ожидание каждый раз, когда есть изменения
+                        if charge != 0:
+                            # Находим существующую транзакцию платного ожидания для этой аренды
+                            existing_tx = db.query(WalletTransaction).filter(
+                                WalletTransaction.user_id == user.id,
+                                WalletTransaction.transaction_type == WalletTransactionType.RENT_WAITING_FEE,
+                                WalletTransaction.related_rental_id == rental.id
+                            ).first()
                             
-                            existing_tx.amount = -fee_total_wait
-                            existing_tx.description = f"Платное ожидание за {extra} мин"
-                            existing_tx.balance_after = new_balance_after
+                            if existing_tx:
+                                # Обновляем существующую транзакцию
+                                # Старая сумма уже списана, нужно списать только разницу
+                                current_balance = float(user.wallet_balance or 0)
+                                new_balance_after = current_balance - charge
+                                
+                                existing_tx.amount = -fee_total_wait
+                                existing_tx.description = f"Платное ожидание за {extra} мин"
+                                existing_tx.balance_after = new_balance_after
+                                
+                                user.wallet_balance = new_balance_after
+                            else:
+                                # Создаем новую транзакцию при первом начислении
+                                balance_before = float(user.wallet_balance or 0)
+                                new_balance = balance_before - fee_total_wait
+                                
+                                tx = WalletTransaction(
+                                    user_id=user.id,
+                                    amount=-fee_total_wait,
+                                    transaction_type=WalletTransactionType.RENT_WAITING_FEE,
+                                    description=f"Платное ожидание за {extra} мин",
+                                    balance_before=balance_before,
+                                    balance_after=new_balance,
+                                    related_rental_id=rental.id,
+                                    created_at=get_local_time(),
+                                )
+                                db.add(tx)
+                                user.wallet_balance = new_balance
                             
-                            user.wallet_balance = new_balance_after
-                        else:
-                            # Создаем новую транзакцию при первом начислении
-                            balance_before = float(user.wallet_balance or 0)
-                            new_balance = balance_before - fee_total_wait
-                            
-                            tx = WalletTransaction(
-                                user_id=user.id,
-                                amount=-fee_total_wait,
-                                transaction_type=WalletTransactionType.RENT_WAITING_FEE,
-                                description=f"Платное ожидание за {extra} мин",
-                                balance_before=balance_before,
-                                balance_after=new_balance,
-                                related_rental_id=rental.id,
-                                created_at=get_local_time(),
-                            )
-                            db.add(tx)
-                            user.wallet_balance = new_balance
-                        
-                        rental.waiting_fee = fee_total_wait
-                        rental.total_price = (
-                                (rental.base_price or 0) +
-                                (rental.open_fee or 0) +
-                                (rental.delivery_fee or 0) +
-                                rental.waiting_fee +
-                                (rental.overtime_fee or 0) +
-                                (rental.distance_fee or 0)
-                        )
-                        db.commit()
-                        if user.wallet_balance >= 0:
-                            if rental.rental_type in (RentalType.HOURS, RentalType.DAYS):
-                                rental.already_payed = (
+                            rental.waiting_fee = fee_total_wait
+                            rental.total_price = (
                                     (rental.base_price or 0) +
                                     (rental.open_fee or 0) +
                                     (rental.delivery_fee or 0) +
                                     rental.waiting_fee +
-                                    (rental.overtime_fee or 0)
-                                )
-                            elif rental.rental_type == RentalType.MINUTES:
-                                rental.already_payed = (
-                                    (rental.open_fee or 0) +
-                                    (rental.delivery_fee or 0) +
-                                    rental.waiting_fee +
-                                    (rental.overtime_fee or 0)
-                                )
+                                    (rental.overtime_fee or 0) +
+                                    (rental.distance_fee or 0)
+                            )
+                            db.commit()
+                            if user.wallet_balance >= 0:
+                                if rental.rental_type in (RentalType.HOURS, RentalType.DAYS):
+                                    rental.already_payed = (
+                                        (rental.base_price or 0) +
+                                        (rental.open_fee or 0) +
+                                        (rental.delivery_fee or 0) +
+                                        rental.waiting_fee +
+                                        (rental.overtime_fee or 0)
+                                    )
+                                elif rental.rental_type == RentalType.MINUTES:
+                                    rental.already_payed = (
+                                        (rental.open_fee or 0) +
+                                        (rental.delivery_fee or 0) +
+                                        rental.waiting_fee +
+                                        (rental.overtime_fee or 0)
+                                    )
                             db.commit()
 
                         # Low balance ≤1000 - уведомления отправляются через локализованную функцию
@@ -359,8 +367,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
             # === DELIVERY stages ===
             elif rental.rental_status in [RentalStatus.DELIVERING, RentalStatus.DELIVERY_RESERVED, RentalStatus.DELIVERING_IN_PROGRESS]:
                 # Во время доставки клиент не платит waiting_fee
-                # Если доставка завершена - считаем от delivery_end_time
-                # Пока доставка не завершена - бесплатное ожидание не идет
+                # Бесплатное ожидание начинается только после завершения доставки
+                # Пока доставка не завершена, клиент не платит за ожидание
                 if rental.delivery_end_time:
                     # Доставка завершена - считаем время ожидания с момента завершения доставки
                     base_time = rental.delivery_end_time
