@@ -413,7 +413,11 @@ async def verify_forte_transaction(tracking_id: str) -> tuple[bool, Optional[int
     Проверяет транзакцию через API ForteBank
     Возвращает: (is_successful, amount, error_message)
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     if not FORTE_SHOP_ID or not FORTE_SECRET_KEY:
+        logger.error("ForteBank credentials not configured")
         return False, None, "ForteBank credentials not configured"
     
     try:
@@ -427,46 +431,74 @@ async def verify_forte_transaction(tracking_id: str) -> tuple[bool, Optional[int
             "Content-Type": "application/json"
         }
         
+        logger.info(f"Checking ForteBank transaction: tracking_id={tracking_id}, url={url}")
+        
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(url, headers=headers)
             
+            # Логируем ответ для отладки
+            logger.info(f"ForteBank API response: status={response.status_code}, tracking_id={tracking_id}")
+            
             if response.status_code == 404:
+                logger.warning(f"Transaction not found: tracking_id={tracking_id}")
                 return False, None, "Транзакция не найдена"
             
             if response.status_code != 200:
-                return False, None, f"Ошибка API ForteBank: {response.status_code}"
+                # Пытаемся получить детали ошибки из ответа
+                try:
+                    error_data = response.json()
+                    error_message = error_data.get("message") or error_data.get("detail") or error_data.get("error") or str(error_data)
+                    logger.error(f"ForteBank API error: status={response.status_code}, message={error_message}, full_response={error_data}")
+                    # Возвращаем детальное сообщение об ошибке
+                    return False, None, f"Ошибка API ForteBank ({response.status_code}): {error_message}"
+                except Exception as parse_error:
+                    error_text = response.text[:1000]  # Первые 1000 символов
+                    logger.error(f"ForteBank API error: status={response.status_code}, response_text={error_text}, parse_error={str(parse_error)}")
+                    return False, None, f"Ошибка API ForteBank ({response.status_code}): {error_text if error_text else 'Не удалось получить детали ошибки'}"
             
             data = response.json()
             transactions = data.get("transactions", [])
             
+            logger.info(f"Found {len(transactions)} transactions for tracking_id={tracking_id}")
+            
             if not transactions:
+                logger.warning(f"No transactions found: tracking_id={tracking_id}")
                 return False, None, "Транзакции не найдены"
             
             # Ищем успешную транзакцию
             successful_transaction = None
             for tx in transactions:
-                if tx.get("status") == "successful":
+                tx_status = tx.get("status")
+                logger.info(f"Transaction status: {tx_status}, type: {tx.get('type')}, amount: {tx.get('amount')}")
+                if tx_status == "successful":
                     successful_transaction = tx
                     break
             
             if not successful_transaction:
+                logger.warning(f"No successful transaction found: tracking_id={tracking_id}, transactions={transactions}")
                 return False, None, "Успешная транзакция не найдена"
             
             # Проверяем, что это платеж (type == "payment")
             if successful_transaction.get("type") != "payment":
+                logger.warning(f"Transaction is not a payment: type={successful_transaction.get('type')}")
                 return False, None, "Транзакция не является платежом"
             
             # Получаем сумму (в тийинах, нужно разделить на 100)
             amount_tiyin = successful_transaction.get("amount", 0)
             amount_kzt = amount_tiyin / 100
             
+            logger.info(f"Transaction verified successfully: tracking_id={tracking_id}, amount={amount_kzt} KZT")
+            
             return True, int(amount_kzt), None
             
-    except httpx.TimeoutException:
+    except httpx.TimeoutException as e:
+        logger.error(f"Timeout checking ForteBank transaction: tracking_id={tracking_id}, error={str(e)}")
         return False, None, "Таймаут при проверке транзакции"
     except httpx.RequestError as e:
+        logger.error(f"Request error checking ForteBank transaction: tracking_id={tracking_id}, error={str(e)}")
         return False, None, f"Ошибка запроса: {str(e)}"
     except Exception as e:
+        logger.exception(f"Unexpected error checking ForteBank transaction: tracking_id={tracking_id}, error={str(e)}")
         return False, None, f"Ошибка при проверке транзакции: {str(e)}"
 
 
