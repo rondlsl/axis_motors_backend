@@ -507,33 +507,14 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                         WalletTransaction.transaction_type == WalletTransactionType.RENT_MINUTE_CHARGE
                     ).order_by(WalletTransaction.created_at.desc()).first()
                     
+                    # Рассчитываем уже списанные минуты из суммы транзакции (более надежно, чем парсить описание)
+                    prev_minutes_charged = 0
+                    if existing_tx and existing_tx.amount and car.price_per_minute > 0:
+                        # amount отрицательный, берем модуль и делим на цену за минуту
+                        prev_minutes_charged = int(abs(float(existing_tx.amount)) / car.price_per_minute)
+                    
                     # Рассчитываем прошедшее время от start_time
                     elapsed_min = math.ceil(elapsed)
-                    
-                    # Рассчитываем уже списанные минуты
-                    # Сначала пытаемся взять из описания (если было изменено вручную)
-                    # Если не получается, берем из суммы транзакции
-                    # Но не больше прошедшего времени, чтобы списание продолжалось
-                    prev_minutes_charged = 0
-                    if existing_tx:
-                        # Пытаемся извлечь количество минут из описания
-                        minutes_from_description = None
-                        if existing_tx.description:
-                            match = re.search(r'(\d+)\s*мин', existing_tx.description)
-                            if match:
-                                minutes_from_description = int(match.group(1))
-                        
-                        # Рассчитываем количество минут из суммы
-                        minutes_from_amount = None
-                        if existing_tx.amount and car.price_per_minute > 0:
-                            minutes_from_amount = int(abs(float(existing_tx.amount)) / car.price_per_minute)
-                        
-                        if minutes_from_description is not None:
-                            prev_minutes_charged = min(minutes_from_description, elapsed_min)
-                        elif minutes_from_amount is not None:
-                            # Используем сумму, но не больше прошедшего времени
-                            prev_minutes_charged = min(minutes_from_amount, elapsed_min)
-                    
                     new_minutes = elapsed_min - prev_minutes_charged
                     
                     if new_minutes > 0:
