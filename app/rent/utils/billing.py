@@ -507,11 +507,29 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                         WalletTransaction.transaction_type == WalletTransactionType.RENT_MINUTE_CHARGE
                     ).order_by(WalletTransaction.created_at.desc()).first()
                     
-                    # Рассчитываем уже списанные минуты из суммы транзакции (более надежно, чем парсить описание)
+                    # Рассчитываем уже списанные минуты
+                    # Сначала пытаемся взять из описания (если было изменено вручную)
+                    # Если не получается, берем из суммы транзакции
                     prev_minutes_charged = 0
-                    if existing_tx and existing_tx.amount and car.price_per_minute > 0:
-                        # amount отрицательный, берем модуль и делим на цену за минуту
-                        prev_minutes_charged = int(abs(float(existing_tx.amount)) / car.price_per_minute)
+                    if existing_tx:
+                        # Пытаемся извлечь количество минут из описания
+                        minutes_from_description = None
+                        if existing_tx.description:
+                            match = re.search(r'(\d+)\s*мин', existing_tx.description)
+                            if match:
+                                minutes_from_description = int(match.group(1))
+                        
+                        # Рассчитываем количество минут из суммы
+                        minutes_from_amount = None
+                        if existing_tx.amount and car.price_per_minute > 0:
+                            minutes_from_amount = int(abs(float(existing_tx.amount)) / car.price_per_minute)
+                        
+                        # Используем количество минут из описания, если оно есть и отличается от суммы
+                        # Это позволяет учитывать ручные изменения описания
+                        if minutes_from_description is not None:
+                            prev_minutes_charged = minutes_from_description
+                        elif minutes_from_amount is not None:
+                            prev_minutes_charged = minutes_from_amount
                     
                     # Рассчитываем прошедшее время от start_time
                     elapsed_min = math.ceil(elapsed)
