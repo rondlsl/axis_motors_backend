@@ -507,9 +507,13 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                         WalletTransaction.transaction_type == WalletTransactionType.RENT_MINUTE_CHARGE
                     ).order_by(WalletTransaction.created_at.desc()).first()
                     
+                    # Рассчитываем прошедшее время от start_time
+                    elapsed_min = math.ceil(elapsed)
+                    
                     # Рассчитываем уже списанные минуты
                     # Сначала пытаемся взять из описания (если было изменено вручную)
                     # Если не получается, берем из суммы транзакции
+                    # Но не больше прошедшего времени, чтобы списание продолжалось
                     prev_minutes_charged = 0
                     if existing_tx:
                         # Пытаемся извлечь количество минут из описания
@@ -524,15 +528,12 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                         if existing_tx.amount and car.price_per_minute > 0:
                             minutes_from_amount = int(abs(float(existing_tx.amount)) / car.price_per_minute)
                         
-                        # Используем количество минут из описания, если оно есть и отличается от суммы
-                        # Это позволяет учитывать ручные изменения описания
                         if minutes_from_description is not None:
-                            prev_minutes_charged = minutes_from_description
+                            prev_minutes_charged = min(minutes_from_description, elapsed_min)
                         elif minutes_from_amount is not None:
-                            prev_minutes_charged = minutes_from_amount
+                            # Используем сумму, но не больше прошедшего времени
+                            prev_minutes_charged = min(minutes_from_amount, elapsed_min)
                     
-                    # Рассчитываем прошедшее время от start_time
-                    elapsed_min = math.ceil(elapsed)
                     new_minutes = elapsed_min - prev_minutes_charged
                     
                     if new_minutes > 0:
