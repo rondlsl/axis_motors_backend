@@ -326,7 +326,6 @@ async def complete_delivery(
                 mechanic.wallet_balance -= penalty_fee
                 print(f"Штраф за задержку доставки: {penalty_fee}₸ с механика {mechanic.phone_number}")
 
-    rental.end_time = delivery_end_time
     rental.rental_status = RentalStatus.RESERVED
     car.status = CarStatus.RESERVED
     rental.delivery_mechanic_id = None
