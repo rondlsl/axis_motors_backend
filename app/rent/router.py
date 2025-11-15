@@ -889,24 +889,26 @@ async def cancel_reservation(
         # Логика для владельца: аренда бесплатная, пропускаем комиссии
         rental.rental_status = RentalStatus.COMPLETED
         rental.end_time = now
-        if not rental.start_time:
-            rental.start_time = base_time
+        # start_time устанавливается только при реальном старте аренды, не при отмене
         rental.total_price = 0
         rental.already_payed = 0
         rental.end_latitude = car.latitude
         rental.end_longitude = car.longitude
         
-        # Рассчитываем продолжительность поездки в минутах
+        # Рассчитываем продолжительность поездки в минутах (только если аренда уже началась)
         if rental.start_time:
             duration_seconds = (now - rental.start_time).total_seconds()
             rental.duration = int(duration_seconds / 60)
+        else:
+            # Если аренда отменена до старта, продолжительность = 0
+            rental.duration = 0
         
         car.current_renter_id = None
         car.status = CarStatus.FREE
         db.commit()
         return {
             "message": "Аренда отменена (owner rental)",
-            "minutes_used": int((now - rental.start_time).total_seconds() / 60),
+            "minutes_used": int((now - (rental.start_time or base_time)).total_seconds() / 60),
             "cancellation_fee": 0,
             "current_wallet_balance": float(current_user.wallet_balance)
         }
@@ -1006,15 +1008,17 @@ async def cancel_reservation(
         # Завершаем аренду
         rental.rental_status = RentalStatus.COMPLETED
         rental.end_time = now
-        if not rental.start_time:
-            rental.start_time = base_time
+        # start_time устанавливается только при реальном старте аренды, не при отмене
         rental.total_price = final_waiting_fee
         rental.already_payed = final_waiting_fee
         
-        # Рассчитываем продолжительность поездки в минутах
+        # Рассчитываем продолжительность поездки в минутах (только если аренда уже началась)
         if rental.start_time:
             duration_seconds = (now - rental.start_time).total_seconds()
             rental.duration = int(duration_seconds / 60)
+        else:
+            # Если аренда отменена до старта, продолжительность = 0
+            rental.duration = 0
 
         # Освобождаем машину и возвращаем статус "FREE"
         car.current_renter_id = None
@@ -1322,18 +1326,26 @@ async def start_rental(
                 current_user.wallet_balance -= rental.open_fee
                 total_charged += rental.open_fee
             
-            # 3. Доставка
+            # 3. Доставка (списываем только если еще не была списана при резервировании)
             if rental.delivery_fee and rental.delivery_fee > 0:
-                record_wallet_transaction(
-                    db, 
-                    user=current_user, 
-                    amount=-rental.delivery_fee, 
-                    ttype=WalletTransactionType.RENT_BASE_CHARGE, 
-                    description="Оплата доставки",
-                    related_rental=rental
-                )
-                current_user.wallet_balance -= rental.delivery_fee
-                total_charged += rental.delivery_fee
+                # Проверяем, была ли уже создана транзакция DELIVERY_FEE для этой аренды
+                existing_delivery_transaction = db.query(WalletTransaction).filter(
+                    WalletTransaction.related_rental_id == rental.id,
+                    WalletTransaction.transaction_type == WalletTransactionType.DELIVERY_FEE
+                ).first()
+                
+                if not existing_delivery_transaction:
+                    # Доставка еще не была списана, списываем сейчас
+                    record_wallet_transaction(
+                        db, 
+                        user=current_user, 
+                        amount=-rental.delivery_fee, 
+                        ttype=WalletTransactionType.RENT_BASE_CHARGE, 
+                        description="Оплата доставки",
+                        related_rental=rental
+                    )
+                    current_user.wallet_balance -= rental.delivery_fee
+                    total_charged += rental.delivery_fee
             
             if current_user.wallet_balance >= 0:
                 rental.already_payed = total_charged
@@ -1368,18 +1380,26 @@ async def start_rental(
                 current_user.wallet_balance -= open_fee
                 total_charged += open_fee
             
-            # 2. Доставка
+            # 2. Доставка (списываем только если еще не была списана при резервировании)
             if delivery_fee > 0:
-                record_wallet_transaction(
-                    db, 
-                    user=current_user, 
-                    amount=-delivery_fee, 
-                    ttype=WalletTransactionType.RENT_BASE_CHARGE, 
-                    description="Оплата доставки",
-                    related_rental=rental
-                )
-                current_user.wallet_balance -= delivery_fee
-                total_charged += delivery_fee
+                # Проверяем, была ли уже создана транзакция DELIVERY_FEE для этой аренды
+                existing_delivery_transaction = db.query(WalletTransaction).filter(
+                    WalletTransaction.related_rental_id == rental.id,
+                    WalletTransaction.transaction_type == WalletTransactionType.DELIVERY_FEE
+                ).first()
+                
+                if not existing_delivery_transaction:
+                    # Доставка еще не была списана, списываем сейчас
+                    record_wallet_transaction(
+                        db, 
+                        user=current_user, 
+                        amount=-delivery_fee, 
+                        ttype=WalletTransactionType.RENT_BASE_CHARGE, 
+                        description="Оплата доставки",
+                        related_rental=rental
+                    )
+                    current_user.wallet_balance -= delivery_fee
+                    total_charged += delivery_fee
             
             if current_user.wallet_balance >= 0:
                 rental.already_payed = total_charged
