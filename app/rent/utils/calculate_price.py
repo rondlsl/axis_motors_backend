@@ -68,7 +68,7 @@ def calc_required_balance(
     Рассчитывает минимальный баланс для аренды:
     - MINUTES: открытие дверей + price_per_minute * 120
     - HOURS: открытие дверей + price_per_hour * duration + price_per_minute * 60 + топливо
-    - DAYS: открытие дверей + price_per_day * duration + price_per_minute * 60 + топливо
+    - DAYS: price_per_day * duration + price_per_minute * 60 + топливо
     """
     if is_owner:
         # Для владельца минимальный баланс = 0
@@ -113,7 +113,7 @@ def calc_required_balance(
         if duration is None:
             raise HTTPException(status_code=400,
                                 detail="duration обязателен для посуточной аренды.")
-        # Дневной: открытие дверей + price_per_day * duration + price_per_minute * 60 + топливо
+        # Дневной: price_per_day * duration + price_per_minute * 60 + топливо
         # base = car.price_per_day * duration
         # if duration >= 30:
         #     discount = 0.15
@@ -143,5 +143,5 @@ def calc_required_balance(
             tank_liters = FULL_TANK_LITERS
         full_tank_cost = tank_liters * price_per_liter
         
-        required = open_fee + base_price + one_hour_minute_cost + full_tank_cost
+        required = base_price + one_hour_minute_cost + full_tank_cost
     return int(required)
