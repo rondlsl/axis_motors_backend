@@ -213,16 +213,15 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
 
             # === RESERVED stage ===
             if rental.rental_status == RentalStatus.RESERVED:
-                # Исключаем время доставки из расчета waiting_fee
-                base_time = rental.reservation_time or rental.start_time
-                if rental.delivery_start_time and rental.delivery_end_time:
-                    # Если доставка завершена, считаем время ожидания только до начала доставки
+                # Бесплатное ожидание начинается только после завершения доставки
+                # Пока доставка не завершена, клиент не платит за ожидание
+                if rental.delivery_end_time:
+                    # Доставка завершена - считаем время ожидания с момента завершения доставки
                     base_time = rental.delivery_end_time
-                elif rental.delivery_start_time:
-                    # Если доставка в процессе, считаем время ожидания только до начала доставки
-                    base_time = rental.delivery_start_time
-                
-                waited = (now - base_time).total_seconds() / 60
+                    waited = (now - base_time).total_seconds() / 60
+                else:
+                    # Доставка еще не завершена - бесплатное ожидание не идет
+                    waited = 0
 
                 # Pre‑waiting alert
                 if 14 <= waited < 15 and not flags["pre_waiting"] and user.fcm_token:
@@ -356,19 +355,18 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
             # === DELIVERY stages ===
             elif rental.rental_status in [RentalStatus.DELIVERING, RentalStatus.DELIVERY_RESERVED, RentalStatus.DELIVERING_IN_PROGRESS]:
                 # Во время доставки клиент не платит waiting_fee
-                # Время доставки исключается из расчета waiting_fee
-                base_time = rental.reservation_time or rental.start_time
-                if rental.delivery_start_time and rental.delivery_end_time:
-                    # Если доставка завершена, считаем время ожидания только до начала доставки
+                # Бесплатное ожидание начинается только после завершения доставки
+                # Пока доставка не завершена, клиент не платит за ожидание
+                if rental.delivery_end_time:
+                    # Доставка завершена - считаем время ожидания с момента завершения доставки
                     base_time = rental.delivery_end_time
-                elif rental.delivery_start_time:
-                    # Если доставка в процессе, считаем время ожидания только до начала доставки
-                    base_time = rental.delivery_start_time
-                
-                waited = (now - base_time).total_seconds() / 60
+                    waited = (now - base_time).total_seconds() / 60
+                else:
+                    # Доставка еще не завершена - бесплатное ожидание не идет
+                    waited = 0
 
-                # Pre‑waiting alert (только если доставка еще не началась)
-                if not rental.delivery_start_time and 14 <= waited < 15 and not flags["pre_waiting"] and user.fcm_token:
+                # Pre‑waiting alert (только если доставка завершена)
+                if rental.delivery_end_time and 14 <= waited < 15 and not flags["pre_waiting"] and user.fcm_token:
                     mins_left = math.ceil(15 - waited)
                     push_notifications.append((
                         user.id,
@@ -381,8 +379,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                     ))
                     flags["pre_waiting"] = True
 
-                # Charge waiting fee after 15 min (только если доставка еще не началась)
-                if not rental.delivery_start_time and waited > 15:
+                # Charge waiting fee after 15 min (только если доставка завершена)
+                if rental.delivery_end_time and waited > 15:
                     extra = math.ceil(waited - 15)
                     fee_total_wait = math.ceil(extra * car.price_per_minute * 0.5)
                     prev_wait = rental.waiting_fee or 0
