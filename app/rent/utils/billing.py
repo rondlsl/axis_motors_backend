@@ -213,15 +213,19 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
 
             # === RESERVED stage ===
             if rental.rental_status == RentalStatus.RESERVED:
-                # Бесплатное ожидание начинается только после завершения доставки
-                # Пока доставка не завершена, клиент не платит за ожидание
+                # Если была доставка - считаем от delivery_end_time
+                # Если доставки не было - считаем от reservation_time
                 if rental.delivery_end_time:
                     # Доставка завершена - считаем время ожидания с момента завершения доставки
                     base_time = rental.delivery_end_time
                     waited = (now - base_time).total_seconds() / 60
-                else:
-                    # Доставка еще не завершена - бесплатное ожидание не идет
+                elif rental.delivery_start_time:
+                    # Доставка в процессе - бесплатное ожидание не идет
                     waited = 0
+                else:
+                    # Доставки не было - считаем от reservation_time
+                    base_time = rental.reservation_time or rental.start_time
+                    waited = (now - base_time).total_seconds() / 60
 
                 # Pre‑waiting alert
                 if 14 <= waited < 15 and not flags["pre_waiting"] and user.fcm_token:
@@ -355,8 +359,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
             # === DELIVERY stages ===
             elif rental.rental_status in [RentalStatus.DELIVERING, RentalStatus.DELIVERY_RESERVED, RentalStatus.DELIVERING_IN_PROGRESS]:
                 # Во время доставки клиент не платит waiting_fee
-                # Бесплатное ожидание начинается только после завершения доставки
-                # Пока доставка не завершена, клиент не платит за ожидание
+                # Если доставка завершена - считаем от delivery_end_time
+                # Пока доставка не завершена - бесплатное ожидание не идет
                 if rental.delivery_end_time:
                     # Доставка завершена - считаем время ожидания с момента завершения доставки
                     base_time = rental.delivery_end_time
