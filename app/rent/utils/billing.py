@@ -223,8 +223,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                     base_time = rental.reservation_time or rental.start_time
                     waited = (now - base_time).total_seconds() / 60
 
-                if 2 <= waited < 3 and not flags["pre_waiting"] and user.fcm_token:
-                    mins_left = math.ceil(3 - waited)
+                if 14 <= waited < 15 and not flags["pre_waiting"] and user.fcm_token:
+                    mins_left = math.ceil(15 - waited)
                     push_notifications.append((
                         user.id,
                         "pre_waiting_alert",
@@ -236,12 +236,12 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                     ))
                     flags["pre_waiting"] = True
 
-                if waited > 3:
+                if waited > 15:
                     if (rental.delivery_start_time and not rental.delivery_end_time) or \
                        (rental.delivery_latitude and rental.delivery_longitude and not rental.delivery_end_time):
                         pass
                     elif rental.delivery_end_time:
-                        extra = math.ceil(waited - 3)
+                        extra = math.ceil(waited - 15)
                         fee_total_wait = math.ceil(extra * car.price_per_minute * 0.5)
                         prev_wait = rental.waiting_fee or 0
                         charge = fee_total_wait - prev_wait
@@ -343,7 +343,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                 ))
                                 flags["waiting"] = True
                     else:
-                        extra = math.ceil(waited - 3)
+                        extra = math.ceil(waited - 15)
                         fee_total_wait = math.ceil(extra * car.price_per_minute * 0.5)
                         prev_wait = rental.waiting_fee or 0
                         charge = fee_total_wait - prev_wait
@@ -417,8 +417,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                 else:
                     waited = 0
 
-                if rental.delivery_end_time and 2 <= waited < 3 and not flags["pre_waiting"] and user.fcm_token:
-                    mins_left = math.ceil(3 - waited)
+                if rental.delivery_end_time and 14 <= waited < 15 and not flags["pre_waiting"] and user.fcm_token:
+                    mins_left = math.ceil(15 - waited)
                     push_notifications.append((
                         user.id,
                         "pre_waiting_alert",
@@ -430,8 +430,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                     ))
                     flags["pre_waiting"] = True
 
-                if rental.delivery_end_time and waited > 3:
-                    extra = math.ceil(waited - 3)
+                if rental.delivery_end_time and waited > 15:
+                    extra = math.ceil(waited - 15)
                     fee_total_wait = math.ceil(extra * car.price_per_minute * 0.5)
                     prev_wait = rental.waiting_fee or 0
                     charge = fee_total_wait - prev_wait

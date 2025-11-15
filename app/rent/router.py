@@ -773,12 +773,12 @@ async def reserve_car(
         start_latitude=car.latitude,
         start_longitude=car.longitude,
         base_price=base,
-        open_fee=open_fee,
+        open_fee=0,
         delivery_fee=0,
         waiting_fee=0,
         overtime_fee=0,
         distance_fee=0,
-        total_price=base + open_fee,
+        total_price=base,
         reservation_time=datetime.utcnow()
     )
     db.add(rental)
@@ -895,13 +895,13 @@ async def reserve_delivery(
 
         if rental_type == RentalType.MINUTES:
             base_price = 0
-            total_price = delivery_fee  # пока в total_price только плата за доставку
+            total_price = delivery_fee
 
         elif rental_type == RentalType.HOURS:
             if duration is None:
                 raise HTTPException(status_code=400, detail="Duration обязателен для аренды по часам.")
             base_price = calculate_total_price(rental_type, duration, price_per_hour, price_per_day)
-            total_price = base_price + open_fee + delivery_fee
+            total_price = base_price + delivery_fee
 
         else:  # RentalType.DAYS
             if duration is None:
@@ -923,7 +923,7 @@ async def reserve_delivery(
         start_latitude=car.latitude,
         start_longitude=car.longitude,
         base_price=base_price,
-        open_fee=open_fee if car.owner_id != current_user.id else 0,
+        open_fee=0,
         delivery_fee=delivery_fee,
         waiting_fee=0,
         overtime_fee=0,
@@ -1388,11 +1388,6 @@ async def start_rental(
         
         is_owner_rental = True
     else:
-        # Если аренда минутная или часовая, списываем с баланса open_price, вычисленный через get_open_price
-        if rental.rental_type in [RentalType.MINUTES, RentalType.HOURS]:
-            open_price = get_open_price(car)
-            rental.open_fee = open_price
-
         # Обновляем время последней активности пользователя
         current_user.last_activity_at = datetime.utcnow()
 
@@ -1402,7 +1397,8 @@ async def start_rental(
         
         if rental.rental_type in [RentalType.HOURS, RentalType.DAYS]:
             # Проверяем достаточность баланса
-            total_cost = (rental.base_price or 0) + (rental.open_fee or 0) + (rental.delivery_fee or 0)
+            open_fee_value = get_open_price(car) if rental.rental_type == RentalType.HOURS else 0
+            total_cost = (rental.base_price or 0) + open_fee_value + (rental.delivery_fee or 0)
             
             if current_user.wallet_balance < total_cost:
                 raise HTTPException(
@@ -1427,17 +1423,19 @@ async def start_rental(
                 total_charged += rental.base_price
             
             # 2. Открытие дверей
-            if rental.open_fee and rental.open_fee > 0:
+            open_fee_value = get_open_price(car) if rental.rental_type == RentalType.HOURS else 0
+            if open_fee_value > 0:
                 record_wallet_transaction(
                     db, 
                     user=current_user, 
-                    amount=-rental.open_fee, 
+                    amount=-open_fee_value, 
                     ttype=WalletTransactionType.RENT_BASE_CHARGE, 
                     description="Оплата открытия дверей",
                     related_rental=rental
                 )
-                current_user.wallet_balance -= rental.open_fee
-                total_charged += rental.open_fee
+                current_user.wallet_balance -= open_fee_value
+                total_charged += open_fee_value
+                rental.open_fee = open_fee_value
             
             # 3. Доставка (списываем только если еще не была списана при резервировании)
             if rental.delivery_fee and rental.delivery_fee > 0:
@@ -1467,9 +1465,9 @@ async def start_rental(
                 
         elif rental.rental_type == RentalType.MINUTES:
             # Для минутного тарифа списываем только open_fee и delivery_fee
-            open_fee = rental.open_fee or 0
+            open_fee_value = get_open_price(car)
             delivery_fee = rental.delivery_fee or 0
-            total_cost = open_fee + delivery_fee
+            total_cost = open_fee_value + delivery_fee
             
             if current_user.wallet_balance < total_cost:
                 raise HTTPException(
@@ -1481,17 +1479,18 @@ async def start_rental(
             total_charged = 0
             
             # 1. Открытие дверей
-            if open_fee > 0:
+            if open_fee_value > 0:
                 record_wallet_transaction(
                     db, 
                     user=current_user, 
-                    amount=-open_fee, 
+                    amount=-open_fee_value, 
                     ttype=WalletTransactionType.RENT_BASE_CHARGE, 
                     description="Оплата открытия дверей",
                     related_rental=rental
                 )
-                current_user.wallet_balance -= open_fee
-                total_charged += open_fee
+                current_user.wallet_balance -= open_fee_value
+                total_charged += open_fee_value
+                rental.open_fee = open_fee_value
             
             # 2. Доставка (списываем только если еще не была списана при резервировании)
             if delivery_fee > 0:
@@ -2810,12 +2809,12 @@ async def create_advance_booking(
         start_latitude=car.latitude,
         start_longitude=car.longitude,
         base_price=base,
-        open_fee=open_fee,
+        open_fee=0,
         delivery_fee=0,
         waiting_fee=0,
         overtime_fee=0,
         distance_fee=0,
-        total_price=base + open_fee,
+        total_price=base,
         reservation_time=datetime.utcnow(),
         scheduled_start_time=booking_request.scheduled_start_time,
         scheduled_end_time=booking_request.scheduled_end_time,
