@@ -559,6 +559,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                 rental.overtime_fee
                             )
                             db.commit()
+                    
+                    # Проверка баланса и уведомления (выполняется всегда, не только при списании)
                         ten_minutes_cost = 10 * car.price_per_minute
                         if car.price_per_minute > 0:
                             minutes_left = user.wallet_balance / car.price_per_minute
@@ -590,19 +592,19 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                 telegram_alerts.append(
                                     f"🔔 Баланс исчерпан. Клиент {user.phone_number}, авто {car.name} (ID {car.id}). Через 10 минут будет блокировка двигателя, если баланс не пополнится."
                                 )
-                            else:
-                                zero_at = flags.get("balance_zero_at")
-                                try:
-                                    elapsed_min = (now - zero_at).total_seconds() / 60  # type: ignore[arg-type]
-                                except Exception:
-                                    elapsed_min = 0
-                                if elapsed_min >= 10 and not flags.get("engine_lock_scheduled"):
-                                    flags["engine_lock_scheduled"] = True
-                                    if car.gps_imei:
-                                        lock_requests.append((car.gps_imei, car.name, user.id))
-                                        telegram_alerts.append(
-                                            f"⏱️ 10 минут с нулевого баланса истекли. Планируется блокировка двигателя. Авто: {car.name} (IMEI {car.gps_imei})."
-                                        )
+                        else:
+                            zero_at = flags.get("balance_zero_at")
+                            try:
+                                elapsed_from_zero = (now - zero_at).total_seconds() / 60  # type: ignore[arg-type]
+                            except Exception:
+                                elapsed_from_zero = 0
+                            if elapsed_from_zero >= 10 and not flags.get("engine_lock_scheduled"):
+                                flags["engine_lock_scheduled"] = True
+                                if car.gps_imei:
+                                    lock_requests.append((car.gps_imei, car.name, user.id))
+                                    telegram_alerts.append(
+                                        f"⏱️ 10 минут с нулевого баланса истекли. Планируется блокировка двигателя. Авто: {car.name} (IMEI {car.gps_imei})."
+                                    )
 
                 elif rental.rental_type in (RentalType.HOURS, RentalType.DAYS):
                     factor = 60 if rental.rental_type == RentalType.HOURS else 1440
