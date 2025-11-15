@@ -1393,9 +1393,6 @@ async def start_rental(
             open_price = get_open_price(car)
             rental.open_fee = open_price
 
-        rental.rental_status = RentalStatus.IN_USE
-        rental.start_time = datetime.utcnow()
-        
         # Обновляем время последней активности пользователя
         current_user.last_activity_at = datetime.utcnow()
 
@@ -1521,6 +1518,10 @@ async def start_rental(
                 rental.already_payed = total_charged
             else:
                 rental.already_payed = 0
+
+        # Устанавливаем start_time и статус только после всех проверок и списаний
+        rental.rental_status = RentalStatus.IN_USE
+        rental.start_time = datetime.utcnow()
 
         # Обновляем машину: меняем статус на IN_USE
         car.status = CarStatus.IN_USE
