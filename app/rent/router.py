@@ -427,8 +427,7 @@ async def verify_forte_transaction(tracking_id: str) -> tuple[bool, Optional[int
         
         url = f"https://gateway.fortebank.com/v2/transactions/tracking_id/{tracking_id}"
         headers = {
-            "Authorization": f"Basic {encoded_credentials}",
-            "Content-Type": "application/json"
+            "Authorization": f"Basic {encoded_credentials}"
         }
         
         logger.info(f"Checking ForteBank transaction: tracking_id={tracking_id}, url={url}")
