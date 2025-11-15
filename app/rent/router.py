@@ -1336,16 +1336,16 @@ async def start_rental(
                 
                 if not existing_delivery_transaction:
                     # Доставка еще не была списана, списываем сейчас
-                    record_wallet_transaction(
-                        db, 
-                        user=current_user, 
-                        amount=-rental.delivery_fee, 
-                        ttype=WalletTransactionType.RENT_BASE_CHARGE, 
-                        description="Оплата доставки",
-                        related_rental=rental
-                    )
-                    current_user.wallet_balance -= rental.delivery_fee
-                    total_charged += rental.delivery_fee
+                record_wallet_transaction(
+                    db, 
+                    user=current_user, 
+                    amount=-rental.delivery_fee, 
+                    ttype=WalletTransactionType.RENT_BASE_CHARGE, 
+                    description="Оплата доставки",
+                    related_rental=rental
+                )
+                current_user.wallet_balance -= rental.delivery_fee
+                total_charged += rental.delivery_fee
             
             if current_user.wallet_balance >= 0:
                 rental.already_payed = total_charged
@@ -1390,16 +1390,16 @@ async def start_rental(
                 
                 if not existing_delivery_transaction:
                     # Доставка еще не была списана, списываем сейчас
-                    record_wallet_transaction(
-                        db, 
-                        user=current_user, 
-                        amount=-delivery_fee, 
-                        ttype=WalletTransactionType.RENT_BASE_CHARGE, 
-                        description="Оплата доставки",
-                        related_rental=rental
-                    )
-                    current_user.wallet_balance -= delivery_fee
-                    total_charged += delivery_fee
+                record_wallet_transaction(
+                    db, 
+                    user=current_user, 
+                    amount=-delivery_fee, 
+                    ttype=WalletTransactionType.RENT_BASE_CHARGE, 
+                    description="Оплата доставки",
+                    related_rental=rental
+                )
+                current_user.wallet_balance -= delivery_fee
+                total_charged += delivery_fee
             
             if current_user.wallet_balance >= 0:
                 rental.already_payed = total_charged

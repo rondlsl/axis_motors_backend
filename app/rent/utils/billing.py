@@ -1,5 +1,6 @@
 import asyncio
 import math
+import re
 from datetime import datetime
 import uuid
 from math import ceil, floor
@@ -458,6 +459,11 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
 
             # === IN_USE stage ===
             elif rental.rental_status == RentalStatus.IN_USE:
+                # Для поминутного списания используем start_time (время начала аренды)
+                # start_time устанавливается только при вызове /start/{car_id}
+                if not rental.start_time:
+                    # Если start_time не установлен, пропускаем расчет (не должно происходить)
+                    continue
                 elapsed = (now - rental.start_time).total_seconds() / 60
 
                 # Проверка уровня топлива и отправка уведомления в Telegram (для всех активных аренд)
@@ -495,8 +501,21 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                         telegram_alerts.append(fuel_message)
 
                 if rental.rental_type == RentalType.MINUTES:
+                    # Получаем уже списанные минуты из существующей транзакции
+                    existing_tx = db.query(WalletTransaction).filter(
+                        WalletTransaction.related_rental_id == rental.id,
+                        WalletTransaction.transaction_type == WalletTransactionType.RENT_MINUTE_CHARGE
+                    ).order_by(WalletTransaction.created_at.desc()).first()
+                    
+                    # Извлекаем количество минут из описания транзакции
+                    prev_minutes_charged = 0
+                    if existing_tx and existing_tx.description:
+                        match = re.search(r'(\d+)\s*мин', existing_tx.description)
+                        if match:
+                            prev_minutes_charged = int(match.group(1))
+                    
+                    # Рассчитываем прошедшее время от start_time
                     elapsed_min = math.ceil(elapsed)
-                    prev_minutes_charged = flags.get("minutes_charged", 0)
                     new_minutes = elapsed_min - prev_minutes_charged
                     
                     if new_minutes > 0:
@@ -515,11 +534,6 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                 rental.overtime_fee +
                                 (rental.distance_fee or 0)
                         )
-                        
-                        existing_tx = db.query(WalletTransaction).filter(
-                            WalletTransaction.related_rental_id == rental.id,
-                            WalletTransaction.transaction_type == WalletTransactionType.RENT_MINUTE_CHARGE
-                        ).order_by(WalletTransaction.created_at.desc()).first()
                         
                         if existing_tx:
                             existing_tx.amount = -due
