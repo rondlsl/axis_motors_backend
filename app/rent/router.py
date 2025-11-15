@@ -508,19 +508,26 @@ async def add_money(amount: int,
               current_user: User = Depends(get_current_user)):
     # Если есть tracking_id, проверяем транзакцию через API ForteBank
     if tracking_id:
-        # Проверяем, не была ли уже обработана транзакция с таким tracking_id
+        # Проверяем, не была ли уже обработана транзакция с таким tracking_id для ЛЮБОГО пользователя
         existing_transaction = db.query(WalletTransaction).filter(
-            WalletTransaction.tracking_id == tracking_id,
-            WalletTransaction.user_id == current_user.id
+            WalletTransaction.tracking_id == tracking_id
         ).first()
         
         if existing_transaction:
-            return {
-                "wallet_balance": float(current_user.wallet_balance),
-                "bonus": 0,
-                "promo_applied": False,
-                "message": "Транзакция уже была обработана"
-            }
+            # Если транзакция уже была обработана, проверяем, для какого пользователя
+            if existing_transaction.user_id == current_user.id:
+                return {
+                    "wallet_balance": float(current_user.wallet_balance),
+                    "bonus": 0,
+                    "promo_applied": False,
+                    "message": "Транзакция уже была обработана"
+                }
+            else:
+                # Транзакция уже была обработана для другого пользователя
+                raise HTTPException(
+                    status_code=400,
+                    detail="Транзакция уже была обработана для другого пользователя"
+                )
         
         # Проверяем транзакцию через API ForteBank
         is_successful, verified_amount, error_message = await verify_forte_transaction(tracking_id)
