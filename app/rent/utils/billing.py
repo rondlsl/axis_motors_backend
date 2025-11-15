@@ -507,12 +507,11 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                         WalletTransaction.transaction_type == WalletTransactionType.RENT_MINUTE_CHARGE
                     ).order_by(WalletTransaction.created_at.desc()).first()
                     
-                    # Извлекаем количество минут из описания транзакции
+                    # Рассчитываем уже списанные минуты из суммы транзакции (более надежно, чем парсить описание)
                     prev_minutes_charged = 0
-                    if existing_tx and existing_tx.description:
-                        match = re.search(r'(\d+)\s*мин', existing_tx.description)
-                        if match:
-                            prev_minutes_charged = int(match.group(1))
+                    if existing_tx and existing_tx.amount and car.price_per_minute > 0:
+                        # amount отрицательный, берем модуль и делим на цену за минуту
+                        prev_minutes_charged = int(abs(float(existing_tx.amount)) / car.price_per_minute)
                     
                     # Рассчитываем прошедшее время от start_time
                     elapsed_min = math.ceil(elapsed)
