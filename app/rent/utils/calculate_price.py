@@ -85,7 +85,12 @@ def calc_required_balance(
         price_per_liter = FUEL_PRICE_PER_LITER
     
     # Полный бак топлива
-    full_tank_cost = FULL_TANK_LITERS * price_per_liter
+    # Для Tucson (IMEI 860803068146253, vehicle_id 800339176) используем 20 литров вместо 100
+    if car.gps_imei == "860803068146253":
+        tank_liters = 20
+    else:
+        tank_liters = FULL_TANK_LITERS
+    full_tank_cost = tank_liters * price_per_liter
     
     # 2 часа минутной аренды (120 минут)
     two_hours_minute_cost = 120 * car.price_per_minute
