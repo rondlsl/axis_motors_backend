@@ -90,7 +90,7 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
     
     # Двигатель
     engine_rpm = None
-    rpm_keys = ["Обороты двигателя (can101)", "Обороты двигателя (engine_rpm)"]
+    rpm_keys = ["Обороты двигателя (param73)", "Обороты двигателя (can101)", "Обороты двигателя (engine_rpm)"]
     for key in rpm_keys:
         rpm_value = extract_sensor_value(regs, key)
         if rpm_value and rpm_value.lower() not in ["данных нет", "нет данных"]:
@@ -159,6 +159,21 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
         rear_right_door_open = bool(rr_door and rr_door.lower() == "открыта")
         rear_left_door_open = bool(rl_door and rl_door.lower() == "открыта")
     else:
+        # Проверяем param66 в PackageItems
+        # param66 = 0 означает все двери закрыты, 1 = хотя бы одна открыта
+        param66_value = extract_first_match(pkg, ["param66"])
+        if param66_value:
+            try:
+                param66_int = int(parse_numeric(param66_value))
+                # Если param66 = 1, значит хотя бы одна дверь открыта
+                # Но мы не знаем какая именно, поэтому считаем что все закрыты если 0
+                if param66_int == 1:
+                    # Хотя бы одна дверь открыта, но не знаем какая - оставляем все False
+                    # или можно установить все в True, но лучше оставить False для безопасности
+                    pass
+            except Exception:
+                pass
+        
         # Формат UnregisteredSensors: CanSafetyFlags_* = "True"/"False"
         # False = дверь открыта, True = дверь закрыта
         fr_door_unreg = extract_first_match(unregs, ["CanSafetyFlags_passangerdoor"])
@@ -298,13 +313,23 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
     
     ignition_on = False
 
-    ignition_reg = extract_first_match(regs, ["Зажигание (can45)", "Зажигание"])  
+    # Ищем зажигание в RegistredSensors
+    ignition_reg = extract_first_match(regs, ["Зажигание (param65)", "Зажигание (can45)", "Зажигание"])  
     if ignition_reg:
         ignition_on = ignition_reg.lower().startswith("вкл")
     else:
-        ignition_unreg = extract_first_match(unregs, ["CanSafetyFlags_ignition"])
-        if ignition_unreg:
-            ignition_on = ignition_unreg.lower() == "true"
+        # Ищем в PackageItems (param65 для некоторых устройств, например Tucson)
+        param65_value = extract_first_match(pkg, ["param65"])
+        if param65_value:
+            try:
+                ignition_on = int(parse_numeric(param65_value)) == 1
+            except Exception:
+                ignition_on = False
+        else:
+            # Ищем в UnregisteredSensors
+            ignition_unreg = extract_first_match(unregs, ["CanSafetyFlags_ignition"])
+            if ignition_unreg:
+                ignition_on = ignition_unreg.lower() == "true"
     
     # Связь
     gsm_signal = None
