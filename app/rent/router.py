@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 import httpx
 import uuid
+import base64
 
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
 from app.utils.sid_converter import convert_uuid_response_to_sid
@@ -29,7 +30,7 @@ from app.rent.utils.calculate_price import calculate_total_price, get_open_price
 from app.gps_api.utils.route_data import get_gps_route_data
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.car_data import auto_lock_vehicle_after_rental, execute_gps_sequence, send_open, send_unlock_engine
-from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD, TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2
+from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD, TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2, FORTE_SHOP_ID, FORTE_SECRET_KEY
 from app.utils.atomic_operations import delete_uploaded_files
 from app.utils.telegram_logger import log_error_to_telegram
 from app.guarantor.sms_utils import send_rental_start_sms, send_rental_complete_sms
@@ -407,13 +408,76 @@ async def get_trip_history_detail(
     return {"rental_history_detail": rental_detail}
 
 
+async def verify_forte_transaction(tracking_id: str) -> tuple[bool, Optional[int], Optional[str]]:
+    """
+    Проверяет транзакцию через API ForteBank
+    Возвращает: (is_successful, amount, error_message)
+    """
+    if not FORTE_SHOP_ID or not FORTE_SECRET_KEY:
+        return False, None, "ForteBank credentials not configured"
+    
+    try:
+        # Создаем Basic Auth заголовок
+        credentials = f"{FORTE_SHOP_ID}:{FORTE_SECRET_KEY}"
+        encoded_credentials = base64.b64encode(credentials.encode()).decode()
+        
+        url = f"https://gateway.fortebank.com/v2/transactions/tracking_id/{tracking_id}"
+        headers = {
+            "Authorization": f"Basic {encoded_credentials}",
+            "Content-Type": "application/json"
+        }
+        
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(url, headers=headers)
+            
+            if response.status_code == 404:
+                return False, None, "Транзакция не найдена"
+            
+            if response.status_code != 200:
+                return False, None, f"Ошибка API ForteBank: {response.status_code}"
+            
+            data = response.json()
+            transactions = data.get("transactions", [])
+            
+            if not transactions:
+                return False, None, "Транзакции не найдены"
+            
+            # Ищем успешную транзакцию
+            successful_transaction = None
+            for tx in transactions:
+                if tx.get("status") == "successful":
+                    successful_transaction = tx
+                    break
+            
+            if not successful_transaction:
+                return False, None, "Успешная транзакция не найдена"
+            
+            # Проверяем, что это платеж (type == "payment")
+            if successful_transaction.get("type") != "payment":
+                return False, None, "Транзакция не является платежом"
+            
+            # Получаем сумму (в тийинах, нужно разделить на 100)
+            amount_tiyin = successful_transaction.get("amount", 0)
+            amount_kzt = amount_tiyin / 100
+            
+            return True, int(amount_kzt), None
+            
+    except httpx.TimeoutException:
+        return False, None, "Таймаут при проверке транзакции"
+    except httpx.RequestError as e:
+        return False, None, f"Ошибка запроса: {str(e)}"
+    except Exception as e:
+        return False, None, f"Ошибка при проверке транзакции: {str(e)}"
+
+
 @RentRouter.post("/add_money")
-def add_money(amount: int,
+async def add_money(amount: int,
               tracking_id: Optional[str] = None,
               db: Session = Depends(get_db),
               current_user: User = Depends(get_current_user)):
-    # Проверяем, не была ли уже обработана транзакция с таким tracking_id
+    # Если есть tracking_id, проверяем транзакцию через API ForteBank
     if tracking_id:
+        # Проверяем, не была ли уже обработана транзакция с таким tracking_id
         existing_transaction = db.query(WalletTransaction).filter(
             WalletTransaction.tracking_id == tracking_id,
             WalletTransaction.user_id == current_user.id
@@ -426,6 +490,20 @@ def add_money(amount: int,
                 "promo_applied": False,
                 "message": "Транзакция уже была обработана"
             }
+        
+        # Проверяем транзакцию через API ForteBank
+        is_successful, verified_amount, error_message = await verify_forte_transaction(tracking_id)
+        
+        if not is_successful:
+            raise HTTPException(
+                status_code=400,
+                detail=error_message or "Транзакция не прошла проверку"
+            )
+        
+        # Используем сумму из проверенной транзакции
+        if verified_amount and verified_amount != amount:
+            # Если сумма не совпадает, используем проверенную сумму
+            amount = verified_amount
     
     # 1) Ищем у юзера активный промокод
     up = db.query(UserPromoCode) \

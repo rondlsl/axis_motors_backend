@@ -34,6 +34,10 @@ MONITOR_GROUP_ID = getenv('MONITOR_GROUP_ID')
 
 SMS_TOKEN = getenv('SMS_TOKEN')
 
+# === FORTE BANK ===
+FORTE_SHOP_ID = getenv('FORTE_SHOP_ID')
+FORTE_SECRET_KEY = getenv('FORTE_SECRET_KEY')
+
 # === LOGGING ===
 logging.basicConfig(level=logging.ERROR, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
