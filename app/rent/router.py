@@ -2051,13 +2051,34 @@ async def upload_photos_before_owner(
         
         # Открываем замки после успешной загрузки фото
         if car and car.gps_imei:
-            
-            auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-            open_result = await send_open(car.gps_imei, auth_token)
-            if not open_result.get("success"):
-                error_msg = open_result.get('error', 'Unknown error')
-                print(f"Ошибка открытия замков после загрузки фото владельцем: {error_msg}")
-                raise Exception(f"GPS open command failed: {error_msg}")
+            try:
+                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                if not auth_token:
+                    raise Exception("Failed to get auth token")
+                    
+                open_result = await send_open(car.gps_imei, auth_token)
+                command_id = open_result.get('command_id')
+                if command_id:
+                    print(f"Замки успешно открыты для владельца. Command ID: {command_id}")
+                else:
+                    print(f"Предупреждение: команда отправлена, но command_id не получен")
+            except Exception as gps_error:
+                print(f"Ошибка GPS при открытии замков: {str(gps_error)}")
+                # Не прерываем процесс загрузки фото, только логируем ошибку
+                try:
+                    await log_error_to_telegram(
+                        error=gps_error,
+                        request=None,
+                        user=current_user,
+                        additional_context={
+                            "action": "gps_open_after_owner_photos",
+                            "rental_id": str(rental.id),
+                            "car_id": str(car.id),
+                            "gps_imei": car.gps_imei
+                        }
+                    )
+                except:
+                    pass
         
         db.commit()
         
