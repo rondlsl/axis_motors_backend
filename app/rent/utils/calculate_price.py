@@ -78,20 +78,6 @@ def calc_required_balance(
             return 5000  # только доставка для владельца
         return 0
     
-    # Определяем цену за литр в зависимости от типа автомобиля
-    if car.body_type == CarBodyType.ELECTRIC:
-        price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
-    else:
-        price_per_liter = FUEL_PRICE_PER_LITER
-    
-    # Полный бак топлива
-    # Для Tucson (IMEI 860803068146253, vehicle_id 800339176) используем 20 литров вместо 100
-    if car.gps_imei == "860803068146253":
-        tank_liters = 20
-    else:
-        tank_liters = FULL_TANK_LITERS
-    full_tank_cost = tank_liters * price_per_liter
-    
     # 2 часа минутной аренды (120 минут)
     two_hours_minute_cost = 120 * car.price_per_minute
     
@@ -101,16 +87,46 @@ def calc_required_balance(
     # Стоимость аренды
     if rental_type == RentalType.MINUTES:
         base_price = 0  # для минутной аренды базовая цена не списывается сразу
+        # Для минутного тарифа не требуем оплату за топливо
+        full_tank_cost = 0
     elif rental_type == RentalType.HOURS:
         if duration is None:
             raise HTTPException(status_code=400,
                                 detail="duration обязателен для почасовой аренды.")
         base_price = calculate_total_price(rental_type, duration, car.price_per_hour, car.price_per_day)
+        # Для почасовой аренды требуем оплату за полный бак
+        if car.body_type == CarBodyType.ELECTRIC:
+            price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
+        else:
+            price_per_liter = FUEL_PRICE_PER_LITER
+        # Для Tucson (IMEI 860803068146253, vehicle_id 800339176) используем 20 литров вместо 100
+        # Для Honda (IMEI 860803068139548, vehicle_id 800283232) используем 50 литров вместо 100
+        if car.gps_imei == "860803068146253":
+            tank_liters = 20
+        elif car.gps_imei == "860803068139548":
+            tank_liters = 50
+        else:
+            tank_liters = FULL_TANK_LITERS
+        full_tank_cost = tank_liters * price_per_liter
     else:  # RentalType.DAYS
         if duration is None:
             raise HTTPException(status_code=400,
                                 detail="duration обязателен для посуточной аренды.")
         base_price = calculate_total_price(rental_type, duration, car.price_per_hour, car.price_per_day)
+        # Для посуточной аренды требуем оплату за полный бак
+        if car.body_type == CarBodyType.ELECTRIC:
+            price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
+        else:
+            price_per_liter = FUEL_PRICE_PER_LITER
+        # Для Tucson (IMEI 860803068146253, vehicle_id 800339176) используем 20 литров вместо 100
+        # Для Honda (IMEI 860803068139548, vehicle_id 800283232) используем 50 литров вместо 100
+        if car.gps_imei == "860803068146253":
+            tank_liters = 20
+        elif car.gps_imei == "860803068139548":
+            tank_liters = 50
+        else:
+            tank_liters = FULL_TANK_LITERS
+        full_tank_cost = tank_liters * price_per_liter
     
     # delivery_fee
     delivery_fee = DELIVERY_EXTRA_FEE if include_delivery else 0

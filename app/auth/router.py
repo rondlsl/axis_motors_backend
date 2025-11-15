@@ -693,7 +693,9 @@ async def _get_user_me_data(db: Session, current_user: User):
                     "rental_type": rental.rental_type.value if rental.rental_type else "minutes",
                     "duration": rental.duration,
                     "already_payed": 0,  # Для механиков всегда 0
-                    "status": rental.rental_status.value
+                    "status": rental.rental_status.value,
+                    "delivery_start_time": rental.delivery_start_time.isoformat() if rental.delivery_start_time else None,
+                    "delivery_end_time": rental.delivery_end_time.isoformat() if rental.delivery_end_time else None
                 }
         else:
             rental_details = {
@@ -703,7 +705,9 @@ async def _get_user_me_data(db: Session, current_user: User):
                 "rental_type": rental.rental_type.value,
                 "duration": rental.duration,
                 "already_payed": float(rental.already_payed or 0),
-                "status": rental.rental_status.value
+                "status": rental.rental_status.value,
+                "delivery_start_time": rental.delivery_start_time.isoformat() if rental.delivery_start_time else None,
+                "delivery_end_time": rental.delivery_end_time.isoformat() if rental.delivery_end_time else None
             }
 
         # Для механиков проверяем mechanic_inspection_status, для обычных пользователей - rental_status
@@ -721,6 +725,7 @@ async def _get_user_me_data(db: Session, current_user: User):
                 "delivery_longitude": rental.delivery_longitude,
                 "delivery_in_progress": rental.delivery_mechanic_id is not None,
                 "delivery_start_time": rental.delivery_start_time.isoformat() if rental.delivery_start_time else None,
+                "delivery_end_time": rental.delivery_end_time.isoformat() if rental.delivery_end_time else None,
                 "delivery_duration_minutes": delivery_duration_minutes,
                 "delivery_penalty_fee": rental.delivery_penalty_fee or 0
             })
