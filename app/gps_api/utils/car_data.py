@@ -116,12 +116,12 @@ def get_commands_by_imei(imei: str) -> dict:
             "unlock_engine": "*!1N"
         },
         "860803068146253": {  # Hyundai Tucson - vehicle_id 800339176
-            "open": "*!CEVT 1",
-            "close": "*!CEVT 2",
-            "give_key": "*!2Y",
-            "take_key": "*!2N",
-            "lock_engine": "*!1Y",
-            "unlock_engine": "*!1N"
+            "open": "chat OPEN",
+            "close": "chat CLOSE",
+            "give_key": "OUTPUT1 1",
+            "take_key": "OUTPUT1 0",
+            "lock_engine": "OUTPUT0 1",
+            "unlock_engine": "OUTPUT0 0"
         }
     }
     return commands_map.get(imei, {
