@@ -215,12 +215,16 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
             if rental.rental_status == RentalStatus.RESERVED:
                 # Если была доставка - считаем от delivery_end_time
                 # Если доставки не было - считаем от reservation_time
+                # Если доставка заказана, но еще не завершена - платное ожидание не начисляется
                 if rental.delivery_end_time:
                     # Доставка завершена - считаем время ожидания с момента завершения доставки
                     base_time = rental.delivery_end_time
                     waited = (now - base_time).total_seconds() / 60
                 elif rental.delivery_start_time:
                     # Доставка в процессе - бесплатное ожидание не идет
+                    waited = 0
+                elif rental.delivery_latitude and rental.delivery_longitude:
+                    # Доставка заказана, но еще не начата (механик не принял) - платное ожидание не начисляется
                     waited = 0
                 else:
                     # Доставки не было - считаем от reservation_time
@@ -245,12 +249,13 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                 # Платное ожидание начисляется если прошло больше 15 минут:
                 # - Если была доставка - от delivery_end_time
                 # - Если доставки не было - от reservation_time
-                # Если доставка в процессе (waited = 0), платное ожидание не начисляется
+                # Если доставка заказана, но еще не завершена (waited = 0), платное ожидание не начисляется
                 if waited > 15:
                     # Проверяем условия перед созданием транзакции
-                    # Если доставка в процессе - не списываем платное ожидание
-                    if rental.delivery_start_time and not rental.delivery_end_time:
-                        # Доставка в процессе - пропускаем
+                    # Если доставка заказана, но еще не завершена - не списываем платное ожидание
+                    if (rental.delivery_start_time and not rental.delivery_end_time) or \
+                       (rental.delivery_latitude and rental.delivery_longitude and not rental.delivery_end_time):
+                        # Доставка в процессе или заказана, но еще не завершена - пропускаем
                         pass
                     else:
                         extra = math.ceil(waited - 15)
