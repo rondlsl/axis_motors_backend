@@ -1590,7 +1590,7 @@ async def start_rental(
                 print(f"Ошибка отправки Telegram уведомления в {chat_id}: {e}")
         
         # Список чатов для уведомлений
-        chat_ids = [965048905, 5941825713, 860991388]
+        chat_ids = [965048905, 5941825713, 860991388, 1594112444]
         
         if TELEGRAM_BOT_TOKEN:
             for chat_id in chat_ids:

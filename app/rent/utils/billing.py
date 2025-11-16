@@ -63,12 +63,12 @@ async def billing_job():
 
     # Отправка в первый бот
     for text in telegram_alerts:
-        for chat_id in (965048905, 5941825713, 860991388):
+        for chat_id in (965048905, 5941825713, 860991388, 1594112444):
             asyncio.create_task(_send_telegram(text, chat_id, TELEGRAM_BOT_TOKEN))
     
     # Отправка во второй бот
     for text in telegram_alerts:
-        for chat_id in (965048905, 5941825713, 860991388):
+        for chat_id in (965048905, 5941825713, 860991388, 1594112444):
             asyncio.create_task(_send_telegram(text, chat_id, TELEGRAM_BOT_TOKEN_2))
 
     # 5) Выполняем блокировки двигателя для просроченных (10+ минут) нулевых балансов
@@ -90,18 +90,18 @@ async def billing_job():
                         user_info += f", user_id={user_id}"
                     note = f"🛑 Двигатель заблокирован из-за нулевого баланса. Авто: {car_name} (IMEI {imei}), {user_info}"
                     # Отправка в первый бот
-                    for chat_id in (965048905, 5941825713, 860991388):
+                    for chat_id in (965048905, 5941825713, 860991388, 1594112444):
                         asyncio.create_task(_send_telegram(note, chat_id, TELEGRAM_BOT_TOKEN))
                     # Отправка во второй бот
-                    for chat_id in (965048905, 5941825713, 860991388):
+                    for chat_id in (965048905, 5941825713, 860991388, 1594112444):
                         asyncio.create_task(_send_telegram(note, chat_id, TELEGRAM_BOT_TOKEN_2))
                 except Exception as e:
                     err = f"⚠️ Ошибка блокировки двигателя (IMEI {imei}): {e}"
                     # Отправка в первый бот
-                    for chat_id in (965048905, 5941825713, 860991388):
+                    for chat_id in (965048905, 5941825713, 860991388, 1594112444):
                         asyncio.create_task(_send_telegram(err, chat_id, TELEGRAM_BOT_TOKEN))
                     # Отправка во второй бот
-                    for chat_id in (965048905, 5941825713, 860991388):
+                    for chat_id in (965048905, 5941825713, 860991388, 1594112444):
                         asyncio.create_task(_send_telegram(err, chat_id, TELEGRAM_BOT_TOKEN_2))
                     
                     # Логируем критическую ошибку в Telegram Monitor
@@ -125,10 +125,10 @@ async def billing_job():
     except Exception as e:
         error_msg = f"⚠️ Ошибка при обработке блокировок двигателя: {e}"
         # Отправка в первый бот
-        for chat_id in (965048905, 5941825713, 860991388):
+        for chat_id in (965048905, 5941825713, 860991388, 1594112444):
             asyncio.create_task(_send_telegram(error_msg, chat_id, TELEGRAM_BOT_TOKEN))
         # Отправка во второй бот
-        for chat_id in (965048905, 5941825713, 860991388):
+        for chat_id in (965048905, 5941825713, 860991388, 1594112444):
             asyncio.create_task(_send_telegram(error_msg, chat_id, TELEGRAM_BOT_TOKEN_2))
         
         # Логируем критическую ошибку в Telegram Monitor
