@@ -14,8 +14,15 @@ def verify_faces(img1_path: str, img2_path: str,
 
     - is_same: True, если это один и тот же человек по модели
     - details: словарь с полями distance/threshold/model/detector
+    
+    ВНИМАНИЕ: Импорт DeepFace происходит только внутри функции для ленивой загрузки.
     """
-    from deepface import DeepFace
+    # Импортируем DeepFace только когда функция действительно вызывается
+    # Это предотвращает загрузку TensorFlow при старте приложения
+    try:
+        from deepface import DeepFace
+    except ImportError as e:
+        raise Exception(f"DeepFace не установлен или не может быть загружен: {e}")
 
     res = DeepFace.verify(
         img1_path=img1_path,
@@ -89,7 +96,19 @@ def verify_user_upload_against_profile(user, upload_file) -> Tuple[bool, str]:
     """
     Сравнивает selfie (upload_file) с селфи из профиля пользователя (selfie_url).
     Возвращает (is_same, message). При False message содержит причину для 400.
+    
+    Модель AI загружается лениво (при первом использовании) для экономии RAM при старте.
     """
+    import os
+    
+    # Проверяем переменную окружения для отключения face verification (по умолчанию ВКЛЮЧЕНА)
+    face_verify_enabled = os.getenv("ENABLE_FACE_VERIFICATION", "true").lower() == "true"
+    
+    if not face_verify_enabled:
+        # Face verification отключена через .env - пропускаем проверку
+        print("⚠️ Face verification отключена через ENABLE_FACE_VERIFICATION=false")
+        return True, "ok"
+    
     if not user or not getattr(user, 'selfie_url', None):
         return False, "В профиле отсутствует селфи для проверки личности"
 
@@ -100,7 +119,10 @@ def verify_user_upload_against_profile(user, upload_file) -> Tuple[bool, str]:
     selfie_tmp_path = _write_upload_to_temp_file(upload_file)
     
     try:
+        print(f"🔍 Проверка лица пользователя {getattr(user, 'id', 'unknown')}...")
+        
         # Проверка с ArcFace (строгий threshold для высокой точности)
+        # Модель загрузится только при первом вызове verify_faces
         is_same, details = verify_faces(
             selfie_tmp_path, 
             str(resolved), 
@@ -108,16 +130,22 @@ def verify_user_upload_against_profile(user, upload_file) -> Tuple[bool, str]:
             enforce_detection=False
         )
         
+        print(f"✅ Проверка лица завершена: is_same={is_same}, distance={details.get('distance')}")
+        
         if is_same:
             return True, "ok"
         
         return False, "Ой! Похоже на фотографии не вы, но если это вы, то пожалуйста сделайте селфи как в профиле."
     except Exception as e:
-        return False, "Ой! Похоже на фотографии не вы, но если это вы, то пожалуйста сделайте селфи как в профиле."
+        print(f"❌ Ошибка при проверке лица: {str(e)}")
+        # При ошибке AI проверки НЕ блокируем пользователя (чтобы не ломать UX)
+        # Но логируем для мониторинга
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return True, "ok"  # Пропускаем при ошибке AI
     finally:
         # Очищаем временный файл
         try:
-            import os
             if os.path.exists(selfie_tmp_path):
                 os.unlink(selfie_tmp_path)
         except Exception:
