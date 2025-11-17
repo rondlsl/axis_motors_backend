@@ -308,7 +308,7 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
     brake_keys = ["Педаль тормоза (can39)", "Педаль тормоза"]
     brake_value = extract_first_match(regs, brake_keys)
     if brake_value:
-    brake_pedal_pressed = brake_value.lower() == "нажата"
+        brake_pedal_pressed = brake_value.lower() == "нажата"
     
     # Дополнительные параметры
     steering_angle = None
