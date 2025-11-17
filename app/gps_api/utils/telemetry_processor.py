@@ -46,13 +46,26 @@ def extract_first_match(items: List[Dict], possible_keys: List[str]) -> str:
 
 def extract_param64_value(regs: List[Dict[str, Any]], pkg: List[Dict[str, Any]]) -> Optional[int]:
     """Возвращает числовое значение param64 (0-255), если оно присутствует."""
+    # Ищем в RegistredSensors по name
     raw_value = extract_first_match(regs, ["Статус (param64)", "param64"])
     if not raw_value:
+        # Ищем в PackageItems по name
         raw_value = extract_first_match(pkg, ["param64"])
+    if not raw_value:
+        # Ищем в PackageItems по parameterName
+        for item in pkg:
+            if item.get("parameterName", "").lower() == "param64":
+                raw_value = item.get("value", "").strip()
+                break
     if not raw_value:
         return None
     try:
-        return int(parse_numeric(raw_value))
+        # Парсим числовое значение (может быть просто "0" или "1" или "255")
+        num_value = int(parse_numeric(raw_value))
+        # Проверяем диапазон 0-255
+        if 0 <= num_value <= 255:
+            return num_value
+        return None
     except Exception:
         return None
 
@@ -120,11 +133,11 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
     
     # Двигатель
     engine_rpm = None
-    rpm_keys = ["Обороты двигателя (param73)", "Обороты двигателя (can101)", "Обороты двигателя (engine_rpm)"]
+    rpm_keys = ["Обороты двигателя (param69)", "Обороты двигателя (param73)", "Обороты двигателя (can101)", "Обороты двигателя (engine_rpm)"]
     for key in rpm_keys:
         rpm_value = extract_sensor_value(regs, key)
         if rpm_value and rpm_value.lower() not in ["данных нет", "нет данных"]:
-            engine_rpm = parse_int(rpm_value.replace(" об/мин", ""))
+            engine_rpm = parse_int(rpm_value.replace(" об/мин", "").strip())
             break
     
     engine_temperature = None
@@ -147,11 +160,13 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
     
     # Топливо и пробег
     fuel_level = None
-    fuel_keys = ["Уровень топлива (can100)", "Уровень топлива (can_fuel_volume)"]
+    fuel_keys = ["Заряд батареи (param67)", "Уровень топлива (param67)", "Уровень топлива (can100)", "Уровень топлива (can_fuel_volume)"]
     for key in fuel_keys:
         fuel_value = extract_sensor_value(regs, key)
         if fuel_value and fuel_value.lower() not in ["данных нет", "нет данных"]:
-            fuel_level = parse_numeric(fuel_value.replace(" л", ""))
+            # Убираем " л" или "л" если есть (для param67 может быть "95 л")
+            fuel_str = fuel_value.replace(" л", "").replace("л", "").strip()
+            fuel_level = parse_numeric(fuel_str)
             break
     
     fuel_consumption = None
@@ -163,7 +178,7 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
             break
     
     mileage = None
-    mileage_keys = ["Пробег (can97)", "Датчик пробега (can_mileage)", "Пробег (can33)"]
+    mileage_keys = ["Пробег (param68)", "Пробег (can97)", "Датчик пробега (can_mileage)", "Пробег (can33)"]
     for key in mileage_keys:
         mileage_value = extract_sensor_value(regs, key)
         if mileage_value and mileage_value.lower() not in ["данных нет", "нет данных"]:
@@ -362,37 +377,47 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
             if ignition_unreg:
                 ignition_on = ignition_unreg.lower() == "true"
 
-    # Применяем param64, если он присутствует
+    # Применяем param64, если он присутствует (param64 имеет приоритет над другими источниками)
     if param64_flags:
-        ignition_from_flags = param64_flags["ignition"]
-        if ignition_from_flags:
-            ignition_on = True
-            if not is_engine_on:
-                is_engine_on = True
+        # Зажигание: bit1 (128) = 1 → зажигание включено
+        ignition_on = param64_flags["ignition"]
+        if ignition_on and not is_engine_on:
+            is_engine_on = True
 
-        doors_issue = param64_flags["doors"]
-        front_right_door_open = doors_issue
-        front_left_door_open = doors_issue
-        rear_right_door_open = doors_issue
-        rear_left_door_open = doors_issue
+        # Двери и замки: bit2 (64) = 1 → двери открыты, замки открыты
+        doors_open = param64_flags["doors"]
+        front_right_door_open = doors_open
+        front_left_door_open = doors_open
+        rear_right_door_open = doors_open
+        rear_left_door_open = doors_open
 
-        door_locked = not doors_issue
-        front_right_door_locked = door_locked
-        front_left_door_locked = door_locked
-        rear_right_door_locked = door_locked
-        rear_left_door_locked = door_locked
-        central_locks_locked = door_locked
+        doors_locked = not doors_open
+        front_right_door_locked = doors_locked
+        front_left_door_locked = doors_locked
+        rear_right_door_locked = doors_locked
+        rear_left_door_locked = doors_locked
+        central_locks_locked = doors_locked
 
-        windows_closed = not param64_flags["glass"]
-        front_left_window_closed = windows_closed
-        front_right_window_closed = windows_closed
-        rear_left_window_closed = windows_closed
-        rear_right_window_closed = windows_closed
+        # Стекла: bit3 (32) = 1 → стекла открыты
+        windows_open = param64_flags["glass"]
+        front_left_window_closed = not windows_open
+        front_right_window_closed = not windows_open
+        rear_left_window_closed = not windows_open
+        rear_right_window_closed = not windows_open
 
+        # Капот: bit4 (16) = 1 → капот открыт
         hood_open = param64_flags["hood"]
-        trunk_open = param64_flags["trunk"]
+        
+        # Свет: bit5 (8) = 1 → свет включен
         lights_on = param64_flags["lights"]
+        
+        # Педаль тормоза: bit6 (4) = 1 → педаль нажата
         brake_pedal_pressed = param64_flags["brake"]
+        
+        # Багажник: bit7 (2) = 1 → багажник открыт
+        trunk_open = param64_flags["trunk"]
+        
+        # Блокировка двигателя: bit8 (1) = 1 → блокировка активна
         engine_lock_active = param64_flags["engine_lock"]
     
     # Связь
