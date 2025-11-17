@@ -44,6 +44,35 @@ def extract_first_match(items: List[Dict], possible_keys: List[str]) -> str:
     return ""
 
 
+def extract_param64_value(regs: List[Dict[str, Any]], pkg: List[Dict[str, Any]]) -> Optional[int]:
+    """Возвращает числовое значение param64 (0-255), если оно присутствует."""
+    raw_value = extract_first_match(regs, ["Статус (param64)", "param64"])
+    if not raw_value:
+        raw_value = extract_first_match(pkg, ["param64"])
+    if not raw_value:
+        return None
+    try:
+        return int(parse_numeric(raw_value))
+    except Exception:
+        return None
+
+
+def decode_param64_flags(byte_value: Optional[int]) -> Optional[Dict[str, bool]]:
+    """Преобразует значение param64 в набор булевых флагов."""
+    if byte_value is None:
+        return None
+    return {
+        "ignition": bool((byte_value >> 7) & 1),
+        "doors": bool((byte_value >> 6) & 1),
+        "glass": bool((byte_value >> 5) & 1),
+        "hood": bool((byte_value >> 4) & 1),
+        "lights": bool((byte_value >> 3) & 1),
+        "brake": bool((byte_value >> 2) & 1),
+        "trunk": bool((byte_value >> 1) & 1),
+        "engine_lock": bool(byte_value & 1),
+    }
+
+
 def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "") -> VehicleTelemetryResponse:
     """Обрабатывает данные от Глонассофт и преобразует в структурированный формат"""
     
@@ -55,6 +84,7 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
     regs = glonassoft_data.get("RegistredSensors", [])
     unregs = glonassoft_data.get("UnregisteredSensors", [])
     general = glonassoft_data.get("GeneralSensors", [])
+    param64_flags = decode_param64_flags(extract_param64_value(regs, pkg))
     
     print(f"[TELEMETRY PROCESSOR] PackageItems count: {len(pkg)}")
     print(f"[TELEMETRY PROCESSOR] RegistredSensors count: {len(regs)}")
@@ -251,7 +281,7 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
         trunk_open = bool(trunk_value.lower() == "открыт")
     else:
         trunk_unreg = extract_first_match(unregs, ["CanSafetyFlags_trunk"])
-        trunk_open = trunk_unreg.lower() == "false" if trunk_unreg else True
+    trunk_open = trunk_unreg.lower() == "false" if trunk_unreg else True
     
     # Свет и тормоза
     lights_keys = ["Фары (can38)", "Ближний свет (can41)"]
@@ -278,7 +308,7 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
     brake_keys = ["Педаль тормоза (can39)", "Педаль тормоза"]
     brake_value = extract_first_match(regs, brake_keys)
     if brake_value:
-        brake_pedal_pressed = brake_value.lower() == "нажата"
+    brake_pedal_pressed = brake_value.lower() == "нажата"
     
     # Дополнительные параметры
     steering_angle = None
@@ -312,6 +342,7 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
         alarm_active = alarm_unreg.lower() == "true"
     
     ignition_on = False
+    engine_lock_active = False
 
     # Ищем зажигание в RegistredSensors
     ignition_reg = extract_first_match(regs, ["Зажигание (param65)", "Зажигание (can45)", "Зажигание"])  
@@ -330,6 +361,39 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
             ignition_unreg = extract_first_match(unregs, ["CanSafetyFlags_ignition"])
             if ignition_unreg:
                 ignition_on = ignition_unreg.lower() == "true"
+
+    # Применяем param64, если он присутствует
+    if param64_flags:
+        ignition_from_flags = param64_flags["ignition"]
+        if ignition_from_flags:
+            ignition_on = True
+            if not is_engine_on:
+                is_engine_on = True
+
+        doors_issue = param64_flags["doors"]
+        front_right_door_open = doors_issue
+        front_left_door_open = doors_issue
+        rear_right_door_open = doors_issue
+        rear_left_door_open = doors_issue
+
+        door_locked = not doors_issue
+        front_right_door_locked = door_locked
+        front_left_door_locked = door_locked
+        rear_right_door_locked = door_locked
+        rear_left_door_locked = door_locked
+        central_locks_locked = door_locked
+
+        windows_closed = not param64_flags["glass"]
+        front_left_window_closed = windows_closed
+        front_right_window_closed = windows_closed
+        rear_left_window_closed = windows_closed
+        rear_right_window_closed = windows_closed
+
+        hood_open = param64_flags["hood"]
+        trunk_open = param64_flags["trunk"]
+        lights_on = param64_flags["lights"]
+        brake_pedal_pressed = param64_flags["brake"]
+        engine_lock_active = param64_flags["engine_lock"]
     
     # Связь
     gsm_signal = None
@@ -454,6 +518,7 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
         light_auto_mode=light_auto_mode,
         handbrake_on=handbrake_on,
         brake_pedal_pressed=brake_pedal_pressed,
+        engine_lock_active=engine_lock_active,
         
         # Дополнительные параметры
         steering_angle=steering_angle,

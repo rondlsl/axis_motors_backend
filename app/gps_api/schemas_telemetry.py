@@ -73,6 +73,7 @@ class VehicleTelemetryResponse(BaseModel):
     light_auto_mode: bool = Field(..., description="Автоматический режим света")
     handbrake_on: bool = Field(..., description="Ручной тормоз включен")
     brake_pedal_pressed: bool = Field(..., description="Педаль тормоза нажата")
+    engine_lock_active: bool = Field(..., description="Двигатель заблокирован")
     
     # Дополнительные параметры
     steering_angle: Optional[float] = Field(None, description="Угол поворота руля")
