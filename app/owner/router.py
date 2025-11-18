@@ -136,11 +136,6 @@ def calculate_owner_earnings(rental: RentalHistory, car: Car, current_user: User
                         "cars": [
                             {
                                 "id": 1,
-                                "name": "HAVAL F7x",
-                                "plate_number": "422ABK02"
-                            },
-                            {
-                                "id": 2,
                                 "name": "MB CLA45s",
                                 "plate_number": "666AZV02"
                             }

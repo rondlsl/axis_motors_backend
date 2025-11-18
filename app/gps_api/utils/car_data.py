@@ -82,10 +82,12 @@ def get_vehicle_id_by_imei(imei: str) -> int:
     imei_to_vehicle_id = {
         "860803068139548": 800283232,  # Hongqi
         "860803068143045": 800212421,  # Mercedes
-        "866011056063951": 800153076,  # HAVAL
         "860803068146253": 800339176   # Hyundai Tucson
     }
-    return imei_to_vehicle_id.get(imei, 800153076)  # Дефолтный vehicle_id
+    vehicle_id = imei_to_vehicle_id.get(imei)
+    if vehicle_id is None:
+        raise HTTPException(status_code=404, detail=f"vehicle_id не найден для IMEI {imei}")
+    return vehicle_id
 
 
 def get_commands_by_imei(imei: str) -> dict:
@@ -107,14 +109,6 @@ def get_commands_by_imei(imei: str) -> dict:
             "lock_engine": "chat LOCK|OUTPUT0 1",
             "unlock_engine": "chat UNLOCK|OUTPUT0 0"
         },
-        "866011056063951": {  # HAVAL - vehicle_id 800153076
-            "open": "*!CEVT 1",
-            "close": "*!CEVT 2",
-            "give_key": "*!2Y",
-            "take_key": "*!2N",
-            "lock_engine": "*!1Y",
-            "unlock_engine": "*!1N"
-        },
         "860803068146253": {  # Hyundai Tucson - vehicle_id 800339176
             "open": "chat OPEN",
             "close": "chat CLOSE",
@@ -124,14 +118,10 @@ def get_commands_by_imei(imei: str) -> dict:
             "unlock_engine": "OUTPUT0 0"
         }
     }
-    return commands_map.get(imei, {
-        "open": "*!CEVT 1",
-        "close": "*!CEVT 2",
-        "give_key": "*!2Y",
-        "take_key": "*!2N",
-        "lock_engine": "*!1Y",
-        "unlock_engine": "*!1N"
-    })
+    commands = commands_map.get(imei)
+    if not commands:
+        raise HTTPException(status_code=400, detail=f"Команды не найдены для IMEI {imei}")
+    return commands
 
 
 async def send_lock_engine(imei: str, token: str, retries: int = 1) -> dict:

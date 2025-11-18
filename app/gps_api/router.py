@@ -981,7 +981,6 @@ async def get_vehicle_telemetry(
         if not vehicle_imei:
             vehicle_imei_map = {
                 1: "860803068143045",  # MB CLA45s
-                2: "866011056063951",  # Haval F7x  
                 3: "860803068139548",  # Hongqi e-qm5
             }
             vehicle_imei = vehicle_imei_map.get(car_uuid)
@@ -1304,7 +1303,6 @@ async def take_key_by_id(
         # Сначала проверяем состояние двигателя через телеметрию
         vehicle_imei_map = {
             1: "860803068143045",  # MB CLA45s
-            2: "866011056063951",  # Haval F7x  
             3: "860803068139548",  # Hongqi e-qm5
         }
         vehicle_imei = vehicle_imei_map.get(car_uuid, car.gps_imei)

@@ -8,8 +8,8 @@ from app.schemas.base import SidMixin
 class CarOwnerResponse(BaseModel):
     """Схема для автомобиля в списке владельца"""
     id: str = Field(..., description="Уникальный идентификатор автомобиля")
-    name: str = Field(..., description="Название автомобиля", example="HAVAL F7x")
-    plate_number: str = Field(..., description="Государственный номер", example="422ABK02")
+    name: str = Field(..., description="Название автомобиля", example="MB CLA45s")
+    plate_number: str = Field(..., description="Государственный номер", example="666AZV02")
     available_minutes: int = Field(..., description="Доступные минуты в текущем месяце", example=38400)
     vin: Optional[str] = Field(None, description="VIN номер автомобиля", example="1HGBH41JXMN109186")
     color: Optional[str] = Field(None, description="Цвет автомобиля", example="Красный")
@@ -46,8 +46,8 @@ class MonthEarnings(BaseModel):
 class TripsForMonthResponse(BaseModel):
     """Схема для ответа с поездками за месяц"""
     vehicle_id: str = Field(..., description="ID автомобиля")
-    vehicle_name: str = Field(..., description="Название автомобиля", example="HAVAL F7x")
-    vehicle_plate_number: str = Field(..., description="Госномер автомобиля", example="422ABK02")
+    vehicle_name: str = Field(..., description="Название автомобиля", example="MB CLA45s")
+    vehicle_plate_number: str = Field(..., description="Госномер автомобиля", example="666AZV02")
     month_earnings: MonthEarnings = Field(..., description="Заработок за выбранный месяц")
     trips: List[TripResponse] = Field(..., description="Список поездок за месяц")
     available_months: List[MonthEarnings] = Field(..., description="Список доступных месяцев с заработком")
@@ -80,7 +80,7 @@ class DailyRoute(BaseModel):
 
 class RouteData(BaseModel):
     """Полные данные маршрута"""
-    device_id: str = Field(..., description="ID GPS устройства", example="800153076")
+    device_id: str = Field(..., description="ID GPS устройства", example="800212421")
     start_date: str = Field(..., description="Дата начала в ISO формате", example="2024-01-15T14:30:00")
     end_date: str = Field(..., description="Дата окончания в ISO формате", example="2024-01-15T16:30:00")
     total_coordinates: int = Field(..., description="Общее количество координат", example=658)
@@ -103,8 +103,8 @@ class TripDetailResponse(BaseModel):
     """Детальная информация о поездке"""
     id: str = Field(..., description="ID поездки (sid)")
     vehicle_id: str = Field(..., description="ID автомобиля (sid)")
-    vehicle_name: str = Field(..., description="Название автомобиля", example="HAVAL F7x")
-    vehicle_plate_number: str = Field(..., description="Госномер", example="422ABK02")
+    vehicle_name: str = Field(..., description="Название автомобиля", example="MB CLA45s")
+    vehicle_plate_number: str = Field(..., description="Госномер", example="666AZV02")
     duration_minutes: int = Field(..., description="Продолжительность в минутах", example=120)
     earnings: int = Field(..., description="Заработок владельца в тенге", example=7500)
     rental_type: str = Field(..., description="Тип тарифа", example="hours", enum=["minutes", "hours", "days"])

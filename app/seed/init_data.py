@@ -72,28 +72,6 @@ def create_cars(db: Session, owner: User) -> None:
     """Создает автомобили (UUID id). Сопоставление по уникальному plate_number, без ручного задания id)."""
     specs = [
         {
-            "name": "HAVAL F7x",
-            "gps_id": "800153076",
-            "gps_imei": "866011056063951",
-            "engine_volume": 2.0,
-            "year": 2021,
-            "drive_type": 3,
-            "price_per_minute": 70,
-            "price_per_hour": 3125,
-            "price_per_day": 50000,
-            "plate_number": "422ABK02",
-            "latitude": 43.238949,
-            "longitude": 76.889709,
-            "fuel_level": 80,
-            "body_type": CarBodyType.CROSSOVER,
-            "auto_class": CarAutoClass.A,
-            "course": 90,
-            "description": "Машина в идеальном состоянии.",
-            "photos": get_car_photos("422ABK02"),
-            "vin": "1HGBH41JXMN109186",
-            "color": "Белый",
-        },
-        {
             "name": "MB CLA45s",
             "gps_id": "800212421",
             "gps_imei": "860803068143045",
