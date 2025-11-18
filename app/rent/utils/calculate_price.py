@@ -76,11 +76,14 @@ def calc_required_balance(
     
     # open_fee (открытие дверей) - для всех типов аренды
     open_fee = get_open_price(car)
+
+    # Дополнительный сбор, если клиент заказывает доставку
+    delivery_fee = DELIVERY_EXTRA_FEE if include_delivery else 0
     
     # Стоимость аренды
     if rental_type == RentalType.MINUTES:
         # Минутный: открытие дверей + price_per_minute * 120
-        required = open_fee + (car.price_per_minute * 120)
+        required = open_fee + (car.price_per_minute * 120) + delivery_fee
         return int(required)
     
     elif rental_type == RentalType.HOURS:
@@ -106,7 +109,7 @@ def calc_required_balance(
             tank_liters = FULL_TANK_LITERS
         full_tank_cost = tank_liters * price_per_liter
         
-        required = open_fee + base_price + one_hour_minute_cost + full_tank_cost
+        required = open_fee + base_price + one_hour_minute_cost + full_tank_cost + delivery_fee
         return int(required)
     
     else:  # RentalType.DAYS
@@ -143,5 +146,5 @@ def calc_required_balance(
             tank_liters = FULL_TANK_LITERS
         full_tank_cost = tank_liters * price_per_liter
         
-        required = base_price + one_hour_minute_cost + full_tank_cost
+        required = base_price + one_hour_minute_cost + full_tank_cost + delivery_fee
     return int(required)
