@@ -916,12 +916,29 @@ def get_rented_cars(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access key")
 
     # 2) Быстрый sync-запрос: только нужные поля, distinct по car_id
-    statuses = [RentalStatus.IN_USE, RentalStatus.DELIVERING_IN_PROGRESS]
+    # Включаем все статусы, которые считаются активной арендой (как в billing.py)
+    statuses = [
+        RentalStatus.RESERVED,
+        RentalStatus.IN_USE,
+        RentalStatus.DELIVERING,
+        RentalStatus.DELIVERY_RESERVED,
+        RentalStatus.DELIVERING_IN_PROGRESS
+    ]
 
     rows = (
         db.query(Car.name, Car.plate_number)
         .join(RentalHistory, RentalHistory.car_id == Car.id)
-        .filter(RentalHistory.rental_status.in_(statuses))
+        .filter(
+            or_(
+                # Машины с активной арендой (по статусу аренды)
+                RentalHistory.rental_status.in_(statuses),
+                # Машины со статусом SERVICE, у которых есть активная аренда
+                and_(
+                    Car.status == CarStatus.SERVICE,
+                    RentalHistory.rental_status.in_(statuses)
+                )
+            )
+        )
         .distinct(Car.id)
         .all()
     )
