@@ -24,7 +24,8 @@ from app.admin.users.schemas import (
     UserListSchema, UserMapPositionSchema, UserCommentUpdateSchema,
     UserSearchFiltersSchema, GuarantorInfoSchema, TripSummarySchema,
     TripListItemSchema, TripDetailSchema, OwnerCarListItemSchema,
-    UserEditSchema, UserBlockSchema, CompanyBonusSchema, DeleteRentalsRequestSchema
+    UserEditSchema, UserBlockSchema, CompanyBonusSchema, SanctionPenaltySchema,
+    DeleteRentalsRequestSchema
 )
 from app.owner.router import calculate_owner_earnings
 from app.admin.cars.utils import sort_car_photos
@@ -1143,6 +1144,111 @@ async def add_company_bonus(
         raise HTTPException(
             status_code=500,
             detail="Ошибка при начислении бонуса. Администраторы уведомлены."
+        )
+
+
+@users_router.post("/sanctions", summary="Назначить санкцию клиенту")
+async def add_sanction_penalty(
+    penalty_data: SanctionPenaltySchema,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Назначает санкцию (штраф) клиенту:
+    - Находит пользователя по номеру телефона
+    - Вычитает сумму санкции из баланса
+    - Создаёт транзакцию SANCTION_PENALTY, привязанную к аренде
+    - Отправляет push-уведомление пользователю
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    if not penalty_data.phone_number.isdigit():
+        raise HTTPException(status_code=400, detail="Номер телефона должен содержать только цифры")
+    
+    try:
+        user = db.query(User).filter(User.phone_number == penalty_data.phone_number).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="Пользователь с таким номером телефона не найден")
+        
+        try:
+            rental_uuid = safe_sid_to_uuid(penalty_data.rental_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Некорректный rental_id")
+        
+        rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+        if not rental:
+            raise HTTPException(status_code=404, detail="Аренда не найдена")
+        if rental.user_id != user.id:
+            raise HTTPException(status_code=400, detail="Указанная аренда не принадлежит пользователю")
+        
+        penalty_amount = Decimal(str(penalty_data.amount))
+        balance_before = float(user.wallet_balance or 0)
+        current_balance = Decimal(user.wallet_balance or 0)
+        new_balance = current_balance - penalty_amount
+        user.wallet_balance = new_balance
+        balance_after = float(new_balance)
+        
+        transaction = WalletTransaction(
+            user_id=user.id,
+            amount=float(-penalty_amount),
+            transaction_type=WalletTransactionType.SANCTION_PENALTY,
+            description=penalty_data.description,
+            balance_before=balance_before,
+            balance_after=balance_after,
+            related_rental_id=rental.id,
+            created_at=get_local_time()
+        )
+        db.add(transaction)
+        db.commit()
+        db.refresh(user)
+        
+        try:
+            await send_push_to_user_by_id(
+                db_session=db,
+                user_id=user.id,
+                title="Вам начислена санкция.",
+                body="Перейдите, чтобы посмотреть детали."
+            )
+        except Exception as push_error:
+            await log_error_to_telegram(
+                error=push_error,
+                user=user,
+                additional_context={
+                    "action": "send_sanction_notification",
+                    "penalty_amount": penalty_data.amount,
+                    "phone_number": penalty_data.phone_number,
+                    "admin_id": str(current_user.id)
+                }
+            )
+        
+        return {
+            "message": "Санкция успешно начислена",
+            "user_id": uuid_to_sid(user.id),
+            "phone_number": user.phone_number,
+            "amount": penalty_data.amount,
+            "new_balance": float(user.wallet_balance),
+            "transaction_id": uuid_to_sid(transaction.id),
+            "rental_id": penalty_data.rental_id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        await log_error_to_telegram(
+            error=e,
+            user=current_user,
+            additional_context={
+                "action": "add_sanction_penalty",
+                "phone_number": penalty_data.phone_number,
+                "penalty_amount": penalty_data.amount,
+                "description": penalty_data.description,
+                "rental_id": penalty_data.rental_id
+            }
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Ошибка при назначении санкции. Администраторы уведомлены."
         )
 
 

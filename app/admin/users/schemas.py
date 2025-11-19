@@ -223,6 +223,14 @@ class CompanyBonusSchema(BaseModel):
     description: str = Field(..., min_length=1, max_length=500, description="Описание бонуса")
 
 
+class SanctionPenaltySchema(BaseModel):
+    """Схема для назначения санкции клиенту"""
+    phone_number: str = Field(..., min_length=11, max_length=11, description="Номер телефона пользователя")
+    amount: float = Field(..., gt=0, description="Сумма санкции (штраф)")
+    description: str = Field(..., min_length=1, max_length=500, description="Описание санкции")
+    rental_id: str = Field(..., description="SID аренды, к которой относится санкция")
+
+
 class DeleteRentalsRequestSchema(BaseModel):
     """Схема для запроса удаления аренд"""
     rental_ids: List[str] = Field(..., description="Список ID аренд для удаления")
