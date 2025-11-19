@@ -126,10 +126,6 @@ def _update_vehicle_data_sync(vehicles_data: list, db: Session) -> int:
                     car.mileage = vehicle["mileage"]
                 updated += 1
         db.commit()
-        
-        if updated > 0:
-            from app.websocket.notifications import notify_vehicles_list_update
-            asyncio.create_task(notify_vehicles_list_update())
     except Exception as e:
         logger.error(f"Ошибка при обновлении данных машин в БД: {e}")
     return updated
@@ -154,7 +150,11 @@ async def update_vehicle_data():
 
     try:
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, _update_in_thread, vehicles_data)
+        updated = await loop.run_in_executor(None, _update_in_thread, vehicles_data)
+        
+        if updated > 0:
+            from app.websocket.notifications import notify_vehicles_list_update
+            asyncio.create_task(notify_vehicles_list_update())
     except Exception as e:
         logger.error(f"Ошибка в процессе run_in_executor: {e}")
 
