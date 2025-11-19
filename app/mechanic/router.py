@@ -123,6 +123,7 @@ def get_all_vehicles_plain(
                 "current_renter_details": None,
                 "rental_id": None,
                 "last_client_review": None,
+                "reservation_details": None,
             }
 
             # ищем последнюю активную аренду (IN_USE или DELIVERING)
@@ -144,6 +145,44 @@ def get_all_vehicles_plain(
                 )
                 if active:
                     car_dict["rental_id"] = uuid_to_sid(active.id)
+
+            reservation_statuses = [
+                RentalStatus.RESERVED,
+                RentalStatus.DELIVERING,
+                RentalStatus.DELIVERING_IN_PROGRESS,
+                RentalStatus.DELIVERY_RESERVED,
+                RentalStatus.SCHEDULED,
+            ]
+            car_statuses_with_reservation = {
+                CarStatus.RESERVED,
+                CarStatus.DELIVERING,
+                CarStatus.PENDING,
+                CarStatus.SCHEDULED,
+            }
+            if car.status in car_statuses_with_reservation:
+                reservation = (
+                    db.query(RentalHistory)
+                    .filter(
+                        RentalHistory.car_id == car.id,
+                        RentalHistory.rental_status.in_(reservation_statuses),
+                    )
+                    .order_by(RentalHistory.reservation_time.desc())
+                    .first()
+                )
+                if reservation:
+                    renter = db.query(User).filter(User.id == reservation.user_id).first()
+                    if renter:
+                        car_dict["reservation_details"] = {
+                            "rental_id": uuid_to_sid(reservation.id),
+                            "first_name": renter.first_name,
+                            "last_name": renter.last_name,
+                            "middle_name": renter.middle_name,
+                            "phone_number": renter.phone_number,
+                            "selfie_url": renter.selfie_url or renter.selfie_with_license_url,
+                            "tariff": reservation.rental_type.value if reservation.rental_type else None,
+                            "reservation_time": reservation.reservation_time.isoformat() if reservation.reservation_time else None,
+                            "duration": reservation.duration,
+                        }
 
             # если машина в использовании — добавляем детали арендатора
             if car.status == CarStatus.IN_USE and car.current_renter_id:
@@ -172,7 +211,8 @@ def get_all_vehicles_plain(
                         "last_name": renter.last_name,
                         "middle_name": renter.middle_name,
                         "phone_number": renter.phone_number,
-                        "selfie_url": renter.selfie_with_license_url,
+                        "selfie_url": renter.selfie_url or renter.selfie_with_license_url,
+                        "tariff": last_rent.rental_type.value if last_rent and last_rent.rental_type else None,
                         "rent_selfie_url": rent_selfie_url,
                     }
                     
