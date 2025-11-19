@@ -358,6 +358,24 @@ async def root(db: Session = Depends(get_db)):
     return {"message": "salam?"}
 
 
+@app.get("/test-websocket")
+async def test_websocket():
+    """Проверка доступности WebSocket эндпоинтов"""
+    websocket_routes = []
+    for route in app.router.routes:
+        route_type = type(route).__name__
+        if 'websocket' in route_type.lower() or 'websocket' in route.name.lower():
+            websocket_routes.append({
+                "path": getattr(route, 'path', '-'),
+                "name": route.name
+            })
+    return {
+        "websocket_endpoints_found": len(websocket_routes),
+        "endpoints": websocket_routes,
+        "note": "Если endpoints найдены, но подключение не работает - проблема в nginx конфигурации"
+    }
+
+
 @app.get("/list_routes")
 async def list_routes():
     lines = []
