@@ -959,6 +959,69 @@ def get_occupied_cars(
     return [{"plate_number": plate} for (plate,) in rows]
 
 
+@Vehicle_Router.get("/excluded-from-alerts", summary="Список машин, исключённых из уведомлений")
+def get_excluded_from_alerts_cars(
+    key: str = Query(..., description="Секретный ключ доступа"),
+    db: Session = Depends(get_db)
+):
+    """
+    Возвращает список машин, для которых не нужно отправлять уведомления в Telegram.
+    Включает:
+    - Машины в аренде (RESERVED, IN_USE, DELIVERING, DELIVERY_RESERVED, DELIVERING_IN_PROGRESS)
+    - Машины у владельца (OWNER)
+    - Машины на осмотре у механика (SERVICE с mechanic_inspection_status)
+    - Машины на доставке
+    """
+    # 1) Проверяем ключ
+    if key != RENTED_CARS_ENDPOINT_KEY:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access key")
+    
+    excluded_plates = set()
+    
+    # 2) Машины в аренде (все статусы активной аренды)
+    rental_statuses = [
+        RentalStatus.RESERVED,
+        RentalStatus.IN_USE,
+        RentalStatus.DELIVERING,
+        RentalStatus.DELIVERY_RESERVED,
+        RentalStatus.DELIVERING_IN_PROGRESS
+    ]
+    rented_rows = (
+        db.query(Car.plate_number)
+        .join(RentalHistory, RentalHistory.car_id == Car.id)
+        .filter(RentalHistory.rental_status.in_(rental_statuses))
+        .distinct()
+        .all()
+    )
+    for (plate,) in rented_rows:
+        excluded_plates.add(plate)
+    
+    # 3) Машины у владельца (OWNER)
+    owner_rows = (
+        db.query(Car.plate_number)
+        .filter(Car.status == CarStatus.OWNER)
+        .all()
+    )
+    for (plate,) in owner_rows:
+        excluded_plates.add(plate)
+    
+    # 4) Машины на осмотре у механика (SERVICE с mechanic_inspection_status)
+    mechanic_inspection_rows = (
+        db.query(Car.plate_number)
+        .join(RentalHistory, RentalHistory.car_id == Car.id)
+        .filter(
+            Car.status == CarStatus.SERVICE,
+            RentalHistory.mechanic_inspection_status.in_(["PENDING", "IN_USE", "SERVICE"])
+        )
+        .distinct()
+        .all()
+    )
+    for (plate,) in mechanic_inspection_rows:
+        excluded_plates.add(plate)
+    
+    return [{"plate_number": plate} for plate in excluded_plates]
+
+
 @Vehicle_Router.get("/telemetry/{car_id}", response_model=VehicleTelemetryResponse)
 async def get_vehicle_telemetry(
     car_id: str,
