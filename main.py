@@ -361,11 +361,35 @@ async def root(db: Session = Depends(get_db)):
 @app.get("/list_routes")
 async def list_routes():
     lines = []
+    websocket_routes = []
     for route in app.router.routes:
+        # Проверяем, является ли роут WebSocket
+        is_websocket = hasattr(route, 'endpoint') and 'websocket' in route.name.lower()
+        if not is_websocket:
+            # Проверяем по типу роута
+            route_type = type(route).__name__
+            is_websocket = 'websocket' in route_type.lower()
+        
+        route_info = {
+            "name": route.name,
+            "path": getattr(route, 'path', '-'),
+            "methods": getattr(route, 'methods', '-') if hasattr(route, 'methods') else 'WEBSOCKET',
+            "type": "websocket" if is_websocket else "http"
+        }
         lines.append(
-            f"name={route.name}, path={getattr(route, 'path', '-')}, methods={getattr(route, 'methods', '-')}"
+            f"name={route_info['name']}, path={route_info['path']}, methods={route_info['methods']}, type={route_info['type']}"
         )
-    return {"routes": lines}
+        if route_info['type'] == 'websocket':
+            websocket_routes.append({
+                "path": route_info['path'],
+                "name": route_info['name']
+            })
+    return {
+        "routes": lines,
+        "websocket_endpoints": websocket_routes,
+        "websocket_count": len(websocket_routes),
+        "note": "WebSocket endpoints are not visible in Swagger UI. Use /list_routes to see them."
+    }
 
 #
 # # Ваш SubscriptionKey (можно передать через переменную окружения)
