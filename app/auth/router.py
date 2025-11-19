@@ -42,7 +42,8 @@ from app.admin.cars.utils import sort_car_photos
 from app.utils.digital_signature import generate_digital_signature
 from app.utils.sid_converter import convert_uuid_response_to_sid
 from app.utils.telegram_logger import log_error_to_telegram
-from app.utils.fcm_token import ensure_user_has_unique_fcm_token, ensure_unique_fcm_token
+# Временно закомментировано: генерация FCM токенов
+# from app.utils.fcm_token import ensure_user_has_unique_fcm_token, ensure_unique_fcm_token
 from app.websocket.notifications import notify_user_status_update
 import traceback
 import asyncio
@@ -269,12 +270,13 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
             inactive_user.last_sms_code = sms_code
             inactive_user.sms_code_valid_until = current_time + timedelta(hours=1)
             
-            # Проверяем и генерируем FCM токен, если необходимо
-            try:
-                ensure_user_has_unique_fcm_token(db, inactive_user)
-            except Exception as e:
-                print(f"Ошибка при генерации FCM токена при восстановлении: {e}")
-                # Продолжаем без токена, он будет сгенерирован при логине
+            # Временно закомментировано: генерация FCM токенов
+            # # Проверяем и генерируем FCM токен, если необходимо
+            # try:
+            #     ensure_user_has_unique_fcm_token(db, inactive_user)
+            # except Exception as e:
+            #     print(f"Ошибка при генерации FCM токена при восстановлении: {e}")
+            #     # Продолжаем без токена, он будет сгенерирован при логине
             
             user = inactive_user
         else:
@@ -308,12 +310,13 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
             )
             user.digital_signature = digital_signature
             
-            # Генерируем уникальный FCM токен для нового пользователя
-            try:
-                user.fcm_token = ensure_unique_fcm_token(db, user_id=user.id)
-            except Exception as e:
-                print(f"Ошибка при генерации FCM токена при регистрации: {e}")
-                # Продолжаем без токена, он будет сгенерирован при логине
+            # Временно закомментировано: генерация FCM токенов
+            # # Генерируем уникальный FCM токен для нового пользователя
+            # try:
+            #     user.fcm_token = ensure_unique_fcm_token(db, user_id=user.id)
+            # except Exception as e:
+            #     print(f"Ошибка при генерации FCM токена при регистрации: {e}")
+            #     # Продолжаем без токена, он будет сгенерирован при логине
     else:
         # Существующий активный пользователь - проверяем, что не переданы лишние поля
         if request.first_name or request.last_name or request.middle_name:
@@ -564,16 +567,17 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
         # Продолжаем выполнение без обработки гарантов
         linked_count = 0
 
-    # Проверяем и генерируем FCM токен, если необходимо
-    try:
-        token_updated = ensure_user_has_unique_fcm_token(db, user)
-        if token_updated:
-            db.commit()
-            db.refresh(user)
-    except Exception as e:
-        print(f"Ошибка при генерации FCM токена: {e}")
-        # Продолжаем выполнение даже если не удалось сгенерировать токен
-        db.rollback()
+    # Временно закомментировано: генерация FCM токенов
+    # # Проверяем и генерируем FCM токен, если необходимо
+    # try:
+    #     token_updated = ensure_user_has_unique_fcm_token(db, user)
+    #     if token_updated:
+    #         db.commit()
+    #         db.refresh(user)
+    # except Exception as e:
+    #     print(f"Ошибка при генерации FCM токена: {e}")
+    #     # Продолжаем выполнение даже если не удалось сгенерировать токен
+    #     db.rollback()
 
     # Получаем ФИО пользователя
     full_name = f"{user.first_name or ''} {user.last_name or ''} {user.middle_name or ''}".strip()
