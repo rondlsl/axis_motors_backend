@@ -7,7 +7,7 @@ from app.utils.short_id import uuid_to_sid
 from app.rent.utils.user_utils import get_user_available_auto_classes
 from app.admin.cars.utils import sort_car_photos
 from app.rent.utils.calculate_price import get_open_price
-from app.auth.router import _get_user_me_data
+from app.utils.user_data import get_user_me_data
 
 
 async def get_vehicles_data_for_user(user: User, db: Session) -> Dict[str, Any]:
@@ -168,7 +168,7 @@ async def get_vehicles_data_for_user(user: User, db: Session) -> Dict[str, Any]:
 async def get_user_status_data(user: User, db: Session) -> Dict[str, Any]:
     """Получить данные статуса пользователя."""
     try:
-        return await _get_user_me_data(db, user)
+        return await get_user_me_data(db, user)
     except Exception as e:
         return {"error": str(e)}
 
