@@ -4,7 +4,7 @@ from app.models.user_model import User, UserRole
 from app.models.car_model import Car, CarStatus, CarAutoClass
 from app.models.history_model import RentalHistory, RentalStatus
 from app.utils.short_id import uuid_to_sid
-from app.rent.router import get_user_available_auto_classes
+from app.rent.utils.user_utils import get_user_available_auto_classes
 from app.admin.cars.utils import sort_car_photos
 from app.rent.utils.calculate_price import get_open_price
 from app.auth.router import _get_user_me_data

@@ -13,7 +13,7 @@ from app.utils.short_id import uuid_to_sid, safe_sid_to_uuid
 from app.models.contract_model import UserContractSignature, ContractFile, ContractType
 from app.models.history_model import RentalHistory, RentalStatus
 from app.models.car_model import Car
-from app.rent.router import get_user_available_auto_classes
+from app.rent.utils.user_utils import get_user_available_auto_classes
 
 from starlette import status
 import traceback

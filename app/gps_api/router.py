@@ -18,7 +18,7 @@ from app.models.car_model import Car, CarAutoClass, CarStatus
 from app.models.history_model import RentalHistory, RentalStatus
 from app.models.rental_actions_model import ActionType, RentalAction
 from app.models.user_model import User, UserRole
-from app.rent.router import get_user_available_auto_classes
+from app.rent.utils.user_utils import get_user_available_auto_classes
 from app.models.application_model import Application, ApplicationStatus
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.get_active_rental import get_active_rental_car, get_active_rental, get_active_rental_by_car_id

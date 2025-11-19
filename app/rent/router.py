@@ -49,6 +49,7 @@ import shutil
 from fastapi.concurrency import run_in_threadpool
 from app.services.face_verify import verify_user_upload_against_profile
 from app.websocket.notifications import notify_user_status_update, notify_vehicles_list_update
+from app.rent.utils.user_utils import get_user_available_auto_classes
 
 def _write_upload_to_temp(upload: UploadFile) -> str:
     tmp = NamedTemporaryFile(delete=False, suffix=Path(upload.filename or 'upload').suffix)
@@ -68,22 +69,6 @@ OFFSET_HOURS = 5
 # Цена за литр бензина (тг)
 FUEL_PRICE_PER_LITER = 350
 ELECTRIC_FUEL_PRICE_PER_LITER = 100
-
-
-def get_user_available_auto_classes(user: User, db: Session) -> List[str]:
-    if user.auto_class and len(user.auto_class) > 0:
-        return user.auto_class
-    
-    if user.role == UserRole.REJECTFIRST:
-        active_guarantor = db.query(Guarantor).join(User, Guarantor.guarantor_id == User.id).filter(
-            Guarantor.client_id == user.id,
-            Guarantor.is_active == True
-        ).first()
-        
-        if active_guarantor and active_guarantor.guarantor_user.auto_class:
-            return active_guarantor.guarantor_user.auto_class
-    
-    return []
 
 
 def schedule_notifications(
