@@ -48,6 +48,7 @@ from tempfile import NamedTemporaryFile
 import shutil
 from fastapi.concurrency import run_in_threadpool
 from app.services.face_verify import verify_user_upload_against_profile
+from app.websocket.notifications import notify_user_status_update, notify_vehicles_list_update
 
 def _write_upload_to_temp(upload: UploadFile) -> str:
     tmp = NamedTemporaryFile(delete=False, suffix=Path(upload.filename or 'upload').suffix)
@@ -83,6 +84,23 @@ def get_user_available_auto_classes(user: User, db: Session) -> List[str]:
             return active_guarantor.guarantor_user.auto_class
     
     return []
+
+
+def schedule_notifications(
+        user_ids: Optional[List[uuid.UUID]] = None,
+        refresh_vehicles: bool = False
+) -> None:
+    """
+    Планировщик уведомлений через WebSocket.
+    """
+    user_ids = user_ids or []
+    unique_ids = {str(uid) for uid in user_ids if uid}
+    
+    if refresh_vehicles:
+        asyncio.create_task(notify_vehicles_list_update())
+    
+    for uid in unique_ids:
+        asyncio.create_task(notify_user_status_update(uid))
 
 
 def validate_user_can_rent(current_user: User, db: Session) -> None:
@@ -794,6 +812,11 @@ async def reserve_car(
     
     db.commit()
 
+    schedule_notifications(
+        user_ids=[current_user.id, car.owner_id],
+        refresh_vehicles=True
+    )
+
     return {
         "message": "Car reserved successfully",
         "rental_id": uuid_to_sid(rental.id),
@@ -968,6 +991,11 @@ async def reserve_delivery(
         plate_number=car.plate_number
     )
 
+    schedule_notifications(
+        user_ids=[current_user.id, car.owner_id],
+        refresh_vehicles=True
+    )
+
     return {
         "message": "Заказ доставки оформлен успешно",
         "rental_id": uuid_to_sid(rental.id),
@@ -1022,6 +1050,12 @@ async def cancel_reservation(
         car.current_renter_id = None
         car.status = CarStatus.FREE
         db.commit()
+
+        schedule_notifications(
+            user_ids=[current_user.id, car.owner_id],
+            refresh_vehicles=True
+        )
+
         return {
             "message": "Аренда отменена (owner rental)",
             "minutes_used": int((now - (rental.start_time or base_time)).total_seconds() / 60),
@@ -1142,6 +1176,12 @@ async def cancel_reservation(
 
         try:
             db.commit()
+
+            schedule_notifications(
+                user_ids=[current_user.id, car.owner_id],
+                refresh_vehicles=True
+            )
+
             return {
                 "message": "Аренда отменена",
                 "minutes_used": int(time_passed),
@@ -1235,6 +1275,11 @@ async def cancel_delivery(
             plate_number=car.plate_number,
             rental_id=rental.id
         )
+
+    schedule_notifications(
+        user_ids=[current_user.id, car.owner_id],
+        refresh_vehicles=True
+    )
 
     return {"message": "Доставка отменена успешно"}
 
@@ -1631,8 +1676,16 @@ async def start_rental(
     #     print(f"Ошибка отправки SMS при начале аренды: {e}")
 
     if is_owner_rental:
+        schedule_notifications(
+            user_ids=[current_user.id, car.owner_id],
+            refresh_vehicles=True
+        )
         return {"message": "Rental started successfully (owner rental)", "rental_id": uuid_to_sid(rental.id)}
     else:
+        schedule_notifications(
+            user_ids=[current_user.id, car.owner_id],
+            refresh_vehicles=True
+        )
         return {"message": "Rental started successfully", "rental_id": uuid_to_sid(rental.id)}
 
 
@@ -2717,6 +2770,11 @@ async def complete_rental(
     # except Exception as e:
     #     print(f"Ошибка отправки SMS при завершении аренды: {e}")
 
+    schedule_notifications(
+        user_ids=[current_user.id, car.owner_id],
+        refresh_vehicles=True
+    )
+
     return {
         "message": "Rental completed successfully",
         "rental_id": uuid_to_sid(rental.id),
@@ -2856,6 +2914,11 @@ async def create_advance_booking(
     current_user.last_activity_at = datetime.utcnow()
     
     db.commit()
+    
+    schedule_notifications(
+        user_ids=[current_user.id, car.owner_id],
+        refresh_vehicles=True
+    )
 
     response_data = {
         "message": "Автомобиль успешно забронирован заранее",
@@ -2973,6 +3036,11 @@ async def cancel_booking(
     car.status = CarStatus.FREE
     
     db.commit()
+    
+    schedule_notifications(
+        user_ids=[current_user.id, car.owner_id],
+        refresh_vehicles=True
+    )
 
     response_data = {
         "message": "Бронирование успешно отменено",

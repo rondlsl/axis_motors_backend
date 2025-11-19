@@ -12,6 +12,8 @@ from app.models.application_model import Application, ApplicationStatus
 from app.models.guarantor_model import Guarantor
 from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
 from app.utils.telegram_logger import log_error_to_telegram
+from app.websocket.notifications import notify_user_status_update
+import asyncio
 
 FinancierRouter = APIRouter(prefix="/financier", tags=["Financier"])
 
@@ -382,6 +384,17 @@ async def approve_application(
     
     db.commit()
     
+    user_ids_to_notify = {str(user.id)}
+    for relation in guarantor_relations:
+        if relation.guarantor_id:
+            user_ids_to_notify.add(str(relation.guarantor_id))
+    for relation in client_relations:
+        if relation.client_id:
+            user_ids_to_notify.add(str(relation.client_id))
+    
+    for user_id in user_ids_to_notify:
+        asyncio.create_task(notify_user_status_update(user_id))
+    
     try:
         await send_localized_notification_to_user(
             db, 
@@ -483,8 +496,15 @@ async def reject_application(
     await cancel_guarantor_requests_on_rejection(str(user.id), db)
     
     db.commit()
+    
+    user_ids_to_notify = {str(user.id)}
+    for relation in guarantor_relations:
+        if relation.guarantor_id:
+            user_ids_to_notify.add(str(relation.guarantor_id))
+    
+    for user_id in user_ids_to_notify:
+        asyncio.create_task(notify_user_status_update(user_id))
 
-    # Уведомление пользователю
     try:
         if reason_type == "documents":
             translation_key = "financier_reject_documents"
@@ -600,7 +620,14 @@ async def request_documents_recheck(
     
     db.commit()
     
-    # Отправляем уведомление пользователю
+    user_ids_to_notify = {str(user.id)}
+    for relation in guarantor_relations:
+        if relation.guarantor_id:
+            user_ids_to_notify.add(str(relation.guarantor_id))
+    
+    for user_id in user_ids_to_notify:
+        asyncio.create_task(notify_user_status_update(user_id))
+    
     try:
         await send_localized_notification_to_user(
             db,

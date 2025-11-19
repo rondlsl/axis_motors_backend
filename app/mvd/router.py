@@ -12,6 +12,8 @@ from app.models.application_model import Application, ApplicationStatus
 from app.models.guarantor_model import Guarantor, GuarantorRequest, GuarantorRequestStatus
 from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
 from app.utils.telegram_logger import log_error_to_telegram
+from app.websocket.notifications import notify_user_status_update
+import asyncio
 
 MvdRouter = APIRouter(prefix="/mvd", tags=["MVD"])
 
@@ -345,6 +347,8 @@ async def approve_application(
     
     db.commit()
     
+    asyncio.create_task(notify_user_status_update(str(user.id)))
+    
     try:
         await send_localized_notification_to_user(
             db, 
@@ -428,6 +432,9 @@ async def reject_application(
         await cancel_guarantor_requests_on_rejection(str(user.id), db)
     
     db.commit()
+    
+    if user:
+        asyncio.create_task(notify_user_status_update(str(user.id)))
     
     try:
         await send_localized_notification_to_user(

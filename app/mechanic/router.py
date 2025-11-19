@@ -24,6 +24,7 @@ from app.utils.atomic_operations import delete_uploaded_files
 from app.utils.telegram_logger import log_error_to_telegram
 from app.guarantor.sms_utils import send_rental_start_sms, send_rental_complete_sms
 from app.admin.cars.utils import sort_car_photos
+from app.websocket.notifications import notify_vehicles_list_update, notify_user_status_update
 
 MechanicRouter = APIRouter(tags=["Mechanic"], prefix="/mechanic")
 
@@ -712,6 +713,13 @@ async def check_car(
     rental.mechanic_inspection_start_longitude = car.longitude
     
     db.commit()
+    
+    asyncio.create_task(notify_vehicles_list_update())
+    if rental.user_id:
+        asyncio.create_task(notify_user_status_update(str(rental.user_id)))
+    if car.owner_id:
+        asyncio.create_task(notify_user_status_update(str(car.owner_id)))
+    
     return {
         "message": "Проверка автомобиля начата успешно",
         "rental_id": uuid_to_sid(rental.id),
@@ -808,6 +816,12 @@ async def start_rental(
         except:
             pass
     
+    asyncio.create_task(notify_vehicles_list_update())
+    if rental.user_id:
+        asyncio.create_task(notify_user_status_update(str(rental.user_id)))
+    if car.owner_id:
+        asyncio.create_task(notify_user_status_update(str(car.owner_id)))
+    
     # try:
     #     name_parts = []
     #     if current_mechanic.first_name:
@@ -870,8 +884,13 @@ async def cancel_reservation(
         car.current_renter_id = None
         car.status = CarStatus.PENDING  # Возвращаем статус автомобиля в PENDING
 
-        # Пытаемся зафиксировать все изменения одним commit
         db.commit()
+        
+        asyncio.create_task(notify_vehicles_list_update())
+        if rental.user_id:
+            asyncio.create_task(notify_user_status_update(str(rental.user_id)))
+        if car.owner_id:
+            asyncio.create_task(notify_user_status_update(str(car.owner_id)))
 
         minutes_used = int((now - rental.mechanic_inspection_start_time).total_seconds() / 60) if rental.mechanic_inspection_start_time else 0
         return {
@@ -1303,6 +1322,12 @@ async def complete_rental(
     
     try:
         db.commit()
+        
+        asyncio.create_task(notify_vehicles_list_update())
+        if rental.user_id:
+            asyncio.create_task(notify_user_status_update(str(rental.user_id)))
+        if car.owner_id:
+            asyncio.create_task(notify_user_status_update(str(car.owner_id)))
         
         # try:
         #     name_parts = []

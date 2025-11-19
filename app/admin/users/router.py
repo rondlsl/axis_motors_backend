@@ -31,6 +31,8 @@ from app.owner.router import calculate_owner_earnings
 from app.admin.cars.utils import sort_car_photos
 from app.utils.telegram_logger import log_error_to_telegram
 from app.push.utils import send_push_to_user_by_id
+from app.websocket.notifications import notify_user_status_update
+import asyncio
 
 users_router = APIRouter(tags=["Admin Users"])
 
@@ -1098,6 +1100,8 @@ async def add_company_bonus(
         db.commit()
         db.refresh(user)
         
+        asyncio.create_task(notify_user_status_update(str(user.id)))
+        
         # Отправляем push-уведомление
         try:
             await send_push_to_user_by_id(
@@ -1202,6 +1206,8 @@ async def add_sanction_penalty(
         db.add(transaction)
         db.commit()
         db.refresh(user)
+        
+        asyncio.create_task(notify_user_status_update(str(user.id)))
         
         try:
             await send_push_to_user_by_id(

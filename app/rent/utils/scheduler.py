@@ -3,10 +3,12 @@
 """
 from datetime import datetime, timedelta
 import uuid
+import asyncio
 from sqlalchemy.orm import Session
 from app.models.history_model import RentalHistory, RentalStatus
 from app.models.car_model import CarStatus
 from app.models.car_model import Car
+from app.websocket.notifications import notify_vehicles_list_update, notify_user_status_update
 
 
 def process_scheduled_bookings(db: Session) -> dict:
@@ -76,8 +78,23 @@ def process_scheduled_bookings(db: Session) -> dict:
         
         completed_count += 1
     
-    # Сохраняем изменения
     db.commit()
+    
+    user_ids = set()
+    car_ids = set()
+    for booking in bookings_to_activate + expired_bookings + bookings_to_complete:
+        if booking.user_id:
+            user_ids.add(str(booking.user_id))
+        car_ids.add(booking.car_id)
+    
+    for car_id in car_ids:
+        car = db.query(Car).get(car_id)
+        if car and car.owner_id:
+            user_ids.add(str(car.owner_id))
+    
+    asyncio.create_task(notify_vehicles_list_update())
+    for user_id in user_ids:
+        asyncio.create_task(notify_user_status_update(user_id))
     
     return {
         "activated_bookings": activated_count,

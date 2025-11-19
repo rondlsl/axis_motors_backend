@@ -43,7 +43,9 @@ from app.utils.digital_signature import generate_digital_signature
 from app.utils.sid_converter import convert_uuid_response_to_sid
 from app.utils.telegram_logger import log_error_to_telegram
 from app.utils.fcm_token import ensure_user_has_unique_fcm_token, ensure_unique_fcm_token
+from app.websocket.notifications import notify_user_status_update
 import traceback
+import asyncio
 
 Auth_router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -1873,6 +1875,8 @@ async def upload_documents(
         current_user.upload_document_at = datetime.utcnow()
 
         db.commit()
+        
+        asyncio.create_task(notify_user_status_update(str(current_user.id)))
 
         return {
             "message": "Documents and data uploaded successfully",

@@ -20,6 +20,7 @@ from app.core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2, GLONASSSOF
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.car_data import send_lock_engine
 from app.utils.telegram_logger import telegram_error_logger
+from app.websocket.notifications import notify_user_status_update
 
 FUEL_PRICE_PER_LITER = 350
 ELECTRIC_FUEL_PRICE_PER_LITER = 100
@@ -124,6 +125,7 @@ async def billing_job():
                     ))
     except Exception as e:
         error_msg = f"⚠️ Ошибка при обработке блокировок двигателя: {e}"
+        
         # Отправка в первый бот
         for chat_id in (965048905, 5941825713, 860991388, 1594112444, 808277096):
             asyncio.create_task(_send_telegram(error_msg, chat_id, TELEGRAM_BOT_TOKEN))
@@ -143,7 +145,30 @@ async def billing_job():
             }
         ))
 
-    # 6) Yield back to event loop
+    try:
+        active_rentals = db.query(RentalHistory).filter(
+            RentalHistory.rental_status.in_([
+                RentalStatus.RESERVED,
+                RentalStatus.IN_USE,
+                RentalStatus.DELIVERING,
+                RentalStatus.DELIVERY_RESERVED,
+                RentalStatus.DELIVERING_IN_PROGRESS
+            ])
+        ).all()
+        
+        user_ids = set()
+        for rental in active_rentals:
+            if rental.user_id:
+                user_ids.add(str(rental.user_id))
+            car = db.query(Car).filter(Car.id == rental.car_id).first()
+            if car and car.owner_id:
+                user_ids.add(str(car.owner_id))
+        
+        for user_id in user_ids:
+            asyncio.create_task(notify_user_status_update(user_id))
+    except Exception as e:
+        print(f"Error sending WebSocket notifications in billing_job: {e}")
+
     await asyncio.sleep(0)
 
 

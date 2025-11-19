@@ -5,7 +5,7 @@ import base64
 import os
 import uuid
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
@@ -29,6 +29,18 @@ from app.contracts.schemas import (
 # decode_file_content_and_extension больше не используется
 
 ContractsRouter = APIRouter(prefix="/contracts", tags=["Contracts"])
+GMT_PLUS_5 = timezone(timedelta(hours=5))
+
+
+def to_gmt_plus_5(dt: datetime | None) -> datetime | None:
+    """Преобразует время в часовой пояс GMT+5 для отображения."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    return dt.astimezone(GMT_PLUS_5)
 
 
 @ContractsRouter.post("/upload", response_model=ContractFileResponse)
@@ -324,7 +336,7 @@ async def sign_contract(
         contract_file_id=uuid_to_sid(signature.contract_file_id),
         contract_type=sign_request.contract_type,
         digital_signature=signature.digital_signature,
-        signed_at=signature.signed_at,
+        signed_at=to_gmt_plus_5(signature.signed_at),
         rental_id=str(signature.rental_id) if signature.rental_id else None,
         guarantor_relationship_id=str(signature.guarantor_relationship_id) if signature.guarantor_relationship_id else None
     )
@@ -354,7 +366,7 @@ async def get_my_contracts(
             contract_file_id=uuid_to_sid(sig.contract_file_id),
             contract_type=contract_file.contract_type if contract_file else None,
             digital_signature=sig.digital_signature,
-            signed_at=sig.signed_at,
+            signed_at=to_gmt_plus_5(sig.signed_at),
             rental_id=uuid_to_sid(sig.rental_id) if sig.rental_id else None,
             guarantor_relationship_id=uuid_to_sid(sig.guarantor_relationship_id) if sig.guarantor_relationship_id else None
         )

@@ -28,6 +28,9 @@ from app.gps_api.utils.route_data import get_gps_route_data
 from app.models.support_action_model import SupportAction
 from app.utils.plate_normalizer import normalize_plate_number
 from app.utils.telegram_logger import log_error_to_telegram
+from app.websocket.notifications import notify_vehicles_list_update, notify_user_status_update
+import asyncio
+import uuid
 
 cars_router = APIRouter(tags=["Admin Cars"])
 
@@ -1318,6 +1321,17 @@ async def update_car_status(
                     active_rental.end_time = datetime.utcnow()
                 
                 db.commit()
+                
+                asyncio.create_task(notify_vehicles_list_update())
+                asyncio.create_task(notify_user_status_update(str(active_rental.user_id)))
+                if car.owner_id:
+                    asyncio.create_task(notify_user_status_update(str(car.owner_id)))
+    else:
+        asyncio.create_task(notify_vehicles_list_update())
+        if car.owner_id:
+            asyncio.create_task(notify_user_status_update(str(car.owner_id)))
+        if car.current_renter_id:
+            asyncio.create_task(notify_user_status_update(str(car.current_renter_id)))
 
     return {
         "message": "Статус автомобиля изменен",

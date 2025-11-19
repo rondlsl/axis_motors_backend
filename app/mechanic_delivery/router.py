@@ -28,6 +28,7 @@ from app.wallet.utils import record_wallet_transaction
 from app.models.wallet_transaction_model import WalletTransactionType
 from app.guarantor.sms_utils import send_rental_start_sms, send_rental_complete_sms
 from app.admin.cars.utils import sort_car_photos
+from app.websocket.notifications import notify_vehicles_list_update, notify_user_status_update
 
 class DeliveryReviewInput(BaseModel):
     """Схема для отзыва механика доставки"""
@@ -150,6 +151,12 @@ async def accept_delivery(
             "mechanic_assigned",
             "mechanic_assigned"
         )
+    
+    asyncio.create_task(notify_vehicles_list_update())
+    if rental.user_id:
+        asyncio.create_task(notify_user_status_update(str(rental.user_id)))
+    if car.owner_id:
+        asyncio.create_task(notify_user_status_update(str(car.owner_id)))
 
     return {
         "message": "Заказ доставки успешно принят",
@@ -197,6 +204,12 @@ async def start_delivery(
     rental.delivery_start_longitude = car.longitude
     db.commit()
     db.refresh(rental)
+
+    asyncio.create_task(notify_vehicles_list_update())
+    if rental.user_id:
+        asyncio.create_task(notify_user_status_update(str(rental.user_id)))
+    if car.owner_id:
+        asyncio.create_task(notify_user_status_update(str(car.owner_id)))
 
     # GPS команды при старте доставки
     try:
@@ -389,6 +402,12 @@ async def complete_delivery(
             "delivery_completed",
             "car_delivered"
         )
+    
+    asyncio.create_task(notify_vehicles_list_update())
+    if rental.user_id:
+        asyncio.create_task(notify_user_status_update(str(rental.user_id)))
+    if car.owner_id:
+        asyncio.create_task(notify_user_status_update(str(car.owner_id)))
 
     # try:
     #     name_parts = []

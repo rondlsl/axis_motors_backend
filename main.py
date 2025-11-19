@@ -51,6 +51,7 @@ from app.contracts.router import ContractsRouter
 from app.support.router import router as SupportRouter
 from app.support import setup_support_system
 from app.monitoring.router import router as MonitoringRouter
+from app.websocket.router import websocket_router
 
 # === APP ===
 app = FastAPI(
@@ -125,6 +126,10 @@ def _update_vehicle_data_sync(vehicles_data: list, db: Session) -> int:
                     car.mileage = vehicle["mileage"]
                 updated += 1
         db.commit()
+        
+        if updated > 0:
+            from app.websocket.notifications import notify_vehicles_list_update
+            asyncio.create_task(notify_vehicles_list_update())
     except Exception as e:
         logger.error(f"Ошибка при обновлении данных машин в БД: {e}")
     return updated
@@ -346,6 +351,7 @@ app.include_router(WalletRouter)
 app.include_router(ContractsRouter)
 app.include_router(SupportRouter)
 app.include_router(MonitoringRouter)
+app.include_router(websocket_router)
 
 @app.get("/")
 async def root(db: Session = Depends(get_db)):
