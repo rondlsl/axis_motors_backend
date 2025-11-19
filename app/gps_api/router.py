@@ -971,6 +971,7 @@ def get_excluded_from_alerts_cars(
     - Машины у владельца (OWNER)
     - Машины на осмотре у механика (SERVICE с mechanic_inspection_status)
     - Машины на доставке
+    - Машины со статусом OCCUPIED (заняты)
     """
     # 1) Проверяем ключ
     if key != RENTED_CARS_ENDPOINT_KEY:
@@ -1017,6 +1018,15 @@ def get_excluded_from_alerts_cars(
         .all()
     )
     for (plate,) in mechanic_inspection_rows:
+        excluded_plates.add(plate)
+    
+    # 5) Машины со статусом OCCUPIED (заняты, не отображаются)
+    occupied_rows = (
+        db.query(Car.plate_number)
+        .filter(Car.status == CarStatus.OCCUPIED)
+        .all()
+    )
+    for (plate,) in occupied_rows:
         excluded_plates.add(plate)
     
     return [{"plate_number": plate} for plate in excluded_plates]
