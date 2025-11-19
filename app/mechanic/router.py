@@ -1408,7 +1408,7 @@ def get_inspection_history_detail(
             "waiting_fee": float(rental.waiting_fee or 0),
             "overtime_fee": float(rental.overtime_fee or 0),
             "distance_fee": float(rental.distance_fee or 0),
-            "fuel_fee": float(rental.fuel_fee or 0),
+            "fuel_fee": float(getattr(rental, "fuel_fee", 0) or 0),
             "total_price": float(rental.total_price or 0),
         },
         "car": {
