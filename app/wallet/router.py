@@ -14,6 +14,8 @@ from app.auth.dependencies.get_current_user import get_current_user
 from app.dependencies.database.database import get_db
 from app.models.user_model import User, UserRole
 from app.models.wallet_transaction_model import WalletTransaction, WalletTransactionType
+from app.models.history_model import RentalHistory
+from app.models.car_model import Car
 from app.utils.telegram_logger import log_error_to_telegram
 from app.translations.excel_headers import get_excel_header_row
 from app.wallet.schemas import (
@@ -23,6 +25,8 @@ from app.wallet.schemas import (
     WalletStatementOut,
     WalletTransactionOut,
     WalletUsersBalancesOut,
+    SanctionsListOut,
+    SanctionItem,
 )
 
 
@@ -180,6 +184,59 @@ def get_my_transactions(
             for t in items
         ]
     }
+
+
+@WalletRouter.get("/sanctions", response_model=SanctionsListOut)
+def get_my_sanctions(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+):
+    """
+    Возвращает список санкций (штрафов), начисленных пользователю.
+    """
+    q = (
+        db.query(WalletTransaction)
+        .filter(
+            WalletTransaction.user_id == current_user.id,
+            WalletTransaction.transaction_type == WalletTransactionType.SANCTION_PENALTY,
+        )
+        .order_by(WalletTransaction.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    sanctions = q.all()
+
+    rental_ids = [tx.related_rental_id for tx in sanctions if tx.related_rental_id]
+    rentals_map = {}
+    cars_map = {}
+    if rental_ids:
+        rentals = db.query(RentalHistory).filter(RentalHistory.id.in_(rental_ids)).all()
+        rentals_map = {r.id: r for r in rentals}
+        car_ids = [r.car_id for r in rentals if r.car_id]
+        if car_ids:
+            cars = db.query(Car).filter(Car.id.in_(car_ids)).all()
+            cars_map = {c.id: c for c in cars}
+
+    sanction_items: list[SanctionItem] = []
+    for tx in sanctions:
+        rental = rentals_map.get(tx.related_rental_id) if tx.related_rental_id else None
+        car = cars_map.get(rental.car_id) if rental and rental.car_id else None
+        sanction_items.append(
+            SanctionItem(
+                id=tx.sid,
+                amount=abs(float(tx.amount)),
+                description=tx.description,
+                created_at=tx.created_at,
+                rental_id=uuid_to_sid(tx.related_rental_id) if tx.related_rental_id else None,
+                car_id=uuid_to_sid(rental.car_id) if rental and rental.car_id else None,
+                car_name=car.name if car else None,
+                plate_number=car.plate_number if car else None,
+            )
+        )
+
+    return {"sanctions": sanction_items}
 
 
 @WalletRouter.get("/balance", response_model=WalletBalanceOut)

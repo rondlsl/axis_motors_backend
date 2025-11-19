@@ -55,6 +55,21 @@ class WalletTransactionsSummaryOut(BaseModel):
     count: int
 
 
+class SanctionItem(BaseModel):
+    id: str
+    amount: float
+    description: Optional[str] = None
+    created_at: datetime
+    rental_id: Optional[str] = None
+    car_id: Optional[str] = None
+    car_name: Optional[str] = None
+    plate_number: Optional[str] = None
+
+
+class SanctionsListOut(BaseModel):
+    sanctions: List[SanctionItem]
+
+
 class WalletUserBalanceItem(SidMixin):
     id: str
     phone_number: Optional[str]
