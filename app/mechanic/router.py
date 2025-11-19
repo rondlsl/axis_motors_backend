@@ -1353,3 +1353,85 @@ def get_inspection_history(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка при получении истории осмотров: {str(e)}")
+
+
+@MechanicRouter.get("/inspection-history/{rental_id}", summary="Детали конкретного осмотра по аренды")
+def get_inspection_history_detail(
+        rental_id: str,
+        db: Session = Depends(get_db),
+        current_mechanic: Any = Depends(get_current_mechanic)
+) -> Dict[str, Any]:
+    """
+    Возвращает детальную информацию по конкретному осмотру (аренде) для механика.
+    Ожидает `rental_id` в формате SID.
+    """
+    try:
+        rental_uuid = safe_sid_to_uuid(rental_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Некорректный rental_id")
+
+    rental = (
+        db.query(RentalHistory)
+        .filter(
+            RentalHistory.id == rental_uuid,
+            RentalHistory.mechanic_inspector_id == current_mechanic.id
+        )
+        .first()
+    )
+
+    if not rental:
+        raise HTTPException(status_code=404, detail="Осмотр не найден или недоступен")
+
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    client = db.query(User).filter(User.id == rental.user_id).first()
+
+    inspection_data = {
+        "id": uuid_to_sid(rental.id),
+        "mechanic_id": uuid_to_sid(current_mechanic.id),
+        "mechanic_inspection_status": rental.mechanic_inspection_status,
+        "mechanic_inspection_start_time": rental.mechanic_inspection_start_time.isoformat() if rental.mechanic_inspection_start_time else None,
+        "mechanic_inspection_end_time": rental.mechanic_inspection_end_time.isoformat() if rental.mechanic_inspection_end_time else None,
+        "mechanic_inspection_comment": rental.mechanic_inspection_comment,
+        "mechanic_photos_before": rental.mechanic_photos_before or [],
+        "mechanic_photos_after": rental.mechanic_photos_after or [],
+        "client_photos_before": rental.photos_before or [],
+        "client_photos_after": rental.photos_after or [],
+        "rental_status": rental.rental_status.value if rental.rental_status else None,
+        "rental_type": rental.rental_type.value if rental.rental_type else None,
+        "duration": rental.duration,
+        "start_time": rental.start_time.isoformat() if rental.start_time else None,
+        "end_time": rental.end_time.isoformat() if rental.end_time else None,
+        "charges": {
+            "base_price": float(rental.base_price or 0),
+            "open_fee": float(rental.open_fee or 0),
+            "delivery_fee": float(rental.delivery_fee or 0),
+            "waiting_fee": float(rental.waiting_fee or 0),
+            "overtime_fee": float(rental.overtime_fee or 0),
+            "distance_fee": float(rental.distance_fee or 0),
+            "fuel_fee": float(rental.fuel_fee or 0),
+            "total_price": float(rental.total_price or 0),
+        },
+        "car": {
+            "id": uuid_to_sid(car.id),
+            "name": car.name,
+            "plate_number": car.plate_number,
+            "status": car.status.value if car.status else None,
+            "color": car.color,
+            "photos": sort_car_photos(car.photos or [])
+        } if car else None,
+        "client": {
+            "id": uuid_to_sid(client.id),
+            "first_name": client.first_name,
+            "last_name": client.last_name,
+            "phone_number": client.phone_number
+        } if client else None
+    }
+
+    if rental.mechanic_inspection_start_time and rental.mechanic_inspection_end_time:
+        inspection_data["inspection_duration_minutes"] = int(
+            (rental.mechanic_inspection_end_time - rental.mechanic_inspection_start_time).total_seconds() / 60
+        )
+    else:
+        inspection_data["inspection_duration_minutes"] = None
+
+    return {"inspection": inspection_data}
