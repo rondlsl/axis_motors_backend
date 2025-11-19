@@ -253,10 +253,13 @@ async def websocket_user_status(
     token: Optional[str] = Query(None)
 ):
     """WebSocket эндпоинт для real-time обновлений статуса аренды пользователя."""
+    logger.info(f"WebSocket connection attempt to /ws/auth/user/status, token present: {token is not None}")
     user = None
     db = SessionLocal()
     
     try:
+        await websocket.accept()
+        logger.info("WebSocket connection accepted")
         user = await authenticate_websocket(websocket, token, db)
         if not user:
             return
