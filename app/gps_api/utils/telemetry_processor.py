@@ -292,11 +292,12 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
     
     trunk_keys = ["Багажник (can35)", "Багажник (can38)"]
     trunk_value = extract_first_match(regs, trunk_keys)
+    trunk_unreg = None
     if trunk_value:
         trunk_open = bool(trunk_value.lower() == "открыт")
     else:
         trunk_unreg = extract_first_match(unregs, ["CanSafetyFlags_trunk"])
-    trunk_open = trunk_unreg.lower() == "false" if trunk_unreg else True
+        trunk_open = trunk_unreg.lower() == "false" if trunk_unreg else True
     
     # Свет и тормоза
     lights_keys = ["Фары (can38)", "Ближний свет (can41)"]
