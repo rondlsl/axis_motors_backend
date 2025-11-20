@@ -77,8 +77,8 @@ async def websocket_vehicle_telemetry(
                     "data": telemetry.dict(),
                     "timestamp": datetime.utcnow().isoformat()
                 })
-        except Exception as e:
-            logger.error(f"Error sending initial telemetry: {e}")
+        except Exception:
+            logger.exception("Error sending initial telemetry")
         
         last_data_hash = None
         
@@ -93,8 +93,8 @@ async def websocket_vehicle_telemetry(
                         })
                 except WebSocketDisconnect:
                     break
-                except Exception as e:
-                    logger.error(f"Error receiving message: {e}")
+                except Exception:
+                    logger.exception("Error receiving message")
                     break
         
         receive_task = asyncio.create_task(receive_messages())
@@ -120,8 +120,8 @@ async def websocket_vehicle_telemetry(
                     
                 except WebSocketDisconnect:
                     break
-                except Exception as e:
-                    logger.error(f"Error in telemetry loop: {e}")
+                except Exception:
+                    logger.exception("Error in telemetry loop")
                     await websocket.send_json({
                         "type": "error",
                         "message": "Error fetching telemetry data",
@@ -137,8 +137,8 @@ async def websocket_vehicle_telemetry(
     
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected: user={user.id if user else 'unknown'}, car_id={car_id}")
-    except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+    except Exception:
+        logger.exception("WebSocket error")
     finally:
         if user and car_id:
             await connection_manager.disconnect(
