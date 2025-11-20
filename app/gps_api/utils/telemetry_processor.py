@@ -20,10 +20,33 @@ def parse_int(value: str) -> int:
 
 
 def parse_datetime(dt_str: str) -> datetime:
-    """Парсит дату и время из строки"""
+    """Парсит дату и время из строки (поддержка дробной секунды > 6 знаков и суффикса Z)"""
+    if not dt_str:
+        return datetime.utcnow()
+    
+    tz_suffix = ""
+    # Обрабатываем суффикс часового пояса
     if dt_str.endswith("Z"):
-        dt_str = dt_str.replace("Z", "+00:00")
-    return datetime.fromisoformat(dt_str)
+        dt_str = dt_str[:-1]
+        tz_suffix = "+00:00"
+    elif len(dt_str) >= 6 and dt_str[-6] in ["+", "-"]:
+        tz_suffix = dt_str[-6:]
+        dt_str = dt_str[:-6]
+    
+    if "." in dt_str:
+        main_part, frac_part = dt_str.split(".", 1)
+        # Оставляем только цифры и нормализуем длину до 6 знаков (микросекунды)
+        frac_digits = "".join(ch for ch in frac_part if ch.isdigit())
+        if frac_digits:
+            frac_digits = (frac_digits + "000000")[:6]
+            dt_str = f"{main_part}.{frac_digits}"
+        else:
+            dt_str = main_part
+    try:
+        return datetime.fromisoformat(dt_str + tz_suffix)
+    except ValueError:
+        # Fallback: возвращаем текущее время, чтобы не падать
+        return datetime.utcnow()
 
 
 def extract_sensor_value(items: List[Dict], key_name: str) -> str:
