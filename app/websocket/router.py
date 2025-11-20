@@ -261,8 +261,6 @@ async def websocket_user_status(
     db = SessionLocal()
     
     try:
-        await websocket.accept()
-        logger.info("WebSocket connection accepted")
         user = await authenticate_websocket(websocket, token, db)
         if not user:
             return
