@@ -1,4 +1,5 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from fastapi.encoders import jsonable_encoder
 from typing import Optional
 import logging
 import asyncio
@@ -72,9 +73,10 @@ async def websocket_vehicle_telemetry(
             glonassoft_data = await glonassoft_client.get_vehicle_data(vehicle_imei)
             if glonassoft_data:
                 telemetry = process_glonassoft_data(glonassoft_data, car.name)
+                telemetry_payload = jsonable_encoder(telemetry)
                 await websocket.send_json({
                     "type": "telemetry",
-                    "data": telemetry.dict(),
+                    "data": telemetry_payload,
                     "timestamp": datetime.utcnow().isoformat()
                 })
         except Exception:
@@ -106,12 +108,13 @@ async def websocket_vehicle_telemetry(
                     
                     if glonassoft_data:
                         telemetry = process_glonassoft_data(glonassoft_data, car.name)
-                        current_data_hash = hash(json.dumps(telemetry.dict(), sort_keys=True, default=str))
+                        telemetry_payload = jsonable_encoder(telemetry)
+                        current_data_hash = hash(json.dumps(telemetry_payload, sort_keys=True, default=str))
                         
                         if current_data_hash != last_data_hash or last_data_hash is None:
                             await websocket.send_json({
                                 "type": "telemetry",
-                                "data": telemetry.dict(),
+                                "data": telemetry_payload,
                                 "timestamp": datetime.utcnow().isoformat()
                             })
                             last_data_hash = current_data_hash
