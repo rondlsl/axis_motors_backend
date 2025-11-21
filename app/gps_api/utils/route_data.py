@@ -161,6 +161,9 @@ def _group_coordinates_by_day(
             start_dt = start_dt.replace(tzinfo=None)
         if end_dt.tzinfo:
             end_dt = end_dt.replace(tzinfo=None)
+        
+        start_dt = start_dt - timedelta(hours=5)
+        end_dt = end_dt - timedelta(hours=5)
     except (ValueError, AttributeError):
         return []
     
@@ -171,7 +174,7 @@ def _group_coordinates_by_day(
             period_start_dt = datetime.fromisoformat(period_start_str)
             if period_start_dt.tzinfo:
                 period_start_dt = period_start_dt.replace(tzinfo=None)
-            period_start_dt = period_start_dt + timedelta(hours=5)
+            # period_start уже в UTC, оставляем как есть
         except Exception:
             pass
     
