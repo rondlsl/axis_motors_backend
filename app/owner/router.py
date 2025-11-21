@@ -38,8 +38,8 @@ ELECTRIC_FUEL_PRICE_PER_LITER = 200
 
 
 def apply_offset(dt: datetime) -> str | None:
-    """Применяет смещение времени +5 часов для корректного отображения"""
-    return (dt + timedelta(hours=OFFSET_HOURS)).isoformat() if dt else None
+    """Возвращает время в ISO формате (время уже хранится в UTC+5 в базе)"""
+    return dt.isoformat() if dt else None
 
 
 def calculate_fuel_cost(rental: RentalHistory, car: Car, current_user: User) -> int:

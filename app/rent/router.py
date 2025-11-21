@@ -188,7 +188,8 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
 
 
 def apply_offset(dt: datetime) -> str | None:
-    return (dt + timedelta(hours=OFFSET_HOURS)).isoformat() if dt else None
+    """Возвращает время в ISO формате (время уже хранится в UTC+5 в базе)"""
+    return dt.isoformat() if dt else None
 
 
 @RentRouter.get("/history")

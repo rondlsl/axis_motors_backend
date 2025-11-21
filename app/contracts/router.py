@@ -33,14 +33,8 @@ GMT_PLUS_5 = timezone(timedelta(hours=5))
 
 
 def to_gmt_plus_5(dt: datetime | None) -> datetime | None:
-    """Преобразует время в часовой пояс GMT+5 для отображения."""
-    if dt is None:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    else:
-        dt = dt.astimezone(timezone.utc)
-    return dt.astimezone(GMT_PLUS_5)
+    """Возвращает время как есть (время уже хранится в UTC+5 в базе как naive datetime)."""
+    return dt
 
 
 @ContractsRouter.post("/upload", response_model=ContractFileResponse)
