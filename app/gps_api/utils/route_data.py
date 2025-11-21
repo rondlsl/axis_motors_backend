@@ -161,6 +161,9 @@ def _group_coordinates_by_day(
             start_dt = start_dt.replace(tzinfo=None)
         if end_dt.tzinfo:
             end_dt = end_dt.replace(tzinfo=None)
+        # start_dt и end_dt в UTC+5 (из базы), преобразуем в UTC для сравнения с координатами
+        start_dt_utc = start_dt - timedelta(hours=5)
+        end_dt_utc = end_dt - timedelta(hours=5)
     except (ValueError, AttributeError):
         return []
     
@@ -171,6 +174,7 @@ def _group_coordinates_by_day(
             period_start_dt = datetime.fromisoformat(period_start_str)
             if period_start_dt.tzinfo:
                 period_start_dt = period_start_dt.replace(tzinfo=None)
+            # period_start из API уже в UTC, оставляем как есть
         except Exception:
             pass
     
@@ -179,7 +183,7 @@ def _group_coordinates_by_day(
             if period_start_dt:
                 result = period_start_dt + timedelta(seconds=ts)
             else:
-                result = start_dt + timedelta(seconds=ts)
+                result = start_dt_utc + timedelta(seconds=ts)
             if result.tzinfo:
                 result = result.replace(tzinfo=None)
             return result
@@ -197,17 +201,17 @@ def _group_coordinates_by_day(
                         result = result.replace(tzinfo=None)
                     return result
                 except Exception:
-                    result = start_dt
+                    result = start_dt_utc
                     if result.tzinfo:
                         result = result.replace(tzinfo=None)
                     return result
         else:
-            result = start_dt
+            result = start_dt_utc
             if result.tzinfo:
                 result = result.replace(tzinfo=None)
             return result
 
-    filtered = [c for c in coordinates if start_dt <= _parse_ts(c.timestamp) <= end_dt]
+    filtered = [c for c in coordinates if start_dt_utc <= _parse_ts(c.timestamp) <= end_dt_utc]
     if not filtered:
         return []
 
