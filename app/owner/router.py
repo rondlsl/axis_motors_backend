@@ -663,8 +663,8 @@ async def get_trip_details(
         try:
             route_data = await get_gps_route_data(
                 device_id=car.gps_id,
-                start_date=to_utc_for_glonass(trip.start_time),
-                end_date=to_utc_for_glonass(trip.end_time)
+                start_date=apply_offset(trip.start_time),
+                end_date=apply_offset(trip.end_time)
             )
             if not route_data:
                 route_data = None
