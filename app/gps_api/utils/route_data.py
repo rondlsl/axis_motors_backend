@@ -171,7 +171,6 @@ def _group_coordinates_by_day(
             period_start_dt = datetime.fromisoformat(period_start_str)
             if period_start_dt.tzinfo:
                 period_start_dt = period_start_dt.replace(tzinfo=None)
-            period_start_dt = period_start_dt + timedelta(hours=5)
         except Exception:
             pass
     
