@@ -35,6 +35,17 @@ EXCEL_HEADERS_TRANSLATIONS = {
         "related_rental_id": "Жалға алу ID",
         "tracking_id": "Бақылау ID",
         "description": "Сипаттама"
+    },
+    "zh": {
+        "id": "ID",
+        "created_at": "创建日期",
+        "type": "交易类型",
+        "amount": "金额",
+        "balance_before": "之前余额",
+        "balance_after": "之后余额",
+        "related_rental_id": "租赁ID",
+        "tracking_id": "跟踪ID",
+        "description": "描述"
     }
 }
 
@@ -44,7 +55,7 @@ def get_excel_headers(locale: str = "ru") -> dict:
     Получить переведенные заголовки для Excel
     
     Args:
-        locale: Язык пользователя (ru/en/kz)
+        locale: Язык пользователя (ru/en/kz/zh)
         
     Returns:
         dict: Словарь с переведенными заголовками
@@ -60,7 +71,7 @@ def get_excel_header_row(locale: str = "ru") -> str:
     Получить строку заголовков для CSV/Excel
     
     Args:
-        locale: Язык пользователя (ru/en/kz)
+        locale: Язык пользователя (ru/en/kz/zh)
         
     Returns:
         str: Строка заголовков, разделенная запятыми

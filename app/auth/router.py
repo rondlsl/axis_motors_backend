@@ -622,13 +622,13 @@ async def read_users_me(
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
-@Auth_router.post("/set_locale/", summary="Set locale body", description="Доступные locale - ru/en/kz")
+@Auth_router.post("/set_locale/", summary="Set locale body", description="Доступные locale - ru/en/kz/zh")
 async def set_locale(
         payload: LocaleUpdate,
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db)
 ):
-    if payload.locale not in ["ru", "en", "kz"]:  # при необходимости список расширяем
+    if payload.locale not in ["ru", "en", "kz", "zh"]:  
         raise HTTPException(status_code=400, detail="Unsupported locale")
 
     current_user.locale = payload.locale

@@ -222,6 +222,81 @@ NOTIFICATIONS_TRANSLATIONS = {
         # Қаржы менеджерінің сұрауы бойынша құжаттарды қайта тексеру
         "financier_request_recheck_title": "Құжаттарды қайта тексеру қажет",
         "financier_request_recheck_body": "Қайта тексеру үшін құжаттарды қайта жүктеңіз."
+    },
+    
+    "zh": {
+        # 财务拒绝 - 文件
+        "financier_reject_documents_title": "申请被拒绝",
+        "financier_reject_documents_body": "您的文件无法读取，请重新上传。",
+        
+        # 财务拒绝 - 哈萨克斯坦公民缺少证书
+        "financier_reject_certificates_title": "申请被拒绝",
+        "financier_reject_certificates_body": "作为哈萨克斯坦共和国公民，您必须提供以下证明：精神神经病学诊所证明、麻醉学诊所证明、养老金缴费证明。\n请上传缺失的文件。",
+        
+        # 财务拒绝 - 财务原因
+        "financier_reject_financial_title": "申请被拒绝",
+        "financier_reject_financial_body": "很抱歉，在审核您的数据时，我们无法批准您的申请。但您可以使用「担保人」服务，邀请一个在必要时可以为您承担物质责任的人。",
+        
+        # 财务批准
+        "financier_approve_title": "申请已批准",
+        "financier_approve_body": "您的注册申请已获批准，请稍等片刻，车辆将可供您使用。准入等级：{auto_class}",
+        
+        # 内务部拒绝
+        "mvd_reject_title": "申请被拒绝",
+        "mvd_reject_body": "我们不得不拒绝注册。根据对您数据的审核，发现了不符合服务访问要求的情况。请注意，根据合同第6.3.4条，出租方有权自行决定拒绝与客户签订合同。此致敬礼，«AZV Motors»团队。",
+        
+        # 内务部批准
+        "mvd_approve_title": "申请已批准",
+        "mvd_approve_body": "恭喜！车辆可供租赁。您会选择哪辆车作为第一辆？",
+        
+        # 交付通知
+        "mechanic_assigned_title": "已分配技师",
+        "mechanic_assigned_body": "技师已接受您的交付订单并准备开始。",
+        
+        "delivery_started_title": "交付已开始",
+        "delivery_started_body": "技师已开始交付您的车辆。",
+        
+        "delivery_completed_title": "车辆已送达",
+        "delivery_completed_body": "您的车辆已成功送达。现在可以开始租赁了。",
+        
+        "delivery_cancelled_title": "交付已取消",
+        "delivery_cancelled_body": "订单 #{rental_id} 的车辆 {car_name} ({plate_number}) 的交付已取消。",
+        
+        # 技师新订单通知
+        "delivery_new_order_title": "交付：新订单",
+        "delivery_new_order_body": "需要向客户交付 {car_name} ({plate_number})。",
+        
+        # 余额通知
+        "low_balance_title": "余额不足",
+        "low_balance_body": "余额 {balance}₸ — 剩余不足 1000₸。",
+        
+        "balance_exhausted_title": "余额已用完",
+        "balance_exhausted_body": "您的余额为 0₸ — 请完成租赁以避免罚款。",
+        
+        # 罚款通知
+        "delivery_delay_penalty_title": "交付延迟罚款",
+        "delivery_delay_penalty_body": "因交付延迟 {penalty_minutes} 分钟，已扣除罚款 {penalty_fee}₸。",
+        
+        # 费率与等待通知
+        "pre_waiting_alert_title": "付费等待即将开始",
+        "pre_waiting_alert_body": "{mins_left} 分钟后，免费等待将结束，将按 {price}₸/分钟收费。",
+        
+        "waiting_started_title": "付费等待已开始",
+        "waiting_started_body": "等待费用：{extra} 分钟 {charge}₸。",
+        
+        "pre_overtime_alert_title": "基本费率即将结束",
+        "pre_overtime_alert_body": "{remaining} 分钟后。",
+        
+        "overtime_charges_title": "超时费用",
+        "overtime_charges_body": "超时收费：{extra} 分钟 {charge}₸。",
+        
+        # 需要检查的新车
+        "new_car_for_inspection_title": "需要检查的新车",
+        "new_car_for_inspection_body": "车辆 {car_name} ({plate_number}) 的租赁已完成。需要检查。",
+
+        # 财务要求重新检查文件
+        "financier_request_recheck_title": "需要重新检查文件",
+        "financier_request_recheck_body": "请重新上传文件以供重新审核。"
     }
 }
 
@@ -231,7 +306,7 @@ def get_notification_text(locale: str, key: str, **kwargs) -> tuple[str, str]:
     Получить локализованный текст уведомления
     
     Args:
-        locale: Язык пользователя (ru/en/kz)
+        locale: Язык пользователя (ru/en/kz/zh)
         key: Ключ перевода
         **kwargs: Параметры для форматирования строки
         
