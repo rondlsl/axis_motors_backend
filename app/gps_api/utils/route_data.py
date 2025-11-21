@@ -174,8 +174,6 @@ def _group_coordinates_by_day(
             period_start_dt = datetime.fromisoformat(period_start_str)
             if period_start_dt.tzinfo:
                 period_start_dt = period_start_dt.replace(tzinfo=None)
-            # API возвращает UTC время, преобразуем в UTC+5 для сравнения с временем из базы
-            period_start_dt = period_start_dt + timedelta(hours=5)
         except Exception:
             pass
     

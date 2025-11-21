@@ -399,8 +399,8 @@ async def get_trip_history_detail(
             
             route_data = await get_gps_route_data(
                 device_id=car.gps_id,
-                start_date=apply_offset(rental.start_time),
-                end_date=apply_offset(rental.end_time)
+                start_date=to_utc_for_glonass(rental.start_time),
+                end_date=to_utc_for_glonass(rental.end_time)
             )
             
             if route_data:
