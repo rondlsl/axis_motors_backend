@@ -29,6 +29,7 @@ from app.models.support_action_model import SupportAction
 from app.utils.plate_normalizer import normalize_plate_number
 from app.utils.telegram_logger import log_error_to_telegram
 from app.websocket.notifications import notify_vehicles_list_update, notify_user_status_update
+from app.utils.time_utils import get_local_time
 import asyncio
 import uuid
 
@@ -484,7 +485,7 @@ async def update_car_comment(
         raise HTTPException(status_code=404, detail="Комментарий не найден")
 
     comment.comment = comment_data.comment
-    comment.updated_at = datetime.utcnow()
+    comment.updated_at = get_local_time()
 
     db.commit()
     db.refresh(comment)
@@ -677,7 +678,7 @@ async def get_car_history_summary(
         for r in rentals
     )
 
-    now = datetime.utcnow()
+    now = get_local_time()
     last_completed = (
         db.query(RentalHistory)
         .filter(RentalHistory.car_id == car.id, RentalHistory.rental_status == RentalStatus.COMPLETED, RentalHistory.end_time.isnot(None))
@@ -1318,7 +1319,7 @@ async def update_car_status(
             if new_status in status_mapping:
                 active_rental.rental_status = status_mapping[new_status]
                 if new_status == "COMPLETED":
-                    active_rental.end_time = datetime.utcnow()
+                    active_rental.end_time = get_local_time()
                 
                 db.commit()
                 

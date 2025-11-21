@@ -2,9 +2,9 @@ from sqlalchemy import Column, String, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import uuid
-from datetime import datetime
 
 from app.dependencies.database.database import Base
+from app.utils.time_utils import get_local_time
 
 
 class TokenRecord(Base):
@@ -16,8 +16,8 @@ class TokenRecord(Base):
     token = Column(String, nullable=False, unique=True, index=True)
     last_used_at = Column(DateTime, nullable=True)
     expires_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=get_local_time)
+    updated_at = Column(DateTime, nullable=False, default=get_local_time)
 
     user = relationship("User")
 

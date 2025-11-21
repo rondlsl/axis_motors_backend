@@ -16,6 +16,7 @@ from app.rent.utils.calculate_price import get_open_price
 from app.owner.utils import calculate_month_availability_minutes, ALMATY_TZ
 from app.admin.cars.utils import sort_car_photos
 from app.core.config import logger
+from app.utils.time_utils import get_local_time
 import traceback
 
 
@@ -122,7 +123,7 @@ async def get_user_me_data(db: Session, current_user: User) -> Dict[str, Any]:
             # Рассчитываем время доставки если она началась
             delivery_duration_minutes = None
             if rental.delivery_start_time:
-                delivery_duration_minutes = int((datetime.utcnow() - rental.delivery_start_time).total_seconds() / 60)
+                delivery_duration_minutes = int((get_local_time() - rental.delivery_start_time).total_seconds() / 60)
             
             rental_details.update({
                 "delivery_latitude": rental.delivery_latitude,

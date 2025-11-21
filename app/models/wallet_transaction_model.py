@@ -1,4 +1,3 @@
-from datetime import datetime, timedelta
 import enum
 import uuid
 
@@ -7,11 +6,7 @@ from sqlalchemy.orm import relationship
 
 from app.dependencies.database.database import Base
 from app.utils.short_id import uuid_to_sid
-
-
-def get_local_time() -> datetime:
-    """Возвращает текущее время с смещением +5 часов (Алматинское время)"""
-    return datetime.utcnow() + timedelta(hours=5)
+from app.utils.time_utils import get_local_time
 
 
 class WalletTransactionType(enum.Enum):

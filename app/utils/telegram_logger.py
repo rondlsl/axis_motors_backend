@@ -4,12 +4,12 @@ Telegram Logger для отправки ошибок и критических �
 import asyncio
 import logging
 import traceback
-from datetime import datetime
 from typing import Optional, Dict, Any
 import httpx
 from fastapi import Request
 
 from app.core.config import TELEGRAM_BOT_MONITOR, MONITOR_GROUP_ID
+from app.utils.time_utils import get_local_time
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ class TelegramErrorLogger:
             message_parts.append("🖥️ <b>Источник:</b> BACKEND")
             
             # Время
-            message_parts.append(f"\n⏰ <b>Время:</b> {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
+            message_parts.append(f"\n⏰ <b>Время (GMT+5):</b> {get_local_time().strftime('%Y-%m-%d %H:%M:%S')}")
             
             # Информация о пользователе
             if user_info:
@@ -155,7 +155,7 @@ class TelegramErrorLogger:
         """Отправить информационное сообщение"""
         try:
             message_parts = [f"ℹ️ <b>ИНФОРМАЦИЯ</b>\n"]
-            message_parts.append(f"⏰ {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC\n")
+            message_parts.append(f"⏰ {get_local_time().strftime('%Y-%m-%d %H:%M:%S')} (GMT+5)\n")
             message_parts.append(message)
             
             if context:
@@ -171,7 +171,7 @@ class TelegramErrorLogger:
         """Отправить предупреждение"""
         try:
             message_parts = [f"⚠️ <b>ПРЕДУПРЕЖДЕНИЕ</b>\n"]
-            message_parts.append(f"⏰ {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC\n")
+            message_parts.append(f"⏰ {get_local_time().strftime('%Y-%m-%d %H:%M:%S')} (GMT+5)\n")
             message_parts.append(message)
             
             if context:

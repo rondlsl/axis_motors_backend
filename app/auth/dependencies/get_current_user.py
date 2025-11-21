@@ -5,6 +5,7 @@ from app.auth.security.auth_bearer import JWTBearer
 from app.models.user_model import User, UserRole
 from app.models.token_model import TokenRecord
 from app.dependencies.database.database import get_db
+from app.utils.time_utils import get_local_time
 
 
 async def get_current_user(
@@ -37,8 +38,7 @@ async def get_current_user(
     if token_row is None:
         raise HTTPException(status_code=401, detail="Token is not valid")
     # обновляем last_used_at
-    from datetime import datetime as _dt
-    token_row.last_used_at = _dt.utcnow()
+    token_row.last_used_at = get_local_time()
     db.add(token_row)
     db.commit()
     return user

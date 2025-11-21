@@ -12,6 +12,7 @@ from app.models.application_model import Application, ApplicationStatus
 from app.models.guarantor_model import Guarantor
 from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
 from app.utils.telegram_logger import log_error_to_telegram
+from app.utils.time_utils import get_local_time
 from app.websocket.notifications import notify_user_status_update
 import asyncio
 
@@ -337,9 +338,9 @@ async def approve_application(
     
     # Обновляем заявку
     application.financier_status = ApplicationStatus.APPROVED
-    application.financier_approved_at = datetime.utcnow()
+    application.financier_approved_at = get_local_time()
     application.financier_user_id = current_financier.id
-    application.updated_at = datetime.utcnow()
+    application.updated_at = get_local_time()
     
     # Обновляем пользователя
     user = application.user
@@ -452,9 +453,9 @@ async def reject_application(
     
     # Обновляем заявку
     application.financier_status = ApplicationStatus.REJECTED
-    application.financier_rejected_at = datetime.utcnow()
+    application.financier_rejected_at = get_local_time()
     application.financier_user_id = current_financier.id
-    application.updated_at = datetime.utcnow()
+    application.updated_at = get_local_time()
     application.reason = reason
     
     # Обновляем пользователя
@@ -616,7 +617,7 @@ async def request_documents_recheck(
             guarantor_user.auto_class = list(set(all_client_classes)) if all_client_classes else None
     
     # Обновляем updated_at
-    application.updated_at = datetime.utcnow()
+    application.updated_at = get_local_time()
     
     db.commit()
     

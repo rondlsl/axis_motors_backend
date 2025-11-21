@@ -2,10 +2,10 @@ from sqlalchemy import Column, Integer, String, DateTime, Enum, Numeric, Boolean
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 import enum
 import uuid
-from datetime import datetime
 from sqlalchemy.orm import relationship
 from app.dependencies.database.database import Base
 from app.utils.short_id import uuid_to_sid
+from app.utils.time_utils import get_local_time
 
 
 class UserRole(enum.Enum):
@@ -72,7 +72,7 @@ class User(Base):
     is_user_agreement = Column(Boolean, default=False, nullable=False, server_default="false")  # Пользовательское соглашение
     
     # Дополнительные поля для админ-панели
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=get_local_time)
     last_activity_at = Column(DateTime, nullable=True)
     upload_document_at = Column(DateTime, nullable=True) 
     admin_comment = Column(String, nullable=True)  # Комментарий админа/поддержки/механика

@@ -12,6 +12,7 @@ from app.models.application_model import Application, ApplicationStatus
 from app.models.guarantor_model import Guarantor, GuarantorRequest, GuarantorRequestStatus
 from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
 from app.utils.telegram_logger import log_error_to_telegram
+from app.utils.time_utils import get_local_time
 from app.websocket.notifications import notify_user_status_update
 import asyncio
 
@@ -338,9 +339,9 @@ async def approve_application(
         raise HTTPException(status_code=400, detail="Заявка не одобрена финансистом или нет активного гаранта")
     
     application.mvd_status = ApplicationStatus.APPROVED
-    application.mvd_approved_at = datetime.utcnow()
+    application.mvd_approved_at = get_local_time()
     application.mvd_user_id = current_mvd.id
-    application.updated_at = datetime.utcnow()
+    application.updated_at = get_local_time()
 
     if user and user.role != UserRole.REJECTFIRST:
         user.role = UserRole.USER
@@ -418,9 +419,9 @@ async def reject_application(
         raise HTTPException(status_code=400, detail="Заявка не одобрена финансистом или нет активного гаранта")
     
     application.mvd_status = ApplicationStatus.REJECTED
-    application.mvd_rejected_at = datetime.utcnow()
+    application.mvd_rejected_at = get_local_time()
     application.mvd_user_id = current_mvd.id
-    application.updated_at = datetime.utcnow()
+    application.updated_at = get_local_time()
     application.reason = reason
 
     # При отклонении МВД всегда меняем роль на REJECTSECOND и деактивируем пользователя

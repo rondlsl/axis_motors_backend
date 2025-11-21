@@ -2,9 +2,10 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.models.wallet_transaction_model import WalletTransaction, WalletTransactionType, get_local_time
+from app.models.wallet_transaction_model import WalletTransaction, WalletTransactionType
 from app.models.history_model import RentalHistory
 from app.models.user_model import User
+from app.utils.time_utils import get_local_time
 
 
 def _normalize_wallet_transaction_type(raw_type: WalletTransactionType | str) -> WalletTransactionType:

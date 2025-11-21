@@ -3,11 +3,11 @@ import uuid
 
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, Numeric, ForeignKey, Enum
 from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime
 
 from sqlalchemy.orm import relationship
 
 from app.dependencies.database.database import Base
+from app.utils.time_utils import get_local_time
 
 
 class PromoCode(Base):
@@ -17,7 +17,7 @@ class PromoCode(Base):
     code = Column(String, unique=True, nullable=False)
     discount_percent = Column(Numeric(5, 2), nullable=False, default=15)  # можно менять, но сейчас =15%
     is_active = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=get_local_time, nullable=False)
 
     @property
     def sid(self) -> str:
@@ -37,7 +37,7 @@ class UserPromoCode(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     promo_code_id = Column(UUID(as_uuid=True), ForeignKey("promo_codes.id"), nullable=False)
     status = Column(Enum(UserPromoStatus), default=UserPromoStatus.ACTIVATED, nullable=False)
-    activated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    activated_at = Column(DateTime, default=get_local_time, nullable=False)
     used_at = Column(DateTime, nullable=True)
 
     promo = relationship("PromoCode")

@@ -3,8 +3,8 @@
 """
 import uuid
 import hashlib
-from datetime import datetime
 from typing import Optional
+from app.utils.time_utils import get_local_time
 
 
 def generate_digital_signature(user_id: str, phone_number: str, first_name: str, last_name: str, middle_name: str = None) -> str:
@@ -22,7 +22,7 @@ def generate_digital_signature(user_id: str, phone_number: str, first_name: str,
         Уникальная цифровая подпись в формате: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
     """
     # Создаем уникальную строку на основе данных пользователя
-    user_data = f"{user_id}_{phone_number}_{first_name}_{middle_name or ''}_{last_name}_{datetime.utcnow().isoformat()}"
+    user_data = f"{user_id}_{phone_number}_{first_name}_{middle_name or ''}_{last_name}_{get_local_time().isoformat()}"
     
     # Генерируем хеш
     hash_object = hashlib.sha256(user_data.encode())

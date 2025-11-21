@@ -1,11 +1,11 @@
 from sqlalchemy import Column, Integer, String, DateTime, Enum, Boolean, ForeignKey, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-from datetime import datetime
 import enum
 import uuid
 
 from app.dependencies.database.database import Base
+from app.utils.time_utils import get_local_time
 
 
 class GuarantorRequestStatus(enum.Enum):
@@ -33,7 +33,7 @@ class GuarantorRequest(Base):
     verification_status = Column(String, default="not_verified")  # Статус проверки администратором: not_verified, verified, rejected
     reason = Column(Text, nullable=True)  # Причина отказа в регистрации (если применимо)
     admin_notes = Column(Text, nullable=True)  # Заметки администратора при проверке
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=get_local_time)
     responded_at = Column(DateTime, nullable=True)
     verified_at = Column(DateTime, nullable=True)  # Когда проверено администратором
     
@@ -56,7 +56,7 @@ class Guarantor(Base):
     client_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)  # За кого отвечает
     request_id = Column(UUID(as_uuid=True), ForeignKey("guarantor_requests.id"), nullable=False)  # Ссылка на заявку
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=get_local_time)
     deactivated_at = Column(DateTime, nullable=True)
     
     # Relationships

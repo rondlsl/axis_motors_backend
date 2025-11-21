@@ -14,13 +14,14 @@ from app.models.car_model import Car, CarBodyType, CarStatus
 from app.models.history_model import RentalHistory, RentalStatus, RentalType
 from app.models.user_model import User, UserRole
 from app.wallet.utils import record_wallet_transaction
-from app.models.wallet_transaction_model import WalletTransactionType, WalletTransaction, get_local_time
+from app.models.wallet_transaction_model import WalletTransactionType, WalletTransaction
 from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
 from app.core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.car_data import send_lock_engine
 from app.utils.telegram_logger import telegram_error_logger
 from app.websocket.notifications import notify_user_status_update
+from app.utils.time_utils import get_local_time
 
 FUEL_PRICE_PER_LITER = 350
 ELECTRIC_FUEL_PRICE_PER_LITER = 100
@@ -187,7 +188,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
       telegram_alerts: list of telegram messages
     """
     db = SessionLocal()
-    now = datetime.utcnow()
+    now = get_local_time()
     push_notifications: list[tuple[uuid.UUID, str, str]] = []
     telegram_alerts: list[str] = []
     lock_requests: list[tuple[str, str, uuid.UUID]] = []  # (imei, car_name, user_id)

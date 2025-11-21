@@ -16,6 +16,7 @@ from app.admin.guarantors.schemas import (
 )
 from app.utils.sid_converter import convert_uuid_response_to_sid
 from app.utils.telegram_logger import log_error_to_telegram
+from app.utils.time_utils import get_local_time
 
 guarantors_router = APIRouter(tags=["Admin Guarantors"])
 
@@ -83,7 +84,7 @@ async def approve_guarantor_request(
     # Обновляем статус заявки
     request.verification_status = "verified"
     request.admin_notes = approval_data.admin_notes
-    request.verified_at = datetime.utcnow()
+    request.verified_at = get_local_time()
     
     # Присваиваем классы авто клиенту (requestor)
     requestor = db.query(User).filter(User.id == request.requestor_id).first()
@@ -150,7 +151,7 @@ async def reject_guarantor_request(
     # Обновляем статус заявки
     request.verification_status = "rejected"
     request.admin_notes = rejection_data.admin_notes
-    request.verified_at = datetime.utcnow()
+    request.verified_at = get_local_time()
     
     # Получаем данные заявителя для отправки SMS
     requestor = db.query(User).filter(User.id == request.requestor_id).first()

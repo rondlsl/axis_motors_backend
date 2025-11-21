@@ -38,6 +38,7 @@ from app.mechanic.router import MechanicRouter
 from app.seed.init_data import init_test_data
 from app.models.car_model import Car
 from app.rent.router import RentRouter
+from app.utils.time_utils import get_local_time
 from app.rent.utils.billing import billing_job
 from app.push.router import router as PushRouter
 from app.mechanic_delivery.router import MechanicDeliveryRouter
@@ -114,7 +115,7 @@ def _update_vehicle_data_sync(vehicles_data: list, db: Session) -> int:
                     coordinates_updated = True
                 
                 if coordinates_updated:
-                    car.updated_at = datetime.utcnow()
+                    car.updated_at = get_local_time()
                 
                 # Обновляем fuel_level, если пришло валидное значение (не null и не 0)
                 fuel = vehicle.get("fuel_level")

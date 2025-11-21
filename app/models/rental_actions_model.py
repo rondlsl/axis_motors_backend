@@ -3,9 +3,9 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import enum
 import uuid
-from datetime import datetime
 from app.dependencies.database.database import Base
 from app.utils.short_id import uuid_to_sid
+from app.utils.time_utils import get_local_time
 
 
 # New model to store user actions on a rental
@@ -29,7 +29,7 @@ class RentalAction(Base):
     user = relationship("User")
 
     action_type = Column(Enum(ActionType), nullable=False)
-    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+    timestamp = Column(DateTime, default=get_local_time, nullable=False)
     
     @property
     def sid(self) -> str:

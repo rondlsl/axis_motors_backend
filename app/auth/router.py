@@ -42,6 +42,7 @@ from app.admin.cars.utils import sort_car_photos
 from app.utils.digital_signature import generate_digital_signature
 from app.utils.sid_converter import convert_uuid_response_to_sid
 from app.utils.telegram_logger import log_error_to_telegram
+from app.utils.time_utils import get_local_time
 # Временно закомментировано: генерация FCM токенов
 # from app.utils.fcm_token import ensure_user_has_unique_fcm_token, ensure_unique_fcm_token
 from app.websocket.notifications import notify_user_status_update
@@ -74,7 +75,7 @@ async def verify_email(request: VerifyEmailRequest, current_user: User = Depends
         VerificationCode.code == request.code,
         VerificationCode.purpose == "email_verification",
         VerificationCode.is_used == False,
-        VerificationCode.expires_at >= datetime.utcnow(),
+        VerificationCode.expires_at >= get_local_time(),
     ).order_by(VerificationCode.id.desc()).first()
 
     if not vc:
@@ -100,7 +101,7 @@ async def resend_email_code(current_user: User = Depends(get_current_user), db: 
         code=code,
         purpose="email_verification",
         is_used=False,
-        expires_at=datetime.utcnow() + timedelta(minutes=15),
+        expires_at=get_local_time() + timedelta(minutes=15),
     )
     db.add(record)
 
@@ -222,7 +223,7 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
     )
 
     phone_number = request.phone_number
-    current_time = datetime.utcnow()
+    current_time = get_local_time()
 
     if not phone_number.isdigit():
         raise HTTPException(status_code=400, detail="Phone number must contain only digits.")
@@ -484,7 +485,7 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
         user = db.query(User).filter(
             User.phone_number == phone_number,
             User.last_sms_code == sms_code,
-            User.sms_code_valid_until > datetime.utcnow(),
+            User.sms_code_valid_until > get_local_time(),
             User.is_active == True
         ).first()
 
@@ -500,7 +501,7 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
         ))
 
     # Обновляем время последней активности
-    user.last_activity_at = datetime.utcnow()
+    user.last_activity_at = get_local_time()
     db.commit()
     
     access_token = create_access_token(data={"sub": user.phone_number})
@@ -508,7 +509,7 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
 
     # Create new tokens (always create new records to support multiple devices)
     try:
-        now = datetime.utcnow()
+        now = get_local_time()
         
         # Create new access token
         access_token_record = TokenRecord(
@@ -732,7 +733,7 @@ async def refresh_token(db: Session = Depends(get_db), token: str = Depends(JWTB
         raise HTTPException(status_code=404, detail="User not found or inactive")
 
     # Обновляем время последней активности
-    user.last_activity_at = datetime.utcnow()
+    user.last_activity_at = get_local_time()
     db.commit()
 
     new_access_token = create_access_token(data={"sub": user.phone_number})
@@ -740,7 +741,7 @@ async def refresh_token(db: Session = Depends(get_db), token: str = Depends(JWTB
 
     # Create new tokens (always create new records to support multiple devices)
     try:
-        now = datetime.utcnow()
+        now = get_local_time()
         
         # Create new access token
         access_token_record = TokenRecord(
@@ -1058,12 +1059,12 @@ async def upload_documents(
                 if current_user.role == UserRole.REJECTFIRSTDOC or current_user.role == UserRole.REJECTFIRSTCERT:
                     should_reset_application = True
             else:
-                existing_application.updated_at = datetime.utcnow()
+                existing_application.updated_at = get_local_time()
         else:
             application = Application(
                 user_id=current_user.id,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
+                created_at=get_local_time(),
+                updated_at=get_local_time()
             )
             db.add(application)
         
@@ -1073,7 +1074,7 @@ async def upload_documents(
             existing_application.financier_rejected_at = None
             existing_application.financier_user_id = None
             existing_application.reason = None
-            existing_application.updated_at = datetime.utcnow()
+            existing_application.updated_at = get_local_time()
 
         # Обновляем роль только если заявка не была полностью одобрена
         if should_reset_role:
@@ -1125,7 +1126,7 @@ async def upload_documents(
         #         code=code,
         #         purpose="email_verification",
         #         is_used=False,
-        #         expires_at=datetime.utcnow() + timedelta(minutes=15),
+        #         expires_at=get_local_time() + timedelta(minutes=15),
         #     )
         #     db.add(record)
         #     # Пытаемся отправить письмо
@@ -1161,7 +1162,7 @@ async def upload_documents(
         #     # Не блокируем основной флоу из-за ошибок записи кода
         #     pass
 
-        current_user.upload_document_at = datetime.utcnow()
+        current_user.upload_document_at = get_local_time()
 
         db.commit()
         
@@ -1262,7 +1263,7 @@ async def request_change_email(
         code=code,
         purpose="email_change",
         is_used=False,
-        expires_at=datetime.utcnow() + timedelta(minutes=15),
+        expires_at=get_local_time() + timedelta(minutes=15),
     )
     db.add(record)
     
@@ -1329,7 +1330,7 @@ async def verify_change_email(
         VerificationCode.code == request.code,
         VerificationCode.purpose == "email_change",
         VerificationCode.is_used == False,
-        VerificationCode.expires_at >= datetime.utcnow(),
+        VerificationCode.expires_at >= get_local_time(),
     ).order_by(VerificationCode.id.desc()).first()
     
     if not vc:

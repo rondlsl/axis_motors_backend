@@ -19,6 +19,7 @@ from app.gps_api.utils.auth_api import get_auth_token
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.utils.atomic_operations import delete_uploaded_files
 from app.utils.telegram_logger import log_error_to_telegram
+from app.utils.time_utils import get_local_time
 from app.models.history_model import RentalStatus, RentalHistory, RentalReview
 from app.models.car_model import Car, CarStatus
 from app.models.rental_actions_model import ActionType, RentalAction
@@ -66,7 +67,7 @@ def get_delivery_vehicles(
             
         # Рассчитываем время ожидания доставки
         from datetime import datetime
-        waiting_time_minutes = int((datetime.utcnow() - rental.reservation_time).total_seconds() / 60)
+        waiting_time_minutes = int((get_local_time() - rental.reservation_time).total_seconds() / 60)
         
         vehicles_data.append({
             "rental_id": uuid_to_sid(rental.id),
@@ -198,7 +199,7 @@ async def start_delivery(
         raise HTTPException(status_code=400, detail=f"Перед стартом доставки загрузите фото: {', '.join(missing)}")
 
     rental.rental_status = RentalStatus.DELIVERING_IN_PROGRESS
-    rental.delivery_start_time = datetime.utcnow()  # Записываем время начала доставки
+    rental.delivery_start_time = get_local_time()  # Записываем время начала доставки
     # Фиксируем стартовые координаты доставки по текущему положению автомобиля
     rental.delivery_start_latitude = car.latitude
     rental.delivery_start_longitude = car.longitude
@@ -317,7 +318,7 @@ async def complete_delivery(
     rental.mileage_after = car.mileage
 
     # Записываем время окончания доставки
-    delivery_end_time = datetime.utcnow()
+    delivery_end_time = get_local_time()
     rental.delivery_end_time = delivery_end_time
     # Фиксируем конечные координаты доставки по текущему положению автомобиля
     rental.delivery_end_latitude = car.latitude
@@ -473,7 +474,7 @@ def current_delivery(
     delivery_duration_minutes = None
     if rental.delivery_start_time:
         from datetime import datetime
-        delivery_duration_minutes = int((datetime.utcnow() - rental.delivery_start_time).total_seconds() / 60)
+        delivery_duration_minutes = int((get_local_time() - rental.delivery_start_time).total_seconds() / 60)
 
     # Проверяем флаги загрузки фото ПЕРЕД доставкой
     photo_before_selfie_uploaded = False

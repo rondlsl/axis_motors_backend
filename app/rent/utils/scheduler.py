@@ -9,6 +9,7 @@ from app.models.history_model import RentalHistory, RentalStatus
 from app.models.car_model import CarStatus
 from app.models.car_model import Car
 from app.websocket.notifications import notify_vehicles_list_update, notify_user_status_update
+from app.utils.time_utils import get_local_time
 
 
 def process_scheduled_bookings(db: Session) -> dict:
@@ -17,7 +18,7 @@ def process_scheduled_bookings(db: Session) -> dict:
     - Переводит в статус RESERVED когда наступает время
     - Отменяет просроченные бронирования
     """
-    now = datetime.utcnow()
+    now = get_local_time()
     
     # 1) Находим бронирования, которые должны начаться сейчас
     bookings_to_activate = db.query(RentalHistory).filter(
@@ -108,7 +109,7 @@ def get_upcoming_bookings(db: Session, user_id: uuid.UUID, limit: int = 10) -> l
     """
     Получает предстоящие бронирования пользователя
     """
-    now = datetime.utcnow()
+    now = get_local_time()
     
     bookings = db.query(RentalHistory).filter(
         RentalHistory.user_id == user_id,

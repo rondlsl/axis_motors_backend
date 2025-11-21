@@ -1,6 +1,5 @@
 import enum
 import uuid
-from datetime import datetime
 
 from sqlalchemy import Column, Integer, ForeignKey, Enum, Float, DateTime, ARRAY, String, Text
 from sqlalchemy.dialects.postgresql import UUID
@@ -8,6 +7,7 @@ from sqlalchemy.orm import relationship
 
 from app.dependencies.database.database import Base
 from app.utils.short_id import uuid_to_sid
+from app.utils.time_utils import get_local_time
 
 
 class RentalType(enum.Enum):
@@ -47,7 +47,7 @@ class RentalHistory(Base):
 
     start_time = Column(DateTime, nullable=True)
     end_time = Column(DateTime)
-    reservation_time = Column(DateTime, default=datetime.utcnow, nullable=False)
+    reservation_time = Column(DateTime, default=get_local_time, nullable=False)
     
     # Поля для бронирования заранее
     scheduled_start_time = Column(DateTime, nullable=True)  # Запланированное время начала аренды

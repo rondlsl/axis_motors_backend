@@ -1,10 +1,10 @@
-from datetime import datetime
 import uuid
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Enum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.dependencies.database.database import Base
 from app.push.enums import NotificationStatus
+from app.utils.time_utils import get_local_time
 
 
 class Notification(Base):
@@ -18,7 +18,7 @@ class Notification(Base):
     title = Column(String(255), nullable=False)
     body = Column(Text, nullable=False)
     # Когда отправлено
-    sent_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    sent_at = Column(DateTime, default=get_local_time, nullable=False)
     # Прочитано?
     is_read = Column(Boolean, default=False, nullable=False)
     # Статус уведомления

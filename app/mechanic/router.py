@@ -22,6 +22,7 @@ from app.gps_api.utils.car_data import auto_lock_vehicle_after_rental, execute_g
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.utils.atomic_operations import delete_uploaded_files
 from app.utils.telegram_logger import log_error_to_telegram
+from app.utils.time_utils import get_local_time
 from app.guarantor.sms_utils import send_rental_start_sms, send_rental_complete_sms
 from app.admin.cars.utils import sort_car_photos
 from app.websocket.notifications import notify_vehicles_list_update, notify_user_status_update
@@ -706,7 +707,7 @@ async def check_car(
     
     # Устанавливаем время начала осмотра механиком в существующую запись
     rental.mechanic_inspector_id = current_mechanic.id
-    rental.mechanic_inspection_start_time = datetime.utcnow()
+    rental.mechanic_inspection_start_time = get_local_time()
     rental.mechanic_inspection_status = "PENDING"
     # Фиксируем стартовые координаты осмотра по текущему положению автомобиля
     rental.mechanic_inspection_start_latitude = car.latitude
@@ -876,7 +877,7 @@ async def cancel_reservation(
         if not car:
             raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
-        now = datetime.utcnow()
+        now = get_local_time()
 
         # Обновляем статус осмотра и автомобиля
         rental.mechanic_inspection_status = "CANCELLED"
@@ -1289,7 +1290,7 @@ async def complete_rental(
             missing.append("внешний вид")
         raise HTTPException(status_code=400, detail=f"Для завершения проверки загрузите фото: {', '.join(missing)}")
 
-    now = datetime.utcnow()
+    now = get_local_time()
     
     # Устанавливаем время окончания осмотра механиком
     rental.mechanic_inspection_end_time = now

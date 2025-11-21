@@ -16,7 +16,7 @@ from app.models.application_model import Application, ApplicationStatus
 from app.models.history_model import RentalHistory, RentalStatus, RentalReview
 from app.models.car_model import Car
 from app.models.guarantor_model import GuarantorRequest
-from app.models.wallet_transaction_model import WalletTransaction, WalletTransactionType, get_local_time
+from app.models.wallet_transaction_model import WalletTransaction, WalletTransactionType
 from app.models.rental_actions_model import RentalAction
 from app.models.contract_model import UserContractSignature
 from app.admin.users.schemas import (
@@ -32,6 +32,7 @@ from app.admin.cars.utils import sort_car_photos
 from app.utils.telegram_logger import log_error_to_telegram
 from app.push.utils import send_push_to_user_by_id
 from app.websocket.notifications import notify_user_status_update
+from app.utils.time_utils import get_local_time
 import asyncio
 
 users_router = APIRouter(tags=["Admin Users"])
@@ -104,7 +105,7 @@ async def approve_or_reject_user(
         application = Application(
             user_id=user.id,
             status=ApplicationStatus.APPROVED,
-            created_at=datetime.utcnow()
+            created_at=get_local_time()
         )
         db.add(application)
         

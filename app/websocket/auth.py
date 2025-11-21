@@ -2,12 +2,12 @@ from fastapi import WebSocket, WebSocketException, status
 from sqlalchemy.orm import Session
 from typing import Optional
 import logging
-from datetime import datetime
 
 from app.dependencies.database.database import get_db, SessionLocal
 from app.auth.security.tokens import verify_token
 from app.models.user_model import User
 from app.models.token_model import TokenRecord
+from app.utils.time_utils import get_local_time
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +92,7 @@ async def authenticate_websocket(
                 reason="Token not found in database"
             )
         
-        token_row.last_used_at = datetime.utcnow()
+        token_row.last_used_at = get_local_time()
         db.add(token_row)
         db.commit()
         

@@ -10,6 +10,7 @@ from app.core.config import TELEGRAM_BOT_TOKEN_2
 
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
 from app.utils.telegram_logger import log_error_to_telegram
+from app.utils.time_utils import get_local_time
 from app.models.support_chat_model import SupportChat, SupportChatStatus
 from app.models.support_message_model import SupportMessage, SupportMessageSenderType
 from app.models.user_model import User, UserRole
@@ -112,7 +113,7 @@ class SupportService:
         # Обновляем время последнего обновления чата
         chat = self.get_chat_by_id(chat_uuid)
         if chat:
-            chat.updated_at = datetime.utcnow()
+            chat.updated_at = get_local_time()
         
         self.db.commit()
         return message
@@ -154,7 +155,7 @@ class SupportService:
         
         chat.assigned_to = support_user_id
         chat.status = SupportChatStatus.IN_PROGRESS
-        chat.updated_at = datetime.utcnow()
+        chat.updated_at = get_local_time()
         
         self.db.commit()
         return True
@@ -167,10 +168,10 @@ class SupportService:
             return False
         
         chat.status = status
-        chat.updated_at = datetime.utcnow()
+        chat.updated_at = get_local_time()
         
         if status == SupportChatStatus.CLOSED:
-            chat.closed_at = datetime.utcnow()
+            chat.closed_at = get_local_time()
         
         self.db.commit()
         return True
@@ -224,7 +225,7 @@ class SupportService:
         from datetime import datetime, timedelta
         
         # Время порога (по умолчанию 12 часов)
-        threshold_time = datetime.utcnow() - timedelta(hours=hours_threshold)
+        threshold_time = get_local_time() - timedelta(hours=hours_threshold)
         
         # Находим чаты в статусе resolved, где последнее обновление было давно
         chats_to_close = self.db.query(SupportChat).filter(
@@ -235,8 +236,8 @@ class SupportService:
         closed_count = 0
         for chat in chats_to_close:
             chat.status = SupportChatStatus.CLOSED
-            chat.closed_at = datetime.utcnow()
-            chat.updated_at = datetime.utcnow()
+            chat.closed_at = get_local_time()
+            chat.updated_at = get_local_time()
             closed_count += 1
         
         if closed_count > 0:

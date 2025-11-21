@@ -1,9 +1,9 @@
-from datetime import datetime
 import uuid
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.dependencies.database.database import Base
+from app.utils.time_utils import get_local_time
 
 
 class CarComment(Base):
@@ -14,8 +14,8 @@ class CarComment(Base):
     author_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     comment = Column(Text, nullable=False)
     is_internal = Column(Boolean, default=True, nullable=False)  # Комментарии видны только механикам и админам
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=get_local_time, nullable=False)
+    updated_at = Column(DateTime, default=get_local_time, onupdate=get_local_time, nullable=False)
 
     # Relationships
     car = relationship("Car", back_populates="comments")

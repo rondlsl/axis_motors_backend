@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
 from app.utils.sid_converter import convert_uuid_response_to_sid
 from app.utils.telegram_logger import log_error_to_telegram
+from app.utils.time_utils import get_local_time
 
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
@@ -62,7 +63,7 @@ async def cancel_guarantor_requests_on_rejection(guarantor_user_id: str, db: Ses
         # Отменяем все заявки
         for request in active_requests:
             request.status = GuarantorRequestStatus.REJECTED
-            request.responded_at = datetime.utcnow()
+            request.responded_at = get_local_time()
         
         # Деактивируем все активные связи гарант-клиент
         active_relationships = db.query(Guarantor).filter(
@@ -333,7 +334,7 @@ async def accept_guarantor_request(
     
     # Обновляем статус заявки
     guarantor_request.status = GuarantorRequestStatus.ACCEPTED
-    guarantor_request.responded_at = datetime.utcnow()
+    guarantor_request.responded_at = get_local_time()
     
     # Создаем активную связь гарант-клиент
     guarantor_relationship = Guarantor(
@@ -384,7 +385,7 @@ async def reject_guarantor_request(
     
     # Обновляем статус заявки
     guarantor_request.status = GuarantorRequestStatus.REJECTED
-    guarantor_request.responded_at = datetime.utcnow()
+    guarantor_request.responded_at = get_local_time()
     
     db.commit()
     

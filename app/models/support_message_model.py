@@ -1,9 +1,9 @@
-from datetime import datetime
 import uuid
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Enum, BigInteger
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.dependencies.database.database import Base
+from app.utils.time_utils import get_local_time
 
 
 class SupportMessageSenderType:
@@ -23,7 +23,7 @@ class SupportMessage(Base):
     telegram_chat_id = Column(BigInteger, nullable=True)    # ID чата в Telegram
     is_from_bot = Column(Boolean, default=False, nullable=False)  # Отправлено через бота
     is_read = Column(Boolean, default=False, nullable=False)     # Прочитано получателем
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=get_local_time, nullable=False)
     chat = relationship("SupportChat", back_populates="messages")
     sender_user = relationship("User", back_populates="support_messages")
 

@@ -4,11 +4,11 @@
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-from datetime import datetime
 import enum
 import uuid
 
 from app.dependencies.database.base import Base
+from app.utils.time_utils import get_local_time
 
 
 class ContractType(str, enum.Enum):
@@ -33,8 +33,8 @@ class ContractFile(Base):
     file_path = Column(String, nullable=False)
     file_name = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
-    uploaded_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    uploaded_at = Column(DateTime, default=get_local_time)
+    updated_at = Column(DateTime, default=get_local_time, onupdate=get_local_time)
     
     # Relationships
     signatures = relationship("UserContractSignature", back_populates="contract_file")
@@ -56,7 +56,7 @@ class UserContractSignature(Base):
     guarantor_relationship_id = Column(UUID(as_uuid=True), ForeignKey("guarantors.id"), nullable=True)  # Для договоров гаранта
     
     digital_signature = Column(String, nullable=False)  # Цифровая подпись пользователя
-    signed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    signed_at = Column(DateTime, default=get_local_time, nullable=False)
     
     # Relationships
     user = relationship("User", back_populates="signed_contracts")

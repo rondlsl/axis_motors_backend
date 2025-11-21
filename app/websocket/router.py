@@ -4,7 +4,6 @@ from typing import Optional
 import logging
 import asyncio
 import json
-from datetime import datetime
 
 from app.dependencies.database.database import SessionLocal
 from app.websocket.manager import connection_manager
@@ -15,6 +14,7 @@ from app.utils.short_id import safe_sid_to_uuid
 from app.models.car_model import Car
 from app.gps_api.utils.glonassoft_client import glonassoft_client
 from app.gps_api.utils.telemetry_processor import process_glonassoft_data
+from app.utils.time_utils import get_local_time
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +77,7 @@ async def websocket_vehicle_telemetry(
                 await websocket.send_json({
                     "type": "telemetry",
                     "data": telemetry_payload,
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": get_local_time().isoformat()
                 })
         except Exception:
             logger.exception("Error sending initial telemetry")
@@ -91,7 +91,7 @@ async def websocket_vehicle_telemetry(
                     if data.get("type") == "ping":
                         await websocket.send_json({
                             "type": "pong",
-                            "timestamp": datetime.utcnow().isoformat()
+                            "timestamp": get_local_time().isoformat()
                         })
                 except WebSocketDisconnect:
                     break
@@ -115,7 +115,7 @@ async def websocket_vehicle_telemetry(
                             await websocket.send_json({
                                 "type": "telemetry",
                                 "data": telemetry_payload,
-                                "timestamp": datetime.utcnow().isoformat()
+                                "timestamp": get_local_time().isoformat()
                             })
                             last_data_hash = current_data_hash
                     
@@ -128,7 +128,7 @@ async def websocket_vehicle_telemetry(
                     await websocket.send_json({
                         "type": "error",
                         "message": "Error fetching telemetry data",
-                        "timestamp": datetime.utcnow().isoformat()
+                        "timestamp": get_local_time().isoformat()
                     })
                     await asyncio.sleep(2)
         finally:
@@ -181,7 +181,7 @@ async def websocket_vehicles_list(
         await websocket.send_json({
             "type": "vehicles_list",
             "data": initial_data,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": get_local_time().isoformat()
         })
         
         last_data_hash = None
@@ -193,7 +193,7 @@ async def websocket_vehicles_list(
                     if data.get("type") == "ping":
                         await websocket.send_json({
                             "type": "pong",
-                            "timestamp": datetime.utcnow().isoformat()
+                            "timestamp": get_local_time().isoformat()
                         })
                 except WebSocketDisconnect:
                     break
@@ -213,7 +213,7 @@ async def websocket_vehicles_list(
                         await websocket.send_json({
                             "type": "vehicles_list",
                             "data": vehicles_data,
-                            "timestamp": datetime.utcnow().isoformat()
+                            "timestamp": get_local_time().isoformat()
                         })
                         last_data_hash = current_data_hash
                     
@@ -226,7 +226,7 @@ async def websocket_vehicles_list(
                     await websocket.send_json({
                         "type": "error",
                         "message": "Error fetching vehicles data",
-                        "timestamp": datetime.utcnow().isoformat()
+                        "timestamp": get_local_time().isoformat()
                     })
                     await asyncio.sleep(10)
         finally:
@@ -280,7 +280,7 @@ async def websocket_user_status(
         await websocket.send_json({
             "type": "user_status",
             "data": initial_data,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": get_local_time().isoformat()
         })
         
         last_data_hash = None
@@ -292,7 +292,7 @@ async def websocket_user_status(
                     if data.get("type") == "ping":
                         await websocket.send_json({
                             "type": "pong",
-                            "timestamp": datetime.utcnow().isoformat()
+                            "timestamp": get_local_time().isoformat()
                         })
                 except WebSocketDisconnect:
                     break
@@ -312,7 +312,7 @@ async def websocket_user_status(
                         await websocket.send_json({
                             "type": "user_status",
                             "data": user_data,
-                            "timestamp": datetime.utcnow().isoformat()
+                            "timestamp": get_local_time().isoformat()
                         })
                         last_data_hash = current_data_hash
                     
@@ -325,7 +325,7 @@ async def websocket_user_status(
                     await websocket.send_json({
                         "type": "error",
                         "message": "Error fetching user status data",
-                        "timestamp": datetime.utcnow().isoformat()
+                        "timestamp": get_local_time().isoformat()
                     })
                     await asyncio.sleep(10)
         finally:

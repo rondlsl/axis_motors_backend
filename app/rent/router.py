@@ -33,6 +33,7 @@ from app.gps_api.utils.car_data import auto_lock_vehicle_after_rental, execute_g
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD, TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2, FORTE_SHOP_ID, FORTE_SECRET_KEY
 from app.utils.atomic_operations import delete_uploaded_files
 from app.utils.telegram_logger import log_error_to_telegram
+from app.utils.time_utils import get_local_time
 from app.guarantor.sms_utils import send_rental_start_sms, send_rental_complete_sms
 from app.owner.schemas import RouteData, RouteMapData
 from app.admin.cars.utils import sort_car_photos
@@ -571,7 +572,7 @@ async def add_money(amount: int,
 
         # меняем статус промокода
         up.status = UserPromoStatus.USED
-        up.used_at = datetime.utcnow()
+        up.used_at = get_local_time()
 
     else:
         # обычное пополнение
@@ -722,7 +723,7 @@ async def reserve_car(
             overtime_fee=0,
             distance_fee=0,
             total_price=total_price,
-            reservation_time=datetime.utcnow()
+            reservation_time=get_local_time()
         )
         db.add(rental)
         db.commit()
@@ -733,7 +734,7 @@ async def reserve_car(
         car.status = CarStatus.OWNER  # Машина у владельца
         
         # Обновляем время последней активности пользователя
-        current_user.last_activity_at = datetime.utcnow()
+        current_user.last_activity_at = get_local_time()
         
         db.commit()
 
@@ -782,7 +783,7 @@ async def reserve_car(
         overtime_fee=0,
         distance_fee=0,
         total_price=base,
-        reservation_time=datetime.utcnow()
+        reservation_time=get_local_time()
     )
     db.add(rental)
     db.commit()
@@ -793,7 +794,7 @@ async def reserve_car(
     car.status = CarStatus.RESERVED
     
     # Обновляем время последней активности пользователя
-    current_user.last_activity_at = datetime.utcnow()
+    current_user.last_activity_at = get_local_time()
     
     db.commit()
 
@@ -937,7 +938,7 @@ async def reserve_delivery(
         overtime_fee=0,
         distance_fee=0,
         total_price=total_price,
-        reservation_time=datetime.utcnow(),
+        reservation_time=get_local_time(),
         delivery_latitude=delivery_latitude,
         delivery_longitude=delivery_longitude
     )
@@ -963,7 +964,7 @@ async def reserve_delivery(
     car.status = CarStatus.DELIVERING
     
     # Обновляем время последней активности пользователя
-    current_user.last_activity_at = datetime.utcnow()
+    current_user.last_activity_at = get_local_time()
     
     db.commit()
 
@@ -1010,7 +1011,7 @@ async def cancel_reservation(
     if not car:
         raise HTTPException(status_code=404, detail="Машина не найдена")
 
-    now = datetime.utcnow()
+    now = get_local_time()
     # Для расчета времени используем reservation_time или start_time
     base_time = rental.start_time or rental.reservation_time or now
 
@@ -1229,15 +1230,15 @@ async def cancel_delivery(
 
     # Отменяем доставку
     rental.rental_status = RentalStatus.CANCELLED
-    rental.end_time = datetime.utcnow()
+    rental.end_time = get_local_time()
     
     # Если доставка была в процессе, записываем время окончания
     if rental.delivery_start_time and not rental.delivery_end_time:
-        rental.delivery_end_time = datetime.utcnow()
+        rental.delivery_end_time = get_local_time()
     
     # Рассчитываем продолжительность поездки в минутах
     if rental.start_time:
-        duration_seconds = (datetime.utcnow() - rental.start_time).total_seconds()
+        duration_seconds = (get_local_time() - rental.start_time).total_seconds()
         rental.duration = int(duration_seconds / 60)
     
     rental.delivery_mechanic_id = None
@@ -1381,7 +1382,7 @@ async def start_rental(
     if car.owner_id == current_user.id:
         # Логика для владельца: аренда бесплатная, пропускаем списание средств
         rental.rental_status = RentalStatus.IN_USE
-        rental.start_time = datetime.utcnow()
+        rental.start_time = get_local_time()
         # новые поля расчётов при старте
         rental.open_fee = 0
         # waiting_fee, overtime_fee, distance_fee остаются прежними (nullable)
@@ -1419,7 +1420,7 @@ async def start_rental(
         is_owner_rental = True
     else:
         # Обновляем время последней активности пользователя
-        current_user.last_activity_at = datetime.utcnow()
+        current_user.last_activity_at = get_local_time()
 
         # Для суточного и часового тарифа списываем полную стоимость сразу
         # Для минутного тарифа списываем только open_fee (поминутный тариф списывается во время поездки)
@@ -1550,7 +1551,7 @@ async def start_rental(
 
         # Устанавливаем start_time и статус только после всех проверок и списаний
         rental.rental_status = RentalStatus.IN_USE
-        rental.start_time = datetime.utcnow()
+        rental.start_time = get_local_time()
 
         # Обновляем машину: меняем статус на IN_USE
         car.status = CarStatus.IN_USE
@@ -2503,7 +2504,7 @@ async def complete_rental(
             )
 
     # 4) Завершить аренду: время, координаты, состояние
-    now = datetime.utcnow()
+    now = get_local_time()
     rental.end_time = now
     rental.end_latitude = car.latitude
     rental.end_longitude = car.longitude
@@ -2802,7 +2803,7 @@ async def create_advance_booking(
         )
 
     # 2) Проверяем, что запланированное время в будущем
-    now = datetime.utcnow()
+    now = get_local_time()
     if booking_request.scheduled_start_time <= now:
         raise HTTPException(
             status_code=400,
@@ -2879,7 +2880,7 @@ async def create_advance_booking(
         overtime_fee=0,
         distance_fee=0,
         total_price=base,
-        reservation_time=datetime.utcnow(),
+        reservation_time=get_local_time(),
         scheduled_start_time=booking_request.scheduled_start_time,
         scheduled_end_time=booking_request.scheduled_end_time,
         is_advance_booking="true",
@@ -2896,7 +2897,7 @@ async def create_advance_booking(
     car.status = CarStatus.SCHEDULED  # Для запланированных аренд машина получает статус SCHEDULED
     
     # Обновляем время последней активности пользователя
-    current_user.last_activity_at = datetime.utcnow()
+    current_user.last_activity_at = get_local_time()
     
     db.commit()
     

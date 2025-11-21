@@ -1,13 +1,13 @@
 import asyncio
 import logging
 from typing import Optional, Dict, Any
-from datetime import datetime
 from uuid import UUID
 
 from app.websocket.manager import connection_manager
 from app.websocket.handlers import get_vehicles_data_for_user, get_user_status_data
 from app.dependencies.database.database import SessionLocal
 from app.models.user_model import User
+from app.utils.time_utils import get_local_time
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ async def notify_vehicles_list_update(user_id: Optional[str] = None) -> None:
                         message={
                             "type": "vehicles_list",
                             "data": vehicles_data,
-                            "timestamp": datetime.utcnow().isoformat()
+                            "timestamp": get_local_time().isoformat()
                         }
                     )
             else:
@@ -67,7 +67,7 @@ async def notify_vehicles_list_update(user_id: Optional[str] = None) -> None:
                         message={
                             "type": "vehicles_list",
                             "data": vehicles_data,
-                            "timestamp": datetime.utcnow().isoformat()
+                            "timestamp": get_local_time().isoformat()
                         }
                     )
         finally:
@@ -99,7 +99,7 @@ async def notify_user_status_update(user_id: str) -> None:
                     message={
                         "type": "user_status",
                         "data": user_data,
-                        "timestamp": datetime.utcnow().isoformat()
+                        "timestamp": get_local_time().isoformat()
                     }
                 )
         finally:
@@ -123,7 +123,7 @@ async def notify_telemetry_update(car_id: str, telemetry_data: Dict[str, Any]) -
             message={
                 "type": "telemetry",
                 "data": telemetry_data,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": get_local_time().isoformat()
             }
         )
     except Exception as e:
