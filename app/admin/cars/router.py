@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy import or_, func
 import os
 import uuid
@@ -40,6 +40,15 @@ def get_car_by_id(db: Session, car_id: str) -> Car:
     """Получить автомобиль по id"""
     car_uuid = safe_sid_to_uuid(car_id)
     return db.query(Car).filter(Car.id == car_uuid).first()
+
+
+def to_utc_for_glonass(dt: datetime) -> str | None:
+    """Преобразует время из UTC+5 (хранится в базе) в UTC для отправки в API Глонасса"""
+    if dt is None:
+        return None
+    # Вычитаем 5 часов, чтобы получить UTC время
+    utc_time = dt - timedelta(hours=5)
+    return utc_time.strftime('%Y-%m-%dT%H:%M:%S.000Z')
 
 
 @cars_router.patch("/{car_id}", response_model=CarDetailSchema)
@@ -792,8 +801,8 @@ async def get_trip_detail(
         if car and car.gps_id and rental.start_time and rental.end_time:
             route = await get_gps_route_data(
                 device_id=car.gps_id,
-                start_date=rental.start_time.isoformat(),
-                end_date=rental.end_time.isoformat()
+                start_date=to_utc_for_glonass(rental.start_time),
+                end_date=to_utc_for_glonass(rental.end_time)
             )
             route_data = route.dict() if route else None
     except Exception:

@@ -192,6 +192,15 @@ def apply_offset(dt: datetime) -> str | None:
     return dt.isoformat() if dt else None
 
 
+def to_utc_for_glonass(dt: datetime) -> str | None:
+    """Преобразует время из UTC+5 (хранится в базе) в UTC для отправки в API Глонасса"""
+    if dt is None:
+        return None
+    # Вычитаем 5 часов, чтобы получить UTC время
+    utc_time = dt - timedelta(hours=OFFSET_HOURS)
+    return utc_time.strftime('%Y-%m-%dT%H:%M:%S.000Z')
+
+
 @RentRouter.get("/history")
 def get_trip_history(
         db: Session = Depends(get_db),
@@ -390,8 +399,8 @@ async def get_trip_history_detail(
             
             route_data = await get_gps_route_data(
                 device_id=car.gps_id,
-                start_date=apply_offset(rental.start_time),
-                end_date=apply_offset(rental.end_time)
+                start_date=to_utc_for_glonass(rental.start_time),
+                end_date=to_utc_for_glonass(rental.end_time)
             )
             
             if route_data:
