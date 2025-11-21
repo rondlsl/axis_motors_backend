@@ -145,19 +145,16 @@ def _group_coordinates_by_day(
         return []
     
     try:
-        # Парсим start_date и end_date (могут быть в формате ISO или YYYY-MM-DD HH:MM:SS)
         if 'T' in start_date or 'Z' in start_date:
             start_dt_str = start_date.replace('Z', '+00:00') if 'Z' in start_date else start_date
             start_dt = datetime.fromisoformat(start_dt_str)
         else:
-            # Формат YYYY-MM-DD HH:MM:SS
             start_dt = datetime.strptime(start_date, '%Y-%m-%d %H:%M:%S')
         
         if 'T' in end_date or 'Z' in end_date:
             end_dt_str = end_date.replace('Z', '+00:00') if 'Z' in end_date else end_date
             end_dt = datetime.fromisoformat(end_dt_str)
         else:
-            # Формат YYYY-MM-DD HH:MM:SS
             end_dt = datetime.strptime(end_date, '%Y-%m-%d %H:%M:%S')
         
         if start_dt.tzinfo:
@@ -174,6 +171,7 @@ def _group_coordinates_by_day(
             period_start_dt = datetime.fromisoformat(period_start_str)
             if period_start_dt.tzinfo:
                 period_start_dt = period_start_dt.replace(tzinfo=None)
+            period_start_dt = period_start_dt + timedelta(hours=5)
         except Exception:
             pass
     
