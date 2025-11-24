@@ -37,9 +37,6 @@ async def websocket_vehicle_telemetry(
         if not user:
             return
         
-        if user.role != UserRole.ADMIN:
-            await websocket.close(code=1008, reason="Only administrators can access telemetry")
-            return
         
         car_uuid = safe_sid_to_uuid(car_id)
         car = db.query(Car).filter(Car.id == car_uuid).first()
