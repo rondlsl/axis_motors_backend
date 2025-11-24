@@ -9,7 +9,8 @@ import httpx
 import logging
 
 from app.core.config import TELEGRAM_BOT_MONITOR, MONITOR_GROUP_ID
-from app.utils.time_utils import get_local_time
+from app.utils.time_utils import get_local_time, ALMATY_OFFSET
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -209,5 +210,25 @@ async def health_check():
         "status": "healthy",
         "monitoring_enabled": bool(TELEGRAM_BOT_MONITOR and MONITOR_GROUP_ID),
         "timestamp": get_local_time().isoformat()
+    }
+
+
+@router.get("/current-time", status_code=status.HTTP_200_OK)
+async def get_current_time():
+    """
+    Получить текущее время с учетом ALMATY_OFFSET (GMT+5)
+    Используется для проверки правильности времени на сервере
+    """
+    utc_now = datetime.utcnow()
+    almaty_time = utc_now + ALMATY_OFFSET
+    
+    return {
+        "utc_time": utc_now.isoformat(),
+        "utc_time_formatted": utc_now.strftime("%Y-%m-%d %H:%M:%S"),
+        "almaty_time": almaty_time.isoformat(),
+        "almaty_time_formatted": almaty_time.strftime("%Y-%m-%d %H:%M:%S"),
+        "offset_hours": ALMATY_OFFSET.total_seconds() / 3600,
+        "get_local_time_result": get_local_time().isoformat(),
+        "get_local_time_formatted": get_local_time().strftime("%Y-%m-%d %H:%M:%S")
     }
 
