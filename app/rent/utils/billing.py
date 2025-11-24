@@ -502,6 +502,12 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                     "balance": int(user.wallet_balance)
                                 }
                             ))
+                            # Дополнительное уведомление "Заканчиваются деньги на аккаунте"
+                            push_notifications.append((
+                                user.id,
+                                "account_balance_low",
+                                "account_balance_low"
+                            ))
 
                         # Balance zero - уведомления отправляются через локализованную функцию
                         if user.wallet_balance <= 0 and not flags["low_balance_zero"] and user.fcm_token:
@@ -642,8 +648,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                 flags["low_balance_1000"] = True
                                 push_notifications.append((
                                     user.id,
-                                    "low_balance_alert",
-                                    "low_balance_warning",
+                                    "account_balance_low",
+                                    "account_balance_low",
                                     {
                                         "balance": int(user.wallet_balance),
                                         "minutes_left": int(minutes_left)
@@ -732,15 +738,15 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                         db.commit()
 
                     if 0 < remaining <= 10 and not flags["pre_overtime"] and user.fcm_token:
+                        flags["pre_overtime"] = True
                         push_notifications.append((
                             user.id,
-                            "pre_overtime_alert",
-                            "basic_tariff_ending_soon",
+                            "basic_tariff_ending",
+                            "basic_tariff_ending",
                             {
                                 "remaining": math.ceil(remaining)
                             }
                         ))
-                        flags["pre_overtime"] = True
 
                     overtime = max(0, elapsed - planned_minutes)
                     if overtime > 0:
@@ -810,8 +816,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                     flags["low_balance_1000"] = True
                                     push_notifications.append((
                                         user.id,
-                                        "low_balance_alert",
-                                        "low_balance_warning",
+                                        "account_balance_low",
+                                        "account_balance_low",
                                         {
                                             "balance": int(user.wallet_balance),
                                             "minutes_left": int(minutes_left)

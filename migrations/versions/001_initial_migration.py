@@ -225,6 +225,14 @@ def create_enums():
                 'application_rejected_financier', 'application_rejected_mvd',
                 'application_approved_financier', 'application_approved_mvd',
                 'guarantor_invitation', 'guarantor_accepted',
+                'fuel_empty', 'account_balance_low', 'zone_exit', 'rpm_spikes',
+                'verification_passed', 'verification_failed', 'promo_code_available',
+                'guarantor_connected', 'fuel_refill_detected', 'courier_found',
+                'courier_delivered', 'fine_issued', 'balance_top_up',
+                'basic_tariff_ending', 'locks_open', 'impact_weak', 'impact_medium',
+                'impact_strong', 'birthday', 'friday_evening', 'monday_morning',
+                'new_car_available', 'car_nearby', 'holiday_greeting', 'airport_location',
+                'car_viewed_exit',
                 'MECHANIC_ASSIGNED', 'CAR_DELIVERED', 'DELIVERY_NEW_ORDER', 'DELIVERY_STARTED',
                 'NEW_CAR_FOR_INSPECTION', 'PAID_WAITING_SOON', 'PAID_WAITING_STARTED',
                 'LOW_BALANCE', 'BASIC_TARIFF_ENDING_SOON', 'OUT_OF_TARIFF_CHARGES',
@@ -232,7 +240,15 @@ def create_enums():
                 'DOCUMENTS_RECHECK_REQUIRED',
                 'APPLICATION_REJECTED_FINANCIER', 'APPLICATION_REJECTED_MVD',
                 'APPLICATION_APPROVED_FINANCIER', 'APPLICATION_APPROVED_MVD',
-                'GUARANTOR_INVITATION', 'GUARANTOR_ACCEPTED'
+                'GUARANTOR_INVITATION', 'GUARANTOR_ACCEPTED',
+                'FUEL_EMPTY', 'ACCOUNT_BALANCE_LOW', 'ZONE_EXIT', 'RPM_SPIKES',
+                'VERIFICATION_PASSED', 'VERIFICATION_FAILED', 'PROMO_CODE_AVAILABLE',
+                'GUARANTOR_CONNECTED', 'FUEL_REFILL_DETECTED', 'COURIER_FOUND',
+                'COURIER_DELIVERED', 'FINE_ISSUED', 'BALANCE_TOP_UP',
+                'BASIC_TARIFF_ENDING', 'LOCKS_OPEN', 'IMPACT_WEAK', 'IMPACT_MEDIUM',
+                'IMPACT_STRONG', 'BIRTHDAY', 'FRIDAY_EVENING', 'MONDAY_MORNING',
+                'NEW_CAR_AVAILABLE', 'CAR_NEARBY', 'HOLIDAY_GREETING', 'AIRPORT_LOCATION',
+                'CAR_VIEWED_EXIT'
             );
         EXCEPTION
             WHEN duplicate_object THEN null;
@@ -560,7 +576,7 @@ def create_notifications_table():
         sa.Column('body', sa.Text(), nullable=False),
         sa.Column('sent_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.Column('is_read', sa.Boolean(), nullable=False, server_default='false'),
-        sa.Column('status', postgresql.ENUM('mechanic_assigned', 'car_delivered', 'delivery_new_order', 'delivery_started', 'new_car_for_inspection', 'paid_waiting_soon', 'paid_waiting_started', 'low_balance', 'basic_tariff_ending_soon', 'out_of_tariff_charges', 'delivery_cancelled', 'balance_exhausted', 'delivery_delay_penalty', 'documents_recheck_required', 'application_rejected_financier', 'application_rejected_mvd', 'application_approved_financier', 'application_approved_mvd', 'guarantor_invitation', 'guarantor_accepted', name='notificationstatus', create_type=False), nullable=True)
+        sa.Column('status', postgresql.ENUM('mechanic_assigned', 'car_delivered', 'delivery_new_order', 'delivery_started', 'new_car_for_inspection', 'paid_waiting_soon', 'paid_waiting_started', 'low_balance', 'basic_tariff_ending_soon', 'out_of_tariff_charges', 'delivery_cancelled', 'balance_exhausted', 'delivery_delay_penalty', 'documents_recheck_required', 'application_rejected_financier', 'application_rejected_mvd', 'application_approved_financier', 'application_approved_mvd', 'guarantor_invitation', 'guarantor_accepted', 'fuel_empty', 'account_balance_low', 'zone_exit', 'rpm_spikes', 'verification_passed', 'verification_failed', 'promo_code_available', 'guarantor_connected', 'fuel_refill_detected', 'courier_found', 'courier_delivered', 'fine_issued', 'balance_top_up', 'basic_tariff_ending', 'locks_open', 'impact_weak', 'impact_medium', 'impact_strong', 'birthday', 'friday_evening', 'monday_morning', 'new_car_available', 'car_nearby', 'holiday_greeting', 'airport_location', 'car_viewed_exit', 'MECHANIC_ASSIGNED', 'CAR_DELIVERED', 'DELIVERY_NEW_ORDER', 'DELIVERY_STARTED', 'NEW_CAR_FOR_INSPECTION', 'PAID_WAITING_SOON', 'PAID_WAITING_STARTED', 'LOW_BALANCE', 'BASIC_TARIFF_ENDING_SOON', 'OUT_OF_TARIFF_CHARGES', 'DELIVERY_CANCELLED', 'BALANCE_EXHAUSTED', 'DELIVERY_DELAY_PENALTY', 'DOCUMENTS_RECHECK_REQUIRED', 'APPLICATION_REJECTED_FINANCIER', 'APPLICATION_REJECTED_MVD', 'APPLICATION_APPROVED_FINANCIER', 'APPLICATION_APPROVED_MVD', 'GUARANTOR_INVITATION', 'GUARANTOR_ACCEPTED', 'FUEL_EMPTY', 'ACCOUNT_BALANCE_LOW', 'ZONE_EXIT', 'RPM_SPIKES', 'VERIFICATION_PASSED', 'VERIFICATION_FAILED', 'PROMO_CODE_AVAILABLE', 'GUARANTOR_CONNECTED', 'FUEL_REFILL_DETECTED', 'COURIER_FOUND', 'COURIER_DELIVERED', 'FINE_ISSUED', 'BALANCE_TOP_UP', 'BASIC_TARIFF_ENDING', 'LOCKS_OPEN', 'IMPACT_WEAK', 'IMPACT_MEDIUM', 'IMPACT_STRONG', 'BIRTHDAY', 'FRIDAY_EVENING', 'MONDAY_MORNING', 'NEW_CAR_AVAILABLE', 'CAR_NEARBY', 'HOLIDAY_GREETING', 'AIRPORT_LOCATION', 'CAR_VIEWED_EXIT', name='notificationstatus', create_type=False), nullable=True)
     )
 
 

@@ -13,6 +13,7 @@ from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Form, sta
 from fastapi.responses import ORJSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+import pytz
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.requests import Request
@@ -61,7 +62,9 @@ app = FastAPI(
         "persistAuthorization": True
     }
 )
-scheduler = AsyncIOScheduler()
+
+almaty_tz = pytz.FixedOffset(300)  # GMT+5 = 300 минут
+scheduler = AsyncIOScheduler(timezone=almaty_tz)
 
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
@@ -120,6 +123,34 @@ def _update_vehicle_data_sync(vehicles_data: list, db: Session) -> int:
                 # Обновляем fuel_level, если пришло валидное значение (не null и не 0)
                 fuel = vehicle.get("fuel_level")
                 if fuel is not None and fuel != 0 and fuel != 0.0:
+                    old_fuel = car.fuel_level
+                    # Обнаружение заправки: если топливо увеличилось более чем на 10%
+                    if old_fuel is not None and old_fuel > 0 and fuel > old_fuel:
+                        fuel_increase = fuel - old_fuel
+                        fuel_increase_percent = (fuel_increase / old_fuel) * 100
+                        
+                        # Если увеличение больше 10%, это заправка
+                        if fuel_increase_percent > 10:
+                            # Находим активную аренду
+                            from app.gps_api.utils.get_active_rental import get_active_rental_by_car_id
+                            from app.models.user_model import User
+                            from app.push.utils import send_localized_notification_to_user
+                            try:
+                                rental = get_active_rental_by_car_id(db, car.id)
+                                if rental:
+                                    user = db.query(User).filter(User.id == rental.user_id).first()
+                                    if user and user.fcm_token:
+                                        asyncio.create_task(
+                                            send_localized_notification_to_user(
+                                                db,
+                                                user.id,
+                                                "fuel_refill_detected",
+                                                "fuel_refill_detected"
+                                            )
+                                        )
+                            except Exception:
+                                pass  # Нет активной аренды или ошибка
+                    
                     car.fuel_level = fuel
                 
                 # Обновляем пробег всегда
@@ -220,6 +251,61 @@ def init_app(app: FastAPI):
         try:
             scheduler.add_job(check_vehicle_conditions, "interval", seconds=1)
             scheduler.add_job(auto_close_support_chats, "interval", hours=1)  # Каждый час проверяем чаты
+            
+            # Маркетинговые уведомления
+            from app.scheduler.marketing_notifications import (
+                check_birthdays,
+                check_holidays,
+                check_weekend_promotions,
+                check_new_cars
+            )
+            
+            # Проверка дней рождения - каждый день в 9:00
+            scheduler.add_job(
+                check_birthdays,
+                trigger="cron",
+                hour=9,
+                minute=0,
+                id="check_birthdays"
+            )
+            
+            # Проверка праздников - каждый день в 8:00
+            scheduler.add_job(
+                check_holidays,
+                trigger="cron",
+                hour=8,
+                minute=0,
+                id="check_holidays"
+            )
+            
+            # Пятница вечер 19:00 по Алматы (GMT+5)
+            scheduler.add_job(
+                check_weekend_promotions,
+                trigger="cron",
+                day_of_week="fri",
+                hour=19,
+                minute=0,
+                id="check_friday_evening"
+            )
+            
+            # Понедельник утро 8:00 по Алматы (GMT+5)
+            scheduler.add_job(
+                check_weekend_promotions,
+                trigger="cron",
+                day_of_week="mon",
+                hour=8,
+                minute=0,
+                id="check_monday_morning"
+            )
+            
+            # Проверка новых автомобилей - каждый час по Алматы (GMT+5)
+            scheduler.add_job(
+                check_new_cars,
+                trigger="cron",
+                minute=0,
+                id="check_new_cars"
+            )
+            
             scheduler.start()
             logger.info("Планировщик задач запущен")
         except Exception as e:

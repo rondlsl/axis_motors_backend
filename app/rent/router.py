@@ -591,6 +591,17 @@ async def add_money(amount: int,
 
     db.commit()
 
+    # Отправляем уведомление о пополнении баланса
+    if current_user.fcm_token:
+        asyncio.create_task(
+            send_localized_notification_to_user(
+                db, 
+                current_user.id, 
+                "balance_top_up",
+                "balance_top_up"
+            )
+        )
+
     return {
         "wallet_balance": float(current_user.wallet_balance),
         "bonus": bonus,
@@ -624,6 +635,18 @@ def apply_promo(body: ApplyPromoRequest,
     up = UserPromoCode(user_id=current_user.id, promo_code_id=promo.id)
     db.add(up)
     db.commit()
+    
+    # Отправляем уведомление о доступном промокоде
+    if current_user.fcm_token:
+        asyncio.create_task(
+            send_localized_notification_to_user(
+                db,
+                current_user.id,
+                "promo_code_available",
+                "promo_code_available"
+            )
+        )
+    
     return {
         "message": "Промокод активирован",
         "code": promo.code,

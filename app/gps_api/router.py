@@ -29,6 +29,8 @@ from app.gps_api.utils.glonassoft_client import glonassoft_client
 from app.gps_api.utils.telemetry_processor import process_glonassoft_data
 from app.utils.telegram_logger import log_error_to_telegram
 from app.admin.cars.utils import sort_car_photos
+from app.push.utils import send_localized_notification_to_user
+from pydantic import BaseModel
 # Временно закомментировано: генерация FCM токенов
 # from app.utils.fcm_token import ensure_user_has_unique_fcm_token
 
@@ -131,6 +133,8 @@ async def start_token_refresh():
 
 @Vehicle_Router.get("/get_vehicles")
 def get_vehicle_info(
+        user_latitude: float = Query(None, description="Широта пользователя"),
+        user_longitude: float = Query(None, description="Долгота пользователя"),
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ) -> Dict[str, Any]:
@@ -208,14 +212,13 @@ def get_vehicle_info(
                 
                 if allowed_enum:
                     cars = query.filter(Car.auto_class.in_(allowed_enum)).all()
-                else:
-                    cars = query.all()
             else:
                 cars = query.all()
         else:
             cars = query.all()
 
         vehicles_data = []
+        nearby_cars = []  # Машины рядом с пользователем
         for car in cars:
             # Проверяем статус загрузки фотографий для текущего пользователя
             photo_before_selfie_uploaded = False
@@ -299,6 +302,69 @@ def get_vehicle_info(
                 "photo_after_car_uploaded": photo_after_car_uploaded,
                 "photo_after_interior_uploaded": photo_after_interior_uploaded
             })
+            
+            # Проверяем расстояние до автомобиля, если есть координаты пользователя
+            if user_latitude and user_longitude and car.latitude and car.longitude:
+                from math import radians, cos, sin, asin, sqrt
+                
+                def haversine(lon1, lat1, lon2, lat2):
+                    """Вычисляет расстояние между двумя точками на сфере"""
+                    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+                    dlon = lon2 - lon1
+                    dlat = lat2 - lat1
+                    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+                    c = 2 * asin(sqrt(a))
+                    r = 6371  # Радиус Земли в километрах
+                    return c * r * 1000  # Возвращаем в метрах
+                
+                distance = haversine(user_longitude, user_latitude, car.longitude, car.latitude)
+                
+                # Если машина рядом (в радиусе 500 метров), добавляем в список
+                if distance <= 500:
+                    nearby_cars.append(car.id)
+
+        # Отправляем уведомление о машинах рядом (только один раз за запрос)
+        if nearby_cars and current_user.fcm_token:
+            asyncio.create_task(
+                send_localized_notification_to_user(
+                    db,
+                    current_user.id,
+                    "car_nearby",
+                    "car_nearby"
+                )
+            )
+        
+        # Проверка локации аэропорта (координаты аэропорта Алматы: 43.3522, 77.0405)
+        if user_latitude and user_longitude and current_user.fcm_token:
+            from math import radians, cos, sin, asin, sqrt
+            
+            def haversine(lon1, lat1, lon2, lat2):
+                """Вычисляет расстояние между двумя точками на сфере"""
+                lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+                dlon = lon2 - lon1
+                dlat = lat2 - lat1
+                a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+                c = 2 * asin(sqrt(a))
+                r = 6371  # Радиус Земли в километрах
+                return c * r * 1000  # Возвращаем в метрах
+            
+            airport_lat = 43.3522
+            airport_lon = 77.0405
+            distance_to_airport = haversine(user_longitude, user_latitude, airport_lon, airport_lat)
+            
+            # Если пользователь в радиусе 2 км от аэропорта
+            if distance_to_airport <= 2000:
+                # Проверяем, есть ли свободные машины
+                free_cars = [car for car in cars if car.status in [CarStatus.FREE, CarStatus.RESERVED]]
+                if free_cars:
+                    asyncio.create_task(
+                        send_localized_notification_to_user(
+                            db,
+                            current_user.id,
+                            "airport_location",
+                            "airport_location"
+                        )
+                    )
 
         return {
             "vehicles": vehicles_data,
@@ -928,7 +994,7 @@ def get_rented_cars(
     ]
 
     rows = (
-        db.query(Car.name, Car.plate_number)
+        db.query(Car.id, Car.name, Car.plate_number)
         .join(RentalHistory, RentalHistory.car_id == Car.id)
         .filter(
             or_(
@@ -945,7 +1011,7 @@ def get_rented_cars(
         .all()
     )
 
-    return [RentedCar(name=name, plate_number=plate) for name, plate in rows]
+    return [RentedCar(id=uuid_to_sid(car_id), name=name, plate_number=plate) for car_id, name, plate in rows]
 
 
 @Vehicle_Router.get("/occupied", summary="Список машин в статусе OCCUPIED")
@@ -1467,6 +1533,138 @@ async def take_key_by_id(
         return {"message": "Команда забора ключа отправлена", "car_name": car.name, "result": cmd}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
+
+
+@Vehicle_Router.post("/notify/{notification_type}", summary="Отправка уведомления от cars_v2")
+async def notify_from_cars_v2(
+    notification_type: str,
+    car_id: str = Query(..., description="ID автомобиля"),
+    secret_key: str = Query(..., description="Секретный ключ для доступа"),
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint для отправки уведомлений из azv_motors_cars_v2.
+    Поддерживаемые типы: fuel_empty, zone_exit, rpm_spikes, impact_weak, impact_medium, impact_strong, fuel_refill, locks_open
+    """
+    # Проверка секретного ключа
+    if secret_key != RENTED_CARS_ENDPOINT_KEY:
+        raise HTTPException(status_code=403, detail="Неверный секретный ключ")
+    
+    # Находим автомобиль
+    car_uuid = safe_sid_to_uuid(car_id)
+    car = db.query(Car).filter(Car.id == car_uuid).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    # Находим активную аренду
+    try:
+        rental = get_active_rental_by_car_id(db, car_uuid)
+    except HTTPException:
+        rental = None
+    
+    if not rental:
+        return {"message": "Нет активной аренды для этого автомобиля"}
+    
+    user = db.query(User).filter(User.id == rental.user_id).first()
+    if not user or not user.fcm_token:
+        return {"message": "Пользователь не найден или нет FCM токена"}
+    
+    # Определяем ключ уведомления и статус
+    notification_map = {
+        "fuel_empty": ("fuel_empty", "fuel_empty"),
+        "zone_exit": ("zone_exit", "zone_exit"),
+        "rpm_spikes": ("rpm_spikes", "rpm_spikes"),
+        "impact_weak": ("impact_weak", "impact_weak"),
+        "impact_medium": ("impact_medium", "impact_medium"),
+        "impact_strong": ("impact_strong", "impact_strong"),
+        "fuel_refill": ("fuel_refill_detected", "fuel_refill_detected"),
+        "locks_open": ("locks_open", "locks_open"),
+    }
+    
+    if notification_type not in notification_map:
+        raise HTTPException(status_code=400, detail=f"Неизвестный тип уведомления: {notification_type}")
+    
+    translation_key, status_key = notification_map[notification_type]
+    
+    # Отправляем уведомление
+    try:
+        asyncio.create_task(
+            send_localized_notification_to_user(
+                db,
+                user.id,
+                translation_key,
+                status_key
+            )
+        )
+        return {"message": "Уведомление отправлено", "user_id": str(user.id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка отправки уведомления: {str(e)}")
+
+
+@Vehicle_Router.post("/track-view/{car_id}", summary="Отслеживание просмотра автомобиля")
+async def track_car_view(
+    car_id: str,
+    user_latitude: float = Query(None, description="Широта пользователя"),
+    user_longitude: float = Query(None, description="Долгота пользователя"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Отслеживание просмотра автомобиля пользователем.
+    Если пользователь просмотрел автомобиль и вышел (не забронировал), отправляется уведомление.
+    """
+    car_uuid = safe_sid_to_uuid(car_id)
+    car = db.query(Car).filter(Car.id == car_uuid).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    # Проверяем, есть ли активная аренда для этого автомобиля
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.user_id == current_user.id,
+        RentalHistory.car_id == car_uuid,
+        RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
+    ).first()
+    
+    # Если пользователь просмотрел, но не забронировал - отправляем уведомление
+    if not rental and current_user.fcm_token:
+        # Проверяем расстояние до автомобиля, если есть координаты
+        if user_latitude and user_longitude and car.latitude and car.longitude:
+            from math import radians, cos, sin, asin, sqrt
+            
+            def haversine(lon1, lat1, lon2, lat2):
+                """Вычисляет расстояние между двумя точками на сфере"""
+                lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+                dlon = lon2 - lon1
+                dlat = lat2 - lat1
+                a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+                c = 2 * asin(sqrt(a))
+                r = 6371  # Радиус Земли в километрах
+                return c * r * 1000  # Возвращаем в метрах
+            
+            distance = haversine(user_longitude, user_latitude, car.longitude, car.latitude)
+            
+            # Если машина рядом (в радиусе 500 метров), отправляем уведомление
+            if distance <= 500:
+                asyncio.create_task(
+                    send_localized_notification_to_user(
+                        db,
+                        current_user.id,
+                        "car_nearby",
+                        "car_nearby"
+                    )
+                )
+        
+        # Отправляем уведомление о просмотре и выходе
+        asyncio.create_task(
+            send_localized_notification_to_user(
+                db,
+                current_user.id,
+                "car_viewed_exit",
+                "car_viewed_exit"
+            )
+        )
+    
+    return {"message": "Просмотр отслежен"}
 
 
 

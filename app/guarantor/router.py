@@ -6,6 +6,7 @@ import base64
 import os
 import uuid
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
@@ -46,7 +47,7 @@ from app.guarantor.schemas import (
     VerificationStatusSchema
 )
 from app.guarantor.sms_utils import send_guarantor_invitation_sms, send_guarantor_contract_signed_sms, send_client_guarantor_confirmed_sms
-from app.push.utils import send_push_to_user_by_id
+from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
 
 
 async def cancel_guarantor_requests_on_rejection(guarantor_user_id: str, db: Session):
@@ -346,6 +347,23 @@ async def accept_guarantor_request(
     
     db.add(guarantor_relationship)
     db.commit()
+    
+    # Отправляем уведомление гаранту о том, что он принял заявку
+    requestor = db.query(User).filter(User.id == guarantor_request.requestor_id).first()
+    if requestor:
+        client_name_parts = [p for p in [requestor.first_name, requestor.last_name, requestor.middle_name] if p]
+        client_name = " ".join(client_name_parts) if client_name_parts else requestor.phone_number
+        
+        if current_user.fcm_token:
+            asyncio.create_task(
+                send_localized_notification_to_user(
+                    db,
+                    current_user.id,
+                    "guarantor_accepted",
+                    "guarantor_accepted",
+                    client_name=client_name
+                )
+            )
     
     return {
         "message": "Заявка принята. Теперь вам необходимо подписать договор гаранта.",

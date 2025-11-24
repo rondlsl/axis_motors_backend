@@ -152,6 +152,15 @@ async def accept_delivery(
             "mechanic_assigned",
             "mechanic_assigned"
         )
+        # Дополнительное уведомление о найденном курьере
+        asyncio.create_task(
+            send_localized_notification_to_user(
+                db,
+                user.id,
+                "courier_found",
+                "courier_found"
+            )
+        )
     
     asyncio.create_task(notify_vehicles_list_update())
     if rental.user_id:
@@ -402,6 +411,15 @@ async def complete_delivery(
             user.id,
             "delivery_completed",
             "car_delivered"
+        )
+        # Дополнительное уведомление о доставке курьером
+        asyncio.create_task(
+            send_localized_notification_to_user(
+                db,
+                user.id,
+                "courier_delivered",
+                "courier_delivered"
+            )
         )
     
     asyncio.create_task(notify_vehicles_list_update())

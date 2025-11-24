@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime
+import asyncio
 
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
@@ -17,6 +18,7 @@ from app.admin.guarantors.schemas import (
 from app.utils.sid_converter import convert_uuid_response_to_sid
 from app.utils.telegram_logger import log_error_to_telegram
 from app.utils.time_utils import get_local_time
+from app.push.utils import send_localized_notification_to_user
 
 guarantors_router = APIRouter(tags=["Admin Guarantors"])
 
@@ -124,6 +126,17 @@ async def approve_guarantor_request(
                 )
             except:
                 pass
+    
+    # Отправляем уведомление клиенту о том, что гарант подключён
+    if requestor and requestor.fcm_token:
+        asyncio.create_task(
+            send_localized_notification_to_user(
+                db,
+                requestor.id,
+                "guarantor_connected",
+                "guarantor_connected"
+            )
+        )
     
     return {
         "message": "Заявка одобрена",

@@ -12,5 +12,6 @@ class CommandRequest(BaseModel):
 
 
 class RentedCar(BaseModel):
+    id: str  
     name: str
     plate_number: str

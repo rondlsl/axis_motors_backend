@@ -357,6 +357,17 @@ async def approve_application(
             "mvd_approve",
             "application_approved_mvd"
         )
+        
+        # Уведомление о том, что проверка пройдена (заявка полностью одобрена)
+        if user.fcm_token:
+            asyncio.create_task(
+                send_localized_notification_to_user(
+                    db,
+                    user.id,
+                    "verification_passed",
+                    "verification_passed"
+                )
+        )
     except Exception as e:
         try:
             await log_error_to_telegram(
@@ -443,6 +454,17 @@ async def reject_application(
             application.user.id, 
             "mvd_reject", 
             "application_rejected_mvd"
+        )
+        
+        # Дополнительное уведомление о том, что проверка не пройдена
+        if user and user.fcm_token:
+            asyncio.create_task(
+                send_localized_notification_to_user(
+                    db,
+                    user.id,
+                    "verification_failed",
+                    "verification_failed"
+                )
         )
     except Exception as e:
         try:
