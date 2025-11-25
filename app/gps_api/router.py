@@ -302,31 +302,23 @@ def get_vehicle_info(
                 "photo_after_car_uploaded": photo_after_car_uploaded,
                 "photo_after_interior_uploaded": photo_after_interior_uploaded
             })
-            
-            if current_user.role in [UserRole.USER, UserRole.CLIENT] and current_user.fcm_token:
-                _trigger_car_view_notifications(
-                    db,
-                    current_user,
-                    car,
-                    user_latitude=user_latitude,
-                    user_longitude=user_longitude
-                )
-            
+
             if user_latitude and user_longitude and car.latitude and car.longitude:
                 from math import radians, cos, sin, asin, sqrt
-                
+
                 def haversine(lon1, lat1, lon2, lat2):
                     """Вычисляет расстояние между двумя точками на сфере"""
                     lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
                     dlon = lon2 - lon1
                     dlat = lat2 - lat1
-                    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+                    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
                     c = 2 * asin(sqrt(a))
                     r = 6371  # Радиус Земли в километрах
                     return c * r * 1000  # Возвращаем в метрах
-                
+
                 distance = haversine(user_longitude, user_latitude, car.longitude, car.latitude)
-                
+
+                # Если машина рядом (в радиусе 500 метров), добавляем в список
                 if distance <= 500:
                     nearby_cars.append(car.id)
 
