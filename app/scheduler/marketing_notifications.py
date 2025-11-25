@@ -9,6 +9,8 @@ from typing import List
 
 from app.dependencies.database.database import SessionLocal
 from app.models.user_model import User
+from app.models.car_model import Car
+
 from app.push.utils import send_localized_notification_to_user
 from app.utils.time_utils import get_local_time
 
@@ -188,27 +190,27 @@ async def check_weekend_promotions():
 
 
 async def check_new_cars():
-    """Проверка новых автомобилей и отправка уведомлений"""
+    """Проверка появления новых автомобилей (по дате создания) и рассылка уведомлений."""
     db = SessionLocal()
     try:
-        # Находим автомобили, обновленные за последний час (новые обычно недавно обновлены)
-        one_hour_ago = get_local_time() - timedelta(hours=1)
-        
-        from app.models.car_model import Car, CarStatus
-        new_cars = db.query(Car).filter(
-            Car.updated_at >= one_hour_ago,
-            Car.status.in_([CarStatus.FREE, CarStatus.RESERVED])
-        ).all()
-        
+        cutoff = get_local_time() - timedelta(hours=1)
+        new_cars = (
+            db.query(Car)
+            .filter(
+                Car.created_at != None,
+                Car.created_at >= cutoff
+            )
+            .all()
+        )
+
         if not new_cars:
             return
-        
-        # Находим всех активных пользователей с FCM токенами
+
         users = db.query(User).filter(
             User.fcm_token.isnot(None),
             User.is_active == True
         ).all()
-        
+
         sent_count = 0
         for user in users:
             try:
@@ -223,10 +225,9 @@ async def check_new_cars():
                 sent_count += 1
             except Exception as e:
                 print(f"Ошибка отправки уведомления о новом авто пользователю {user.id}: {e}")
-        
+
         if sent_count > 0:
             print(f"Отправлено {sent_count} уведомлений о новых автомобилях")
-        
     except Exception as e:
         print(f"Ошибка при проверке новых автомобилей: {e}")
     finally:
