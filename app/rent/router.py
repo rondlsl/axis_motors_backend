@@ -271,6 +271,7 @@ def get_trip_history(
             # Топливо уровни
             "fuel_before": rental.fuel_before,
             "fuel_after": rental.fuel_after,
+            "fuel_after_main_tariff": rental.fuel_after_main_tariff,
             # Фото клиента: до/после
             "client_photos_before": rental.photos_before or [],
             "client_photos_after": rental.photos_after or [],
@@ -359,6 +360,7 @@ async def get_trip_history_detail(
         ))(),
         "fuel_before": rental.fuel_before,
         "fuel_after": rental.fuel_after,
+        "fuel_after_main_tariff": rental.fuel_after_main_tariff,
         "waiting_fee": rental.waiting_fee,
         "overtime_fee": rental.overtime_fee,
         "distance_fee": rental.distance_fee,
@@ -1057,6 +1059,12 @@ async def cancel_reservation(
         rental.already_payed = 0
         rental.end_latitude = car.latitude
         rental.end_longitude = car.longitude
+        # Записываем топливо при завершении аренды
+        if rental.rental_type in (RentalType.HOURS, RentalType.DAYS) and rental.overtime_fee and rental.overtime_fee > 0:
+            rental.fuel_after_main_tariff = car.fuel_level
+        else:
+            if rental.fuel_after is None:
+                rental.fuel_after = car.fuel_level
         
         # Рассчитываем продолжительность поездки в минутах (только если аренда уже началась)
         if rental.start_time:
@@ -1180,6 +1188,12 @@ async def cancel_reservation(
         # start_time устанавливается только при реальном старте аренды, не при отмене
         rental.total_price = final_waiting_fee
         rental.already_payed = final_waiting_fee
+        # Записываем топливо при завершении аренды
+        if rental.rental_type in (RentalType.HOURS, RentalType.DAYS) and rental.overtime_fee and rental.overtime_fee > 0:
+            rental.fuel_after_main_tariff = car.fuel_level
+        else:
+            if rental.fuel_after is None:
+                rental.fuel_after = car.fuel_level
         
         # Рассчитываем продолжительность поездки в минутах (только если аренда уже началась)
         if rental.start_time:
@@ -1268,6 +1282,13 @@ async def cancel_delivery(
     # Если доставка была в процессе, записываем время окончания
     if rental.delivery_start_time and not rental.delivery_end_time:
         rental.delivery_end_time = get_local_time()
+    
+    # Записываем топливо при завершении аренды
+    if rental.rental_type in (RentalType.HOURS, RentalType.DAYS) and rental.overtime_fee and rental.overtime_fee > 0:
+        rental.fuel_after_main_tariff = car.fuel_level
+    else:
+        if rental.fuel_after is None:
+            rental.fuel_after = car.fuel_level
     
     # Рассчитываем продолжительность поездки в минутах
     if rental.start_time:
@@ -2541,7 +2562,12 @@ async def complete_rental(
     rental.end_time = now
     rental.end_latitude = car.latitude
     rental.end_longitude = car.longitude
-    rental.fuel_after = car.fuel_level
+
+    if rental.rental_type in (RentalType.HOURS, RentalType.DAYS) and rental.overtime_fee and rental.overtime_fee > 0:
+        rental.fuel_after_main_tariff = car.fuel_level
+    else:
+        if rental.fuel_after is None:
+            rental.fuel_after = car.fuel_level
     rental.mileage_after = car.mileage
     rental.rental_status = RentalStatus.COMPLETED
     
@@ -3049,6 +3075,15 @@ async def cancel_booking(
 
     # 4) Отменяем бронирование
     rental.rental_status = RentalStatus.CANCELLED
+    rental.end_time = get_local_time()
+    
+    # Записываем топливо при завершении аренды (если аренда была начата)
+    if rental.start_time and car.fuel_level is not None:
+        if rental.rental_type in (RentalType.HOURS, RentalType.DAYS) and rental.overtime_fee and rental.overtime_fee > 0:
+            rental.fuel_after_main_tariff = car.fuel_level
+        else:
+            if rental.fuel_after is None:
+                rental.fuel_after = car.fuel_level
     
     # 5) Освобождаем автомобиль
     car.current_renter_id = None

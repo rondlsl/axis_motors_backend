@@ -66,6 +66,7 @@ class RentalHistory(Base):
 
     fuel_before = Column(Float, nullable=True)
     fuel_after = Column(Float, nullable=True)
+    fuel_after_main_tariff = Column(Float, nullable=True)
     mileage_before = Column(Integer, nullable=True)
     mileage_after = Column(Integer, nullable=True)
 

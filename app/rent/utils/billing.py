@@ -691,6 +691,11 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                     remaining = planned_minutes - elapsed
 
                     if elapsed > planned_minutes and flags.get("fuel_finalized") is None:
+                        # Записываем топливо на момент окончания основного тарифа
+                        if car.fuel_level is not None and rental.fuel_after is None:
+                            rental.fuel_after = car.fuel_level
+                            db.commit()
+                        
                         existing_tx = db.query(WalletTransaction).filter(
                             WalletTransaction.related_rental_id == rental.id,
                             WalletTransaction.transaction_type == WalletTransactionType.RENT_FUEL_FEE

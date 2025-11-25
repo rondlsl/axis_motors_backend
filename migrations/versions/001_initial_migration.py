@@ -485,6 +485,7 @@ def create_rental_history_table():
         sa.Column('photos_after', postgresql.ARRAY(sa.String()), nullable=True),
         sa.Column('fuel_before', sa.Float(), nullable=True),
         sa.Column('fuel_after', sa.Float(), nullable=True),
+        sa.Column('fuel_after_main_tariff', sa.Float(), nullable=True),
         sa.Column('mileage_before', sa.Integer(), nullable=True),
         sa.Column('mileage_after', sa.Integer(), nullable=True),
         sa.Column('already_payed', sa.Integer(), nullable=True),
