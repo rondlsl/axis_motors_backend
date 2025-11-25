@@ -132,7 +132,7 @@ async def start_token_refresh():
 
 
 @Vehicle_Router.get("/get_vehicles")
-def get_vehicle_info(
+async def get_vehicle_info(
         user_latitude: float = Query(None, description="Широта пользователя"),
         user_longitude: float = Query(None, description="Долгота пользователя"),
         db: Session = Depends(get_db),
@@ -1156,7 +1156,7 @@ def _calculate_distance_meters(
     return c * r * 1000
 
 
-def _trigger_car_view_notifications(
+async def _trigger_car_view_notifications(
     db: Session,
     current_user: User,
     car: Car,
@@ -1696,7 +1696,7 @@ async def track_car_view(
     ).first()
     
     # Фиксируем просмотр для пуш-уведомления
-    _trigger_car_view_notifications(
+    await _trigger_car_view_notifications(
         db,
         current_user,
         car,
