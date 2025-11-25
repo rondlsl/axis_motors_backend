@@ -139,7 +139,7 @@ NOTIFICATIONS_TRANSLATIONS = {
         "monday_morning_title": "Понедельник утро",
         "monday_morning_body": "Удобный старт недели — авто доступны поблизости.",
         
-        "new_car_available_title": "Уведомление: новый авто",
+        "new_car_available_title": "Новое авто",
         "new_car_available_body": "Новое авто в парке! Загляните — возможно, это ваш следующий выбор.",
         
         "car_nearby_title": "Машина рядом",
@@ -295,7 +295,7 @@ NOTIFICATIONS_TRANSLATIONS = {
         "monday_morning_title": "Monday Morning",
         "monday_morning_body": "Convenient start to the week — cars available nearby.",
         
-        "new_car_available_title": "New Car Available",
+        "new_car_available_title": "New Car",
         "new_car_available_body": "New car in the fleet! Take a look — it might be your next choice.",
         
         "car_nearby_title": "Car Nearby",
@@ -451,7 +451,7 @@ NOTIFICATIONS_TRANSLATIONS = {
         "monday_morning_title": "Дүйсенбі таңы",
         "monday_morning_body": "Аптаны ыңғайлы бастаңыз — автомобильдер маңда қолжетімді.",
         
-        "new_car_available_title": "Хабарландыру: жаңа автомобиль",
+        "new_car_available_title": "Жаңа автомобиль",
         "new_car_available_body": "Паркте жаңа автомобиль! Қараңыз — бұл сіздің келесі таңдауыңыз болуы мүмкін.",
         
         "car_nearby_title": "Автомобиль маңда",
@@ -607,7 +607,7 @@ NOTIFICATIONS_TRANSLATIONS = {
         "monday_morning_title": "周一早上",
         "monday_morning_body": "方便地开始新的一周 — 附近有可用车辆。",
         
-        "new_car_available_title": "通知：新车",
+        "new_car available_title": "新车",
         "new_car_available_body": "车队中有新车！看看 — 这可能是您的下一个选择。",
         
         "car_nearby_title": "附近有车",
