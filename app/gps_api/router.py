@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy import or_, and_, func
 from sqlalchemy.orm import Session
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import asyncio
 import logging
 
@@ -303,7 +303,15 @@ def get_vehicle_info(
                 "photo_after_interior_uploaded": photo_after_interior_uploaded
             })
             
-            # Проверяем расстояние до автомобиля, если есть координаты пользователя
+            if current_user.role in [UserRole.USER, UserRole.CLIENT] and current_user.fcm_token:
+                _trigger_car_view_notifications(
+                    db,
+                    current_user,
+                    car,
+                    user_latitude=user_latitude,
+                    user_longitude=user_longitude
+                )
+            
             if user_latitude and user_longitude and car.latitude and car.longitude:
                 from math import radians, cos, sin, asin, sqrt
                 
@@ -319,7 +327,6 @@ def get_vehicle_info(
                 
                 distance = haversine(user_longitude, user_latitude, car.longitude, car.latitude)
                 
-                # Если машина рядом (в радиусе 500 метров), добавляем в список
                 if distance <= 500:
                     nearby_cars.append(car.id)
 
@@ -1140,6 +1147,77 @@ def get_excluded_from_alerts_cars(
     return [{"plate_number": plate} for plate in excluded_plates]
 
 
+def _calculate_distance_meters(
+    user_latitude: float,
+    user_longitude: float,
+    car_latitude: float,
+    car_longitude: float
+) -> float:
+    from math import radians, cos, sin, asin, sqrt
+
+    lon1, lat1, lon2, lat2 = map(radians, [user_longitude, user_latitude, car_longitude, car_latitude])
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+    c = 2 * asin(sqrt(a))
+    r = 6371  
+    return c * r * 1000
+
+
+def _trigger_car_view_notifications(
+    db: Session,
+    current_user: User,
+    car: Car,
+    user_latitude: Optional[float] = None,
+    user_longitude: Optional[float] = None
+) -> None:
+    if not current_user.fcm_token:
+        return
+
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.user_id == current_user.id,
+        RentalHistory.car_id == car.id,
+        RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
+    ).first()
+
+    if rental:
+        return
+
+    if (
+        user_latitude is not None
+        and user_longitude is not None
+        and car.latitude is not None
+        and car.longitude is not None
+    ):
+        try:
+            distance = _calculate_distance_meters(
+                user_latitude,
+                user_longitude,
+                car.latitude,
+                car.longitude
+            )
+            if distance <= 500:
+                asyncio.create_task(
+                    send_localized_notification_to_user(
+                        db,
+                        current_user.id,
+                        "car_nearby",
+                        "car_nearby"
+                    )
+                )
+        except Exception:
+            pass
+
+    asyncio.create_task(
+        send_localized_notification_to_user(
+            db,
+            current_user.id,
+            "car_viewed_exit",
+            "car_viewed_exit"
+        )
+    )
+
+
 @Vehicle_Router.get("/telemetry/{car_id}", response_model=VehicleTelemetryResponse)
 async def get_vehicle_telemetry(
     car_id: str,
@@ -1625,44 +1703,14 @@ async def track_car_view(
         RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
     ).first()
     
-    # Если пользователь просмотрел, но не забронировал - отправляем уведомление
-    if not rental and current_user.fcm_token:
-        # Проверяем расстояние до автомобиля, если есть координаты
-        if user_latitude and user_longitude and car.latitude and car.longitude:
-            from math import radians, cos, sin, asin, sqrt
-            
-            def haversine(lon1, lat1, lon2, lat2):
-                """Вычисляет расстояние между двумя точками на сфере"""
-                lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
-                dlon = lon2 - lon1
-                dlat = lat2 - lat1
-                a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
-                c = 2 * asin(sqrt(a))
-                r = 6371  # Радиус Земли в километрах
-                return c * r * 1000  # Возвращаем в метрах
-            
-            distance = haversine(user_longitude, user_latitude, car.longitude, car.latitude)
-            
-            # Если машина рядом (в радиусе 500 метров), отправляем уведомление
-            if distance <= 500:
-                asyncio.create_task(
-                    send_localized_notification_to_user(
-                        db,
-                        current_user.id,
-                        "car_nearby",
-                        "car_nearby"
-                    )
-                )
-        
-        # Отправляем уведомление о просмотре и выходе
-        asyncio.create_task(
-            send_localized_notification_to_user(
-                db,
-                current_user.id,
-                "car_viewed_exit",
-                "car_viewed_exit"
-            )
-        )
+    # Фиксируем просмотр для пуш-уведомления
+    _trigger_car_view_notifications(
+        db,
+        current_user,
+        car,
+        user_latitude=user_latitude,
+        user_longitude=user_longitude
+    )
     
     return {"message": "Просмотр отслежен"}
 
