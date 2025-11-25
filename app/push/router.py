@@ -1,24 +1,41 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, status, HTTPException
+from fastapi import APIRouter, Depends, status, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.translations.notifications import get_notification_text
 from app.models.notification_model import Notification
 from app.models.user_model import User
+from app.models.user_device_model import UserDevice
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.utils.short_id import uuid_to_sid, safe_sid_to_uuid
-from app.push.schemas import PushPayload, NotificationListResponse
+from app.push.schemas import (
+    PushPayload,
+    NotificationListResponse,
+    DeviceRegisterRequest,
+    UserDeviceResponse,
+)
 from app.push.utils import send_push_notification_async
 from app.push.enums import NotificationStatus
 from app.utils.telegram_logger import log_error_to_telegram
+from app.utils.time_utils import get_local_time
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 
 class TokenRequest(BaseModel):
     fcm_token: str
+
+
+def _device_to_response(device: UserDevice) -> UserDeviceResponse:
+    return UserDeviceResponse.from_orm(device)
+
+
+def _get_client_ip(request: Request) -> str:
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
 
 
 @router.post("/save_token", status_code=status.HTTP_200_OK)
@@ -29,9 +46,25 @@ async def save_fcm_token(payload: TokenRequest,
     Save FCM token for push notifications.
     """
     try:
-        print(f"📱 [SAVE_TOKEN] User {current_user.phone_number} - Token: {payload.fcm_token[:50]}...")
-        
-        current_user.fcm_token = payload.fcm_token
+        token = (payload.fcm_token or "").strip()
+        if not token:
+            raise HTTPException(status_code=400, detail="FCM token is required")
+
+        print(f"📱 [SAVE_TOKEN] User {current_user.phone_number} - Token: {token[:50]}...")
+
+        duplicates = (
+            db.query(User)
+            .filter(User.fcm_token == token, User.id != current_user.id)
+            .all()
+        )
+
+        cleared_users = []
+        for user in duplicates:
+            cleared_users.append(str(user.id))
+            user.fcm_token = None
+            db.add(user)
+
+        current_user.fcm_token = token
         db.add(current_user)
         db.flush()
         db.commit()
@@ -39,11 +72,16 @@ async def save_fcm_token(payload: TokenRequest,
         
         print(f"✅ [SAVE_TOKEN] Token saved successfully")
         
-        return {
+        response = {
             "detail": "FCM token saved",
             "user_id": str(current_user.id),
             "phone": current_user.phone_number
         }
+
+        if cleared_users:
+            response["duplicates_cleared"] = cleared_users
+
+        return response
     except Exception as e:
         db.rollback()
         try:
@@ -61,6 +99,126 @@ async def save_fcm_token(payload: TokenRequest,
         except:
             pass
         raise HTTPException(status_code=500, detail=f"Ошибка сохранения push-токена: {str(e)}")
+
+
+@router.post("/devices", response_model=UserDeviceResponse, status_code=status.HTTP_200_OK)
+async def register_device(
+    payload: DeviceRegisterRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    token = (payload.fcm_token or "").strip()
+    device_uuid = (payload.device_uuid or "").strip()
+
+    if not token:
+        raise HTTPException(status_code=400, detail="FCM token is required")
+    if not device_uuid:
+        raise HTTPException(status_code=400, detail="device_uuid is required")
+
+    try:
+        duplicates = (
+            db.query(UserDevice)
+            .filter(UserDevice.fcm_token == token, UserDevice.device_uuid != device_uuid)
+            .all()
+        )
+        for device in duplicates:
+            device.fcm_token = None
+            device.is_active = False
+            device.revoked_at = get_local_time()
+            device.update_timestamp()
+            db.add(device)
+
+        device = db.query(UserDevice).filter(UserDevice.device_uuid == device_uuid).first()
+        if device is None:
+            device = UserDevice(device_uuid=device_uuid, user_id=current_user.id)
+        else:
+            device.user_id = current_user.id
+
+        device.fcm_token = token
+        device.platform = payload.platform
+        device.model = payload.model
+        device.os_version = payload.os_version
+        device.app_version = payload.app_version
+        device.last_ip = _get_client_ip(request)
+        device.last_lat = payload.last_lat
+        device.last_lng = payload.last_lng
+        device.last_active_at = get_local_time()
+        device.is_active = True
+        device.revoked_at = None
+        device.update_timestamp()
+
+        db.add(device)
+
+        current_user.fcm_token = token
+        db.add(current_user)
+
+        db.commit()
+        db.refresh(device)
+
+        return _device_to_response(device)
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "register_device",
+                    "user_id": str(current_user.id),
+                    "device_uuid": device_uuid,
+                    "token_preview": token[:50] if token else None
+                }
+            )
+        except:
+            pass
+        raise HTTPException(status_code=500, detail="Не удалось зарегистрировать устройство")
+
+
+@router.get("/devices", response_model=List[UserDeviceResponse], status_code=status.HTTP_200_OK)
+async def list_devices(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    devices = (
+        db.query(UserDevice)
+        .filter(UserDevice.user_id == current_user.id)
+        .order_by(UserDevice.created_at.desc())
+        .all()
+    )
+    return [_device_to_response(device) for device in devices]
+
+
+@router.delete("/devices/{device_uuid}", status_code=status.HTTP_200_OK)
+async def revoke_device(
+    device_uuid: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    device = (
+        db.query(UserDevice)
+        .filter(UserDevice.device_uuid == device_uuid, UserDevice.user_id == current_user.id)
+        .first()
+    )
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    removed_token = device.fcm_token
+    device.is_active = False
+    device.fcm_token = None
+    device.revoked_at = get_local_time()
+    device.update_timestamp()
+    db.add(device)
+
+    if current_user.fcm_token and current_user.fcm_token == removed_token:
+        current_user.fcm_token = None
+        db.add(current_user)
+
+    db.commit()
+    return {"detail": "Device revoked"}
 
 
 @router.post("/send_push")

@@ -119,6 +119,12 @@ class User(Base):
     support_chats_as_client = relationship("SupportChat", foreign_keys="[SupportChat.azv_user_id]", back_populates="azv_user")
     support_chats_as_support = relationship("SupportChat", foreign_keys="[SupportChat.assigned_to]", back_populates="assigned_support")
     support_messages = relationship("SupportMessage", back_populates="sender_user")
+
+    devices = relationship(
+        "UserDevice",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
     
     @property
     def sid(self) -> str:

@@ -23,6 +23,7 @@ def upgrade() -> None:
     
     # Create all tables
     create_users_table()
+    create_user_devices_table()
     create_tokens_table()
     create_cars_table()
     create_applications_table()
@@ -330,6 +331,31 @@ def create_users_table():
         sa.UniqueConstraint('phone_number'),
         sa.UniqueConstraint('digital_signature')
     )
+
+
+def create_user_devices_table():
+    """Create user_devices table for tracking user devices and tokens"""
+    op.create_table('user_devices',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
+        sa.Column('user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False),
+        sa.Column('device_uuid', sa.String(128), nullable=False),
+        sa.Column('fcm_token', sa.String(), nullable=False),
+        sa.Column('platform', sa.String(32), nullable=True),
+        sa.Column('model', sa.String(128), nullable=True),
+        sa.Column('os_version', sa.String(64), nullable=True),
+        sa.Column('app_version', sa.String(32), nullable=True),
+        sa.Column('last_ip', sa.String(64), nullable=True),
+        sa.Column('last_lat', sa.Float(), nullable=True),
+        sa.Column('last_lng', sa.Float(), nullable=True),
+        sa.Column('last_active_at', sa.DateTime(), nullable=True),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default='true'),
+        sa.Column('revoked_at', sa.DateTime(), nullable=True),
+        sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        sa.UniqueConstraint('device_uuid', name='uq_user_devices_device_uuid'),
+        sa.UniqueConstraint('fcm_token', name='uq_user_devices_fcm_token')
+    )
+    op.create_index('ix_user_devices_user_id', 'user_devices', ['user_id'])
 
 
 def create_tokens_table():
@@ -716,6 +742,9 @@ def downgrade() -> None:
             IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'ix_support_chats_id') THEN
                 DROP INDEX ix_support_chats_id;
             END IF;
+            IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'ix_user_devices_user_id') THEN
+                DROP INDEX ix_user_devices_user_id;
+            END IF;
         END $$;
     """)
     # Drop tokens table early due to FK to users
@@ -738,6 +767,7 @@ def downgrade() -> None:
     op.drop_table('guarantor_requests')
     op.drop_table('applications')
     op.drop_table('cars')
+    op.drop_table('user_devices')
     op.drop_table('users')
     
     # Drop all enums
