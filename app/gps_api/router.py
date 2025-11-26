@@ -364,7 +364,7 @@ async def get_vehicle_info(
                             "airport_location"
                         )
                     )
-
+        
         return {
             "vehicles": vehicles_data,
             "fcm_token": current_user.fcm_token
@@ -1163,7 +1163,7 @@ async def _trigger_car_view_notifications(
     user_latitude: Optional[float] = None,
     user_longitude: Optional[float] = None
 ) -> None:
-    if not current_user.fcm_token:
+    if current_user.role not in [UserRole.CLIENT, UserRole.USER]:
         return
 
     rental = db.query(RentalHistory).filter(
@@ -1175,30 +1175,9 @@ async def _trigger_car_view_notifications(
     if rental:
         return
 
-    if (
-        user_latitude is not None
-        and user_longitude is not None
-        and car.latitude is not None
-        and car.longitude is not None
-    ):
-        try:
-            distance = _calculate_distance_meters(
-                user_latitude,
-                user_longitude,
-                car.latitude,
-                car.longitude
-            )
-            if distance <= 500:
-                asyncio.create_task(
-                    send_localized_notification_to_user(
-                        db,
-                        current_user.id,
-                        "car_nearby",
-                        "car_nearby"
-                    )
-                )
-        except Exception:
-            pass
+    # Отправляем пуш только если машина сейчас свободна
+    if car.status != CarStatus.FREE:
+        return
 
     asyncio.create_task(
         send_localized_notification_to_user(
