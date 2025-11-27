@@ -122,7 +122,7 @@ def create_cars(db: Session, owner: User) -> None:
             "engine_volume": 2.5,
             "year": 2022,
             "drive_type": 3,
-            "transmission_type": "semi_automatic",
+            "transmission_type": "automatic",
             "price_per_minute": 75,
             "price_per_hour": 3500,
             "price_per_day": 55000,
