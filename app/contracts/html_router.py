@@ -69,6 +69,13 @@ def get_current_date() -> str:
     return datetime.now().strftime("%d.%m.%Y")
 
 
+def get_user_full_name(user: User) -> str:
+    """Получает полное имя пользователя из токена"""
+    if user.first_name or user.last_name:
+        return f"{user.first_name or ''} {user.last_name or ''}".strip()
+    return user.phone_number or "Пользователь"
+
+
 def translate_body_type(body_type: Optional[str]) -> str:
     """Переводит тип кузова на русский"""
     if not body_type:
@@ -306,7 +313,7 @@ async def get_rental_main_contract(
     
     html = process_html_placeholders(
         html,
-        full_name=full_name or current_user.first_name + " " + current_user.last_name if current_user.first_name and current_user.last_name else None,
+        full_name=full_name or get_user_full_name(current_user),
         login=login or current_user.phone_number,
         client_id=client_id or str(current_user.id),
         digital_signature=digital_signature or current_user.digital_signature,
