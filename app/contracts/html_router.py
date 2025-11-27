@@ -1,14 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from fastapi.responses import Response
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 from typing import Optional
 import os
 from datetime import datetime
-from io import BytesIO
-from docx import Document
-from docx.shared import Pt, Inches
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from bs4 import BeautifulSoup
 
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
@@ -94,64 +89,6 @@ def translate_body_type(body_type: Optional[str]) -> str:
     }
     
     return body_type_map.get(body_type.upper(), body_type)
-
-
-def html_to_docx(html_content: str) -> BytesIO:
-    """Конвертирует HTML в Word документ (.docx)"""
-    soup = BeautifulSoup(html_content, 'html.parser')
-    
-    doc = Document()
-    
-    for script in soup(["script", "style"]):
-        script.decompose()
-    
-    body = soup.find('body') or soup
-    
-    def add_element_to_doc(element, doc):
-        """Рекурсивно добавляет элементы в документ"""
-        if element.name is None: 
-            text = str(element).strip()
-            if text:
-                if doc.paragraphs:
-                    doc.paragraphs[-1].add_run(text)
-                else:
-                    p = doc.add_paragraph(text)
-        elif element.name in ['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
-            text = element.get_text(strip=True)
-            if text:
-                p = doc.add_paragraph(text)
-                if element.name.startswith('h'):
-                    p.runs[0].bold = True
-                    p.runs[0].font.size = Pt(14 if element.name == 'h1' else 12)
-        elif element.name == 'br':
-            if doc.paragraphs:
-                doc.paragraphs[-1].add_run().add_break()
-        elif element.name == 'table':
-            table = doc.add_table(rows=0, cols=0)
-            for tr in element.find_all('tr'):
-                row_cells = [td.get_text(strip=True) for td in tr.find_all(['td', 'th'])]
-                if row_cells:
-                    row = table.add_row()
-                    for i, cell_text in enumerate(row_cells):
-                        if i < len(row.cells):
-                            row.cells[i].text = cell_text
-        elif element.name in ['ul', 'ol']:
-            for li in element.find_all('li', recursive=False):
-                text = li.get_text(strip=True)
-                if text:
-                    p = doc.add_paragraph(text, style='List Bullet' if element.name == 'ul' else 'List Number')
-        else:
-            for child in element.children:
-                add_element_to_doc(child, doc)
-    
-    for element in body.children:
-        add_element_to_doc(element, doc)
-    
-    docx_buffer = BytesIO()
-    doc.save(docx_buffer)
-    docx_buffer.seek(0)
-    
-    return docx_buffer
 
 
 def process_html_placeholders(
@@ -327,16 +264,7 @@ async def get_rental_main_contract(
         color=color,
     )
     
-    docx_buffer = html_to_docx(html)
-    
-    return Response(
-        content=docx_buffer.read(),
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={
-            "Content-Disposition": "attachment; filename=contract.docx",
-            "Cache-Control": "no-cache, no-store, must-revalidate"
-        }
-    )
+    return HTMLResponse(content=html, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
 
 @HTMLContractsRouter.get("/acceptance-certificate")
@@ -408,16 +336,7 @@ async def get_acceptance_certificate(
         color=color,
     )
     
-    docx_buffer = html_to_docx(html)
-    
-    return Response(
-        content=docx_buffer.read(),
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={
-            "Content-Disposition": "attachment; filename=contract.docx",
-            "Cache-Control": "no-cache, no-store, must-revalidate"
-        }
-    )
+    return HTMLResponse(content=html, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
 
 @HTMLContractsRouter.get("/return-certificate")
@@ -489,16 +408,7 @@ async def get_return_certificate(
         color=color,
     )
     
-    docx_buffer = html_to_docx(html)
-    
-    return Response(
-        content=docx_buffer.read(),
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={
-            "Content-Disposition": "attachment; filename=contract.docx",
-            "Cache-Control": "no-cache, no-store, must-revalidate"
-        }
-    )
+    return HTMLResponse(content=html, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
 
 @HTMLContractsRouter.get("/main-contract")
@@ -529,16 +439,7 @@ async def get_main_contract(
         digital_signature=digital_signature or current_user.digital_signature,
     )
     
-    docx_buffer = html_to_docx(html)
-    
-    return Response(
-        content=docx_buffer.read(),
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={
-            "Content-Disposition": "attachment; filename=contract.docx",
-            "Cache-Control": "no-cache, no-store, must-revalidate"
-        }
-    )
+    return HTMLResponse(content=html, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
 
 @HTMLContractsRouter.get("/user-agreement")
@@ -569,16 +470,7 @@ async def get_user_agreement(
         digital_signature=digital_signature or current_user.digital_signature,
     )
     
-    docx_buffer = html_to_docx(html)
-    
-    return Response(
-        content=docx_buffer.read(),
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={
-            "Content-Disposition": "attachment; filename=contract.docx",
-            "Cache-Control": "no-cache, no-store, must-revalidate"
-        }
-    )
+    return HTMLResponse(content=html, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
 
 @HTMLContractsRouter.get("/consent-to-data-processing")
@@ -609,16 +501,7 @@ async def get_consent_to_data_processing(
         digital_signature=digital_signature or current_user.digital_signature,
     )
     
-    docx_buffer = html_to_docx(html)
-    
-    return Response(
-        content=docx_buffer.read(),
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={
-            "Content-Disposition": "attachment; filename=contract.docx",
-            "Cache-Control": "no-cache, no-store, must-revalidate"
-        }
-    )
+    return HTMLResponse(content=html, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
 
 @HTMLContractsRouter.get("/main-contract-for-guarantee")
@@ -725,14 +608,5 @@ async def get_main_contract_for_guarantee(
         else:
             html = f"<head>\n{viewport_meta}\n{styles}\n</head>\n{html}"
     
-    docx_buffer = html_to_docx(html)
-    
-    return Response(
-        content=docx_buffer.read(),
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={
-            "Content-Disposition": "attachment; filename=contract.docx",
-            "Cache-Control": "no-cache, no-store, must-revalidate"
-        }
-    )
+    return HTMLResponse(content=html, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
