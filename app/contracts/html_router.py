@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from typing import Optional
 import os
@@ -212,7 +212,7 @@ async def get_rental_main_contract(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Получить договор присоединения для аренды с подставленными данными"""
+    """Получить договор присоединения для аренды с подставленными данными (скачивается как HTML файл)"""
     file_path = os.path.join(UPLOADS_DOCS_PATH, CONTRACT_FILES["rental_main_contract"])
     
     if not os.path.exists(file_path):
@@ -264,7 +264,15 @@ async def get_rental_main_contract(
         color=color,
     )
     
-    return HTMLResponse(content=html, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+    filename = "rental_main_contract.html"
+    return Response(
+        content=html,
+        media_type="text/html",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Cache-Control": "no-cache, no-store, must-revalidate"
+        }
+    )
 
 
 @HTMLContractsRouter.get("/acceptance-certificate")
@@ -322,7 +330,7 @@ async def get_acceptance_certificate(
     
     html = process_html_placeholders(
         html,
-        full_name=full_name or (current_user.first_name + " " + current_user.last_name if current_user.first_name and current_user.last_name else None),
+        full_name=full_name or get_user_full_name(current_user),
         login=login or current_user.phone_number,
         client_id=client_id or str(current_user.id),
         digital_signature=digital_signature or current_user.digital_signature,
@@ -336,7 +344,15 @@ async def get_acceptance_certificate(
         color=color,
     )
     
-    return HTMLResponse(content=html, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+    filename = "acceptance_certificate.html"
+    return Response(
+        content=html,
+        media_type="text/html",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Cache-Control": "no-cache, no-store, must-revalidate"
+        }
+    )
 
 
 @HTMLContractsRouter.get("/return-certificate")
@@ -394,7 +410,7 @@ async def get_return_certificate(
     
     html = process_html_placeholders(
         html,
-        full_name=full_name or (current_user.first_name + " " + current_user.last_name if current_user.first_name and current_user.last_name else None),
+        full_name=full_name or get_user_full_name(current_user),
         login=login or current_user.phone_number,
         client_id=client_id or str(current_user.id),
         digital_signature=digital_signature or current_user.digital_signature,
@@ -408,7 +424,15 @@ async def get_return_certificate(
         color=color,
     )
     
-    return HTMLResponse(content=html, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+    filename = "return_certificate.html"
+    return Response(
+        content=html,
+        media_type="text/html",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Cache-Control": "no-cache, no-store, must-revalidate"
+        }
+    )
 
 
 @HTMLContractsRouter.get("/main-contract")
@@ -433,13 +457,21 @@ async def get_main_contract(
     
     html = process_html_placeholders(
         html,
-        full_name=full_name or (current_user.first_name + " " + current_user.last_name if current_user.first_name and current_user.last_name else None),
+        full_name=full_name or get_user_full_name(current_user),
         login=login or current_user.phone_number,
         client_id=client_id or str(current_user.id),
         digital_signature=digital_signature or current_user.digital_signature,
     )
     
-    return HTMLResponse(content=html, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+    filename = "main_contract.html"
+    return Response(
+        content=html,
+        media_type="text/html",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Cache-Control": "no-cache, no-store, must-revalidate"
+        }
+    )
 
 
 @HTMLContractsRouter.get("/user-agreement")
@@ -464,13 +496,21 @@ async def get_user_agreement(
     
     html = process_html_placeholders(
         html,
-        full_name=full_name or (current_user.first_name + " " + current_user.last_name if current_user.first_name and current_user.last_name else None),
+        full_name=full_name or get_user_full_name(current_user),
         login=login or current_user.phone_number,
         client_id=client_id or str(current_user.id),
         digital_signature=digital_signature or current_user.digital_signature,
     )
     
-    return HTMLResponse(content=html, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+    filename = "user_agreement.html"
+    return Response(
+        content=html,
+        media_type="text/html",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Cache-Control": "no-cache, no-store, must-revalidate"
+        }
+    )
 
 
 @HTMLContractsRouter.get("/consent-to-data-processing")
@@ -495,13 +535,21 @@ async def get_consent_to_data_processing(
     
     html = process_html_placeholders(
         html,
-        full_name=full_name or (current_user.first_name + " " + current_user.last_name if current_user.first_name and current_user.last_name else None),
+        full_name=full_name or get_user_full_name(current_user),
         login=login or current_user.phone_number,
         client_id=client_id or str(current_user.id),
         digital_signature=digital_signature or current_user.digital_signature,
     )
     
-    return HTMLResponse(content=html, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+    filename = "consent_to_data_processing.html"
+    return Response(
+        content=html,
+        media_type="text/html",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Cache-Control": "no-cache, no-store, must-revalidate"
+        }
+    )
 
 
 @HTMLContractsRouter.get("/main-contract-for-guarantee")
@@ -608,5 +656,13 @@ async def get_main_contract_for_guarantee(
         else:
             html = f"<head>\n{viewport_meta}\n{styles}\n</head>\n{html}"
     
-    return HTMLResponse(content=html, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+    filename = "main_contract_for_guarantee.html"
+    return Response(
+        content=html,
+        media_type="text/html",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Cache-Control": "no-cache, no-store, must-revalidate"
+        }
+    )
 
