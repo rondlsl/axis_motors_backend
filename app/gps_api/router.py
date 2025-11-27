@@ -364,7 +364,7 @@ async def get_vehicle_info(
                             "airport_location"
                         )
                     )
-        
+
         return {
             "vehicles": vehicles_data,
             "fcm_token": current_user.fcm_token
