@@ -48,6 +48,10 @@ NOTIFICATIONS_TRANSLATIONS = {
         "balance_exhausted_title": "Баланс исчерпан",
         "balance_exhausted_body": "Ваш баланс 0₸ — завершите аренду, чтобы избежать штрафов.",
         
+        # Уведомление о загрузке документов
+        "documents_uploaded_title": "Ваши документы загружены",
+        "documents_uploaded_body": "Ваши документы успешно загружены. Проверка займет до 24 часов.",
+        
         # Уведомления о штрафах
         "delivery_delay_penalty_title": "Штраф за задержку доставки",
         "delivery_delay_penalty_body": "Списан штраф {penalty_fee}₸ за задержку доставки на {penalty_minutes} мин.",
@@ -203,6 +207,10 @@ NOTIFICATIONS_TRANSLATIONS = {
         
         "balance_exhausted_title": "Balance Exhausted",
         "balance_exhausted_body": "Your balance is 0₸ — complete rental to avoid penalties.",
+        
+        # Documents uploaded notification
+        "documents_uploaded_title": "Your documents uploaded",
+        "documents_uploaded_body": "Your documents have been successfully uploaded. Verification will take up to 24 hours.",
         
         # Уведомления о штрафах
         "delivery_delay_penalty_title": "Delivery Delay Penalty",
@@ -360,6 +368,10 @@ NOTIFICATIONS_TRANSLATIONS = {
         "balance_exhausted_title": "Баланс таусылды",
         "balance_exhausted_body": "Сіздің балансыңыз 0₸ — айыппұлдардан аулақ болу үшін жалға алуды аяқтаңыз.",
         
+        # Құжаттар жүктелген хабарлама
+        "documents_uploaded_title": "Сіздің құжаттарыңыз жүктелді",
+        "documents_uploaded_body": "Сіздің құжаттарыңыз сәтті жүктелді. Тексеру 24 сағатқа дейін созылады.",
+        
         # Уведомления о штрафах
         "delivery_delay_penalty_title": "Жеткізу кешіктіру айыппұлы",
         "delivery_delay_penalty_body": "{penalty_minutes} мин жеткізу кешіктіру үшін {penalty_fee}₸ айыппұл алынды.",
@@ -515,6 +527,10 @@ NOTIFICATIONS_TRANSLATIONS = {
         
         "balance_exhausted_title": "余额已用完",
         "balance_exhausted_body": "您的余额为 0₸ — 请完成租赁以避免罚款。",
+        
+        # 文件已上传通知
+        "documents_uploaded_title": "您的文件已上传",
+        "documents_uploaded_body": "您的文件已成功上传。验证最多需要24小时。",
         
         # 罚款通知
         "delivery_delay_penalty_title": "交付延迟罚款",

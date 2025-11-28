@@ -1176,6 +1176,21 @@ async def upload_documents(
         db.commit()
         
         asyncio.create_task(notify_user_status_update(str(current_user.id)))
+        
+        # Отправляем push-уведомление о загрузке документов
+        try:
+            from app.push.utils import send_localized_notification_to_user
+            asyncio.create_task(
+                send_localized_notification_to_user(
+                    db,
+                    current_user.id,
+                    "documents_uploaded",
+                    "documents_uploaded"
+                )
+            )
+        except Exception as e:
+            # Не блокируем основной флоу из-за ошибок отправки уведомления
+            logger.error(f"Error sending documents_uploaded notification: {e}")
 
         return {
             "message": "Documents and data uploaded successfully",

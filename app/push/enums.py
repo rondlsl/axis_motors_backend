@@ -49,3 +49,4 @@ class NotificationStatus(str, Enum):
     HOLIDAY_GREETING = "holiday_greeting"  # Поздравления с праздниками
     AIRPORT_LOCATION = "airport_location"  # Локация аэропорта
     CAR_VIEWED_EXIT = "car_viewed_exit"  # Пользователь смотрел авто и вышел
+    DOCUMENTS_UPLOADED = "documents_uploaded"  # Документы загружены
