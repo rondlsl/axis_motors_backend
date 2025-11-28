@@ -155,7 +155,7 @@ def create_cars(db: Session, owner: User) -> None:
             "fuel_level": 40,
             "course": 23,
             "body_type": CarBodyType.SUV,
-            "auto_class": CarAutoClass.C,
+            "auto_class": CarAutoClass.B,
             "description": "Легендарный внедорожник Mercedes G63.",
             "photos": get_car_photos("888DON02"),
             "vin": "W1NYC7GJXMX397708",
