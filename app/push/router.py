@@ -1,11 +1,14 @@
-from typing import List
+from typing import List, Optional
+import asyncio
+import sys
 
 from fastapi import APIRouter, Depends, status, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+
 from app.translations.notifications import get_notification_text
 from app.models.notification_model import Notification
-from app.models.user_model import User
+from app.models.user_model import User, UserRole
 from app.models.user_device_model import UserDevice
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
@@ -16,7 +19,7 @@ from app.push.schemas import (
     DeviceRegisterRequest,
     UserDeviceResponse,
 )
-from app.push.utils import send_push_notification_async
+from app.push.utils import send_push_notification_async, send_localized_notification_to_user
 from app.push.enums import NotificationStatus
 from app.utils.telegram_logger import log_error_to_telegram
 from app.utils.time_utils import get_local_time
@@ -260,9 +263,6 @@ async def test_push_by_phone(
     Тестовый endpoint для отправки push-уведомления по номеру телефона.
     Доступен только администраторам и механикам для тестирования.
     """
-    from app.models.user_model import UserRole
-    
-    import sys
     
     print("="*80)
     print("🔔 [TEST_PUSH_BY_PHONE] Запрос получен")
@@ -341,9 +341,6 @@ async def get_users_with_tokens(
     Тестовый endpoint для получения списка пользователей с FCM токенами.
     Доступен только администраторам для тестирования.
     """
-    from app.models.user_model import UserRole
-    
-    # Проверяем права доступа
     if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
         raise HTTPException(
             status_code=403,
@@ -362,7 +359,7 @@ async def get_users_with_tokens(
                 "name": f"{user.first_name or ''} {user.last_name or ''} {user.middle_name or ''}".strip() or "Не указано",
                 "role": user.role.value if user.role else None,
                 "fcm_token_preview": user.fcm_token[:30] + "..." if len(user.fcm_token) > 30 else user.fcm_token,
-                "fcm_token": user.fcm_token  # Полный токен для копирования
+                "fcm_token": user.fcm_token 
             }
             for user in users
         ]
@@ -422,3 +419,227 @@ async def mark_as_read(
     notif.is_read = True
     db.commit()
     return {"success": True, "id": notif_id}
+
+
+class BroadcastNotificationRequest(BaseModel):
+    title: str
+    body: str
+    status: Optional[str] = None  
+
+
+class BroadcastLocalizedNotificationRequest(BaseModel):
+    translation_key: str  
+    status: Optional[str] = None 
+
+
+@router.post("/broadcast", status_code=status.HTTP_200_OK)
+async def broadcast_notification(
+    payload: BroadcastNotificationRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Массовая рассылка push-уведомлений всем активным пользователям.
+    Доступно только администраторам.
+    
+    Отправляет уведомление всем пользователям, у которых есть активные устройства с FCM токенами.
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=403,
+            detail="Only administrators can broadcast notifications"
+        )
+    
+    try:
+        users_with_devices = (
+            db.query(User)
+            .join(UserDevice, User.id == UserDevice.user_id)
+            .filter(
+                User.is_active == True,
+                UserDevice.is_active == True,
+                UserDevice.fcm_token.isnot(None),
+                UserDevice.revoked_at.is_(None)
+            )
+            .distinct()
+            .all()
+        )
+        
+        if not users_with_devices:
+            return {
+                "success": 0,
+                "failed": 0,
+                "total_users": 0,
+                "message": "No active users with FCM tokens found"
+            }
+        
+        active_tokens = (
+            db.query(UserDevice.fcm_token)
+            .filter(
+                UserDevice.is_active == True,
+                UserDevice.fcm_token.isnot(None),
+                UserDevice.revoked_at.is_(None)
+            )
+            .distinct()
+            .all()
+        )
+        
+        tokens = [row[0] for row in active_tokens]
+        total_users = len(users_with_devices)
+        
+        print(f"📢 [BROADCAST] Отправка уведомления {total_users} пользователям ({len(tokens)} уникальных токенов)")
+        print(f"   Заголовок: {payload.title}")
+        print(f"   Текст: {payload.body[:100]}...")
+        
+        tasks = [
+            send_push_notification_async(token=token, title=payload.title, body=payload.body)
+            for token in tokens
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        success_count = sum(1 for r in results if r is True)
+        failed_count = len(tokens) - success_count
+        
+        notification_status = None
+        if payload.status:
+            try:
+                notification_status = NotificationStatus(payload.status)
+            except ValueError:
+                pass
+        
+        saved_count = 0
+        for user in users_with_devices:
+            try:
+                notif = Notification(
+                    user_id=user.id,
+                    title=payload.title,
+                    body=payload.body,
+                    status=notification_status
+                )
+                db.add(notif)
+                saved_count += 1
+            except Exception as e:
+                print(f"Ошибка сохранения уведомления для пользователя {user.id}: {e}")
+        
+        db.commit()
+        
+        print(f"✅ [BROADCAST] Успешно: {success_count}, Ошибок: {failed_count}, Сохранено в БД: {saved_count}")
+        
+        return {
+            "success": success_count,
+            "failed": failed_count,
+            "total_users": total_users,
+            "total_tokens": len(tokens),
+            "saved_to_db": saved_count,
+            "message": f"Notification sent to {success_count} users, {failed_count} failed"
+        }
+        
+    except Exception as e:
+        db.rollback()
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "broadcast_notification",
+                    "admin_id": str(current_user.id),
+                    "title": payload.title,
+                    "body": payload.body[:100] if payload.body else None
+                }
+            )
+        except:
+            pass
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка при массовой рассылке уведомлений: {str(e)}"
+        )
+
+
+@router.post("/broadcast-localized", status_code=status.HTTP_200_OK)
+async def broadcast_localized_notification(
+    payload: BroadcastLocalizedNotificationRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Массовая рассылка локализованных push-уведомлений всем активным пользователям.
+    Доступно только администраторам.
+    
+    Использует ключ перевода для автоматической локализации по языку пользователя.
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=403,
+            detail="Only administrators can broadcast notifications"
+        )
+    
+    try:
+        users_with_devices = (
+            db.query(User)
+            .join(UserDevice, User.id == UserDevice.user_id)
+            .filter(
+                User.is_active == True,
+                UserDevice.is_active == True,
+                UserDevice.fcm_token.isnot(None),
+                UserDevice.revoked_at.is_(None)
+            )
+            .distinct()
+            .all()
+        )
+        
+        if not users_with_devices:
+            return {
+                "success": 0,
+                "failed": 0,
+                "total_users": 0,
+                "message": "No active users with FCM tokens found"
+            }
+        
+        total_users = len(users_with_devices)
+        print(f"📢 [BROADCAST_LOCALIZED] Отправка локализованного уведомления {total_users} пользователям")
+        print(f"   Ключ перевода: {payload.translation_key}")
+        
+        tasks = []
+        for user in users_with_devices:
+            task = send_localized_notification_to_user(
+                db,
+                user.id,
+                payload.translation_key,
+                payload.status
+            )
+            tasks.append(task)
+        
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        success_count = sum(1 for r in results if r is True)
+        failed_count = total_users - success_count
+        
+        print(f"✅ [BROADCAST_LOCALIZED] Успешно: {success_count}, Ошибок: {failed_count}")
+        
+        return {
+            "success": success_count,
+            "failed": failed_count,
+            "total_users": total_users,
+            "translation_key": payload.translation_key,
+            "message": f"Localized notification sent to {success_count} users, {failed_count} failed"
+        }
+        
+    except Exception as e:
+        db.rollback()
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "broadcast_localized_notification",
+                    "admin_id": str(current_user.id),
+                    "translation_key": payload.translation_key
+                }
+            )
+        except:
+            pass
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка при массовой рассылке локализованных уведомлений: {str(e)}"
+        )
