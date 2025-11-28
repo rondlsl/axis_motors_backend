@@ -48,6 +48,7 @@ from app.guarantor.schemas import (
 )
 from app.guarantor.sms_utils import send_guarantor_invitation_sms, send_guarantor_contract_signed_sms, send_client_guarantor_confirmed_sms
 from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
+from app.websocket.notifications import notify_user_status_update
 
 
 async def cancel_guarantor_requests_on_rejection(guarantor_user_id: str, db: Session):
@@ -347,6 +348,9 @@ async def accept_guarantor_request(
     
     db.add(guarantor_relationship)
     db.commit()
+    
+    asyncio.create_task(notify_user_status_update(str(current_user.id)))
+    asyncio.create_task(notify_user_status_update(str(guarantor_request.requestor_id)))
     
     # Отправляем уведомление гаранту о том, что он принял заявку
     requestor = db.query(User).filter(User.id == guarantor_request.requestor_id).first()
@@ -1101,6 +1105,9 @@ async def sign_contract(
     db.add(signature)
     db.commit()
     db.refresh(relationship)
+
+    asyncio.create_task(notify_user_status_update(str(current_user.id)))
+    asyncio.create_task(notify_user_status_update(str(relationship.client_id)))
 
     # Проверяем, подписаны ли оба договора (GUARANTOR_CONTRACT и GUARANTOR_MAIN_CONTRACT)
     guarantor_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(

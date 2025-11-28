@@ -593,6 +593,8 @@ async def add_money(amount: int,
 
     db.commit()
 
+    asyncio.create_task(notify_user_status_update(str(current_user.id)))
+
     # Отправляем уведомление о пополнении баланса
     if current_user.fcm_token:
         asyncio.create_task(

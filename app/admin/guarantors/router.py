@@ -19,6 +19,7 @@ from app.utils.sid_converter import convert_uuid_response_to_sid
 from app.utils.telegram_logger import log_error_to_telegram
 from app.utils.time_utils import get_local_time
 from app.push.utils import send_localized_notification_to_user
+from app.websocket.notifications import notify_user_status_update
 
 guarantors_router = APIRouter(tags=["Admin Guarantors"])
 
@@ -99,6 +100,9 @@ async def approve_guarantor_request(
     guarantor = db.query(User).filter(User.id == request.guarantor_id).first()
     
     db.commit()
+    
+    if requestor:
+        asyncio.create_task(notify_user_status_update(str(requestor.id)))
     
     # Отправляем SMS гаранту при одобрении
     if guarantor and requestor:

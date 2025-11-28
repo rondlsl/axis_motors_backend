@@ -17,6 +17,8 @@ from app.models.car_model import Car
 from app.gps_api.utils.auth_api import get_auth_token
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.utils.telegram_logger import log_error_to_telegram
+from app.websocket.notifications import notify_user_status_update
+import asyncio
 from app.contracts.schemas import (
     ContractFileResponse,
     SignContractRequest,
@@ -323,6 +325,13 @@ async def sign_contract(
         db.add(current_user)
         db.commit()
     
+    asyncio.create_task(notify_user_status_update(str(current_user.id)))
+    
+    # Если это договор гаранта, также обновляем клиента
+    if sign_request.contract_type in [ContractType.GUARANTOR_CONTRACT, ContractType.GUARANTOR_MAIN_CONTRACT] and guarantor_rel_uuid:
+        guarantor_rel = db.query(Guarantor).filter(Guarantor.id == guarantor_rel_uuid).first()
+        if guarantor_rel:
+            asyncio.create_task(notify_user_status_update(str(guarantor_rel.client_id)))
     
     return UserSignatureResponse(
         id=uuid_to_sid(signature.id),

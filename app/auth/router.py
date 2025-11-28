@@ -85,6 +85,8 @@ async def verify_email(request: VerifyEmailRequest, current_user: User = Depends
     vc.is_used = True
     current_user.is_verified_email = True
     db.commit()
+    
+    asyncio.create_task(notify_user_status_update(str(current_user.id)))
 
     return {"message": "Email успешно подтверждён."}
 
@@ -455,6 +457,8 @@ async def update_user_name(
         db.add(current_user)
         db.commit()
         db.refresh(current_user)
+        
+        asyncio.create_task(notify_user_status_update(str(current_user.id)))
 
         return UpdateNameResponse(
             message="Profile updated",
@@ -636,6 +640,9 @@ async def set_locale(
     db.add(current_user)
     db.commit()
     db.refresh(current_user)
+    
+    asyncio.create_task(notify_user_status_update(str(current_user.id)))
+    
     return {"message": "Locale updated", "locale": current_user.locale}
 
 
@@ -690,6 +697,8 @@ async def upload_selfie(
         db.add(current_user)
         db.commit()
         db.refresh(current_user)
+        
+        asyncio.create_task(notify_user_status_update(str(current_user.id)))
         
         response_data = {
             "message": "Селфи успешно загружено",
@@ -1361,6 +1370,8 @@ async def verify_change_email(
     
     db.commit()
     
+    asyncio.create_task(notify_user_status_update(str(current_user.id)))
+    
     return ChangeEmailResponse(
         message="Email успешно изменен",
         email=new_email
@@ -1387,5 +1398,8 @@ async def delete_account(
 
     current_user.is_active = False
     db.commit()
+    
+    asyncio.create_task(notify_user_status_update(str(current_user.id)))
+    
     return {"message": "Аккаунт помечен как неактивный."}
 

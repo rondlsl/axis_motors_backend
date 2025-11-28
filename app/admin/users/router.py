@@ -975,6 +975,8 @@ async def edit_user(
     
     db.commit()
     
+    asyncio.create_task(notify_user_status_update(str(user.id)))
+    
     return {"message": "Пользователь обновлен"}
 
 
@@ -1010,6 +1012,8 @@ async def block_user(
             user.admin_comment = block_reason
     
     db.commit()
+    
+    asyncio.create_task(notify_user_status_update(str(user.id)))
     
     action = "заблокирован" if block_data.is_blocked else "разблокирован"
     return {"message": f"Пользователь {action}"}
