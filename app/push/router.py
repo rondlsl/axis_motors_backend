@@ -428,8 +428,7 @@ class BroadcastNotificationRequest(BaseModel):
 
 
 class BroadcastLocalizedNotificationRequest(BaseModel):
-    translation_key: str  
-    status: Optional[str] = None 
+    translation_key: str 
 
 
 @router.post("/broadcast", status_code=status.HTTP_200_OK)
@@ -599,13 +598,19 @@ async def broadcast_localized_notification(
         print(f"📢 [BROADCAST_LOCALIZED] Отправка локализованного уведомления {total_users} пользователям")
         print(f"   Ключ перевода: {payload.translation_key}")
         
+        notification_status = None
+        try:
+            notification_status = NotificationStatus(payload.translation_key)
+        except ValueError:
+            pass
+        
         tasks = []
         for user in users_with_devices:
             task = send_localized_notification_to_user(
                 db,
                 user.id,
                 payload.translation_key,
-                payload.status
+                notification_status.value if notification_status else None
             )
             tasks.append(task)
         
