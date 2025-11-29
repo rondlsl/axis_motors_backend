@@ -7,6 +7,11 @@ from app.websocket.manager import connection_manager
 from app.websocket.handlers import get_vehicles_data_for_user, get_user_status_data
 from app.dependencies.database.database import SessionLocal
 from app.models.user_model import User
+from app.models.application_model import Application
+from app.models.history_model import RentalHistory
+from app.models.car_model import Car
+from app.models.guarantor_model import Guarantor
+from app.models.contract_model import UserContractSignature, ContractFile
 from app.utils.time_utils import get_local_time
 
 logger = logging.getLogger(__name__)
@@ -91,6 +96,15 @@ async def notify_user_status_update(user_id: str) -> None:
         try:
             user = db.query(User).filter(User.id == user_uuid).first()
             if user:
+                db.refresh(user)
+                
+                application = db.query(Application).filter(Application.user_id == user.id).first()
+                if application:
+                    db.refresh(application)
+                
+                db.expire_all()
+                db.refresh(user)
+                
                 user_data = await get_user_status_data(user, db)
                 await connection_manager.send_personal_message(
                     connection_type="user_status",
