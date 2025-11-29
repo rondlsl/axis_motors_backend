@@ -146,13 +146,14 @@ async def websocket_vehicle_telemetry(
         try:
             while True:
                 try:
+                    db.expire_all()
+                    db.refresh(car)
+                    
                     glonassoft_data = await glonassoft_client.get_vehicle_data(vehicle_imei)
                     
                     if glonassoft_data:
                         telemetry = process_glonassoft_data(glonassoft_data, car.name)
                         telemetry_payload = jsonable_encoder(telemetry)
-                        # Добавляем информацию об арендаторе (обновляем каждый раз, так как может измениться)
-                        db.refresh(car)
                         if car.current_renter_id:
                             current_renter = db.query(User).filter(User.id == car.current_renter_id).first()
                             if current_renter:
@@ -296,6 +297,9 @@ async def websocket_vehicles_list(
         try:
             while True:
                 try:
+                    db.expire_all()
+                    db.refresh(user)
+                    
                     vehicles_data = await get_vehicles_data_for_user(user, db)
                     current_data_hash = hash(json.dumps(vehicles_data, sort_keys=True, default=str))
                     
@@ -395,6 +399,9 @@ async def websocket_user_status(
         try:
             while True:
                 try:
+                    db.expire_all()
+                    db.refresh(user)
+                    
                     user_data = await get_user_status_data(user, db)
                     current_data_hash = hash(json.dumps(user_data, sort_keys=True, default=str))
                     

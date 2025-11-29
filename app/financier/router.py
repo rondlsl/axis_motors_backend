@@ -387,8 +387,6 @@ async def approve_application(
     db.refresh(user)
     db.refresh(application)
     
-    db.expire_all()
-    
     try:
         await send_localized_notification_to_user(
             db, 
@@ -414,13 +412,11 @@ async def approve_application(
         except:
             pass
     
-    # Обновляем пользователя после создания уведомления, чтобы получить актуальный unread_message
     db.expire_all()
     db.refresh(user)
     db.refresh(application)
     await asyncio.sleep(0.05)
     
-    # Теперь отправляем WebSocket обновление с актуальными данными
     asyncio.create_task(notify_user_status_update(str(user.id)))
     
     for relation in guarantor_relations:
