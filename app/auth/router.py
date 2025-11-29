@@ -1174,8 +1174,14 @@ async def upload_documents(
         current_user.upload_document_at = get_local_time()
 
         db.commit()
+        db.refresh(current_user)
         
-        asyncio.create_task(notify_user_status_update(str(current_user.id)))
+        # Отправляем WebSocket уведомление об обновлении статуса пользователя
+        try:
+            await notify_user_status_update(str(current_user.id))
+            logger.info(f"WebSocket user_status notification sent for user {current_user.id} after document upload")
+        except Exception as e:
+            logger.error(f"Error sending WebSocket notification: {e}")
         
         # Отправляем push-уведомление о загрузке документов
         try:
