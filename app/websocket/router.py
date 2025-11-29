@@ -10,8 +10,9 @@ from app.websocket.manager import connection_manager
 from app.websocket.auth import authenticate_websocket
 from app.websocket.handlers import get_vehicles_data_for_user, get_user_status_data
 from app.models.user_model import User, UserRole
-from app.utils.short_id import safe_sid_to_uuid
+from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
 from app.models.car_model import Car
+from app.models.history_model import RentalHistory, RentalStatus
 from app.gps_api.utils.glonassoft_client import glonassoft_client
 from app.gps_api.utils.telemetry_processor import process_glonassoft_data
 from app.utils.time_utils import get_local_time
@@ -66,11 +67,55 @@ async def websocket_vehicle_telemetry(
             user_metadata={"phone": user.phone_number, "role": user.role.value}
         )
         
+        # Получаем информацию об арендаторе
+        current_renter_info = None
+        current_rental_info = None
+        if car.current_renter_id:
+            current_renter = db.query(User).filter(User.id == car.current_renter_id).first()
+            if current_renter:
+                active_rental_for_car = (
+                    db.query(RentalHistory)
+                    .filter(
+                        RentalHistory.car_id == car.id,
+                        RentalHistory.user_id == current_renter.id,
+                        RentalHistory.rental_status.in_([
+                            RentalStatus.RESERVED,
+                            RentalStatus.IN_USE,
+                            RentalStatus.DELIVERING,
+                            RentalStatus.DELIVERY_RESERVED,
+                            RentalStatus.DELIVERING_IN_PROGRESS
+                        ])
+                    )
+                    .order_by(RentalHistory.reservation_time.desc())
+                    .first()
+                )
+                
+                current_renter_info = {
+                    "id": uuid_to_sid(current_renter.id),
+                    "first_name": current_renter.first_name,
+                    "last_name": current_renter.last_name,
+                    "middle_name": current_renter.middle_name,
+                    "phone_number": current_renter.phone_number
+                }
+                
+                if active_rental_for_car:
+                    current_rental_info = {
+                        "rental_id": uuid_to_sid(active_rental_for_car.id),
+                        "rental_status": active_rental_for_car.rental_status.value if active_rental_for_car.rental_status else None,
+                        "rental_type": active_rental_for_car.rental_type.value if active_rental_for_car.rental_type else None,
+                        "reservation_time": active_rental_for_car.reservation_time.isoformat() if active_rental_for_car.reservation_time else None,
+                        "start_time": active_rental_for_car.start_time.isoformat() if active_rental_for_car.start_time else None,
+                        "end_time": active_rental_for_car.end_time.isoformat() if active_rental_for_car.end_time else None
+                    }
+        
         try:
             glonassoft_data = await glonassoft_client.get_vehicle_data(vehicle_imei)
             if glonassoft_data:
                 telemetry = process_glonassoft_data(glonassoft_data, car.name)
                 telemetry_payload = jsonable_encoder(telemetry)
+                # Добавляем информацию об арендаторе
+                telemetry_payload["current_renter"] = current_renter_info
+                telemetry_payload["current_rental"] = current_rental_info
                 await websocket.send_json({
                     "type": "telemetry",
                     "data": telemetry_payload,
@@ -106,6 +151,54 @@ async def websocket_vehicle_telemetry(
                     if glonassoft_data:
                         telemetry = process_glonassoft_data(glonassoft_data, car.name)
                         telemetry_payload = jsonable_encoder(telemetry)
+                        # Добавляем информацию об арендаторе (обновляем каждый раз, так как может измениться)
+                        db.refresh(car)
+                        if car.current_renter_id:
+                            current_renter = db.query(User).filter(User.id == car.current_renter_id).first()
+                            if current_renter:
+                                active_rental_for_car = (
+                                    db.query(RentalHistory)
+                                    .filter(
+                                        RentalHistory.car_id == car.id,
+                                        RentalHistory.user_id == current_renter.id,
+                                        RentalHistory.rental_status.in_([
+                                            RentalStatus.RESERVED,
+                                            RentalStatus.IN_USE,
+                                            RentalStatus.DELIVERING,
+                                            RentalStatus.DELIVERY_RESERVED,
+                                            RentalStatus.DELIVERING_IN_PROGRESS
+                                        ])
+                                    )
+                                    .order_by(RentalHistory.reservation_time.desc())
+                                    .first()
+                                )
+                                
+                                telemetry_payload["current_renter"] = {
+                                    "id": uuid_to_sid(current_renter.id),
+                                    "first_name": current_renter.first_name,
+                                    "last_name": current_renter.last_name,
+                                    "middle_name": current_renter.middle_name,
+                                    "phone_number": current_renter.phone_number
+                                }
+                                
+                                if active_rental_for_car:
+                                    telemetry_payload["current_rental"] = {
+                                        "rental_id": uuid_to_sid(active_rental_for_car.id),
+                                        "rental_status": active_rental_for_car.rental_status.value if active_rental_for_car.rental_status else None,
+                                        "rental_type": active_rental_for_car.rental_type.value if active_rental_for_car.rental_type else None,
+                                        "reservation_time": active_rental_for_car.reservation_time.isoformat() if active_rental_for_car.reservation_time else None,
+                                        "start_time": active_rental_for_car.start_time.isoformat() if active_rental_for_car.start_time else None,
+                                        "end_time": active_rental_for_car.end_time.isoformat() if active_rental_for_car.end_time else None
+                                    }
+                                else:
+                                    telemetry_payload["current_rental"] = None
+                            else:
+                                telemetry_payload["current_renter"] = None
+                                telemetry_payload["current_rental"] = None
+                        else:
+                            telemetry_payload["current_renter"] = None
+                            telemetry_payload["current_rental"] = None
+                        
                         current_data_hash = hash(json.dumps(telemetry_payload, sort_keys=True, default=str))
                         
                         if current_data_hash != last_data_hash or last_data_hash is None:

@@ -94,6 +94,49 @@ async def get_vehicles_data_for_user(user: User, db: Session) -> Dict[str, Any]:
             if active_rental and active_rental.car_id != car.id:
                 active_rental = None
             
+            # Получаем информацию о текущем арендаторе и активной аренде
+            current_renter_info = None
+            current_rental_info = None
+            
+            if car.current_renter_id:
+                current_renter = db.query(User).filter(User.id == car.current_renter_id).first()
+                if current_renter:
+                    # Ищем активную аренду для этой машины
+                    active_rental_for_car = (
+                        db.query(RentalHistory)
+                        .filter(
+                            RentalHistory.car_id == car.id,
+                            RentalHistory.user_id == current_renter.id,
+                            RentalHistory.rental_status.in_([
+                                RentalStatus.RESERVED,
+                                RentalStatus.IN_USE,
+                                RentalStatus.DELIVERING,
+                                RentalStatus.DELIVERY_RESERVED,
+                                RentalStatus.DELIVERING_IN_PROGRESS
+                            ])
+                        )
+                        .order_by(RentalHistory.reservation_time.desc())
+                        .first()
+                    )
+                    
+                    current_renter_info = {
+                        "id": uuid_to_sid(current_renter.id),
+                        "first_name": current_renter.first_name,
+                        "last_name": current_renter.last_name,
+                        "middle_name": current_renter.middle_name,
+                        "phone_number": current_renter.phone_number
+                    }
+                    
+                    if active_rental_for_car:
+                        current_rental_info = {
+                            "rental_id": uuid_to_sid(active_rental_for_car.id),
+                            "rental_status": active_rental_for_car.rental_status.value if active_rental_for_car.rental_status else None,
+                            "rental_type": active_rental_for_car.rental_type.value if active_rental_for_car.rental_type else None,
+                            "reservation_time": active_rental_for_car.reservation_time.isoformat() if active_rental_for_car.reservation_time else None,
+                            "start_time": active_rental_for_car.start_time.isoformat() if active_rental_for_car.start_time else None,
+                            "end_time": active_rental_for_car.end_time.isoformat() if active_rental_for_car.end_time else None
+                        }
+            
             if active_rental and active_rental.photos_before:
                 photos_before = active_rental.photos_before
                 photo_before_selfie_uploaded = any(
@@ -144,6 +187,8 @@ async def get_vehicles_data_for_user(user: User, db: Session) -> Dict[str, Any]:
                 "photos": sort_car_photos(car.photos or []),
                 "owner_id": uuid_to_sid(car.owner_id),
                 "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
+                "current_renter": current_renter_info,
+                "current_rental": current_rental_info,
                 "status": car.status,
                 "open_price": get_open_price(car),
                 "owned_car": True if car.owner_id == user.id else False,
