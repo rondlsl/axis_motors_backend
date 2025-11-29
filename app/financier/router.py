@@ -384,24 +384,8 @@ async def approve_application(
             client_user.auto_class = existing_classes
     
     db.commit()
-    db.refresh(user)  
-    
-    user_ids_to_notify = {str(user.id)}
-    for relation in guarantor_relations:
-        if relation.guarantor_id:
-            user_ids_to_notify.add(str(relation.guarantor_id))
-    for relation in client_relations:
-        if relation.client_id:
-            user_ids_to_notify.add(str(relation.client_id))
-    
-    asyncio.create_task(notify_user_status_update(str(user.id)))
-    
-    for relation in guarantor_relations:
-        if relation.guarantor_id:
-            asyncio.create_task(notify_user_status_update(str(relation.guarantor_id)))
-    for relation in client_relations:
-        if relation.client_id:
-            asyncio.create_task(notify_user_status_update(str(relation.client_id)))
+    db.refresh(user)
+    db.refresh(application)
     
     try:
         await send_localized_notification_to_user(
@@ -427,6 +411,17 @@ async def approve_application(
             )
         except:
             pass
+    
+    db.refresh(user)
+    
+    asyncio.create_task(notify_user_status_update(str(user.id)))
+    
+    for relation in guarantor_relations:
+        if relation.guarantor_id:
+            asyncio.create_task(notify_user_status_update(str(relation.guarantor_id)))
+    for relation in client_relations:
+        if relation.client_id:
+            asyncio.create_task(notify_user_status_update(str(relation.client_id)))
     
     return {
         "message": "Заявка одобрена",

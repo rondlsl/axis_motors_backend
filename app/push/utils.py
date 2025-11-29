@@ -274,6 +274,8 @@ async def send_push_to_user_by_id(
     )
     if not user:
         return False
+    
+    db_session.refresh(user)
 
     return await send_push_notification_async(
         token=user.fcm_token,
@@ -303,9 +305,13 @@ async def send_localized_notification_to_user(
         bool: Успешность отправки
     """
     
+    db_session.expire_all()
+    
     user = db_session.query(User).filter(User.id == user_id).first()
     if not user:
         return False
+    
+    db_session.refresh(user)
     
     title, body = get_notification_text(user.locale or "ru", translation_key, **kwargs)
     
