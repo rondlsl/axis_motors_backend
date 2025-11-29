@@ -406,20 +406,12 @@ async def complete_delivery(
 
     user = db.query(User).filter(User.id == rental.user_id).first()
     if user and user.fcm_token:
+        # Уведомление о доставке курьером
         await send_localized_notification_to_user(
             db,
             user.id,
-            "delivery_completed",
-            "car_delivered"
-        )
-        # Дополнительное уведомление о доставке курьером
-        asyncio.create_task(
-            send_localized_notification_to_user(
-                db,
-                user.id,
-                "courier_delivered",
-                "courier_delivered"
-            )
+            "courier_delivered",
+            "courier_delivered"
         )
     
     asyncio.create_task(notify_vehicles_list_update())
