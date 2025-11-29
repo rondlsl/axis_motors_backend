@@ -118,6 +118,30 @@ async def register_device(
         raise HTTPException(status_code=400, detail="FCM token is required")
 
     try:
+        other_users_with_token = (
+            db.query(User)
+            .filter(User.fcm_token == token, User.id != current_user.id)
+            .all()
+        )
+        for user in other_users_with_token:
+            user.fcm_token = None
+            db.add(user)
+        
+        other_devices_with_token = (
+            db.query(UserDevice)
+            .filter(
+                UserDevice.fcm_token == token,
+                UserDevice.user_id != current_user.id
+            )
+            .all()
+        )
+        for other_device in other_devices_with_token:
+            other_device.fcm_token = None
+            other_device.is_active = False
+            other_device.revoked_at = get_local_time()
+            other_device.update_timestamp()
+            db.add(other_device)
+        
         device = None
         
         if device_uuid:
