@@ -42,8 +42,10 @@ async def notify_vehicles_list_update(user_id: Optional[str] = None) -> None:
                 user_uuid = _ensure_uuid(user_id)
                 if not user_uuid:
                     return
+                db.expire_all()
                 user = db.query(User).filter(User.id == user_uuid).first()
                 if user:
+                    db.refresh(user)
                     vehicles_data = await get_vehicles_data_for_user(user, db)
                     await connection_manager.send_personal_message(
                         connection_type="vehicles_list",
@@ -61,9 +63,11 @@ async def notify_vehicles_list_update(user_id: Optional[str] = None) -> None:
                     user_uuid = _ensure_uuid(uid)
                     if not user_uuid:
                         continue
+                    db.expire_all()
                     user = db.query(User).filter(User.id == user_uuid).first()
                     if not user:
                         continue
+                    db.refresh(user)
                     vehicles_data = await get_vehicles_data_for_user(user, db)
                     await connection_manager.send_personal_message(
                         connection_type="vehicles_list",
