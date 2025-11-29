@@ -94,6 +94,9 @@ async def notify_user_status_update(user_id: str) -> None:
             return
         db = SessionLocal()
         try:
+            db.expire_all()
+            
+            # Запрашиваем пользователя заново из БД
             user = db.query(User).filter(User.id == user_uuid).first()
             if user:
                 db.refresh(user)
@@ -102,7 +105,17 @@ async def notify_user_status_update(user_id: str) -> None:
                 if application:
                     db.refresh(application)
                 
+                # Помечаем все объекты в сессии как устаревшие перед получением данных
                 db.expire_all()
+                
+                # Перезагружаем пользователя после expire_all, чтобы получить актуальные данные
+                db.refresh(user)
+                
+                # Перезагружаем Application после expire_all
+                if application:
+                    db.refresh(application)
+                
+                # Еще раз обновляем пользователя, чтобы убедиться, что все данные актуальны
                 db.refresh(user)
                 
                 user_data = await get_user_status_data(user, db)
