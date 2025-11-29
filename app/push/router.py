@@ -112,31 +112,58 @@ async def register_device(
     current_user: User = Depends(get_current_user)
 ):
     token = (payload.fcm_token or "").strip()
-    device_uuid = (payload.device_uuid or "").strip()
+    device_uuid = (payload.device_uuid or "").strip() or None
 
     if not token:
         raise HTTPException(status_code=400, detail="FCM token is required")
-    if not device_uuid:
-        raise HTTPException(status_code=400, detail="device_uuid is required")
 
     try:
-        duplicates = (
-            db.query(UserDevice)
-            .filter(UserDevice.fcm_token == token, UserDevice.device_uuid != device_uuid)
-            .all()
-        )
-        for device in duplicates:
-            device.fcm_token = None
-            device.is_active = False
-            device.revoked_at = get_local_time()
-            device.update_timestamp()
-            db.add(device)
+        device = None
+        
+        if device_uuid:
+            device = db.query(UserDevice).filter(UserDevice.device_uuid == device_uuid).first()
+            
+            duplicates = (
+                db.query(UserDevice)
+                .filter(
+                    UserDevice.fcm_token == token,
+                    UserDevice.device_uuid != device_uuid,
+                    UserDevice.device_uuid.isnot(None)
+                )
+                .all()
+            )
+            for dup in duplicates:
+                dup.fcm_token = None
+                dup.is_active = False
+                dup.revoked_at = get_local_time()
+                dup.update_timestamp()
+                db.add(dup)
+        else:
+            device = db.query(UserDevice).filter(UserDevice.fcm_token == token).first()
+            
+            if device and device.device_uuid:
+                duplicates = (
+                    db.query(UserDevice)
+                    .filter(
+                        UserDevice.fcm_token == token,
+                        UserDevice.device_uuid.isnot(None)
+                    )
+                    .all()
+                )
+                for dup in duplicates:
+                    if dup.id != device.id:
+                        dup.fcm_token = None
+                        dup.is_active = False
+                        dup.revoked_at = get_local_time()
+                        dup.update_timestamp()
+                        db.add(dup)
 
-        device = db.query(UserDevice).filter(UserDevice.device_uuid == device_uuid).first()
         if device is None:
             device = UserDevice(device_uuid=device_uuid, user_id=current_user.id)
         else:
             device.user_id = current_user.id
+            if device_uuid and not device.device_uuid:
+                device.device_uuid = device_uuid
 
         device.fcm_token = token
         device.platform = payload.platform
@@ -204,6 +231,35 @@ async def revoke_device(
     device = (
         db.query(UserDevice)
         .filter(UserDevice.device_uuid == device_uuid, UserDevice.user_id == current_user.id)
+        .first()
+    )
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    removed_token = device.fcm_token
+    device.is_active = False
+    device.fcm_token = None
+    device.revoked_at = get_local_time()
+    device.update_timestamp()
+    db.add(device)
+
+    if current_user.fcm_token and current_user.fcm_token == removed_token:
+        current_user.fcm_token = None
+        db.add(current_user)
+
+    db.commit()
+    return {"detail": "Device revoked"}
+
+
+@router.delete("/devices/by-token/{fcm_token:path}", status_code=status.HTTP_200_OK)
+async def revoke_device_by_token(
+    fcm_token: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    device = (
+        db.query(UserDevice)
+        .filter(UserDevice.fcm_token == fcm_token, UserDevice.user_id == current_user.id)
         .first()
     )
     if not device:

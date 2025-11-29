@@ -244,44 +244,61 @@ async def broadcast_push_notification_async(db_session, title: str, body: str):
 
 
 async def send_push_to_user_by_id(
-        db_session: Session,
-        user_id: uuid.UUID,
-        title: str,
-        body: str,
-        status: str = None
+    db_session: Session,
+    user_id: uuid.UUID,
+    title: str,
+    body: str,
+    status: str = None
 ) -> bool:
-    # 1) Сохраняем уведомление в БД
     from app.models.notification_model import Notification
     from app.push.enums import NotificationStatus
+    from app.models.user_device_model import UserDevice
     
     notif = Notification(user_id=user_id, title=title, body=body)
     if status:
         try:
             notif.status = NotificationStatus(status)
         except ValueError:
-            # Если статус не найден в enum, оставляем None
             pass
     db_session.add(notif)
     db_session.commit()
 
-    # 2) Достаём токен и шлём пуш
-    from app.models.user_model import User
-    user = (
+    devices = (
         db_session
-        .query(User)
-        .filter(User.id == user_id, User.fcm_token.isnot(None))
-        .first()
+        .query(UserDevice)
+        .filter(
+            UserDevice.user_id == user_id,
+            UserDevice.is_active == True,
+            UserDevice.fcm_token.isnot(None),
+            UserDevice.revoked_at.is_(None)
+        )
+        .all()
     )
-    if not user:
+    
+    if not devices:
+        from app.models.user_model import User
+        user = (
+            db_session
+            .query(User)
+            .filter(User.id == user_id, User.fcm_token.isnot(None))
+            .first()
+        )
+        if not user:
+            return False
+        devices_tokens = [user.fcm_token]
+    else:
+        devices_tokens = [device.fcm_token for device in devices if device.fcm_token]
+    
+    if not devices_tokens:
         return False
     
-    db_session.refresh(user)
-
-    return await send_push_notification_async(
-        token=user.fcm_token,
-        title=title,
-        body=body
-    )
+    tasks = [
+        send_push_notification_async(token=token, title=title, body=body)
+        for token in devices_tokens
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    return any(r is True for r in results)
 
 
 async def send_localized_notification_to_user(

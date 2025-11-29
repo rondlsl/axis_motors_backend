@@ -338,7 +338,7 @@ def create_user_devices_table():
     op.create_table('user_devices',
         sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
         sa.Column('user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('device_uuid', sa.String(128), nullable=False),
+        sa.Column('device_uuid', sa.String(128), nullable=True),
         sa.Column('fcm_token', sa.String(), nullable=False),
         sa.Column('platform', sa.String(32), nullable=True),
         sa.Column('model', sa.String(128), nullable=True),
