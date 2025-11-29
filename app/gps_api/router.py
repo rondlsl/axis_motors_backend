@@ -992,7 +992,8 @@ def get_rented_cars(
         RentalStatus.DELIVERING_IN_PROGRESS
     ]
 
-    rows = (
+    # Получаем машины через JOIN с RentalHistory (основной способ)
+    rows_from_history = (
         db.query(Car.id, Car.name, Car.plate_number)
         .join(RentalHistory, RentalHistory.car_id == Car.id)
         .filter(
@@ -1010,7 +1011,31 @@ def get_rented_cars(
         .all()
     )
 
-    return [RentedCar(id=uuid_to_sid(car_id), name=name, plate_number=plate) for car_id, name, plate in rows]
+    # Дополнительно получаем машины по Car.current_renter_id и Car.status (на случай, если JOIN не нашел)
+    rows_from_car = (
+        db.query(Car.id, Car.name, Car.plate_number)
+        .filter(
+            or_(
+                # Машины со статусом IN_USE (в использовании)
+                Car.status == CarStatus.IN_USE,
+                # Машины с current_renter_id (есть арендатор)
+                Car.current_renter_id.isnot(None),
+                # Машины со статусом RESERVED (зарезервированы)
+                Car.status == CarStatus.RESERVED,
+                # Машины со статусом DELIVERING (доставляются)
+                Car.status == CarStatus.DELIVERING
+            )
+        )
+        .all()
+    )
+
+    # Объединяем результаты и убираем дубликаты
+    all_rows = {row[0]: row for row in rows_from_history}
+    for row in rows_from_car:
+        if row[0] not in all_rows:
+            all_rows[row[0]] = row
+
+    return [RentedCar(id=uuid_to_sid(car_id), name=name, plate_number=plate) for car_id, name, plate in all_rows.values()]
 
 
 @Vehicle_Router.get("/occupied", summary="Список машин в статусе OCCUPIED")
