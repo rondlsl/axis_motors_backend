@@ -992,7 +992,6 @@ def get_rented_cars(
         RentalStatus.DELIVERING_IN_PROGRESS
     ]
 
-    # Получаем машины через JOIN с RentalHistory (основной способ)
     rows_from_history = (
         db.query(Car.id, Car.name, Car.plate_number)
         .join(RentalHistory, RentalHistory.car_id == Car.id)
@@ -1029,7 +1028,6 @@ def get_rented_cars(
         .all()
     )
 
-    # Объединяем результаты и убираем дубликаты
     all_rows = {row[0]: row for row in rows_from_history}
     for row in rows_from_car:
         if row[0] not in all_rows:
