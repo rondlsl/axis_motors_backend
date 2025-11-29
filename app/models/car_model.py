@@ -92,6 +92,7 @@ class Car(Base):
     current_renter_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
     status = Column(SAEnum(CarStatus), default=CarStatus.FREE, nullable=True)
+    created_at = Column(DateTime, default=get_local_time, nullable=False)
     updated_at = Column(DateTime, default=get_local_time, nullable=True)
 
     owner = relationship("User", foreign_keys=[owner_id], back_populates="owned_cars")
