@@ -2926,6 +2926,26 @@ async def complete_rental(
         refresh_vehicles=True
     )
 
+    # Обновляем все данные из БД для получения свежих данных (после всех операций)
+    db.expire_all()
+    db.refresh(current_user)
+    db.refresh(rental)
+    db.refresh(car)
+    if car.owner_id:
+        owner = db.query(User).filter(User.id == car.owner_id).first()
+        if owner:
+            db.refresh(owner)
+
+    # Отправляем WebSocket уведомления в самом конце, после всех операций
+    try:
+        await notify_user_status_update(str(current_user.id))
+        if car.owner_id:
+            await notify_user_status_update(str(car.owner_id))
+        await notify_vehicles_list_update()
+        logger.info(f"WebSocket user_status notification sent for user {current_user.id} after completing rental")
+    except Exception as e:
+        logger.error(f"Error sending WebSocket notification: {e}")
+
     return {
         "message": "Rental completed successfully",
         "rental_id": uuid_to_sid(rental.id),

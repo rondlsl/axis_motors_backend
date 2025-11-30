@@ -328,9 +328,9 @@ async def sign_contract(
         db.add(current_user)
         db.commit()
     
+    db.expire_all()
     db.refresh(current_user)
     
-    # Отправляем WebSocket уведомление об обновлении статуса пользователя
     try:
         await notify_user_status_update(str(current_user.id))
         logger.info(f"WebSocket user_status notification sent for user {current_user.id} after contract signing")

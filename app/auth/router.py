@@ -1180,16 +1180,8 @@ async def upload_documents(
         current_user.upload_document_at = get_local_time()
 
         db.commit()
-        db.refresh(current_user)
         
-        # Отправляем WebSocket уведомление об обновлении статуса пользователя
-        try:
-            await notify_user_status_update(str(current_user.id))
-            logger.info(f"WebSocket user_status notification sent for user {current_user.id} after document upload")
-        except Exception as e:
-            logger.error(f"Error sending WebSocket notification: {e}")
-        
-        # Отправляем push-уведомление о загрузке документов
+        # Отправляем push-уведомление о загрузке документов (перед WebSocket, чтобы не блокировать)
         try:
             from app.push.utils import send_localized_notification_to_user
             asyncio.create_task(
@@ -1203,6 +1195,17 @@ async def upload_documents(
         except Exception as e:
             # Не блокируем основной флоу из-за ошибок отправки уведомления
             logger.error(f"Error sending documents_uploaded notification: {e}")
+        
+        # Обновляем все данные из БД для получения свежих данных (после всех операций)
+        db.expire_all()
+        db.refresh(current_user)
+        
+        # Отправляем WebSocket уведомление об обновлении статуса пользователя в самом конце
+        try:
+            await notify_user_status_update(str(current_user.id))
+            logger.info(f"WebSocket user_status notification sent for user {current_user.id} after document upload")
+        except Exception as e:
+            logger.error(f"Error sending WebSocket notification: {e}")
 
         return {
             "message": "Documents and data uploaded successfully",

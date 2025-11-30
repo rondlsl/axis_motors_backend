@@ -374,7 +374,11 @@ async def complete_delivery(
                 record_wallet_transaction(db, user=mechanic, amount=-penalty_fee, ttype=WalletTransactionType.DELIVERY_PENALTY, description=f"Штраф за задержку доставки {penalty_minutes:.1f} мин", related_rental=rental)
                 mechanic.wallet_balance -= penalty_fee
                 print(f"Штраф за задержку доставки: {penalty_fee}₸ с механика {mechanic.phone_number}")
+                db.flush()  # Фиксируем изменения механика перед commit
 
+    # Сохраняем ID механика до того, как установим его в None
+    mechanic_id_for_notification = rental.delivery_mechanic_id
+    
     rental.rental_status = RentalStatus.RESERVED
     car.status = CarStatus.RESERVED
     rental.delivery_mechanic_id = None
@@ -427,18 +431,9 @@ async def complete_delivery(
         except:
             pass
 
+    # Фиксируем все изменения в БД
+    db.flush()
     db.commit()
-    
-    # Отправляем push-уведомление (перед WebSocket, чтобы не блокировать)
-    user = db.query(User).filter(User.id == rental.user_id).first()
-    if user and user.fcm_token:
-        # Уведомление о доставке курьером
-        await send_localized_notification_to_user(
-            db,
-            user.id,
-            "courier_delivered",
-            "courier_delivered"
-        )
     
     # Обновляем все данные из БД для получения свежих данных (после всех операций)
     db.expire_all()
@@ -452,6 +447,11 @@ async def complete_delivery(
         owner = db.query(User).filter(User.id == car.owner_id).first()
         if owner:
             db.refresh(owner)
+    # Обновляем механика, если он был изменен (например, при списании штрафа)
+    if mechanic_id_for_notification:
+        mechanic = db.query(User).filter(User.id == mechanic_id_for_notification).first()
+        if mechanic:
+            db.refresh(mechanic)
     
     # Отправляем WebSocket уведомления в самом конце, после всех операций
     try:
@@ -460,9 +460,23 @@ async def complete_delivery(
             await notify_user_status_update(str(rental.user_id))
         if car.owner_id:
             await notify_user_status_update(str(car.owner_id))
+        # Также обновляем статус механика, если он был затронут изменениями
+        if mechanic_id_for_notification:
+            await notify_user_status_update(str(mechanic_id_for_notification))
         logger.info(f"WebSocket notifications sent after mechanic complete-delivery for rental {rental.id}")
     except Exception as e:
         logger.error(f"Error sending WebSocket notifications: {e}")
+    
+    # Отправляем push-уведомление после WebSocket
+    user = db.query(User).filter(User.id == rental.user_id).first()
+    if user and user.fcm_token:
+        # Уведомление о доставке курьером
+        await send_localized_notification_to_user(
+            db,
+            user.id,
+            "courier_delivered",
+            "courier_delivered"
+        )
 
     # try:
     #     name_parts = []

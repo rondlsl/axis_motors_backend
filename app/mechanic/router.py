@@ -842,6 +842,7 @@ async def start_rental(
     db.expire_all()
     db.refresh(rental)
     db.refresh(car)
+    db.refresh(current_mechanic)
     if rental.user_id:
         user = db.query(User).filter(User.id == rental.user_id).first()
         if user:
@@ -854,6 +855,7 @@ async def start_rental(
     # Отправляем WebSocket уведомления в самом конце, после всех операций
     try:
         await notify_vehicles_list_update()
+        await notify_user_status_update(str(current_mechanic.id))
         if rental.user_id:
             await notify_user_status_update(str(rental.user_id))
         if car.owner_id:
@@ -1052,6 +1054,7 @@ async def upload_photos_before(
         # Обновляем все данные из БД для получения свежих данных
         db.expire_all()
         db.refresh(rental)
+        db.refresh(current_mechanic)
         if car:
             db.refresh(car)
         if rental.user_id:
@@ -1065,6 +1068,7 @@ async def upload_photos_before(
         
         # Отправляем WebSocket уведомления в самом конце, после всех операций
         try:
+            await notify_user_status_update(str(current_mechanic.id))
             if rental.user_id:
                 await notify_user_status_update(str(rental.user_id))
             if car and car.owner_id:
@@ -1145,6 +1149,7 @@ async def upload_photos_before_interior(
         # Обновляем все данные из БД для получения свежих данных
         db.expire_all()
         db.refresh(rental)
+        db.refresh(current_mechanic)
         car = db.query(Car).filter(Car.id == rental.car_id).first()
         if car:
             db.refresh(car)
@@ -1159,6 +1164,7 @@ async def upload_photos_before_interior(
         
         # Отправляем WebSocket уведомления в самом конце, после всех операций
         try:
+            await notify_user_status_update(str(current_mechanic.id))
             if rental.user_id:
                 await notify_user_status_update(str(rental.user_id))
             if car and car.owner_id:
@@ -1259,6 +1265,7 @@ async def upload_photos_after(
         # Обновляем все данные из БД для получения свежих данных (после всех операций)
         db.expire_all()
         db.refresh(rental)
+        db.refresh(current_mechanic)
         if car:
             db.refresh(car)
         if rental.user_id:
@@ -1272,6 +1279,7 @@ async def upload_photos_after(
         
         # Отправляем WebSocket уведомления в самом конце, после всех операций
         try:
+            await notify_user_status_update(str(current_mechanic.id))
             if rental.user_id:
                 await notify_user_status_update(str(rental.user_id))
             if car and car.owner_id:
@@ -1355,6 +1363,7 @@ async def upload_photos_after_car(
         # Обновляем все данные из БД для получения свежих данных (после всех операций)
         db.expire_all()
         db.refresh(rental)
+        db.refresh(current_mechanic)
         if car:
             db.refresh(car)
         if rental.user_id:
@@ -1368,6 +1377,7 @@ async def upload_photos_after_car(
         
         # Отправляем WebSocket уведомления в самом конце, после всех операций
         try:
+            await notify_user_status_update(str(current_mechanic.id))
             if rental.user_id:
                 await notify_user_status_update(str(rental.user_id))
             if car and car.owner_id:
@@ -1464,6 +1474,7 @@ async def complete_rental(
         db.expire_all()
         db.refresh(rental)
         db.refresh(car)
+        db.refresh(current_mechanic)
         if rental.user_id:
             user = db.query(User).filter(User.id == rental.user_id).first()
             if user:
@@ -1476,6 +1487,7 @@ async def complete_rental(
         # Отправляем WebSocket уведомления в самом конце, после всех операций
         try:
             await notify_vehicles_list_update()
+            await notify_user_status_update(str(current_mechanic.id))
             if rental.user_id:
                 await notify_user_status_update(str(rental.user_id))
             if car.owner_id:
