@@ -418,7 +418,18 @@ async def complete_delivery(
 
     db.commit()
     
-    # Обновляем все данные из БД для получения свежих данных
+    # Отправляем push-уведомление (перед WebSocket, чтобы не блокировать)
+    user = db.query(User).filter(User.id == rental.user_id).first()
+    if user and user.fcm_token:
+        # Уведомление о доставке курьером
+        await send_localized_notification_to_user(
+            db,
+            user.id,
+            "courier_delivered",
+            "courier_delivered"
+        )
+    
+    # Обновляем все данные из БД для получения свежих данных (после всех операций)
     db.expire_all()
     db.refresh(rental)
     db.refresh(car)
@@ -430,17 +441,6 @@ async def complete_delivery(
         owner = db.query(User).filter(User.id == car.owner_id).first()
         if owner:
             db.refresh(owner)
-
-    # Отправляем push-уведомление
-    user = db.query(User).filter(User.id == rental.user_id).first()
-    if user and user.fcm_token:
-        # Уведомление о доставке курьером
-        await send_localized_notification_to_user(
-            db,
-            user.id,
-            "courier_delivered",
-            "courier_delivered"
-        )
     
     # Отправляем WebSocket уведомления в самом конце, после всех операций
     try:
@@ -763,11 +763,24 @@ async def upload_delivery_photos_before(
                 raise Exception(f"GPS sequence failed: {error_msg}")
         
         db.commit()
-        db.refresh(rental)
         
-        # Отправляем WebSocket уведомление об обновлении статуса пользователя
+        # Обновляем все данные из БД для получения свежих данных (после всех операций)
+        db.expire_all()
+        db.refresh(rental)
+        car = db.query(Car).filter(Car.id == rental.car_id).first()
+        if car:
+            db.refresh(car)
+        if rental.user_id:
+            user = db.query(User).filter(User.id == rental.user_id).first()
+            if user:
+                db.refresh(user)
+        if car and car.owner_id:
+            owner = db.query(User).filter(User.id == car.owner_id).first()
+            if owner:
+                db.refresh(owner)
+        
+        # Отправляем WebSocket уведомления в самом конце, после всех операций
         try:
-            car = db.query(Car).filter(Car.id == rental.car_id).first()
             if rental.user_id:
                 await notify_user_status_update(str(rental.user_id))
             if car and car.owner_id:
@@ -820,11 +833,24 @@ async def upload_delivery_photos_before_interior(
             uploaded_files.append(interior_url)
         rental.delivery_photos_before = urls
         db.commit()
-        db.refresh(rental)
         
-        # Отправляем WebSocket уведомление об обновлении статуса пользователя
+        # Обновляем все данные из БД для получения свежих данных (после всех операций)
+        db.expire_all()
+        db.refresh(rental)
+        car = db.query(Car).filter(Car.id == rental.car_id).first()
+        if car:
+            db.refresh(car)
+        if rental.user_id:
+            user = db.query(User).filter(User.id == rental.user_id).first()
+            if user:
+                db.refresh(user)
+        if car and car.owner_id:
+            owner = db.query(User).filter(User.id == car.owner_id).first()
+            if owner:
+                db.refresh(owner)
+        
+        # Отправляем WebSocket уведомления в самом конце, после всех операций
         try:
-            car = db.query(Car).filter(Car.id == rental.car_id).first()
             if rental.user_id:
                 await notify_user_status_update(str(rental.user_id))
             if car and car.owner_id:
@@ -902,6 +928,30 @@ async def upload_delivery_photos_after(
         
         db.commit()
         
+        # Обновляем все данные из БД для получения свежих данных (после всех операций)
+        db.expire_all()
+        db.refresh(rental)
+        if car:
+            db.refresh(car)
+        if rental.user_id:
+            user = db.query(User).filter(User.id == rental.user_id).first()
+            if user:
+                db.refresh(user)
+        if car and car.owner_id:
+            owner = db.query(User).filter(User.id == car.owner_id).first()
+            if owner:
+                db.refresh(owner)
+        
+        # Отправляем WebSocket уведомления в самом конце, после всех операций
+        try:
+            if rental.user_id:
+                await notify_user_status_update(str(rental.user_id))
+            if car and car.owner_id:
+                await notify_user_status_update(str(car.owner_id))
+            logger.info(f"WebSocket notifications sent after mechanic upload-delivery-photos-after for rental {rental.id}")
+        except Exception as e:
+            logger.error(f"Error sending WebSocket notifications: {e}")
+        
         return {"message": "Фотографии после доставки (selfie+interior) загружены", "photo_count": len(urls)}
     except HTTPException:
         db.rollback()
@@ -970,6 +1020,30 @@ async def upload_delivery_photos_after_car(
                 raise Exception(f"GPS sequence failed: {error_msg}")
         
         db.commit()
+        
+        # Обновляем все данные из БД для получения свежих данных (после всех операций)
+        db.expire_all()
+        db.refresh(rental)
+        if car:
+            db.refresh(car)
+        if rental.user_id:
+            user = db.query(User).filter(User.id == rental.user_id).first()
+            if user:
+                db.refresh(user)
+        if car and car.owner_id:
+            owner = db.query(User).filter(User.id == car.owner_id).first()
+            if owner:
+                db.refresh(owner)
+        
+        # Отправляем WebSocket уведомления в самом конце, после всех операций
+        try:
+            if rental.user_id:
+                await notify_user_status_update(str(rental.user_id))
+            if car and car.owner_id:
+                await notify_user_status_update(str(car.owner_id))
+            logger.info(f"WebSocket notifications sent after mechanic upload-delivery-photos-after-car for rental {rental.id}")
+        except Exception as e:
+            logger.error(f"Error sending WebSocket notifications: {e}")
         
         return {"message": "Внешние фото после доставки загружены", "photo_count": len(car_photos)}
     except HTTPException:

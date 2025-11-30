@@ -1819,12 +1819,23 @@ async def upload_photos_before(
                 print(f"GPS последовательность выполнена успешно: {result.get('executed_commands', [])}")
         
         db.commit()
+        
+        # Обновляем все данные из БД для получения свежих данных (после всех операций)
+        db.expire_all()
         db.refresh(rental)
         db.refresh(current_user)
+        if car:
+            db.refresh(car)
+        if car and car.owner_id:
+            owner = db.query(User).filter(User.id == car.owner_id).first()
+            if owner:
+                db.refresh(owner)
         
-        # Отправляем WebSocket уведомление об обновлении статуса пользователя
+        # Отправляем WebSocket уведомления в самом конце, после всех операций
         try:
             await notify_user_status_update(str(current_user.id))
+            if car and car.owner_id:
+                await notify_user_status_update(str(car.owner_id))
             logger.info(f"WebSocket user_status notification sent for user {current_user.id} after uploading photos before")
         except Exception as e:
             logger.error(f"Error sending WebSocket notification: {e}")
@@ -1889,12 +1900,24 @@ async def upload_photos_before_interior(
             uploaded_files.append(interior_url)
         rental.photos_before = urls
         db.commit()
+        
+        # Обновляем все данные из БД для получения свежих данных (после всех операций)
+        db.expire_all()
         db.refresh(rental)
         db.refresh(current_user)
+        car = db.query(Car).filter(Car.id == rental.car_id).first()
+        if car:
+            db.refresh(car)
+        if car and car.owner_id:
+            owner = db.query(User).filter(User.id == car.owner_id).first()
+            if owner:
+                db.refresh(owner)
         
-        # Отправляем WebSocket уведомление об обновлении статуса пользователя
+        # Отправляем WebSocket уведомления в самом конце, после всех операций
         try:
             await notify_user_status_update(str(current_user.id))
+            if car and car.owner_id:
+                await notify_user_status_update(str(car.owner_id))
             logger.info(f"WebSocket user_status notification sent for user {current_user.id} after uploading photos before interior")
         except Exception as e:
             logger.error(f"Error sending WebSocket notification: {e}")
@@ -2016,12 +2039,23 @@ async def upload_photos_after(
                 raise Exception(f"GPS sequence failed: {error_msg}")
         
         db.commit()
+        
+        # Обновляем все данные из БД для получения свежих данных (после всех операций)
+        db.expire_all()
         db.refresh(rental)
         db.refresh(current_user)
+        if car:
+            db.refresh(car)
+        if car and car.owner_id:
+            owner = db.query(User).filter(User.id == car.owner_id).first()
+            if owner:
+                db.refresh(owner)
         
-        # Отправляем WebSocket уведомление об обновлении статуса пользователя
+        # Отправляем WebSocket уведомления в самом конце, после всех операций
         try:
             await notify_user_status_update(str(current_user.id))
+            if car and car.owner_id:
+                await notify_user_status_update(str(car.owner_id))
             logger.info(f"WebSocket user_status notification sent for user {current_user.id} after uploading photos after")
         except Exception as e:
             logger.error(f"Error sending WebSocket notification: {e}")
@@ -2138,12 +2172,23 @@ async def upload_photos_after_car(
                 raise Exception(f"GPS sequence failed: {error_msg}")
         
         db.commit()
+        
+        # Обновляем все данные из БД для получения свежих данных (после всех операций)
+        db.expire_all()
         db.refresh(rental)
         db.refresh(current_user)
+        if car:
+            db.refresh(car)
+        if car and car.owner_id:
+            owner = db.query(User).filter(User.id == car.owner_id).first()
+            if owner:
+                db.refresh(owner)
         
-        # Отправляем WebSocket уведомление об обновлении статуса пользователя
+        # Отправляем WebSocket уведомления в самом конце, после всех операций
         try:
             await notify_user_status_update(str(current_user.id))
+            if car and car.owner_id:
+                await notify_user_status_update(str(car.owner_id))
             logger.info(f"WebSocket user_status notification sent for user {current_user.id} after uploading photos after car")
         except Exception as e:
             logger.error(f"Error sending WebSocket notification: {e}")

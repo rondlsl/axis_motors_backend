@@ -717,10 +717,21 @@ async def check_car(
     rental.mechanic_inspection_start_longitude = car.longitude
     
     db.commit()
+    
+    # Обновляем все данные из БД для получения свежих данных (после всех операций)
+    db.expire_all()
     db.refresh(rental)
     db.refresh(car)
+    if rental.user_id:
+        user = db.query(User).filter(User.id == rental.user_id).first()
+        if user:
+            db.refresh(user)
+    if car.owner_id:
+        owner = db.query(User).filter(User.id == car.owner_id).first()
+        if owner:
+            db.refresh(owner)
     
-    # Отправляем WebSocket уведомления
+    # Отправляем WebSocket уведомления в самом конце, после всех операций
     try:
         await notify_vehicles_list_update()
         if rental.user_id:
@@ -1245,7 +1256,7 @@ async def upload_photos_after(
         
         db.commit()
         
-        # Обновляем все данные из БД для получения свежих данных
+        # Обновляем все данные из БД для получения свежих данных (после всех операций)
         db.expire_all()
         db.refresh(rental)
         if car:
@@ -1341,7 +1352,7 @@ async def upload_photos_after_car(
         
         db.commit()
         
-        # Обновляем все данные из БД для получения свежих данных
+        # Обновляем все данные из БД для получения свежих данных (после всех операций)
         db.expire_all()
         db.refresh(rental)
         if car:
