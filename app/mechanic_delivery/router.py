@@ -222,20 +222,7 @@ async def start_delivery(
     rental.delivery_start_latitude = car.latitude
     rental.delivery_start_longitude = car.longitude
     db.commit()
-    db.refresh(rental)
-    db.refresh(car)
-
-    # Отправляем WebSocket уведомления
-    try:
-        await notify_vehicles_list_update()
-        if rental.user_id:
-            await notify_user_status_update(str(rental.user_id))
-        if car.owner_id:
-            await notify_user_status_update(str(car.owner_id))
-        logger.info(f"WebSocket notifications sent after mechanic start-delivery for rental {rental.id}")
-    except Exception as e:
-        logger.error(f"Error sending WebSocket notifications: {e}")
-
+    
     # GPS команды при старте доставки
     try:
         if car and car.gps_imei:
@@ -263,6 +250,30 @@ async def start_delivery(
             )
         except:
             pass
+    
+    # Обновляем все данные из БД для получения свежих данных (после всех операций)
+    db.expire_all()
+    db.refresh(rental)
+    db.refresh(car)
+    if rental.user_id:
+        user = db.query(User).filter(User.id == rental.user_id).first()
+        if user:
+            db.refresh(user)
+    if car.owner_id:
+        owner = db.query(User).filter(User.id == car.owner_id).first()
+        if owner:
+            db.refresh(owner)
+
+    # Отправляем WebSocket уведомления в самом конце, после всех операций
+    try:
+        await notify_vehicles_list_update()
+        if rental.user_id:
+            await notify_user_status_update(str(rental.user_id))
+        if car.owner_id:
+            await notify_user_status_update(str(car.owner_id))
+        logger.info(f"WebSocket notifications sent after mechanic start-delivery for rental {rental.id}")
+    except Exception as e:
+        logger.error(f"Error sending WebSocket notifications: {e}")
 
     user = db.query(User).filter(User.id == rental.user_id).first()
     if user and user.fcm_token:
