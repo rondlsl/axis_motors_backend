@@ -194,6 +194,7 @@ async def get_vehicles_data_for_user(user: User, db: Session) -> Dict[str, Any]:
                 "owned_car": True if car.owner_id == user.id else False,
                 "vin": car.vin,
                 "color": car.color,
+                "description": car.description,
                 "photo_before_selfie_uploaded": photo_before_selfie_uploaded,
                 "photo_before_car_uploaded": photo_before_car_uploaded,
                 "photo_before_interior_uploaded": photo_before_interior_uploaded,

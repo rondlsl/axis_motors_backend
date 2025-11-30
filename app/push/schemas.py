@@ -25,7 +25,7 @@ class NotificationListResponse(BaseModel):
 
 
 class DeviceRegisterRequest(BaseModel):
-    device_uuid: Optional[str] = None
+    device_id: Optional[str] = None
     fcm_token: str
     platform: Optional[str] = None
     model: Optional[str] = None
@@ -37,7 +37,7 @@ class DeviceRegisterRequest(BaseModel):
 
 class UserDeviceResponse(BaseModel):
     id: str
-    device_uuid: Optional[str] = None
+    device_id: Optional[str] = None
     platform: Optional[str] = None
     model: Optional[str] = None
     os_version: Optional[str] = None

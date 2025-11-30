@@ -29,6 +29,13 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 class TokenRequest(BaseModel):
     fcm_token: str
+    device_id: Optional[str] = None
+    platform: Optional[str] = None
+    model: Optional[str] = None
+    os_version: Optional[str] = None
+    app_version: Optional[str] = None
+    last_lat: Optional[float] = None
+    last_lng: Optional[float] = None
 
 
 def _device_to_response(device: UserDevice) -> UserDeviceResponse:
@@ -42,36 +49,130 @@ def _get_client_ip(request: Request) -> str:
 
 
 @router.post("/save_token", status_code=status.HTTP_200_OK)
-async def save_fcm_token(payload: TokenRequest,
-                         db: Session = Depends(get_db),
-                         current_user: User = Depends(get_current_user)):
+async def save_fcm_token(
+    payload: TokenRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """
     Save FCM token for push notifications.
+    Также сохраняет/обновляет устройство в таблице user_devices, если переданы дополнительные параметры.
     """
     try:
         token = (payload.fcm_token or "").strip()
+        device_id = (payload.device_id or "").strip() or None
+        
         if not token:
             raise HTTPException(status_code=400, detail="FCM token is required")
 
         print(f"📱 [SAVE_TOKEN] User {current_user.phone_number} - Token: {token[:50]}...")
 
-        duplicates = (
+        # Проверяем, используется ли этот fcm_token другим пользователем
+        other_users_with_token = (
             db.query(User)
             .filter(User.fcm_token == token, User.id != current_user.id)
             .all()
         )
-
         cleared_users = []
-        for user in duplicates:
+        for user in other_users_with_token:
             cleared_users.append(str(user.id))
             user.fcm_token = None
             db.add(user)
+        
+        # Проверяем устройства других пользователей с этим токеном
+        other_devices_with_token = (
+            db.query(UserDevice)
+            .filter(
+                UserDevice.fcm_token == token,
+                UserDevice.user_id != current_user.id
+            )
+            .all()
+        )
+        for other_device in other_devices_with_token:
+            other_device.fcm_token = None
+            other_device.is_active = False
+            other_device.revoked_at = get_local_time()
+            other_device.update_timestamp()
+            db.add(other_device)
 
+        # Сохраняем в таблицу users
         current_user.fcm_token = token
         db.add(current_user)
+
+        # Сохраняем/обновляем в таблицу user_devices
+        device = None
+        
+        if device_id:
+            device = db.query(UserDevice).filter(UserDevice.device_id == device_id).first()
+            
+            duplicates = (
+                db.query(UserDevice)
+                .filter(
+                    UserDevice.fcm_token == token,
+                    UserDevice.device_id != device_id,
+                    UserDevice.device_id.isnot(None)
+                )
+                .all()
+            )
+            for dup in duplicates:
+                dup.fcm_token = None
+                dup.is_active = False
+                dup.revoked_at = get_local_time()
+                dup.update_timestamp()
+                db.add(dup)
+        else:
+            device = db.query(UserDevice).filter(UserDevice.fcm_token == token).first()
+            
+            if device and device.device_id:
+                duplicates = (
+                    db.query(UserDevice)
+                    .filter(
+                        UserDevice.fcm_token == token,
+                        UserDevice.device_id.isnot(None)
+                    )
+                    .all()
+                )
+                for dup in duplicates:
+                    if dup.id != device.id:
+                        dup.fcm_token = None
+                        dup.is_active = False
+                        dup.revoked_at = get_local_time()
+                        dup.update_timestamp()
+                        db.add(dup)
+
+        if device is None:
+            device = UserDevice(device_id=device_id, user_id=current_user.id)
+        else:
+            device.user_id = current_user.id
+            if device_id and not device.device_id:
+                device.device_id = device_id
+
+        device.fcm_token = token
+        if payload.platform is not None:
+            device.platform = payload.platform
+        if payload.model is not None:
+            device.model = payload.model
+        if payload.os_version is not None:
+            device.os_version = payload.os_version
+        if payload.app_version is not None:
+            device.app_version = payload.app_version
+        device.last_ip = _get_client_ip(request)
+        if payload.last_lat is not None:
+            device.last_lat = payload.last_lat
+        if payload.last_lng is not None:
+            device.last_lng = payload.last_lng
+        device.last_active_at = get_local_time()
+        device.is_active = True
+        device.revoked_at = None
+        device.update_timestamp()
+
+        db.add(device)
+
         db.flush()
         db.commit()
         db.refresh(current_user)
+        db.refresh(device)
         
         print(f"✅ [SAVE_TOKEN] Token saved successfully")
         
@@ -112,7 +213,7 @@ async def register_device(
     current_user: User = Depends(get_current_user)
 ):
     token = (payload.fcm_token or "").strip()
-    device_uuid = (payload.device_uuid or "").strip() or None
+    device_id = (payload.device_id or "").strip() or None
 
     if not token:
         raise HTTPException(status_code=400, detail="FCM token is required")
@@ -144,15 +245,15 @@ async def register_device(
         
         device = None
         
-        if device_uuid:
-            device = db.query(UserDevice).filter(UserDevice.device_uuid == device_uuid).first()
+        if device_id:
+            device = db.query(UserDevice).filter(UserDevice.device_id == device_id).first()
             
             duplicates = (
                 db.query(UserDevice)
                 .filter(
                     UserDevice.fcm_token == token,
-                    UserDevice.device_uuid != device_uuid,
-                    UserDevice.device_uuid.isnot(None)
+                    UserDevice.device_id != device_id,
+                    UserDevice.device_id.isnot(None)
                 )
                 .all()
             )
@@ -165,12 +266,12 @@ async def register_device(
         else:
             device = db.query(UserDevice).filter(UserDevice.fcm_token == token).first()
             
-            if device and device.device_uuid:
+            if device and device.device_id:
                 duplicates = (
                     db.query(UserDevice)
                     .filter(
                         UserDevice.fcm_token == token,
-                        UserDevice.device_uuid.isnot(None)
+                        UserDevice.device_id.isnot(None)
                     )
                     .all()
                 )
@@ -183,11 +284,11 @@ async def register_device(
                         db.add(dup)
 
         if device is None:
-            device = UserDevice(device_uuid=device_uuid, user_id=current_user.id)
+            device = UserDevice(device_id=device_id, user_id=current_user.id)
         else:
             device.user_id = current_user.id
-            if device_uuid and not device.device_uuid:
-                device.device_uuid = device_uuid
+            if device_id and not device.device_id:
+                device.device_id = device_id
 
         device.fcm_token = token
         device.platform = payload.platform
@@ -223,7 +324,7 @@ async def register_device(
                 additional_context={
                     "action": "register_device",
                     "user_id": str(current_user.id),
-                    "device_uuid": device_uuid,
+                    "device_id": device_id,
                     "token_preview": token[:50] if token else None
                 }
             )
@@ -246,15 +347,15 @@ async def list_devices(
     return [_device_to_response(device) for device in devices]
 
 
-@router.delete("/devices/{device_uuid}", status_code=status.HTTP_200_OK)
+@router.delete("/devices/{device_id}", status_code=status.HTTP_200_OK)
 async def revoke_device(
-    device_uuid: str,
+    device_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     device = (
         db.query(UserDevice)
-        .filter(UserDevice.device_uuid == device_uuid, UserDevice.user_id == current_user.id)
+        .filter(UserDevice.device_id == device_id, UserDevice.user_id == current_user.id)
         .first()
     )
     if not device:

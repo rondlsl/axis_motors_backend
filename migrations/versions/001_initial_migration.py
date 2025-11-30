@@ -338,7 +338,7 @@ def create_user_devices_table():
     op.create_table('user_devices',
         sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
         sa.Column('user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('device_uuid', sa.String(128), nullable=True),
+        sa.Column('device_id', sa.String(128), nullable=True),
         sa.Column('fcm_token', sa.String(), nullable=False),
         sa.Column('platform', sa.String(32), nullable=True),
         sa.Column('model', sa.String(128), nullable=True),
@@ -352,7 +352,7 @@ def create_user_devices_table():
         sa.Column('revoked_at', sa.DateTime(), nullable=True),
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
-        sa.UniqueConstraint('device_uuid', name='uq_user_devices_device_uuid'),
+        sa.UniqueConstraint('device_id', name='uq_user_devices_device_id'),
         sa.UniqueConstraint('fcm_token', name='uq_user_devices_fcm_token')
     )
     op.create_index('ix_user_devices_user_id', 'user_devices', ['user_id'])
