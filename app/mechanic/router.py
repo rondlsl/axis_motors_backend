@@ -827,11 +827,29 @@ async def start_rental(
         except:
             pass
     
-    asyncio.create_task(notify_vehicles_list_update())
+    # Обновляем все данные из БД для получения свежих данных
+    db.expire_all()
+    db.refresh(rental)
+    db.refresh(car)
     if rental.user_id:
-        asyncio.create_task(notify_user_status_update(str(rental.user_id)))
+        user = db.query(User).filter(User.id == rental.user_id).first()
+        if user:
+            db.refresh(user)
     if car.owner_id:
-        asyncio.create_task(notify_user_status_update(str(car.owner_id)))
+        owner = db.query(User).filter(User.id == car.owner_id).first()
+        if owner:
+            db.refresh(owner)
+    
+    # Отправляем WebSocket уведомления в самом конце, после всех операций
+    try:
+        await notify_vehicles_list_update()
+        if rental.user_id:
+            await notify_user_status_update(str(rental.user_id))
+        if car.owner_id:
+            await notify_user_status_update(str(car.owner_id))
+        logger.info(f"WebSocket notifications sent after mechanic start for rental {rental.id}")
+    except Exception as e:
+        logger.error(f"Error sending WebSocket notifications: {e}")
     
     # try:
     #     name_parts = []
@@ -1018,10 +1036,23 @@ async def upload_photos_before(
         
         print(f"Committing to database...")
         db.commit()
-        db.refresh(rental)
         print(f"Database commit successful")
         
-        # Отправляем WebSocket уведомление об обновлении статуса пользователя
+        # Обновляем все данные из БД для получения свежих данных
+        db.expire_all()
+        db.refresh(rental)
+        if car:
+            db.refresh(car)
+        if rental.user_id:
+            user = db.query(User).filter(User.id == rental.user_id).first()
+            if user:
+                db.refresh(user)
+        if car and car.owner_id:
+            owner = db.query(User).filter(User.id == car.owner_id).first()
+            if owner:
+                db.refresh(owner)
+        
+        # Отправляем WebSocket уведомления в самом конце, после всех операций
         try:
             if rental.user_id:
                 await notify_user_status_update(str(rental.user_id))
@@ -1099,11 +1130,24 @@ async def upload_photos_before_interior(
             uploaded_files.append(interior_url)
         rental.mechanic_photos_before = urls
         db.commit()
-        db.refresh(rental)
         
-        # Отправляем WebSocket уведомление об обновлении статуса пользователя
+        # Обновляем все данные из БД для получения свежих данных
+        db.expire_all()
+        db.refresh(rental)
+        car = db.query(Car).filter(Car.id == rental.car_id).first()
+        if car:
+            db.refresh(car)
+        if rental.user_id:
+            user = db.query(User).filter(User.id == rental.user_id).first()
+            if user:
+                db.refresh(user)
+        if car and car.owner_id:
+            owner = db.query(User).filter(User.id == car.owner_id).first()
+            if owner:
+                db.refresh(owner)
+        
+        # Отправляем WebSocket уведомления в самом конце, после всех операций
         try:
-            car = db.query(Car).filter(Car.id == rental.car_id).first()
             if rental.user_id:
                 await notify_user_status_update(str(rental.user_id))
             if car and car.owner_id:
@@ -1200,9 +1244,22 @@ async def upload_photos_after(
                 raise Exception(f"GPS sequence failed: {error_msg}")
         
         db.commit()
-        db.refresh(rental)
         
-        # Отправляем WebSocket уведомление об обновлении статуса пользователя
+        # Обновляем все данные из БД для получения свежих данных
+        db.expire_all()
+        db.refresh(rental)
+        if car:
+            db.refresh(car)
+        if rental.user_id:
+            user = db.query(User).filter(User.id == rental.user_id).first()
+            if user:
+                db.refresh(user)
+        if car and car.owner_id:
+            owner = db.query(User).filter(User.id == car.owner_id).first()
+            if owner:
+                db.refresh(owner)
+        
+        # Отправляем WebSocket уведомления в самом конце, после всех операций
         try:
             if rental.user_id:
                 await notify_user_status_update(str(rental.user_id))
@@ -1283,9 +1340,22 @@ async def upload_photos_after_car(
                 raise Exception(f"GPS sequence failed: {error_msg}")
         
         db.commit()
-        db.refresh(rental)
         
-        # Отправляем WebSocket уведомление об обновлении статуса пользователя
+        # Обновляем все данные из БД для получения свежих данных
+        db.expire_all()
+        db.refresh(rental)
+        if car:
+            db.refresh(car)
+        if rental.user_id:
+            user = db.query(User).filter(User.id == rental.user_id).first()
+            if user:
+                db.refresh(user)
+        if car and car.owner_id:
+            owner = db.query(User).filter(User.id == car.owner_id).first()
+            if owner:
+                db.refresh(owner)
+        
+        # Отправляем WebSocket уведомления в самом конце, после всех операций
         try:
             if rental.user_id:
                 await notify_user_status_update(str(rental.user_id))
@@ -1378,10 +1448,21 @@ async def complete_rental(
     
     try:
         db.commit()
+        
+        # Обновляем все данные из БД для получения свежих данных
+        db.expire_all()
         db.refresh(rental)
         db.refresh(car)
+        if rental.user_id:
+            user = db.query(User).filter(User.id == rental.user_id).first()
+            if user:
+                db.refresh(user)
+        if car.owner_id:
+            owner = db.query(User).filter(User.id == car.owner_id).first()
+            if owner:
+                db.refresh(owner)
         
-        # Отправляем WebSocket уведомления
+        # Отправляем WebSocket уведомления в самом конце, после всех операций
         try:
             await notify_vehicles_list_update()
             if rental.user_id:

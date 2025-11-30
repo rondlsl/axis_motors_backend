@@ -417,8 +417,21 @@ async def complete_delivery(
             pass
 
     db.commit()
+    
+    # Обновляем все данные из БД для получения свежих данных
+    db.expire_all()
     db.refresh(rental)
+    db.refresh(car)
+    if rental.user_id:
+        user = db.query(User).filter(User.id == rental.user_id).first()
+        if user:
+            db.refresh(user)
+    if car.owner_id:
+        owner = db.query(User).filter(User.id == car.owner_id).first()
+        if owner:
+            db.refresh(owner)
 
+    # Отправляем push-уведомление
     user = db.query(User).filter(User.id == rental.user_id).first()
     if user and user.fcm_token:
         # Уведомление о доставке курьером
@@ -429,11 +442,16 @@ async def complete_delivery(
             "courier_delivered"
         )
     
-    asyncio.create_task(notify_vehicles_list_update())
-    if rental.user_id:
-        asyncio.create_task(notify_user_status_update(str(rental.user_id)))
-    if car.owner_id:
-        asyncio.create_task(notify_user_status_update(str(car.owner_id)))
+    # Отправляем WebSocket уведомления в самом конце, после всех операций
+    try:
+        await notify_vehicles_list_update()
+        if rental.user_id:
+            await notify_user_status_update(str(rental.user_id))
+        if car.owner_id:
+            await notify_user_status_update(str(car.owner_id))
+        logger.info(f"WebSocket notifications sent after mechanic complete-delivery for rental {rental.id}")
+    except Exception as e:
+        logger.error(f"Error sending WebSocket notifications: {e}")
 
     # try:
     #     name_parts = []
