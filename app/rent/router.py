@@ -51,6 +51,9 @@ from fastapi.concurrency import run_in_threadpool
 from app.services.face_verify import verify_user_upload_against_profile
 from app.websocket.notifications import notify_user_status_update, notify_vehicles_list_update
 from app.rent.utils.user_utils import get_user_available_auto_classes
+import logging
+
+logger = logging.getLogger(__name__)
 
 def _write_upload_to_temp(upload: UploadFile) -> str:
     tmp = NamedTemporaryFile(delete=False, suffix=Path(upload.filename or 'upload').suffix)
@@ -1717,6 +1720,17 @@ async def start_rental(
     # except Exception as e:
     #     print(f"Ошибка отправки SMS при начале аренды: {e}")
 
+    # Обновляем данные пользователя перед отправкой уведомления
+    db.refresh(current_user)
+    db.refresh(rental)
+    
+    # Отправляем WebSocket уведомление об обновлении статуса пользователя
+    try:
+        await notify_user_status_update(str(current_user.id))
+        logger.info(f"WebSocket user_status notification sent for user {current_user.id} after starting rental")
+    except Exception as e:
+        logger.error(f"Error sending WebSocket notification: {e}")
+    
     if is_owner_rental:
         schedule_notifications(
             user_ids=[current_user.id, car.owner_id],
@@ -1797,6 +1811,15 @@ async def upload_photos_before(
                 print(f"GPS последовательность выполнена успешно: {result.get('executed_commands', [])}")
         
         db.commit()
+        db.refresh(rental)
+        db.refresh(current_user)
+        
+        # Отправляем WebSocket уведомление об обновлении статуса пользователя
+        try:
+            await notify_user_status_update(str(current_user.id))
+            logger.info(f"WebSocket user_status notification sent for user {current_user.id} after uploading photos before")
+        except Exception as e:
+            logger.error(f"Error sending WebSocket notification: {e}")
         
         return {"message": "Photos before (selfie+car) uploaded", "photo_count": len(urls)}
     except HTTPException:
@@ -1858,6 +1881,16 @@ async def upload_photos_before_interior(
             uploaded_files.append(interior_url)
         rental.photos_before = urls
         db.commit()
+        db.refresh(rental)
+        db.refresh(current_user)
+        
+        # Отправляем WebSocket уведомление об обновлении статуса пользователя
+        try:
+            await notify_user_status_update(str(current_user.id))
+            logger.info(f"WebSocket user_status notification sent for user {current_user.id} after uploading photos before interior")
+        except Exception as e:
+            logger.error(f"Error sending WebSocket notification: {e}")
+        
         return {"message": "Photos before (interior) uploaded", "photo_count": len(interior_photos)}
     except Exception as e:
         db.rollback()
@@ -1975,6 +2008,15 @@ async def upload_photos_after(
                 raise Exception(f"GPS sequence failed: {error_msg}")
         
         db.commit()
+        db.refresh(rental)
+        db.refresh(current_user)
+        
+        # Отправляем WebSocket уведомление об обновлении статуса пользователя
+        try:
+            await notify_user_status_update(str(current_user.id))
+            logger.info(f"WebSocket user_status notification sent for user {current_user.id} after uploading photos after")
+        except Exception as e:
+            logger.error(f"Error sending WebSocket notification: {e}")
         
         return {"message": "Photos after (selfie+interior) uploaded", "photo_count": len(interior_photos) + 1}
     except HTTPException:
@@ -2088,6 +2130,15 @@ async def upload_photos_after_car(
                 raise Exception(f"GPS sequence failed: {error_msg}")
         
         db.commit()
+        db.refresh(rental)
+        db.refresh(current_user)
+        
+        # Отправляем WebSocket уведомление об обновлении статуса пользователя
+        try:
+            await notify_user_status_update(str(current_user.id))
+            logger.info(f"WebSocket user_status notification sent for user {current_user.id} after uploading photos after car")
+        except Exception as e:
+            logger.error(f"Error sending WebSocket notification: {e}")
         
         return {
             "message": "Photos after (car) uploaded successfully", 

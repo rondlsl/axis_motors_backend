@@ -26,6 +26,9 @@ from app.utils.time_utils import get_local_time
 from app.guarantor.sms_utils import send_rental_start_sms, send_rental_complete_sms
 from app.admin.cars.utils import sort_car_photos
 from app.websocket.notifications import notify_vehicles_list_update, notify_user_status_update
+import logging
+
+logger = logging.getLogger(__name__)
 
 MechanicRouter = APIRouter(tags=["Mechanic"], prefix="/mechanic")
 
@@ -714,12 +717,19 @@ async def check_car(
     rental.mechanic_inspection_start_longitude = car.longitude
     
     db.commit()
+    db.refresh(rental)
+    db.refresh(car)
     
-    asyncio.create_task(notify_vehicles_list_update())
-    if rental.user_id:
-        asyncio.create_task(notify_user_status_update(str(rental.user_id)))
-    if car.owner_id:
-        asyncio.create_task(notify_user_status_update(str(car.owner_id)))
+    # Отправляем WebSocket уведомления
+    try:
+        await notify_vehicles_list_update()
+        if rental.user_id:
+            await notify_user_status_update(str(rental.user_id))
+        if car.owner_id:
+            await notify_user_status_update(str(car.owner_id))
+        logger.info(f"WebSocket notifications sent after mechanic check-car for rental {rental.id}")
+    except Exception as e:
+        logger.error(f"Error sending WebSocket notifications: {e}")
     
     return {
         "message": "Проверка автомобиля начата успешно",
@@ -1008,7 +1018,18 @@ async def upload_photos_before(
         
         print(f"Committing to database...")
         db.commit()
+        db.refresh(rental)
         print(f"Database commit successful")
+        
+        # Отправляем WebSocket уведомление об обновлении статуса пользователя
+        try:
+            if rental.user_id:
+                await notify_user_status_update(str(rental.user_id))
+            if car and car.owner_id:
+                await notify_user_status_update(str(car.owner_id))
+            logger.info(f"WebSocket notifications sent after mechanic upload-photos-before for rental {rental.id}")
+        except Exception as e:
+            logger.error(f"Error sending WebSocket notifications: {e}")
         
         print(f"=== /mechanic/upload-photos-before SUCCESS ===")
         return {"message": "Фотографии до проверки (selfie+car) загружены", "photo_count": len(urls)}
@@ -1078,6 +1099,18 @@ async def upload_photos_before_interior(
             uploaded_files.append(interior_url)
         rental.mechanic_photos_before = urls
         db.commit()
+        db.refresh(rental)
+        
+        # Отправляем WebSocket уведомление об обновлении статуса пользователя
+        try:
+            car = db.query(Car).filter(Car.id == rental.car_id).first()
+            if rental.user_id:
+                await notify_user_status_update(str(rental.user_id))
+            if car and car.owner_id:
+                await notify_user_status_update(str(car.owner_id))
+            logger.info(f"WebSocket notifications sent after mechanic upload-photos-before-interior for rental {rental.id}")
+        except Exception as e:
+            logger.error(f"Error sending WebSocket notifications: {e}")
         
         return {"message": "Фотографии салона до проверки загружены", "photo_count": len(interior_photos)}
     except HTTPException:
@@ -1167,6 +1200,17 @@ async def upload_photos_after(
                 raise Exception(f"GPS sequence failed: {error_msg}")
         
         db.commit()
+        db.refresh(rental)
+        
+        # Отправляем WebSocket уведомление об обновлении статуса пользователя
+        try:
+            if rental.user_id:
+                await notify_user_status_update(str(rental.user_id))
+            if car and car.owner_id:
+                await notify_user_status_update(str(car.owner_id))
+            logger.info(f"WebSocket notifications sent after mechanic upload-photos-after for rental {rental.id}")
+        except Exception as e:
+            logger.error(f"Error sending WebSocket notifications: {e}")
         
         return {"message": "Фотографии после проверки (selfie+interior) загружены", "photo_count": len(urls)}
     except HTTPException:
@@ -1239,6 +1283,17 @@ async def upload_photos_after_car(
                 raise Exception(f"GPS sequence failed: {error_msg}")
         
         db.commit()
+        db.refresh(rental)
+        
+        # Отправляем WebSocket уведомление об обновлении статуса пользователя
+        try:
+            if rental.user_id:
+                await notify_user_status_update(str(rental.user_id))
+            if car and car.owner_id:
+                await notify_user_status_update(str(car.owner_id))
+            logger.info(f"WebSocket notifications sent after mechanic upload-photos-after-car for rental {rental.id}")
+        except Exception as e:
+            logger.error(f"Error sending WebSocket notifications: {e}")
         
         return {"message": "Фотографии внешние после проверки загружены", "photo_count": len(car_photos)}
     except HTTPException:
@@ -1323,12 +1378,19 @@ async def complete_rental(
     
     try:
         db.commit()
+        db.refresh(rental)
+        db.refresh(car)
         
-        asyncio.create_task(notify_vehicles_list_update())
-        if rental.user_id:
-            asyncio.create_task(notify_user_status_update(str(rental.user_id)))
-        if car.owner_id:
-            asyncio.create_task(notify_user_status_update(str(car.owner_id)))
+        # Отправляем WebSocket уведомления
+        try:
+            await notify_vehicles_list_update()
+            if rental.user_id:
+                await notify_user_status_update(str(rental.user_id))
+            if car.owner_id:
+                await notify_user_status_update(str(car.owner_id))
+            logger.info(f"WebSocket notifications sent after mechanic complete for rental {rental.id}")
+        except Exception as e:
+            logger.error(f"Error sending WebSocket notifications: {e}")
         
         # try:
         #     name_parts = []

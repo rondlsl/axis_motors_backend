@@ -85,8 +85,14 @@ async def verify_email(request: VerifyEmailRequest, current_user: User = Depends
     vc.is_used = True
     current_user.is_verified_email = True
     db.commit()
+    db.refresh(current_user)
     
-    asyncio.create_task(notify_user_status_update(str(current_user.id)))
+    # Отправляем WebSocket уведомление об обновлении статуса пользователя
+    try:
+        await notify_user_status_update(str(current_user.id))
+        logger.info(f"WebSocket user_status notification sent for user {current_user.id} after email verification")
+    except Exception as e:
+        logger.error(f"Error sending WebSocket notification: {e}")
 
     return {"message": "Email успешно подтверждён."}
 

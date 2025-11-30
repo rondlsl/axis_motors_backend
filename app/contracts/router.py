@@ -19,6 +19,9 @@ from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.utils.telegram_logger import log_error_to_telegram
 from app.websocket.notifications import notify_user_status_update
 import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 from app.contracts.schemas import (
     ContractFileResponse,
     SignContractRequest,
@@ -325,13 +328,24 @@ async def sign_contract(
         db.add(current_user)
         db.commit()
     
-    asyncio.create_task(notify_user_status_update(str(current_user.id)))
+    db.refresh(current_user)
+    
+    # Отправляем WebSocket уведомление об обновлении статуса пользователя
+    try:
+        await notify_user_status_update(str(current_user.id))
+        logger.info(f"WebSocket user_status notification sent for user {current_user.id} after contract signing")
+    except Exception as e:
+        logger.error(f"Error sending WebSocket notification: {e}")
     
     # Если это договор гаранта, также обновляем клиента
     if sign_request.contract_type in [ContractType.GUARANTOR_CONTRACT, ContractType.GUARANTOR_MAIN_CONTRACT] and guarantor_rel_uuid:
         guarantor_rel = db.query(Guarantor).filter(Guarantor.id == guarantor_rel_uuid).first()
         if guarantor_rel:
-            asyncio.create_task(notify_user_status_update(str(guarantor_rel.client_id)))
+            try:
+                await notify_user_status_update(str(guarantor_rel.client_id))
+                logger.info(f"WebSocket user_status notification sent for client {guarantor_rel.client_id} after guarantor contract signing")
+            except Exception as e:
+                logger.error(f"Error sending WebSocket notification to client: {e}")
     
     return UserSignatureResponse(
         id=uuid_to_sid(signature.id),
