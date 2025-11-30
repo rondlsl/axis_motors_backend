@@ -95,7 +95,8 @@ async def websocket_vehicle_telemetry(
                     "first_name": current_renter.first_name,
                     "last_name": current_renter.last_name,
                     "middle_name": current_renter.middle_name,
-                    "phone_number": current_renter.phone_number
+                    "phone_number": current_renter.phone_number,
+                    "selfie_url": current_renter.selfie_with_license_url
                 }
                 
                 if active_rental_for_car:
@@ -179,7 +180,8 @@ async def websocket_vehicle_telemetry(
                                     "first_name": current_renter.first_name,
                                     "last_name": current_renter.last_name,
                                     "middle_name": current_renter.middle_name,
-                                    "phone_number": current_renter.phone_number
+                                    "phone_number": current_renter.phone_number,
+                                    "selfie_url": current_renter.selfie_with_license_url
                                 }
                                 
                                 if active_rental_for_car:

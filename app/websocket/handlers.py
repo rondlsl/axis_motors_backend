@@ -1,3 +1,4 @@
+import asyncio
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional
 from app.models.user_model import User, UserRole
@@ -8,6 +9,8 @@ from app.rent.utils.user_utils import get_user_available_auto_classes
 from app.admin.cars.utils import sort_car_photos
 from app.rent.utils.calculate_price import get_open_price
 from app.utils.user_data import get_user_me_data
+from app.gps_api.utils.glonassoft_client import glonassoft_client
+from app.gps_api.utils.telemetry_processor import process_glonassoft_data
 
 
 async def get_vehicles_data_for_user(user: User, db: Session) -> Dict[str, Any]:
@@ -77,6 +80,35 @@ async def get_vehicles_data_for_user(user: User, db: Session) -> Dict[str, Any]:
         else:
             cars = query.all()
 
+        async def get_car_speed(car: Car) -> Optional[float]:
+            """Получить скорость машины из телеметрии"""
+            try:
+                vehicle_imei = (
+                    getattr(car, 'gps_imei', None)
+                    or getattr(car, 'imei', None)
+                    or getattr(car, 'vehicle_imei', None)
+                )
+                if not vehicle_imei:
+                    return None
+                
+                glonassoft_data = await glonassoft_client.get_vehicle_data(vehicle_imei)
+                if glonassoft_data:
+                    telemetry = process_glonassoft_data(glonassoft_data, car.name)
+                    return telemetry.speed if hasattr(telemetry, 'speed') else None
+                return None
+            except Exception:
+                return None
+        
+        speed_tasks = [get_car_speed(car) for car in cars]
+        speeds = await asyncio.gather(*speed_tasks, return_exceptions=True)
+        car_speeds = {}
+        for i, car in enumerate(cars):
+            speed = speeds[i]
+            if isinstance(speed, Exception) or speed is None:
+                car_speeds[car.id] = None
+            else:
+                car_speeds[car.id] = speed
+
         vehicles_data = []
         for car in cars:
             photo_before_selfie_uploaded = False
@@ -124,7 +156,8 @@ async def get_vehicles_data_for_user(user: User, db: Session) -> Dict[str, Any]:
                         "first_name": current_renter.first_name,
                         "last_name": current_renter.last_name,
                         "middle_name": current_renter.middle_name,
-                        "phone_number": current_renter.phone_number
+                        "phone_number": current_renter.phone_number,
+                        "selfie_url": current_renter.selfie_with_license_url
                     }
                     
                     if active_rental_for_car:
@@ -174,6 +207,7 @@ async def get_vehicles_data_for_user(user: User, db: Session) -> Dict[str, Any]:
                 "latitude": car.latitude,
                 "longitude": car.longitude,
                 "course": car.course,
+                "speed": car_speeds.get(car.id),
                 "fuel_level": car.fuel_level,
                 "price_per_minute": car.price_per_minute,
                 "price_per_hour": car.price_per_hour,
