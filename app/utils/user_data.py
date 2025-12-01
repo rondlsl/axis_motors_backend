@@ -489,30 +489,28 @@ async def get_user_me_data(db: Session, current_user: User) -> Dict[str, Any]:
             if rental_id:
                 rental_uuid = safe_sid_to_uuid(rental_id)
                 
-                # Для механиков НЕ проверяем подписи договоров аренды, т.к. они не подписывают их при осмотре
-                # Механик использует завершенную аренду клиента, и договоры уже подписаны клиентом
-                # Проверяем подписи только для обычных пользователей
-                if current_user.role != UserRole.MECHANIC:
-                    user_id_to_check = current_user.id
-                    
-                    rental_main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
-                        UserContractSignature.user_id == user_id_to_check,
-                        UserContractSignature.rental_id == rental_uuid,
-                        ContractFile.contract_type == ContractType.RENTAL_MAIN_CONTRACT
-                    ).first() is not None
-                    
-                    appendix_7_1_signed = db.query(UserContractSignature).join(ContractFile).filter(
-                        UserContractSignature.user_id == user_id_to_check,
-                        UserContractSignature.rental_id == safe_sid_to_uuid(rental_id),
-                        ContractFile.contract_type == ContractType.APPENDIX_7_1
-                    ).first() is not None
-                    
-                    # 3. Акт возврата (APPENDIX_7_2) - проверяем для текущей аренды
-                    appendix_7_2_signed = db.query(UserContractSignature).join(ContractFile).filter(
-                        UserContractSignature.user_id == user_id_to_check,
-                        UserContractSignature.rental_id == safe_sid_to_uuid(rental_id),
-                        ContractFile.contract_type == ContractType.APPENDIX_7_2
-                    ).first() is not None
+                # Проверяем подписи для всех пользователей, включая механиков
+                # Механики тоже подписывают договоры аренды при осмотре
+                user_id_to_check = current_user.id
+                
+                rental_main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                    UserContractSignature.user_id == user_id_to_check,
+                    UserContractSignature.rental_id == rental_uuid,
+                    ContractFile.contract_type == ContractType.RENTAL_MAIN_CONTRACT
+                ).first() is not None
+                
+                appendix_7_1_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                    UserContractSignature.user_id == user_id_to_check,
+                    UserContractSignature.rental_id == rental_uuid,
+                    ContractFile.contract_type == ContractType.APPENDIX_7_1
+                ).first() is not None
+                
+                # 3. Акт возврата (APPENDIX_7_2) - проверяем для текущей аренды
+                appendix_7_2_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                    UserContractSignature.user_id == user_id_to_check,
+                    UserContractSignature.rental_id == rental_uuid,
+                    ContractFile.contract_type == ContractType.APPENDIX_7_2
+                ).first() is not None
 
         response_data = {
             "id": uuid_to_sid(current_user.id),
