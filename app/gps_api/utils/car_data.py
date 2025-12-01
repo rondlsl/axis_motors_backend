@@ -83,7 +83,8 @@ def get_vehicle_id_by_imei(imei: str) -> int:
         "860803068139548": 800283232,  # Hongqi
         "860803068143045": 800212421,  # Mercedes CLA45s
         "860803068146253": 800339176,  # Hyundai Tucson
-        "860803068155890": 800298270   # Mercedes G63
+        "860803068155890": 800298270,  # Mercedes G63
+        "860803068155916": 800370225,  # BYD Han EV
     }
     vehicle_id = imei_to_vehicle_id.get(imei)
     if vehicle_id is None:
@@ -121,6 +122,14 @@ def get_commands_by_imei(imei: str) -> dict:
         "860803068155890": {  # Mercedes G63 - vehicle_id 800298270
             "open": "chat OPEN",
             "close": "chat CLOSE",
+            "give_key": "OUTPUT1 1",
+            "take_key": "OUTPUT1 0",
+            "lock_engine": "OUTPUT0 1",
+            "unlock_engine": "OUTPUT0 0"
+        },
+        "860803068155916": {  # BYD Han EV - vehicle_id 800370225
+            "open": "OUTPUT1 1|OUTPUT3 0|OUTPUT2 1|OUTPUT3 0|OUTPUT3 0|OUTPUT3 0OUTPUT2 0|OUTPUT1 0",
+            "close": "OUTPUT1 1|OUTPUT2 0|OUTPUT3 1|OUTPUT2 0|OUTPUT2 0|OUTPUT2 0OUTPUT3 0|OUTPUT1 0",
             "give_key": "OUTPUT1 1",
             "take_key": "OUTPUT1 0",
             "lock_engine": "OUTPUT0 1",
