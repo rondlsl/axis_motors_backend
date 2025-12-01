@@ -473,44 +473,39 @@ async def get_user_me_data(db: Session, current_user: User) -> Dict[str, Any]:
         last_name = current_user.last_name if isinstance(current_user.last_name, str) else None
         role = getattr(current_user.role, "value", current_user.role) if current_user.role is not None else None
 
-        # Проверяем подписание основных договоров
-        # 1. Договор о присоединении (MAIN_CONTRACT)
-        main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
-            UserContractSignature.user_id == current_user.id,
-            ContractFile.contract_type == ContractType.MAIN_CONTRACT
-        ).first() is not None
-
-        # 2. Основной договор аренды (RENTAL_MAIN_CONTRACT) - проверяем для текущей аренды
+        main_contract_signed = False
         rental_main_contract_signed = False
         appendix_7_1_signed = False
         appendix_7_2_signed = False
-        if current_rental:
-            rental_id = current_rental["rental_details"].get("rental_id") if "rental_details" in current_rental else None
-            if rental_id:
-                rental_uuid = safe_sid_to_uuid(rental_id)
-                
-                # Проверяем подписи для всех пользователей, включая механиков
-                # Механики тоже подписывают договоры аренды при осмотре
-                user_id_to_check = current_user.id
-                
-                rental_main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
-                    UserContractSignature.user_id == user_id_to_check,
-                    UserContractSignature.rental_id == rental_uuid,
-                    ContractFile.contract_type == ContractType.RENTAL_MAIN_CONTRACT
-                ).first() is not None
-                
-                appendix_7_1_signed = db.query(UserContractSignature).join(ContractFile).filter(
-                    UserContractSignature.user_id == user_id_to_check,
-                    UserContractSignature.rental_id == rental_uuid,
-                    ContractFile.contract_type == ContractType.APPENDIX_7_1
-                ).first() is not None
-                
-                # 3. Акт возврата (APPENDIX_7_2) - проверяем для текущей аренды
-                appendix_7_2_signed = db.query(UserContractSignature).join(ContractFile).filter(
-                    UserContractSignature.user_id == user_id_to_check,
-                    UserContractSignature.rental_id == rental_uuid,
-                    ContractFile.contract_type == ContractType.APPENDIX_7_2
-                ).first() is not None
+
+        if current_user.role == UserRole.USER:
+            main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                UserContractSignature.user_id == current_user.id,
+                ContractFile.contract_type == ContractType.MAIN_CONTRACT
+            ).first() is not None
+
+            if current_rental:
+                rental_id = current_rental["rental_details"].get("rental_id") if "rental_details" in current_rental else None
+                if rental_id:
+                    rental_uuid = safe_sid_to_uuid(rental_id)
+
+                    rental_main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                        UserContractSignature.user_id == current_user.id,
+                        UserContractSignature.rental_id == rental_uuid,
+                        ContractFile.contract_type == ContractType.RENTAL_MAIN_CONTRACT
+                    ).first() is not None
+                    
+                    appendix_7_1_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                        UserContractSignature.user_id == current_user.id,
+                        UserContractSignature.rental_id == rental_uuid,
+                        ContractFile.contract_type == ContractType.APPENDIX_7_1
+                    ).first() is not None
+                    
+                    appendix_7_2_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                        UserContractSignature.user_id == current_user.id,
+                        UserContractSignature.rental_id == rental_uuid,
+                        ContractFile.contract_type == ContractType.APPENDIX_7_2
+                    ).first() is not None
 
         response_data = {
             "id": uuid_to_sid(current_user.id),
@@ -567,7 +562,6 @@ async def get_user_me_data(db: Session, current_user: User) -> Dict[str, Any]:
             "is_contract_read": current_user.is_contract_read,
             "is_user_agreement": current_user.is_user_agreement,
             "upload_document_at": current_user.upload_document_at.isoformat() if current_user.upload_document_at else None,
-            # Информация о подписанных договорах для аренды
             "main_contract_signed": main_contract_signed,  # Договор о присоединении
             "rental_main_contract_signed": rental_main_contract_signed,  # Основной договор аренды (только для активной аренды)
             "appendix_7_1_signed": appendix_7_1_signed,  # Акт приема (только для активной аренды)
@@ -591,8 +585,6 @@ async def get_user_me_data(db: Session, current_user: User) -> Dict[str, Any]:
                 "digital_signature": current_user.digital_signature
             })
 
-        # Проверяем активную аренду и не подписан ли основной договор аренды, приложение 7.1 или приложение 7.2
-        # Также проверяем для пользователей с гарантом (guarantors_count > 0)
         if current_rental and (current_user.role in [UserRole.USER, UserRole.ADMIN, UserRole.MECHANIC] or guarantors_count > 0):
             rental_id = current_rental["rental_details"].get("rental_id") if "rental_details" in current_rental else None
             if rental_id:
