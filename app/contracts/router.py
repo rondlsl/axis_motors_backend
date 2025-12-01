@@ -236,11 +236,28 @@ async def sign_contract(
                 detail=f"Неверный формат guarantor_relationship_id: {str(e)}"
             )
     
-    existing_signature = db.query(UserContractSignature).filter(
+    # Проверяем существующую подпись с правильной обработкой NULL значений
+    from sqlalchemy import or_, and_
+    
+    existing_signature_filters = [
         UserContractSignature.user_id == current_user.id,
-        UserContractSignature.contract_file_id == contract_file.id,
-        UserContractSignature.rental_id == rental_uuid,
-        UserContractSignature.guarantor_relationship_id == guarantor_rel_uuid
+        UserContractSignature.contract_file_id == contract_file.id
+    ]
+    
+    # Для rental_id: если передан, проверяем точное совпадение, если None - проверяем что rental_id IS NULL
+    if rental_uuid is not None:
+        existing_signature_filters.append(UserContractSignature.rental_id == rental_uuid)
+    else:
+        existing_signature_filters.append(UserContractSignature.rental_id.is_(None))
+    
+    # Для guarantor_relationship_id: если передан, проверяем точное совпадение, если None - проверяем что guarantor_relationship_id IS NULL
+    if guarantor_rel_uuid is not None:
+        existing_signature_filters.append(UserContractSignature.guarantor_relationship_id == guarantor_rel_uuid)
+    else:
+        existing_signature_filters.append(UserContractSignature.guarantor_relationship_id.is_(None))
+    
+    existing_signature = db.query(UserContractSignature).filter(
+        and_(*existing_signature_filters)
     ).first()
     
     if existing_signature:
@@ -249,19 +266,36 @@ async def sign_contract(
             detail="Этот договор уже подписан"
         )
 
-    same_type_active = db.query(UserContractSignature).join(ContractFile).filter(
-        UserContractSignature.user_id == current_user.id,
-        ContractFile.contract_type == sign_request.contract_type,
-        ContractFile.is_active == True,
-        UserContractSignature.rental_id == rental_uuid,
-        UserContractSignature.guarantor_relationship_id == guarantor_rel_uuid
-    ).first()
-
-    if same_type_active:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Этот тип договора уже подписан"
-        )
+    # Проверяем, есть ли уже подпись этого типа договора для этой аренды/гаранта
+    # Но только если это НЕ договор аренды (для договоров аренды разрешаем подписание нового contract_file_id)
+    if contract_file.contract_type not in [ContractType.RENTAL_MAIN_CONTRACT, ContractType.APPENDIX_7_1, ContractType.APPENDIX_7_2]:
+        same_type_filters = [
+            UserContractSignature.user_id == current_user.id,
+            ContractFile.contract_type == sign_request.contract_type,
+            ContractFile.is_active == True
+        ]
+        
+        # Для rental_id: если передан, проверяем точное совпадение, если None - проверяем что rental_id IS NULL
+        if rental_uuid is not None:
+            same_type_filters.append(UserContractSignature.rental_id == rental_uuid)
+        else:
+            same_type_filters.append(UserContractSignature.rental_id.is_(None))
+        
+        # Для guarantor_relationship_id: если передан, проверяем точное совпадение, если None - проверяем что guarantor_relationship_id IS NULL
+        if guarantor_rel_uuid is not None:
+            same_type_filters.append(UserContractSignature.guarantor_relationship_id == guarantor_rel_uuid)
+        else:
+            same_type_filters.append(UserContractSignature.guarantor_relationship_id.is_(None))
+        
+        same_type_active = db.query(UserContractSignature).join(ContractFile).filter(
+            and_(*same_type_filters)
+        ).first()
+        
+        if same_type_active:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Этот тип договора уже подписан"
+            )
     
     if contract_file.contract_type in [ContractType.RENTAL_MAIN_CONTRACT, ContractType.APPENDIX_7_1, ContractType.APPENDIX_7_2]:
         if not sign_request.rental_id:
