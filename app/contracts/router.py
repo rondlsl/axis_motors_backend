@@ -16,7 +16,7 @@ from app.models.guarantor_model import Guarantor
 from app.models.car_model import Car
 from app.gps_api.utils.auth_api import get_auth_token
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
-from app.utils.telegram_logger import log_error_to_telegram
+from app.utils.telegram_logger import log_error_to_telegram, telegram_error_logger
 from app.websocket.notifications import notify_user_status_update
 import asyncio
 import logging
@@ -252,12 +252,44 @@ async def sign_contract(
     logger.info(f"🔍 Contract file is_active: {contract_file.is_active}")
     logger.info(f"🔍 Rental ID (from request): {sign_request.rental_id}")
     
+    # Отправляем в Telegram о начале процесса
+    try:
+        await telegram_error_logger.send_info(
+            f"📝 <b>Начало подписания договора</b>\n\n"
+            f"👤 <b>Пользователь:</b>\n"
+            f"  • ID: <code>{current_user.id}</code>\n"
+            f"  • Телефон: <code>{current_user.phone_number}</code>\n"
+            f"  • Роль: <code>{current_user.role}</code>\n\n"
+            f"📄 <b>Договор:</b>\n"
+            f"  • Тип: <code>{sign_request.contract_type}</code>\n"
+            f"  • Contract File ID: <code>{contract_file.id}</code>\n"
+            f"  • Активен: <code>{contract_file.is_active}</code>\n"
+            f"  • Rental ID: <code>{sign_request.rental_id or 'None'}</code>\n"
+            f"  • Guarantor Relationship ID: <code>{sign_request.guarantor_relationship_id or 'None'}</code>",
+            context={"endpoint": "/contracts/sign"}
+        )
+    except Exception as e:
+        logger.error(f"Error sending Telegram notification: {e}")
+    
     if sign_request.rental_id:
         try:
             rental_uuid = uuid.UUID(sign_request.rental_id)
             logger.info(f"🔍 Rental UUID (converted): {rental_uuid}")
         except ValueError as e:
             logger.error(f"❌ Invalid rental_id format: {str(e)}")
+            # Отправляем ошибку в Telegram
+            try:
+                await telegram_error_logger.send_warning(
+                    f"⚠️ <b>Ошибка формата rental_id</b>\n\n"
+                    f"👤 <b>Пользователь:</b>\n"
+                    f"  • ID: <code>{current_user.id}</code>\n"
+                    f"  • Телефон: <code>{current_user.phone_number}</code>\n\n"
+                    f"❌ <b>Ошибка:</b> <code>{str(e)}</code>\n"
+                    f"📝 <b>Rental ID (неверный формат):</b> <code>{sign_request.rental_id}</code>",
+                    context={"endpoint": "/contracts/sign", "error_type": "Invalid rental_id format"}
+                )
+            except Exception as tg_error:
+                logger.error(f"Error sending Telegram notification: {tg_error}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Неверный формат rental_id: {str(e)}"
@@ -271,6 +303,19 @@ async def sign_contract(
             logger.info(f"🔍 Guarantor UUID (converted): {guarantor_rel_uuid}")
         except ValueError as e:
             logger.error(f"❌ Invalid guarantor_relationship_id format: {str(e)}")
+            # Отправляем ошибку в Telegram
+            try:
+                await telegram_error_logger.send_warning(
+                    f"⚠️ <b>Ошибка формата guarantor_relationship_id</b>\n\n"
+                    f"👤 <b>Пользователь:</b>\n"
+                    f"  • ID: <code>{current_user.id}</code>\n"
+                    f"  • Телефон: <code>{current_user.phone_number}</code>\n\n"
+                    f"❌ <b>Ошибка:</b> <code>{str(e)}</code>\n"
+                    f"📝 <b>Guarantor Relationship ID (неверный формат):</b> <code>{sign_request.guarantor_relationship_id}</code>",
+                    context={"endpoint": "/contracts/sign", "error_type": "Invalid guarantor_relationship_id format"}
+                )
+            except Exception as tg_error:
+                logger.error(f"Error sending Telegram notification: {tg_error}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Неверный формат guarantor_relationship_id: {str(e)}"
@@ -335,6 +380,34 @@ async def sign_contract(
         detail_msg += f"Активен: {existing_contract_file.is_active if existing_contract_file else 'Unknown'}, "
         detail_msg += f"Дата подписания: {existing_signature.signed_at}"
         
+        # Отправляем предупреждение в Telegram
+        try:
+            await telegram_error_logger.send_warning(
+                f"⚠️ <b>Попытка повторного подписания договора</b>\n\n"
+                f"👤 <b>Пользователь:</b>\n"
+                f"  • ID: <code>{current_user.id}</code>\n"
+                f"  • Телефон: <code>{current_user.phone_number}</code>\n"
+                f"  • Роль: <code>{current_user.role}</code>\n\n"
+                f"📄 <b>Договор:</b>\n"
+                f"  • Тип: <code>{sign_request.contract_type}</code>\n"
+                f"  • Contract File ID: <code>{contract_file.id}</code>\n"
+                f"  • Rental ID: <code>{sign_request.rental_id or 'None'}</code>\n\n"
+                f"🔍 <b>Найдена существующая подпись:</b>\n"
+                f"  • Signature ID: <code>{uuid_to_sid(existing_signature.id)}</code>\n"
+                f"  • Contract File ID: <code>{uuid_to_sid(existing_signature.contract_file_id)}</code>\n"
+                f"  • Активен: <code>{existing_contract_file.is_active if existing_contract_file else 'Unknown'}</code>\n"
+                f"  • Дата подписания: <code>{existing_signature.signed_at}</code>\n"
+                f"  • Rental ID: <code>{existing_signature.rental_id or 'None'}</code>\n"
+                f"  • Guarantor Relationship ID: <code>{existing_signature.guarantor_relationship_id or 'None'}</code>",
+                context={
+                    "endpoint": "/contracts/sign",
+                    "existing_signature_id": str(existing_signature.id),
+                    "request_contract_file_id": str(contract_file.id)
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error sending Telegram warning: {e}")
+        
         logger.info("=" * 80)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -378,6 +451,19 @@ async def sign_contract(
         logger.info("🔍 Checking rental contract requirements...")
         if not sign_request.rental_id:
             logger.error("❌ rental_id is required for rental contracts")
+            try:
+                await telegram_error_logger.send_warning(
+                    f"⚠️ <b>Отсутствует rental_id для договора аренды</b>\n\n"
+                    f"👤 <b>Пользователь:</b>\n"
+                    f"  • ID: <code>{current_user.id}</code>\n"
+                    f"  • Телефон: <code>{current_user.phone_number}</code>\n\n"
+                    f"📄 <b>Договор:</b>\n"
+                    f"  • Тип: <code>{sign_request.contract_type}</code>\n"
+                    f"  • Contract File ID: <code>{contract_file.id}</code>",
+                    context={"endpoint": "/contracts/sign", "error_type": "Missing rental_id"}
+                )
+            except Exception as tg_error:
+                logger.error(f"Error sending Telegram notification: {tg_error}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Для договоров аренды необходимо указать rental_id"
@@ -386,6 +472,19 @@ async def sign_contract(
         rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
         if not rental:
             logger.error(f"❌ Rental not found: {rental_uuid}")
+            try:
+                await telegram_error_logger.send_warning(
+                    f"⚠️ <b>Аренда не найдена</b>\n\n"
+                    f"👤 <b>Пользователь:</b>\n"
+                    f"  • ID: <code>{current_user.id}</code>\n"
+                    f"  • Телефон: <code>{current_user.phone_number}</code>\n\n"
+                    f"📄 <b>Договор:</b>\n"
+                    f"  • Тип: <code>{sign_request.contract_type}</code>\n"
+                    f"  • Rental ID: <code>{rental_uuid}</code>",
+                    context={"endpoint": "/contracts/sign", "error_type": "Rental not found", "rental_id": str(rental_uuid)}
+                )
+            except Exception as tg_error:
+                logger.error(f"Error sending Telegram notification: {tg_error}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Аренда не найдена"
@@ -408,6 +507,28 @@ async def sign_contract(
             
             if not (is_inspector or is_delivery_mechanic):
                 logger.error("❌ Mechanic is not assigned to this rental")
+                try:
+                    await telegram_error_logger.send_warning(
+                        f"⚠️ <b>Механик не авторизован для подписания договора</b>\n\n"
+                        f"👤 <b>Механик:</b>\n"
+                        f"  • ID: <code>{current_user.id}</code>\n"
+                        f"  • Телефон: <code>{current_user.phone_number}</code>\n\n"
+                        f"📄 <b>Договор:</b>\n"
+                        f"  • Тип: <code>{sign_request.contract_type}</code>\n"
+                        f"  • Rental ID: <code>{rental_uuid}</code>\n\n"
+                        f"🔍 <b>Проверка:</b>\n"
+                        f"  • Is Inspector: <code>{is_inspector}</code>\n"
+                        f"  • Is Delivery Mechanic: <code>{is_delivery_mechanic}</code>\n"
+                        f"  • Rental Inspector ID: <code>{rental.mechanic_inspector_id or 'None'}</code>\n"
+                        f"  • Rental Delivery ID: <code>{rental.delivery_mechanic_id or 'None'}</code>",
+                        context={
+                            "endpoint": "/contracts/sign",
+                            "error_type": "Mechanic not authorized",
+                            "rental_id": str(rental_uuid)
+                        }
+                    )
+                except Exception as tg_error:
+                    logger.error(f"Error sending Telegram notification: {tg_error}")
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Механик не назначен инспектором или доставщиком для данной аренды"
@@ -417,6 +538,26 @@ async def sign_contract(
             # Для обычных пользователей проверяем, что аренда принадлежит им
             if rental.user_id != current_user.id:
                 logger.error(f"❌ Rental does not belong to user. Rental user_id: {rental.user_id}, Current user: {current_user.id}")
+                try:
+                    await telegram_error_logger.send_warning(
+                        f"⚠️ <b>Аренда не принадлежит пользователю</b>\n\n"
+                        f"👤 <b>Пользователь:</b>\n"
+                        f"  • ID: <code>{current_user.id}</code>\n"
+                        f"  • Телефон: <code>{current_user.phone_number}</code>\n\n"
+                        f"📄 <b>Договор:</b>\n"
+                        f"  • Тип: <code>{sign_request.contract_type}</code>\n"
+                        f"  • Rental ID: <code>{rental_uuid}</code>\n\n"
+                        f"🔍 <b>Проверка:</b>\n"
+                        f"  • Rental User ID: <code>{rental.user_id}</code>\n"
+                        f"  • Current User ID: <code>{current_user.id}</code>",
+                        context={
+                            "endpoint": "/contracts/sign",
+                            "error_type": "Rental does not belong to user",
+                            "rental_id": str(rental_uuid)
+                        }
+                    )
+                except Exception as tg_error:
+                    logger.error(f"Error sending Telegram notification: {tg_error}")
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Аренда не принадлежит пользователю"
@@ -467,6 +608,30 @@ async def sign_contract(
     
     db.expire_all()
     db.refresh(current_user)
+    
+    # Отправляем успешное подписание в Telegram
+    try:
+        await telegram_error_logger.send_info(
+            f"✅ <b>Договор успешно подписан</b>\n\n"
+            f"👤 <b>Пользователь:</b>\n"
+            f"  • ID: <code>{current_user.id}</code>\n"
+            f"  • Телефон: <code>{current_user.phone_number}</code>\n"
+            f"  • Роль: <code>{current_user.role}</code>\n\n"
+            f"📄 <b>Договор:</b>\n"
+            f"  • Тип: <code>{sign_request.contract_type}</code>\n"
+            f"  • Contract File ID: <code>{contract_file.id}</code>\n"
+            f"  • Signature ID: <code>{uuid_to_sid(signature.id)}</code>\n"
+            f"  • Rental ID: <code>{signature.rental_id or 'None'}</code>\n"
+            f"  • Guarantor Relationship ID: <code>{signature.guarantor_relationship_id or 'None'}</code>\n"
+            f"  • Дата подписания: <code>{signature.signed_at}</code>",
+            context={
+                "endpoint": "/contracts/sign",
+                "signature_id": str(signature.id),
+                "contract_type": str(sign_request.contract_type)
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error sending Telegram notification: {e}")
     
     try:
         await notify_user_status_update(str(current_user.id))
