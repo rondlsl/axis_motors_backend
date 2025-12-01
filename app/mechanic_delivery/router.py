@@ -147,16 +147,8 @@ async def accept_delivery(
     db.refresh(rental)
     db.refresh(car)
 
-    # Уведомляем пользователя
     user = db.query(User).filter(User.id == rental.user_id).first()
     if user and user.fcm_token:
-        await send_localized_notification_to_user(
-            db,
-            user.id,
-            "mechanic_assigned",
-            "mechanic_assigned"
-        )
-        # Дополнительное уведомление о найденном курьере
         asyncio.create_task(
             send_localized_notification_to_user(
                 db,

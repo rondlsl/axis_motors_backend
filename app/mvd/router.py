@@ -455,17 +455,6 @@ async def reject_application(
             "mvd_reject", 
             "application_rejected_mvd"
         )
-        
-        # Дополнительное уведомление о том, что проверка не пройдена
-        if user and user.fcm_token:
-            asyncio.create_task(
-                send_localized_notification_to_user(
-                    db,
-                    user.id,
-                    "verification_failed",
-                    "verification_failed"
-                )
-        )
     except Exception as e:
         try:
             await log_error_to_telegram(
