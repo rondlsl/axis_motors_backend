@@ -258,11 +258,13 @@ async def sign_contract(
             f"📝 <b>Начало подписания договора</b>\n\n"
             f"👤 <b>Пользователь:</b>\n"
             f"  • ID: <code>{current_user.id}</code>\n"
+            f"  • ID (short): <code>{uuid_to_sid(current_user.id)}</code>\n"
             f"  • Телефон: <code>{current_user.phone_number}</code>\n"
             f"  • Роль: <code>{current_user.role}</code>\n\n"
             f"📄 <b>Договор:</b>\n"
             f"  • Тип: <code>{sign_request.contract_type}</code>\n"
             f"  • Contract File ID: <code>{contract_file.id}</code>\n"
+            f"  • Contract File ID (short): <code>{uuid_to_sid(contract_file.id)}</code>\n"
             f"  • Активен: <code>{contract_file.is_active}</code>\n"
             f"  • Rental ID: <code>{sign_request.rental_id or 'None'}</code>\n"
             f"  • Guarantor Relationship ID: <code>{sign_request.guarantor_relationship_id or 'None'}</code>",
@@ -382,19 +384,27 @@ async def sign_contract(
         
         # Отправляем предупреждение в Telegram
         try:
+            # Проверяем, совпадают ли contract_file_id
+            is_same_file = existing_signature.contract_file_id == contract_file.id
+            
             await telegram_error_logger.send_warning(
                 f"⚠️ <b>Попытка повторного подписания договора</b>\n\n"
                 f"👤 <b>Пользователь:</b>\n"
                 f"  • ID: <code>{current_user.id}</code>\n"
+                f"  • ID (short): <code>{uuid_to_sid(current_user.id)}</code>\n"
                 f"  • Телефон: <code>{current_user.phone_number}</code>\n"
                 f"  • Роль: <code>{current_user.role}</code>\n\n"
-                f"📄 <b>Договор:</b>\n"
+                f"📄 <b>Запрос на подписание:</b>\n"
                 f"  • Тип: <code>{sign_request.contract_type}</code>\n"
                 f"  • Contract File ID: <code>{contract_file.id}</code>\n"
+                f"  • Contract File ID (short): <code>{uuid_to_sid(contract_file.id)}</code>\n"
                 f"  • Rental ID: <code>{sign_request.rental_id or 'None'}</code>\n\n"
                 f"🔍 <b>Найдена существующая подпись:</b>\n"
-                f"  • Signature ID: <code>{uuid_to_sid(existing_signature.id)}</code>\n"
-                f"  • Contract File ID: <code>{uuid_to_sid(existing_signature.contract_file_id)}</code>\n"
+                f"  • Signature ID: <code>{existing_signature.id}</code>\n"
+                f"  • Signature ID (short): <code>{uuid_to_sid(existing_signature.id)}</code>\n"
+                f"  • Contract File ID: <code>{existing_signature.contract_file_id}</code>\n"
+                f"  • Contract File ID (short): <code>{uuid_to_sid(existing_signature.contract_file_id)}</code>\n"
+                f"  • <b>{'✅ Тот же файл' if is_same_file else '❌ РАЗНЫЕ ФАЙЛЫ!'}</b>\n"
                 f"  • Активен: <code>{existing_contract_file.is_active if existing_contract_file else 'Unknown'}</code>\n"
                 f"  • Дата подписания: <code>{existing_signature.signed_at}</code>\n"
                 f"  • Rental ID: <code>{existing_signature.rental_id or 'None'}</code>\n"
@@ -402,7 +412,8 @@ async def sign_contract(
                 context={
                     "endpoint": "/contracts/sign",
                     "existing_signature_id": str(existing_signature.id),
-                    "request_contract_file_id": str(contract_file.id)
+                    "request_contract_file_id": str(contract_file.id),
+                    "is_same_file": is_same_file
                 }
             )
         except Exception as e:
