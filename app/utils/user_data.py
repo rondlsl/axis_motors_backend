@@ -478,7 +478,7 @@ async def get_user_me_data(db: Session, current_user: User) -> Dict[str, Any]:
         appendix_7_1_signed = False
         appendix_7_2_signed = False
 
-        if current_user.role == UserRole.USER:
+        if current_user.role in [UserRole.USER, UserRole.MECHANIC]:
             main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
                 UserContractSignature.user_id == current_user.id,
                 ContractFile.contract_type == ContractType.MAIN_CONTRACT
