@@ -489,21 +489,25 @@ async def get_user_me_data(db: Session, current_user: User) -> Dict[str, Any]:
             if rental_id:
                 rental_uuid = safe_sid_to_uuid(rental_id)
                 
+                # Для механиков проверяем свои подписи (current_user.id), для обычных пользователей - свои (current_user.id)
+                # Механик подписывает свои собственные договоры для осмотра/доставки
+                user_id_to_check = current_user.id
+                
                 rental_main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
-                    UserContractSignature.user_id == current_user.id,
+                    UserContractSignature.user_id == user_id_to_check,
                     UserContractSignature.rental_id == rental_uuid,
                     ContractFile.contract_type == ContractType.RENTAL_MAIN_CONTRACT
                 ).first() is not None
                 
                 appendix_7_1_signed = db.query(UserContractSignature).join(ContractFile).filter(
-                    UserContractSignature.user_id == current_user.id,
+                    UserContractSignature.user_id == user_id_to_check,
                     UserContractSignature.rental_id == safe_sid_to_uuid(rental_id),
                     ContractFile.contract_type == ContractType.APPENDIX_7_1
                 ).first() is not None
                 
                 # 3. Акт возврата (APPENDIX_7_2) - проверяем для текущей аренды
                 appendix_7_2_signed = db.query(UserContractSignature).join(ContractFile).filter(
-                    UserContractSignature.user_id == current_user.id,
+                    UserContractSignature.user_id == user_id_to_check,
                     UserContractSignature.rental_id == safe_sid_to_uuid(rental_id),
                     ContractFile.contract_type == ContractType.APPENDIX_7_2
                 ).first() is not None

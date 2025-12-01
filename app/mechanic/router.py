@@ -734,6 +734,8 @@ async def check_car(
     # Отправляем WebSocket уведомления в самом конце, после всех операций
     try:
         await notify_vehicles_list_update()
+        # Отправляем уведомление механику (важно для обновления его user_status)
+        await notify_user_status_update(str(current_mechanic.id))
         if rental.user_id:
             await notify_user_status_update(str(rental.user_id))
         if car.owner_id:
