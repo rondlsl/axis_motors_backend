@@ -22,6 +22,16 @@ import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+# Добавляем handler для записи в файл
+contract_log_file = os.path.join(os.path.dirname(__file__), "contracts_debug.log")
+file_handler = logging.FileHandler(contract_log_file, mode='a', encoding='utf-8')
+file_handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+
 from app.contracts.schemas import (
     ContractFileResponse,
     SignContractRequest,
@@ -218,53 +228,106 @@ async def sign_contract(
     rental_uuid = None
     guarantor_rel_uuid = None
     
+    logger.info("=" * 80)
+    logger.info("🔍 [CONTRACT SIGN] Starting contract signing process")
+    logger.info(f"🔍 User ID: {current_user.id}")
+    logger.info(f"🔍 User phone: {current_user.phone_number}")
+    logger.info(f"🔍 User role: {current_user.role}")
+    logger.info(f"🔍 Contract type: {sign_request.contract_type}")
+    logger.info(f"🔍 Contract file ID: {contract_file.id}")
+    logger.info(f"🔍 Contract file is_active: {contract_file.is_active}")
+    logger.info(f"🔍 Rental ID (from request): {sign_request.rental_id}")
+    
     if sign_request.rental_id:
         try:
             rental_uuid = uuid.UUID(sign_request.rental_id)
+            logger.info(f"🔍 Rental UUID (converted): {rental_uuid}")
         except ValueError as e:
+            logger.error(f"❌ Invalid rental_id format: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Неверный формат rental_id: {str(e)}"
             )
+    else:
+        logger.info("🔍 Rental ID is None")
     
     if sign_request.guarantor_relationship_id:
         try:
             guarantor_rel_uuid = uuid.UUID(sign_request.guarantor_relationship_id)
+            logger.info(f"🔍 Guarantor UUID (converted): {guarantor_rel_uuid}")
         except ValueError as e:
+            logger.error(f"❌ Invalid guarantor_relationship_id format: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Неверный формат guarantor_relationship_id: {str(e)}"
             )
+    else:
+        logger.info("🔍 Guarantor relationship ID is None")
     
     # Проверяем существующую подпись с правильной обработкой NULL значений
     from sqlalchemy import or_, and_
+    
+    logger.info("🔍 Building filters for existing signature check...")
     
     existing_signature_filters = [
         UserContractSignature.user_id == current_user.id,
         UserContractSignature.contract_file_id == contract_file.id
     ]
     
+    logger.info(f"🔍 Filter 1: user_id == {current_user.id}")
+    logger.info(f"🔍 Filter 2: contract_file_id == {contract_file.id}")
+    
     # Для rental_id: если передан, проверяем точное совпадение, если None - проверяем что rental_id IS NULL
     if rental_uuid is not None:
         existing_signature_filters.append(UserContractSignature.rental_id == rental_uuid)
+        logger.info(f"🔍 Filter 3: rental_id == {rental_uuid}")
     else:
         existing_signature_filters.append(UserContractSignature.rental_id.is_(None))
+        logger.info("🔍 Filter 3: rental_id IS NULL")
     
     # Для guarantor_relationship_id: если передан, проверяем точное совпадение, если None - проверяем что guarantor_relationship_id IS NULL
     if guarantor_rel_uuid is not None:
         existing_signature_filters.append(UserContractSignature.guarantor_relationship_id == guarantor_rel_uuid)
+        logger.info(f"🔍 Filter 4: guarantor_relationship_id == {guarantor_rel_uuid}")
     else:
         existing_signature_filters.append(UserContractSignature.guarantor_relationship_id.is_(None))
+        logger.info("🔍 Filter 4: guarantor_relationship_id IS NULL")
     
+    logger.info("🔍 Executing query to check for existing signature...")
     existing_signature = db.query(UserContractSignature).filter(
         and_(*existing_signature_filters)
     ).first()
     
     if existing_signature:
+        logger.error("❌ FOUND EXISTING SIGNATURE!")
+        logger.error(f"❌ Existing signature ID: {existing_signature.id}")
+        logger.error(f"❌ Existing signature user_id: {existing_signature.user_id}")
+        logger.error(f"❌ Existing signature contract_file_id: {existing_signature.contract_file_id}")
+        logger.error(f"❌ Existing signature rental_id: {existing_signature.rental_id}")
+        logger.error(f"❌ Existing signature guarantor_relationship_id: {existing_signature.guarantor_relationship_id}")
+        logger.error(f"❌ Existing signature signed_at: {existing_signature.signed_at}")
+        
+        # Получаем информацию о существующей подписи для отладки
+        existing_contract_file = db.query(ContractFile).filter(
+            ContractFile.id == existing_signature.contract_file_id
+        ).first()
+        
+        if existing_contract_file:
+            logger.error(f"❌ Existing contract file type: {existing_contract_file.contract_type}")
+            logger.error(f"❌ Existing contract file is_active: {existing_contract_file.is_active}")
+        
+        detail_msg = f"Этот договор уже подписан. Подпись ID: {uuid_to_sid(existing_signature.id)}, "
+        detail_msg += f"Contract File ID: {uuid_to_sid(existing_signature.contract_file_id)}, "
+        detail_msg += f"Активен: {existing_contract_file.is_active if existing_contract_file else 'Unknown'}, "
+        detail_msg += f"Дата подписания: {existing_signature.signed_at}"
+        
+        logger.info("=" * 80)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Этот договор уже подписан"
+            detail=detail_msg
         )
+    else:
+        logger.info("✅ No existing signature found, proceeding with signing...")
 
     # Проверяем, есть ли уже подпись этого типа договора для этой аренды/гаранта
     # Но только если это НЕ договор аренды (для договоров аренды разрешаем подписание нового contract_file_id)
@@ -298,7 +361,9 @@ async def sign_contract(
             )
     
     if contract_file.contract_type in [ContractType.RENTAL_MAIN_CONTRACT, ContractType.APPENDIX_7_1, ContractType.APPENDIX_7_2]:
+        logger.info("🔍 Checking rental contract requirements...")
         if not sign_request.rental_id:
+            logger.error("❌ rental_id is required for rental contracts")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Для договоров аренды необходимо указать rental_id"
@@ -306,10 +371,17 @@ async def sign_contract(
         
         rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
         if not rental:
+            logger.error(f"❌ Rental not found: {rental_uuid}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Аренда не найдена"
             )
+        
+        logger.info(f"🔍 Rental found: {rental.id}")
+        logger.info(f"🔍 Rental status: {rental.rental_status}")
+        logger.info(f"🔍 Rental user_id: {rental.user_id}")
+        logger.info(f"🔍 Rental mechanic_inspector_id: {rental.mechanic_inspector_id}")
+        logger.info(f"🔍 Rental delivery_mechanic_id: {rental.delivery_mechanic_id}")
         
         # Для механиков разрешаем подписание договоров для аренд, где они являются инспекторами или доставщиками
         if current_user.role == UserRole.MECHANIC:
@@ -317,18 +389,26 @@ async def sign_contract(
             is_inspector = rental.mechanic_inspector_id == current_user.id
             is_delivery_mechanic = rental.delivery_mechanic_id == current_user.id
             
+            logger.info(f"🔍 Is inspector: {is_inspector}")
+            logger.info(f"🔍 Is delivery mechanic: {is_delivery_mechanic}")
+            
             if not (is_inspector or is_delivery_mechanic):
+                logger.error("❌ Mechanic is not assigned to this rental")
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Механик не назначен инспектором или доставщиком для данной аренды"
                 )
+            logger.info("✅ Mechanic is authorized to sign this contract")
         else:
             # Для обычных пользователей проверяем, что аренда принадлежит им
             if rental.user_id != current_user.id:
+                logger.error(f"❌ Rental does not belong to user. Rental user_id: {rental.user_id}, Current user: {current_user.id}")
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Аренда не принадлежит пользователю"
                 )
+            logger.info("✅ User is authorized to sign this contract")
+            logger.info("✅ User is authorized to sign this contract")
     
     if sign_request.contract_type in [ContractType.GUARANTOR_CONTRACT, ContractType.GUARANTOR_MAIN_CONTRACT]:
         if not sign_request.guarantor_relationship_id:
@@ -344,6 +424,7 @@ async def sign_contract(
                 detail="Связь гарант-клиент не найдена или не принадлежит пользователю"
             )
     
+    logger.info("🔍 Creating new signature...")
     signature = UserContractSignature(
         user_id=current_user.id,
         contract_file_id=contract_file.id,
@@ -352,9 +433,17 @@ async def sign_contract(
         digital_signature=current_user.digital_signature
     )
     
+    logger.info(f"🔍 New signature user_id: {signature.user_id}")
+    logger.info(f"🔍 New signature contract_file_id: {signature.contract_file_id}")
+    logger.info(f"🔍 New signature rental_id: {signature.rental_id}")
+    logger.info(f"🔍 New signature guarantor_relationship_id: {signature.guarantor_relationship_id}")
+    
     db.add(signature)
     db.commit()
     db.refresh(signature)
+    
+    logger.info(f"✅ Signature created successfully! Signature ID: {signature.id}")
+    logger.info("=" * 80)
     
     if sign_request.contract_type in user_field_mapping:
         field_name = user_field_mapping[sign_request.contract_type]
