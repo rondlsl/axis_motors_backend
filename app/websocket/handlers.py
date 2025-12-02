@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional
 from app.models.user_model import User, UserRole
 from app.models.car_model import Car, CarStatus, CarAutoClass
-from app.models.history_model import RentalHistory, RentalStatus, RentalType
+from app.models.history_model import RentalHistory, RentalStatus, RentalType, RentalReview
 from app.utils.short_id import uuid_to_sid
 from app.rent.utils.user_utils import get_user_available_auto_classes
 from app.admin.cars.utils import sort_car_photos
@@ -126,14 +126,12 @@ async def get_vehicles_data_for_user(user: User, db: Session) -> Dict[str, Any]:
             if active_rental and active_rental.car_id != car.id:
                 active_rental = None
             
-            # Получаем информацию о текущем арендаторе и активной аренде
             current_renter_info = None
             current_rental_info = None
             
             if car.current_renter_id:
                 current_renter = db.query(User).filter(User.id == car.current_renter_id).first()
                 if current_renter:
-                    # Ищем активную аренду для этой машины
                     active_rental_for_car = (
                         db.query(RentalHistory)
                         .filter(
@@ -215,6 +213,48 @@ async def get_vehicles_data_for_user(user: User, db: Session) -> Dict[str, Any]:
                     for photo in photos_after
                 )
             
+            last_client_review_info = None
+            photos_before_without_selfie = []
+            photos_after_without_selfie = []
+            
+            if user.role == UserRole.MECHANIC:
+                last_completed_rental = (
+                    db.query(RentalHistory)
+                    .join(User, RentalHistory.user_id == User.id)
+                    .filter(
+                        RentalHistory.car_id == car.id,
+                        RentalHistory.rental_status == RentalStatus.COMPLETED,
+                        User.role != UserRole.MECHANIC 
+                    )
+                    .order_by(RentalHistory.end_time.desc())
+                    .first()
+                )
+                
+                if last_completed_rental:
+                    client_review = (
+                        db.query(RentalReview)
+                        .filter(RentalReview.rental_id == last_completed_rental.id)
+                        .first()
+                    )
+                    
+                    if client_review:
+                        last_client_review_info = {
+                            "rating": client_review.rating,
+                            "comment": client_review.comment
+                        }
+                    
+                    if last_completed_rental.photos_before:
+                        photos_before_without_selfie = [
+                            photo for photo in last_completed_rental.photos_before
+                            if not (("/before/selfie/" in photo) or ("\\before\\selfie\\" in photo))
+                        ]
+                    
+                    if last_completed_rental.photos_after:
+                        photos_after_without_selfie = [
+                            photo for photo in last_completed_rental.photos_after
+                            if not (("/after/selfie/" in photo) or ("\\after\\selfie\\" in photo))
+                        ]
+            
             vehicles_data.append({
                 "id": uuid_to_sid(car.id),
                 "name": car.name,
@@ -251,6 +291,11 @@ async def get_vehicles_data_for_user(user: User, db: Session) -> Dict[str, Any]:
                 "photo_after_car_uploaded": photo_after_car_uploaded,
                 "photo_after_interior_uploaded": photo_after_interior_uploaded
             })
+            
+            if user.role == UserRole.MECHANIC:
+                vehicles_data[-1]["last_client_review"] = last_client_review_info
+                vehicles_data[-1]["photos_before_without_selfie"] = photos_before_without_selfie
+                vehicles_data[-1]["photos_after_without_selfie"] = photos_after_without_selfie
 
         return {
             "vehicles": vehicles_data,
