@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional
 from app.models.user_model import User, UserRole
 from app.models.car_model import Car, CarStatus, CarAutoClass
-from app.models.history_model import RentalHistory, RentalStatus
+from app.models.history_model import RentalHistory, RentalStatus, RentalType
 from app.utils.short_id import uuid_to_sid
 from app.rent.utils.user_utils import get_user_available_auto_classes
 from app.admin.cars.utils import sort_car_photos
@@ -161,13 +161,28 @@ async def get_vehicles_data_for_user(user: User, db: Session) -> Dict[str, Any]:
                     }
                     
                     if active_rental_for_car:
+                        before_rental_selfie_url = None
+                        if active_rental_for_car.photos_before:
+                            for photo in active_rental_for_car.photos_before:
+                                if ("/before/selfie/" in photo) or ("\\before\\selfie\\" in photo):
+                                    before_rental_selfie_url = photo
+                                    break
+                        
+                        rental_tariff_type = active_rental_for_car.rental_type.value if active_rental_for_car.rental_type else None
+                        
+                        rental_duration_time = None
+                        if active_rental_for_car.rental_type in [RentalType.HOURS, RentalType.DAYS] and active_rental_for_car.duration:
+                            rental_duration_time = active_rental_for_car.duration
+                        
                         current_rental_info = {
                             "rental_id": uuid_to_sid(active_rental_for_car.id),
                             "rental_status": active_rental_for_car.rental_status.value if active_rental_for_car.rental_status else None,
-                            "rental_type": active_rental_for_car.rental_type.value if active_rental_for_car.rental_type else None,
+                            "rental_type": rental_tariff_type,
                             "reservation_time": active_rental_for_car.reservation_time.isoformat() if active_rental_for_car.reservation_time else None,
                             "start_time": active_rental_for_car.start_time.isoformat() if active_rental_for_car.start_time else None,
-                            "end_time": active_rental_for_car.end_time.isoformat() if active_rental_for_car.end_time else None
+                            "end_time": active_rental_for_car.end_time.isoformat() if active_rental_for_car.end_time else None,
+                            "before_rental_selfie_url": before_rental_selfie_url,
+                            "rental_duration_time": rental_duration_time
                         }
             
             if active_rental and active_rental.photos_before:
