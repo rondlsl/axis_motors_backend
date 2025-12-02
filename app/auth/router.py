@@ -480,7 +480,7 @@ async def update_user_name(
 async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
     """
     Верификация смс-кода. Учтите, что ищем активного пользователя.
-    Если sms_code == "6666", то тестовая проверка, иначе проверяем по коду и времени.
+    Если sms_code == "1010", то тестовая проверка, иначе проверяем по коду и времени.
     """
     phone_number = request.phone_number
     sms_code = request.sms_code
@@ -489,7 +489,7 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Phone number must contain only digits.")
 
     # При проверке пользуемся активными пользователями
-    if sms_code == "6666":
+    if sms_code == "1010":
         user = db.query(User).filter(User.phone_number == phone_number, User.is_active == True).first()
     else:
         user = db.query(User).filter(

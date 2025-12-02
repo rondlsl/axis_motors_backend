@@ -52,7 +52,7 @@ async def send_custom_sms(
         raise HTTPException(status_code=400, detail="Текст сообщения не может быть пустым.")
     
     # Тестовый режим
-    if SMS_TOKEN == "6666":
+    if SMS_TOKEN == "1010":
         print(f"TEST SMS to {phone_number}: {message_text}")
         return SendSmsResponse(
             success=True,
