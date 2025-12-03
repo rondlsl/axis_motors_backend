@@ -79,9 +79,7 @@ def calc_required_balance(
     
     # open_fee (открытие дверей) - для всех типов аренды
     open_fee = get_open_price(car)
-
-    # Всегда учитываем стоимость доставки, чтобы резерв покрывал возможные расходы
-    delivery_fee = DELIVERY_EXTRA_FEE
+    delivery_fee = DELIVERY_EXTRA_FEE if include_delivery else 0
     
     # Стоимость аренды
     if rental_type == RentalType.MINUTES:
