@@ -31,6 +31,7 @@ class DeviceRegisterRequest(BaseModel):
     model: Optional[str] = None
     os_version: Optional[str] = None
     app_version: Optional[str] = None
+    app_type: Optional[str] = None
     last_lat: Optional[float] = None
     last_lng: Optional[float] = None
 
@@ -42,6 +43,7 @@ class UserDeviceResponse(BaseModel):
     model: Optional[str] = None
     os_version: Optional[str] = None
     app_version: Optional[str] = None
+    app_type: Optional[str] = None
     last_ip: Optional[str] = None
     last_lat: Optional[float] = None
     last_lng: Optional[float] = None

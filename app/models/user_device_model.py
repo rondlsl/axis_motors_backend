@@ -18,6 +18,7 @@ class UserDevice(Base):
     model = Column(String(128), nullable=True)
     os_version = Column(String(64), nullable=True)
     app_version = Column(String(32), nullable=True)
+    app_type = Column(String(32), nullable=True)
     last_ip = Column(String(64), nullable=True)
     last_lat = Column(Float, nullable=True)
     last_lng = Column(Float, nullable=True)

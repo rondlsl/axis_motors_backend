@@ -344,6 +344,7 @@ def create_user_devices_table():
         sa.Column('model', sa.String(128), nullable=True),
         sa.Column('os_version', sa.String(64), nullable=True),
         sa.Column('app_version', sa.String(32), nullable=True),
+        sa.Column('app_type', sa.String(32), nullable=True),
         sa.Column('last_ip', sa.String(64), nullable=True),
         sa.Column('last_lat', sa.Float(), nullable=True),
         sa.Column('last_lng', sa.Float(), nullable=True),
