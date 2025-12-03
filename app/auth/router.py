@@ -14,6 +14,7 @@ from app.models.contract_model import UserContractSignature, ContractFile, Contr
 from app.models.history_model import RentalHistory, RentalStatus
 from app.models.car_model import Car
 from app.rent.utils.user_utils import get_user_available_auto_classes
+from app.models.user_device_model import UserDevice
 
 from starlette import status
 import traceback
@@ -589,6 +590,35 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
     #     print(f"Ошибка при генерации FCM токена: {e}")
     #     # Продолжаем выполнение даже если не удалось сгенерировать токен
     #     db.rollback()
+
+    if request.latitude is not None and request.longitude is not None:
+        try:            
+            device = (
+                db.query(UserDevice)
+                .filter(
+                    UserDevice.user_id == user.id,
+                    UserDevice.is_active == True,
+                    UserDevice.revoked_at.is_(None)
+                )
+                .order_by(UserDevice.last_active_at.desc())
+                .first()
+            )
+            
+            if device is None:
+                device = UserDevice(
+                    user_id=user.id,
+                    is_active=True
+                )
+                db.add(device)
+            
+            device.last_lat = request.latitude
+            device.last_lng = request.longitude
+            device.last_active_at = get_local_time()
+            device.update_timestamp()
+            
+            db.commit()
+        except Exception as e:
+            logger.error(f"Ошибка при сохранении координат в user_devices: {e}")
 
     # Получаем ФИО пользователя
     full_name = f"{user.first_name or ''} {user.last_name or ''} {user.middle_name or ''}".strip()

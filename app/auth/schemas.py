@@ -75,6 +75,8 @@ class SendSmsRequest(BaseModel):
 class VerifySmsRequest(BaseModel):
     phone_number: constr(min_length=11, max_length=11)
     sms_code: constr(min_length=4, max_length=4)
+    latitude: Optional[float] = Field(None, description="Широта (необязательно)")
+    longitude: Optional[float] = Field(None, description="Долгота (необязательно)")
 
 
 class DocumentUploadRequest(BaseModel):
