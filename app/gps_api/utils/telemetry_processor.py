@@ -160,14 +160,28 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
     
     # Топливо и пробег
     fuel_level = None
-    fuel_keys = ["Заряд батареи (param67)", "Уровень топлива (param67)", "Уровень топлива (can100)", "Уровень топлива (can_fuel_volume)"]
+    fuel_keys = [
+        "Заряд батареи (param67)",
+        "Уровень топлива (param67)",
+        "Уровень топлива (param70)",
+        "Уровень топлива (can100)",
+        "Уровень топлива (can_fuel_volume)",
+    ]
     for key in fuel_keys:
         fuel_value = extract_sensor_value(regs, key)
         if fuel_value and fuel_value.lower() not in ["данных нет", "нет данных"]:
-            # Убираем " л" или "л" если есть (для param67 может быть "95 л")
             fuel_str = fuel_value.replace(" л", "").replace("л", "").strip()
             fuel_level = parse_numeric(fuel_str)
             break
+
+    # Fallback: если в RegistredSensors нет уровня топлива, пробуем взять param70 из PackageItems
+    if fuel_level is None:
+        raw_param70 = extract_first_match(pkg, ["param70"])
+        if raw_param70 and raw_param70.lower() not in ["данных нет", "нет данных"]:
+            try:
+                fuel_level = parse_numeric(raw_param70)
+            except Exception:
+                pass
     
     fuel_consumption = None
     consumption_keys = ["can_fuel_consumpt", "Расход топлива"]
