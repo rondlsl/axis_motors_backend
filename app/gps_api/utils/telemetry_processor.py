@@ -27,7 +27,7 @@ def parse_datetime(dt_str: str) -> datetime:
 
 
 def extract_sensor_value(items: List[Dict], key_name: str) -> str:
-    """Извлекает значение сенсора по name или parameterName (case-insensitive) - как в azv_motors_cars_v2"""
+    """Извлекает значение сенсора по name или parameterName (case-insensitive)"""
     for item in items:
         name = item.get("name", "").lower()
         param_name = item.get("parameterName", "").lower()
