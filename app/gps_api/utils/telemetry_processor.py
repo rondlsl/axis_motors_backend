@@ -27,9 +27,12 @@ def parse_datetime(dt_str: str) -> datetime:
 
 
 def extract_sensor_value(items: List[Dict], key_name: str) -> str:
-    """Извлекает значение сенсора по имени (регистрозависимый поиск)"""
+    """Извлекает значение сенсора по name или parameterName (case-insensitive) - как в azv_motors_cars_v2"""
     for item in items:
-        if item.get("name", "").lower() == key_name.lower():
+        name = item.get("name", "").lower()
+        param_name = item.get("parameterName", "").lower()
+        key_lower = key_name.lower()
+        if name == key_lower or param_name == key_lower:
             return item.get("value", "").strip()
     return ""
 
@@ -117,7 +120,13 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
     longitude = glonassoft_data.get("longitude", 0.0)
     
     # Основные параметры движения
-    speed = parse_numeric(extract_sensor_value(general, "Скорость"))
+    # Скорость (PackageItems) - как в azv_motors_cars_v2
+    raw_speed = extract_sensor_value(pkg, "Скорость")
+    try:
+        speed = parse_numeric(raw_speed) if raw_speed else 0.0
+    except Exception:
+        speed = 0.0
+    
     course = parse_numeric(extract_sensor_value(pkg, "Курс"))
     altitude = parse_numeric(extract_sensor_value(pkg, "Высота над уровнем моря"))
     
