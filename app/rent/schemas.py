@@ -61,3 +61,31 @@ class CancelBookingResponse(SidMixin):
     message: str
     rental_id: str
     refund_amount: Optional[int] = None
+
+
+class RentalCalculatorRequest(BaseModel):
+    """Схема запроса для калькулятора стоимости аренды"""
+    car_id: str = Field(..., description="ID автомобиля")
+    rental_type: RentalType = Field(..., description="Тип аренды: MINUTES, HOURS, DAYS")
+    duration: Optional[int] = Field(None, description="Продолжительность (обязательна для HOURS и DAYS)")
+    include_delivery: bool = Field(False, description="Включить доставку")
+
+
+class RentalCostBreakdown(BaseModel):
+    """Детализированная разбивка стоимости"""
+    base_price: int = Field(..., description="Базовая стоимость аренды")
+    open_fee: int = Field(..., description="Стоимость открытия дверей")
+    fuel_cost: int = Field(..., description="Стоимость топлива (резерв)")
+    delivery_fee: int = Field(..., description="Стоимость доставки")
+    minute_cost_reserve: int = Field(..., description="Резерв на поминутную оплату")
+
+
+class RentalCalculatorResponse(BaseModel):
+    """Схема ответа калькулятора стоимости аренды"""
+    car_id: str
+    car_name: Optional[str] = None
+    rental_type: RentalType
+    duration: Optional[int]
+    include_delivery: bool
+    breakdown: RentalCostBreakdown
+    total_minimum_balance: int = Field(..., description="Минимальный баланс для аренды")

@@ -1,6 +1,6 @@
 from math import floor, ceil
 import asyncio
-from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, status, Query
+from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, status, Query, Security
 from pydantic import BaseModel, constr, Field, conint
 from sqlalchemy.orm import Session, joinedload
 from datetime import datetime, timedelta
@@ -26,7 +26,7 @@ from app.push.utils import send_notification_to_all_mechanics_async, send_push_t
 from app.rent.exceptions import InsufficientBalanceException
 from app.wallet.utils import record_wallet_transaction
 from app.models.wallet_transaction_model import WalletTransactionType, WalletTransaction, get_local_time
-from app.rent.utils.calculate_price import calculate_total_price, get_open_price, calc_required_balance
+from app.rent.utils.calculate_price import calculate_total_price, get_open_price, calc_required_balance, calculate_rental_cost_breakdown, calculate_rental_cost_breakdown
 from app.gps_api.utils.route_data import get_gps_route_data
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.car_data import auto_lock_vehicle_after_rental, execute_gps_sequence, send_open, send_unlock_engine
@@ -42,7 +42,10 @@ from app.rent.schemas import (
     BookingResponse, 
     BookingListResponse, 
     CancelBookingRequest, 
-    CancelBookingResponse
+    CancelBookingResponse,
+    RentalCalculatorRequest,
+    RentalCalculatorResponse,
+    RentalCostBreakdown
 )
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -658,6 +661,61 @@ def apply_promo(body: ApplyPromoRequest,
         "message": "Промокод активирован",
         "code": promo.code,
         "discount_percent": float(promo.discount_percent)
+    }
+
+
+@RentRouter.post("/calculator", response_model=RentalCalculatorResponse)
+async def calculate_rental_cost(
+        request: RentalCalculatorRequest,
+        db: Session = Depends(get_db)
+):
+    """
+    Калькулятор стоимости аренды.
+    Позволяет пользователю заранее рассчитать минимальный баланс для аренды автомобиля.
+    Публичный эндпоинт, не требует авторизации.
+    Для владельцев минимальный баланс будет рассчитан как 0 при реальном резервировании.
+    """
+    car_uuid = safe_sid_to_uuid(request.car_id)
+    car = db.query(Car).filter(Car.id == car_uuid).first()
+    
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    # Для калькулятора всегда считаем как для обычного пользователя
+    # (владельцы получат минимальный баланс = 0 при реальном резервировании)
+    is_owner = False
+    
+    # Валидация duration для HOURS и DAYS
+    if request.rental_type in [RentalType.HOURS, RentalType.DAYS]:
+        if request.duration is None or request.duration <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Параметр duration обязателен для типа аренды {request.rental_type.value}"
+            )
+    
+    # Рассчитываем детализированную стоимость
+    try:
+        cost_breakdown = calculate_rental_cost_breakdown(
+            rental_type=request.rental_type,
+            duration=request.duration,
+            car=car,
+            include_delivery=request.include_delivery,
+            is_owner=is_owner
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка расчета стоимости аренды: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка расчета стоимости: {str(e)}")
+    
+    return {
+        "car_id": request.car_id,
+        "car_name": car.name,
+        "rental_type": request.rental_type,
+        "duration": request.duration,
+        "include_delivery": request.include_delivery,
+        "breakdown": RentalCostBreakdown(**cost_breakdown["breakdown"]),
+        "total_minimum_balance": cost_breakdown["total_minimum_balance"]
     }
 
 

@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Dict
 
 from fastapi import HTTPException
 
@@ -149,3 +149,99 @@ def calc_required_balance(
         
         required = base_price + one_hour_minute_cost + full_tank_cost + delivery_fee
     return int(required)
+
+
+def calculate_rental_cost_breakdown(
+        *,
+        rental_type: RentalType,
+        duration: Optional[int],
+        car: Car,
+        include_delivery: bool,
+        is_owner: bool = False,
+) -> Dict[str, any]:
+    """
+    Рассчитывает детализированную стоимость аренды для калькулятора.
+    Возвращает разбивку по компонентам стоимости.
+    """
+    if is_owner:
+        return {
+            "base_price": 0,
+            "open_fee": 0,
+            "fuel_cost": 0,
+            "delivery_fee": 0,
+            "minute_cost_reserve": 0,
+            "total_minimum_balance": 0,
+            "breakdown": {
+                "base_price": 0,
+                "open_fee": 0,
+                "fuel_cost": 0,
+                "delivery_fee": 0,
+                "minute_cost_reserve": 0
+            }
+        }
+    
+    open_fee = get_open_price(car)
+    delivery_fee = DELIVERY_EXTRA_FEE if include_delivery else 0
+    
+    if rental_type == RentalType.MINUTES:
+        base_price = 0 
+        minute_cost_reserve = car.price_per_minute * 120  
+        fuel_cost = 0
+        total_minimum_balance = int(open_fee + minute_cost_reserve + delivery_fee)
+    elif rental_type == RentalType.HOURS:
+        if duration is None:
+            raise HTTPException(status_code=400,
+                                detail="duration обязателен для почасовой аренды.")
+        base_price = car.price_per_hour * duration
+        minute_cost_reserve = car.price_per_minute * 60 
+        
+        if car.body_type == CarBodyType.ELECTRIC:
+            price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
+        else:
+            price_per_liter = FUEL_PRICE_PER_LITER
+        if car.gps_imei == "860803068146253":
+            tank_liters = 20
+        elif car.gps_imei == "860803068139548":
+            tank_liters = 50
+        else:
+            tank_liters = FULL_TANK_LITERS
+        fuel_cost = tank_liters * price_per_liter
+        
+        total_minimum_balance = int(open_fee + base_price + minute_cost_reserve + fuel_cost + delivery_fee)
+    else:  
+        if duration is None:
+            raise HTTPException(status_code=400,
+                                detail="duration обязателен для посуточной аренды.")
+        base_price = car.price_per_day * duration
+        minute_cost_reserve = car.price_per_minute * 60 
+        if car.body_type == CarBodyType.ELECTRIC:
+            price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
+        else:
+            price_per_liter = FUEL_PRICE_PER_LITER
+        if car.gps_imei == "860803068146253":
+            tank_liters = 20
+        elif car.gps_imei == "860803068139548":
+            tank_liters = 50
+        else:
+            tank_liters = FULL_TANK_LITERS
+        fuel_cost = tank_liters * price_per_liter
+        
+        total_minimum_balance = int(base_price + minute_cost_reserve + fuel_cost + delivery_fee)
+    
+    breakdown_open_fee = int(open_fee) if rental_type != RentalType.DAYS else 0
+    
+    return {
+        "base_price": int(base_price),
+        "open_fee": int(open_fee), 
+        "fuel_cost": int(fuel_cost),
+        "delivery_fee": int(delivery_fee),
+        "minute_cost_reserve": int(minute_cost_reserve),
+        "total_minimum_balance": total_minimum_balance,
+        "breakdown": {
+            "base_price": int(base_price),
+            "open_fee": breakdown_open_fee,  
+            "fuel_cost": int(fuel_cost),
+            "delivery_fee": int(delivery_fee),
+            "minute_cost_reserve": int(minute_cost_reserve)
+        }
+    }
