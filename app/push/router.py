@@ -890,8 +890,41 @@ async def notify_unverified_email_users(
         print(f"   Заголовок: {title}")
         print(f"   Текст: {body}")
         
-        tasks = []
+        users_with_tokens = []
+        users_without_tokens = []
         for user in users_to_notify:
+            has_token = False
+            devices = db.query(UserDevice).filter(
+                UserDevice.user_id == user.id,
+                UserDevice.is_active == True,
+                UserDevice.fcm_token.isnot(None),
+                UserDevice.revoked_at.is_(None)
+            ).count()
+            if devices > 0:
+                has_token = True
+            elif user.fcm_token:
+                has_token = True
+            
+            if has_token:
+                users_with_tokens.append(user)
+            else:
+                users_without_tokens.append(user)
+        
+        print(f"   Пользователей с токенами: {len(users_with_tokens)}")
+        print(f"   Пользователей без токенов: {len(users_without_tokens)}")
+        
+        if not users_with_tokens:
+            return {
+                "success": 0,
+                "failed": 0,
+                "total_users": total_users,
+                "users_with_tokens": 0,
+                "users_without_tokens": len(users_without_tokens),
+                "message": "No users with FCM tokens found"
+            }
+        
+        tasks = []
+        for user in users_with_tokens:
             task = send_push_to_user_by_id(
                 db,
                 user.id,
@@ -903,19 +936,50 @@ async def notify_unverified_email_users(
         
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        success_count = sum(1 for r in results if r is True)
-        failed_count = total_users - success_count
+        # Детальный анализ результатов
+        success_count = 0
+        failed_count = 0
+        exception_count = 0
+        failed_details = []
         
-        print(f"✅ [NOTIFY_UNVERIFIED_EMAIL] Успешно: {success_count}, Ошибок: {failed_count}")
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                exception_count += 1
+                failed_details.append({
+                    "user_id": str(users_with_tokens[i].id),
+                    "phone": users_with_tokens[i].phone_number,
+                    "error": str(result),
+                    "error_type": type(result).__name__
+                })
+                print(f"❌ [NOTIFY_UNVERIFIED_EMAIL] Ошибка для пользователя {users_with_tokens[i].phone_number}: {type(result).__name__}: {result}")
+            elif result is True:
+                success_count += 1
+            else:
+                failed_count += 1
+                failed_details.append({
+                    "user_id": str(users_with_tokens[i].id),
+                    "phone": users_with_tokens[i].phone_number,
+                    "reason": "Push notification failed (no token or send failed)"
+                })
         
-        return {
+        print(f"✅ [NOTIFY_UNVERIFIED_EMAIL] Успешно: {success_count}, Неудачно: {failed_count}, Исключений: {exception_count}")
+        
+        response = {
             "success": success_count,
-            "failed": failed_count,
+            "failed": failed_count + exception_count,
             "total_users": total_users,
+            "users_with_tokens": len(users_with_tokens),
+            "users_without_tokens": len(users_without_tokens),
+            "exceptions": exception_count,
             "title": title,
             "body": body,
-            "message": f"Notification sent to {success_count} users, {failed_count} failed"
+            "message": f"Notification sent to {success_count} users, {failed_count + exception_count} failed"
         }
+        
+        if failed_details:
+            response["failed_details"] = failed_details[:10]  
+        
+        return response
         
     except Exception as e:
         db.rollback()
