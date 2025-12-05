@@ -33,6 +33,39 @@ logger = logging.getLogger(__name__)
 MechanicRouter = APIRouter(tags=["Mechanic"], prefix="/mechanic")
 
 
+def _should_hide_car_from_mechanic(car: Car, current_mechanic_id: Any, db: Session) -> bool:
+    """
+    Проверяет, нужно ли скрыть машину от механика.
+    Скрываем машины:
+    1. На осмотре у других механиков (статус SERVICE с mechanic_inspector_id != current_mechanic_id)
+    2. В доставке у других механиков (статус DELIVERING с delivery_mechanic_id != current_mechanic_id)
+    """
+    if car.status == CarStatus.SERVICE:
+        inspection_rental = db.query(RentalHistory).filter(
+            RentalHistory.car_id == car.id,
+            RentalHistory.mechanic_inspector_id != current_mechanic_id,
+            RentalHistory.mechanic_inspector_id.isnot(None),
+            RentalHistory.mechanic_inspection_status.in_(["PENDING", "IN_USE", "SERVICE"])
+        ).first()
+        if inspection_rental:
+            return True
+    
+    active_delivery = db.query(RentalHistory).filter(
+        RentalHistory.car_id == car.id,
+        RentalHistory.delivery_mechanic_id != current_mechanic_id,
+        RentalHistory.delivery_mechanic_id.isnot(None),
+        RentalHistory.rental_status.in_([
+            RentalStatus.DELIVERING,
+            RentalStatus.DELIVERING_IN_PROGRESS,
+            RentalStatus.DELIVERY_RESERVED
+        ])
+    ).first()
+    if active_delivery:
+        return True
+    
+    return False
+
+
 @MechanicRouter.get(
     "/all_vehicles",
     summary="Список всех автомобилей со всеми статусами (без схем)"
@@ -47,6 +80,8 @@ def get_all_vehicles_plain(
         vehicles_data: List[Dict[str, Any]] = []
 
         for car in cars:
+            if _should_hide_car_from_mechanic(car, current_mechanic.id, db):
+                continue
             # Проверяем статус загрузки фотографий для текущего механика
             photo_before_selfie_uploaded = False
             photo_before_car_uploaded = False
@@ -313,6 +348,8 @@ def get_pending_vehicles(
         vehicles_data = []
         
         for car in cars:
+            if _should_hide_car_from_mechanic(car, current_mechanic.id, db):
+                continue
             # Находим последнюю завершенную аренду этого автомобиля
             last_rental = (
                 db.query(RentalHistory)
@@ -413,6 +450,9 @@ def get_in_use_vehicles(
         vehicles_data: list[dict[str, Any]] = []
 
         for car in cars:
+            # Пропускаем машины, которые находятся в доставке у других механиков
+            if _should_hide_car_from_mechanic(car, current_mechanic.id, db):
+                continue
             car_data = {
                 "id": uuid_to_sid(car.id),
                 "name": car.name,
@@ -602,6 +642,9 @@ def search_vehicles(
 
         vehicles_data = []
         for car in cars:
+            if _should_hide_car_from_mechanic(car, current_mechanic.id, db):
+                continue
+            
             car_data = {
                 "id": uuid_to_sid(car.id),
                 "name": car.name,
