@@ -50,3 +50,4 @@ class NotificationStatus(str, Enum):
     AIRPORT_LOCATION = "airport_location"  # Локация аэропорта
     CAR_VIEWED_EXIT = "car_viewed_exit"  # Пользователь смотрел авто и вышел
     DOCUMENTS_UPLOADED = "documents_uploaded"  # Документы загружены
+    EMAIL_VERIFICATION_REQUIRED = "email_verification_required"  # Требуется подтверждение почты

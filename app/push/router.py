@@ -5,6 +5,7 @@ import sys
 from fastapi import APIRouter, Depends, status, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 
 from app.translations.notifications import get_notification_text
 from app.models.notification_model import Notification
@@ -19,7 +20,7 @@ from app.push.schemas import (
     DeviceRegisterRequest,
     UserDeviceResponse,
 )
-from app.push.utils import send_push_notification_async, send_localized_notification_to_user
+from app.push.utils import send_push_notification_async, send_localized_notification_to_user, send_push_to_user_by_id
 from app.push.enums import NotificationStatus
 from app.utils.telegram_logger import log_error_to_telegram
 from app.utils.time_utils import get_local_time
@@ -832,4 +833,105 @@ async def broadcast_localized_notification(
         raise HTTPException(
             status_code=500,
             detail=f"Ошибка при массовой рассылке локализованных уведомлений: {str(e)}"
+        )
+
+
+@router.post("/notify-unverified-email-users", status_code=status.HTTP_200_OK)
+async def notify_unverified_email_users(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Отправляет push-уведомление пользователям, которые загрузили документы, но не подтвердили почту.
+    Доступно только администраторам.
+    
+    Текст уведомления:
+    Заголовок: "Заявка в обработке"
+    Текст: "Чтобы открыть доступ к автомобилям, необходимо подтвердить вашу почту."
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=403,
+            detail="Only administrators can send notifications to unverified email users"
+        )
+    
+    try:
+        users_to_notify = (
+            db.query(User)
+            .filter(
+                User.is_verified_email == False,
+                User.email.isnot(None),
+                User.is_active == True,
+                or_(
+                    User.upload_document_at.isnot(None),
+                    User.id_card_front_url.isnot(None),
+                    User.id_card_back_url.isnot(None),
+                    User.drivers_license_url.isnot(None),
+                    User.selfie_with_license_url.isnot(None),
+                    User.selfie_url.isnot(None)
+                )
+            )
+            .all()
+        )
+        
+        if not users_to_notify:
+            return {
+                "success": 0,
+                "failed": 0,
+                "total_users": 0,
+                "message": "No users found with uploaded documents but unverified email"
+            }
+        
+        total_users = len(users_to_notify)
+        title = "Заявка в обработке"
+        body = "Чтобы открыть доступ к автомобилям, необходимо подтвердить вашу почту."
+        
+        print(f"📢 [NOTIFY_UNVERIFIED_EMAIL] Отправка уведомления {total_users} пользователям")
+        print(f"   Заголовок: {title}")
+        print(f"   Текст: {body}")
+        
+        tasks = []
+        for user in users_to_notify:
+            task = send_push_to_user_by_id(
+                db,
+                user.id,
+                title,
+                body,
+                status=NotificationStatus.EMAIL_VERIFICATION_REQUIRED.value
+            )
+            tasks.append(task)
+        
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        success_count = sum(1 for r in results if r is True)
+        failed_count = total_users - success_count
+        
+        print(f"✅ [NOTIFY_UNVERIFIED_EMAIL] Успешно: {success_count}, Ошибок: {failed_count}")
+        
+        return {
+            "success": success_count,
+            "failed": failed_count,
+            "total_users": total_users,
+            "title": title,
+            "body": body,
+            "message": f"Notification sent to {success_count} users, {failed_count} failed"
+        }
+        
+    except Exception as e:
+        db.rollback()
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "notify_unverified_email_users",
+                    "admin_id": str(current_user.id)
+                }
+            )
+        except:
+            pass
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка при отправке уведомлений пользователям с неподтвержденной почтой: {str(e)}"
         )
