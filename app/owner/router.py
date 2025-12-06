@@ -123,7 +123,7 @@ def calculate_owner_earnings(rental: RentalHistory, car: Car, current_user: User
     # - open_fee - сервис открытия дверей платформы  
     # - distance_fee (fuel_fee) - расходы на топливо клиента
     
-    owner_earnings = int(base_earnings * 0.5)
+    owner_earnings = int(base_earnings * 0.5 * 0.97)
     
     # Отнимаем стоимость доставки, если владелец сам вызвал доставку
     delivery_cost = calculate_delivery_cost(rental, car, current_user)
