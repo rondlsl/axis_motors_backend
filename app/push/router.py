@@ -95,6 +95,21 @@ async def save_fcm_token(
         for other_device in other_devices_with_token:
             print(f"🗑️ [SAVE_TOKEN] Deleting device {other_device.id} from user {other_device.user_id} (token moved to new device)")
             db.delete(other_device)
+        
+        # Удаляем устройства других пользователей с этим device_id
+        # (когда пользователь переключается между аккаунтами на одном устройстве)
+        if device_id:
+            other_devices_with_device_id = (
+                db.query(UserDevice)
+                .filter(
+                    UserDevice.device_id == device_id,
+                    UserDevice.user_id != current_user.id
+                )
+                .all()
+            )
+            for other_device in other_devices_with_device_id:
+                print(f"🗑️ [SAVE_TOKEN] Deleting device {other_device.id} from user {other_device.user_id} (device_id moved to new user)")
+                db.delete(other_device)
 
         # Сохраняем в таблицу users
         current_user.fcm_token = token
