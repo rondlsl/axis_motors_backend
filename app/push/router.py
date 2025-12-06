@@ -82,7 +82,8 @@ async def save_fcm_token(
             user.fcm_token = None
             db.add(user)
         
-        # Проверяем устройства других пользователей с этим токеном
+        # Удаляем устройства других пользователей с этим токеном
+        # (токен может принадлежать только одному пользователю/устройству)
         other_devices_with_token = (
             db.query(UserDevice)
             .filter(
@@ -92,11 +93,8 @@ async def save_fcm_token(
             .all()
         )
         for other_device in other_devices_with_token:
-            other_device.fcm_token = None
-            other_device.is_active = False
-            other_device.revoked_at = get_local_time()
-            other_device.update_timestamp()
-            db.add(other_device)
+            print(f"🗑️ [SAVE_TOKEN] Deleting device {other_device.id} from user {other_device.user_id} (token moved to new device)")
+            db.delete(other_device)
 
         # Сохраняем в таблицу users
         current_user.fcm_token = token
