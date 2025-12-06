@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 import pyotp
 from datetime import datetime, timedelta
 import httpx
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 import smtplib
 from email.mime.text import MIMEText
@@ -64,16 +64,24 @@ def generate_email_verification_code() -> str:
 
 class VerifyEmailRequest(BaseModel):
     code: str
+    email: Optional[str] = Field(None, description="Email для верификации (опционально). Если не указан, используется email из токена.")
 
 
 @Auth_router.post("/verify_email/")
 async def verify_email(request: VerifyEmailRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Проверка кода подтверждения email."""
-    if not current_user.email:
-        raise HTTPException(status_code=400, detail="У пользователя не указан email")
+    email_to_verify = None
+    if request.email:
+        email_to_verify = request.email.strip().lower()
+    elif current_user.email:
+        email_to_verify = current_user.email.strip().lower()
+    
+    if not email_to_verify:
+        raise HTTPException(status_code=400, detail="Email не указан. Укажите email в запросе или убедитесь, что он сохранен в профиле.")
+    
     # Ищем неиспользованный и неистекший код
     vc = db.query(VerificationCode).filter(
-        VerificationCode.email == current_user.email,
+        VerificationCode.email == email_to_verify,
         VerificationCode.code == request.code,
         VerificationCode.purpose == "email_verification",
         VerificationCode.is_used == False,
@@ -85,6 +93,9 @@ async def verify_email(request: VerifyEmailRequest, current_user: User = Depends
 
     # Отмечаем код использованным и подтверждаем email
     vc.is_used = True
+    # Если email был передан в запросе и отличается от текущего, обновляем email пользователя
+    if request.email and email_to_verify != (current_user.email or "").strip().lower():
+        current_user.email = email_to_verify
     current_user.is_verified_email = True
     db.commit()
     db.refresh(current_user)
