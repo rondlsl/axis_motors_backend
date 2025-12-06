@@ -15,6 +15,7 @@ from app.models.history_model import RentalHistory, RentalStatus
 from app.models.car_model import Car
 from app.rent.utils.user_utils import get_user_available_auto_classes
 from app.models.user_device_model import UserDevice
+from app.core.config import logger
 
 from starlette import status
 import traceback
@@ -214,7 +215,8 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
     
     Для существующих или восстановленных пользователей:
     {
-        "phone_number": "77771234567"
+        "phone_number": "77771234567",
+        "email": "user@example.com"  
     }
     
     Для новых пользователей:
@@ -222,8 +224,11 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
         "phone_number": "77771234567",
         "first_name": "Иван",
         "last_name": "Иванов",
-        "middle_name": "Петрович"  // опционально
+        "middle_name": "Петрович",  // опционально
+        "email": "user@example.com"  
     }
+    
+    Если указан email, код подтверждения будет отправлен на email в дополнение к SMS.
     """
     totp = pyotp.TOTP(
         pyotp.random_base32(),
@@ -387,6 +392,81 @@ ID клиента: {user.id}
         except:
             pass
 
+    if request.email:
+        email = request.email.strip().lower()
+        
+        existing_user_with_email = db.query(User).filter(
+            User.email == email,
+            User.id != user.id,
+            User.is_active == True
+        ).first()
+        
+        if existing_user_with_email:
+            raise HTTPException(
+                status_code=400,
+                detail="Этот email уже используется другим пользователем"
+            )
+        
+        email_code = generate_email_verification_code()
+        
+        email_verification_record = VerificationCode(
+            phone_number=None,
+            email=email,
+            code=email_code,
+            purpose="email_verification",
+            is_used=False,
+            expires_at=get_local_time() + timedelta(minutes=15),
+        )
+        db.add(email_verification_record)
+        
+        if not user.email or user.email.lower() != email:
+            user.email = email
+            user.is_verified_email = False  
+        
+        try:
+            smtp_host = os.getenv("SMTP_HOST")
+            smtp_port = int(os.getenv("SMTP_PORT", "587"))
+            smtp_user = os.getenv("SMTP_USER")
+            smtp_pass = os.getenv("SMTP_PASSWORD")
+            smtp_from = os.getenv("SMTP_FROM", smtp_user or "no-reply@example.com")
+            
+            if smtp_host and smtp_user and smtp_pass:
+                msg = MIMEText(f"Ваш код подтверждения: {email_code}")
+                msg["Subject"] = "AZV Motors"
+                msg["From"] = smtp_from
+                msg["To"] = email
+                with smtplib.SMTP(smtp_host, smtp_port) as server:
+                    server.starttls()
+                    server.login(smtp_user, smtp_pass)
+                    server.send_message(msg)
+            else:
+                try:
+                    logger.warning(f"SMTP not configured; verification code for {email}: {email_code}")
+                except Exception:
+                    pass
+        except Exception as e:
+            try:
+                await log_error_to_telegram(
+                    error=e,
+                    request=None,
+                    user=user,
+                    additional_context={
+                        "action": "send_email_code_in_send_sms",
+                        "email": email,
+                        "user_id": str(user.id),
+                        "phone_number": phone_number
+                    }
+                )
+            except:
+                pass
+        try:
+            from app.core.config import logger
+            logger.warning(f"Email verification code for {email}: {email_code}")
+        except Exception:
+            pass
+        
+        db.commit()
+    
     # Возвращаем fcm_token из базы данных
     fcm_token = user.fcm_token if user.fcm_token else None
     return SendSmsResponse(
@@ -847,7 +927,7 @@ async def refresh_token(db: Session = Depends(get_db), token: str = Depends(JWTB
 - passport_number: Номер паспорта (можно указать вместо ИИН)
 - id_card_expiry: Дата истечения ID карты в формате YYYY-MM-DD (будущая дата). Пример: "2030-12-31"
 - drivers_license_expiry: Дата истечения прав в формате YYYY-MM-DD (будущая дата). Пример: "2029-08-20"
-- email: Электронная почта
+- email: Электронная почта (необязательно)
 - is_citizen_kz: Гражданин Республики Казахстан (true/false). Если true, то справки обязательны
 
 После успешной загрузки статус пользователя изменится на PENDING (ожидает проверки).
@@ -874,7 +954,7 @@ async def upload_documents(
         passport_number: Optional[str] = Form(None),
         id_card_expiry: str = Form(...),
         drivers_license_expiry: str = Form(...),
-        email: str = Form(...),
+        email: Optional[str] = Form(None),
         is_citizen_kz: bool = Form(False),
 
         current_user: User = Depends(get_current_user),
@@ -1067,7 +1147,8 @@ async def upload_documents(
         current_user.last_name = document_data.last_name
         current_user.middle_name = normalized_middle_name
         current_user.birth_date = datetime.strptime(document_data.birth_date, '%Y-%m-%d')
-        current_user.email = normalized_email or None
+        if normalized_email:
+            current_user.email = normalized_email
         current_user.is_citizen_kz = document_data.is_citizen_kz
         # Сохраняем ИИН или паспорт
         current_user.iin = document_data.iin
@@ -1126,27 +1207,29 @@ async def upload_documents(
             current_user.role = UserRole.PENDINGTOFIRST
         current_user.documents_verified = True
 
-        # Логика для email верификации:
+        # Логика для email верификации (только если email был передан):
         # Если пользователь повторно загружает документы (был отклонен), но email уже подтвержден - сбрасываем верификацию
         # Если email изменился - тоже сбрасываем верификацию
         # Если email новый и еще не подтвержден - оставляем как есть
+        # Если email НЕ передан - не трогаем существующий email и его верификацию
 
-        # Приводим normalized_email к None, если это пустая строка для корректного сравнения
-        normalized_email_for_comparison = normalized_email if normalized_email else None
-        
-        if existing_application and existing_application.financier_status == ApplicationStatus.REJECTED:
-            # Пользователь повторно загружает документы после отказа
-            if current_user.is_verified_email:
-                # Email был подтвержден, но нужна повторная верификация
+        if normalized_email:
+            # Приводим normalized_email к None, если это пустая строка для корректного сравнения
+            normalized_email_for_comparison = normalized_email if normalized_email else None
+            
+            if existing_application and existing_application.financier_status == ApplicationStatus.REJECTED:
+                # Пользователь повторно загружает документы после отказа
+                if current_user.is_verified_email:
+                    # Email был подтвержден, но нужна повторная верификация
+                    current_user.is_verified_email = False
+                    email_needs_verification = True
+            elif old_email != normalized_email_for_comparison:
+                # Пользователь изменил email - нужна верификация нового email
                 current_user.is_verified_email = False
                 email_needs_verification = True
-        elif old_email != normalized_email_for_comparison:
-            # Пользователь изменил email - нужна верификация нового email
-            current_user.is_verified_email = False
-            email_needs_verification = True
-        elif not current_user.is_verified_email and normalized_email_for_comparison:
-            # Email еще не был подтвержден (только если email указан)
-            email_needs_verification = True
+            elif not current_user.is_verified_email and normalized_email_for_comparison:
+                # Email еще не был подтвержден (только если email указан)
+                email_needs_verification = True
 
         # Обновляем имя в заявках гаранта, где этот пользователь является гарантом
         try:

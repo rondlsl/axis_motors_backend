@@ -70,6 +70,20 @@ class SendSmsRequest(BaseModel):
         max_length=50,
         description="Отчество пользователя (необязательно). Пример: 'Иванович'"
     )
+    email: Optional[str] = Field(
+        None,
+        description="Email адрес (необязательно). Если указан, код подтверждения будет отправлен на email"
+    )
+    
+    @validator('email', pre=True)
+    def validate_email(cls, v):
+        if v is None or (isinstance(v, str) and v.strip() == ""):
+            return None
+        import re
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_pattern, v):
+            raise ValueError('Некорректный формат email адреса')
+        return v.strip().lower()
 
 
 class VerifySmsRequest(BaseModel):
