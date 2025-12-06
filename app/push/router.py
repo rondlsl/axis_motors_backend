@@ -105,52 +105,40 @@ async def save_fcm_token(
         # Сохраняем/обновляем в таблицу user_devices
         device = None
         
-        if device_id:
-            device = db.query(UserDevice).filter(UserDevice.device_id == device_id).first()
-            
-            duplicates = (
+        # Сначала ищем устройство текущего пользователя с данным fcm_token
+        device = (
+            db.query(UserDevice)
+            .filter(
+                UserDevice.user_id == current_user.id,
+                UserDevice.fcm_token == token
+            )
+            .first()
+        )
+        
+        # Если не найдено по токену, ищем по device_id (если он передан)
+        if device is None and device_id:
+            device = (
                 db.query(UserDevice)
                 .filter(
-                    UserDevice.fcm_token == token,
-                    UserDevice.device_id != device_id,
-                    UserDevice.device_id.isnot(None)
+                    UserDevice.user_id == current_user.id,
+                    UserDevice.device_id == device_id
                 )
-                .all()
+                .first()
             )
-            for dup in duplicates:
-                dup.fcm_token = None
-                dup.is_active = False
-                dup.revoked_at = get_local_time()
-                dup.update_timestamp()
-                db.add(dup)
-        else:
-            device = db.query(UserDevice).filter(UserDevice.fcm_token == token).first()
-            
-            if device and device.device_id:
-                duplicates = (
-                    db.query(UserDevice)
-                    .filter(
-                        UserDevice.fcm_token == token,
-                        UserDevice.device_id.isnot(None)
-                    )
-                    .all()
-                )
-                for dup in duplicates:
-                    if dup.id != device.id:
-                        dup.fcm_token = None
-                        dup.is_active = False
-                        dup.revoked_at = get_local_time()
-                        dup.update_timestamp()
-                        db.add(dup)
-
+        
+        # Если устройство не найдено, создаем новое
         if device is None:
-            device = UserDevice(device_id=device_id, user_id=current_user.id)
+            device = UserDevice(
+                device_id=device_id,
+                user_id=current_user.id,
+                fcm_token=token
+            )
         else:
+            # Обновляем существующее устройство
             device.user_id = current_user.id
+            device.fcm_token = token
             if device_id and not device.device_id:
                 device.device_id = device_id
-
-        device.fcm_token = token
         if payload.platform is not None:
             device.platform = payload.platform
         if payload.model is not None:
