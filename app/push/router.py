@@ -36,6 +36,7 @@ class TokenRequest(BaseModel):
     os_version: Optional[str] = None
     app_version: Optional[str] = None
     app_type: Optional[str] = None
+    last_ip: Optional[str] = None
     last_lat: Optional[float] = None
     last_lng: Optional[float] = None
 
@@ -165,7 +166,8 @@ async def save_fcm_token(
             device.app_version = payload.app_version
         if payload.app_type is not None:
             device.app_type = payload.app_type
-        device.last_ip = _get_client_ip(request)
+        # Используем IP из payload, если передан, иначе определяем автоматически
+        device.last_ip = payload.last_ip if payload.last_ip else _get_client_ip(request)
         if payload.last_lat is not None:
             device.last_lat = payload.last_lat
         if payload.last_lng is not None:
@@ -304,7 +306,8 @@ async def register_device(
         device.os_version = payload.os_version
         device.app_version = payload.app_version
         device.app_type = payload.app_type
-        device.last_ip = _get_client_ip(request)
+        # Используем IP из payload, если передан, иначе определяем автоматически
+        device.last_ip = payload.last_ip if payload.last_ip else _get_client_ip(request)
         device.last_lat = payload.last_lat
         device.last_lng = payload.last_lng
         device.last_active_at = get_local_time()
