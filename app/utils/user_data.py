@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from datetime import datetime
 from typing import Dict, Any
 from fastapi import HTTPException
@@ -484,28 +485,75 @@ async def get_user_me_data(db: Session, current_user: User) -> Dict[str, Any]:
                 ContractFile.contract_type == ContractType.MAIN_CONTRACT
             ).first() is not None
 
+            # Для механиков и обычных пользователей проверяем подписи договоров аренды
+            # Только для активной аренды/осмотра/доставки
             if current_rental:
                 rental_id = current_rental["rental_details"].get("rental_id") if "rental_details" in current_rental else None
                 if rental_id:
-                    rental_uuid = safe_sid_to_uuid(rental_id)
-
-                    rental_main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
-                        UserContractSignature.user_id == current_user.id,
-                        UserContractSignature.rental_id == rental_uuid,
-                        ContractFile.contract_type == ContractType.RENTAL_MAIN_CONTRACT
-                    ).first() is not None
-                    
-                    appendix_7_1_signed = db.query(UserContractSignature).join(ContractFile).filter(
-                        UserContractSignature.user_id == current_user.id,
-                        UserContractSignature.rental_id == rental_uuid,
-                        ContractFile.contract_type == ContractType.APPENDIX_7_1
-                    ).first() is not None
-                    
-                    appendix_7_2_signed = db.query(UserContractSignature).join(ContractFile).filter(
-                        UserContractSignature.user_id == current_user.id,
-                        UserContractSignature.rental_id == rental_uuid,
-                        ContractFile.contract_type == ContractType.APPENDIX_7_2
-                    ).first() is not None
+                    try:
+                        rental_uuid = safe_sid_to_uuid(rental_id)
+                        
+                        # Для механиков важно проверять подписи именно для текущей активной аренды
+                        # Проверяем, что rental_uuid действительно существует и связан с пользователем
+                        if current_user.role == UserRole.MECHANIC:
+                            # Для механиков проверяем, что эта аренда связана с их осмотром или доставкой
+                            rental_exists = db.query(RentalHistory).filter(
+                                RentalHistory.id == rental_uuid,
+                                or_(
+                                    RentalHistory.mechanic_inspector_id == current_user.id,
+                                    RentalHistory.delivery_mechanic_id == current_user.id
+                                )
+                            ).first() is not None
+                            
+                            if not rental_exists:
+                                # Если аренда не связана с механиком, сбрасываем флаги
+                                rental_main_contract_signed = False
+                                appendix_7_1_signed = False
+                                appendix_7_2_signed = False
+                            else:
+                                # Проверяем подписи только для этой конкретной аренды
+                                rental_main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                                    UserContractSignature.user_id == current_user.id,
+                                    UserContractSignature.rental_id == rental_uuid,
+                                    ContractFile.contract_type == ContractType.RENTAL_MAIN_CONTRACT
+                                ).first() is not None
+                                
+                                appendix_7_1_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                                    UserContractSignature.user_id == current_user.id,
+                                    UserContractSignature.rental_id == rental_uuid,
+                                    ContractFile.contract_type == ContractType.APPENDIX_7_1
+                                ).first() is not None
+                                
+                                appendix_7_2_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                                    UserContractSignature.user_id == current_user.id,
+                                    UserContractSignature.rental_id == rental_uuid,
+                                    ContractFile.contract_type == ContractType.APPENDIX_7_2
+                                ).first() is not None
+                        else:
+                            # Для обычных пользователей проверяем подписи
+                            rental_main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                                UserContractSignature.user_id == current_user.id,
+                                UserContractSignature.rental_id == rental_uuid,
+                                ContractFile.contract_type == ContractType.RENTAL_MAIN_CONTRACT
+                            ).first() is not None
+                            
+                            appendix_7_1_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                                UserContractSignature.user_id == current_user.id,
+                                UserContractSignature.rental_id == rental_uuid,
+                                ContractFile.contract_type == ContractType.APPENDIX_7_1
+                            ).first() is not None
+                            
+                            appendix_7_2_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                                UserContractSignature.user_id == current_user.id,
+                                UserContractSignature.rental_id == rental_uuid,
+                                ContractFile.contract_type == ContractType.APPENDIX_7_2
+                            ).first() is not None
+                    except Exception as e:
+                        logger.error(f"Error checking contract signatures for rental_id {rental_id}: {e}")
+                        # В случае ошибки сбрасываем флаги
+                        rental_main_contract_signed = False
+                        appendix_7_1_signed = False
+                        appendix_7_2_signed = False
 
         response_data = {
             "id": uuid_to_sid(current_user.id),
