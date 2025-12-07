@@ -55,6 +55,7 @@ from app.support.router import router as SupportRouter
 from app.support import setup_support_system
 from app.monitoring.router import router as MonitoringRouter
 from app.websocket.router import websocket_router
+from app.app_versions.router import router as AppVersionsRouter
 
 # === APP ===
 app = FastAPI(
@@ -441,6 +442,7 @@ app.include_router(HTMLContractsRouter)
 app.include_router(SupportRouter)
 app.include_router(MonitoringRouter)
 app.include_router(websocket_router)
+app.include_router(AppVersionsRouter)
 
 @app.get("/")
 async def root(db: Session = Depends(get_db)):

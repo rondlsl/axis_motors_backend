@@ -43,6 +43,7 @@ def upgrade() -> None:
     create_wallet_transactions_table()
     create_support_chats_table()
     create_support_messages_table()
+    create_app_versions_table()
 
 
 def create_enums():
@@ -707,6 +708,19 @@ def create_support_messages_table():
     op.create_index('ix_support_messages_sender_type', 'support_messages', ['sender_type'])
 
 
+def create_app_versions_table():
+    """Create app_versions table for storing app version information"""
+    op.create_table('app_versions',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
+        sa.Column('android_version', sa.String(64), nullable=True),
+        sa.Column('ios_version', sa.String(64), nullable=True),
+        sa.Column('ios_link', sa.String(512), nullable=True),
+        sa.Column('android_link', sa.String(512), nullable=True),
+        sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.func.now())
+    )
+
+
 def downgrade() -> None:
     # Drop all tables in reverse order
     # Drop indexes first (with existence check)
@@ -752,6 +766,7 @@ def downgrade() -> None:
     """)
     # Drop tokens table early due to FK to users
     op.drop_table('auth_tokens')
+    op.drop_table('app_versions')
     op.drop_table('support_messages')
     op.drop_table('support_chats')
     op.drop_table('wallet_transactions')
