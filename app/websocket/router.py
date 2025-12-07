@@ -277,8 +277,6 @@ async def websocket_vehicles_list(
             "timestamp": get_local_time().isoformat()
         })
         
-        last_data_hash = None
-        
         async def receive_messages():
             while True:
                 try:
@@ -303,17 +301,13 @@ async def websocket_vehicles_list(
                     db.refresh(user)
                     
                     vehicles_data = await get_vehicles_data_for_user(user, db)
-                    current_data_hash = hash(json.dumps(vehicles_data, sort_keys=True, default=str))
+                    await websocket.send_json({
+                        "type": "vehicles_list",
+                        "data": vehicles_data,
+                        "timestamp": get_local_time().isoformat()
+                    })
                     
-                    if current_data_hash != last_data_hash:
-                        await websocket.send_json({
-                            "type": "vehicles_list",
-                            "data": vehicles_data,
-                            "timestamp": get_local_time().isoformat()
-                        })
-                        last_data_hash = current_data_hash
-                    
-                    await asyncio.sleep(10)
+                    await asyncio.sleep(1)
                     
                 except WebSocketDisconnect:
                     break
@@ -324,7 +318,7 @@ async def websocket_vehicles_list(
                         "message": "Error fetching vehicles data",
                         "timestamp": get_local_time().isoformat()
                     })
-                    await asyncio.sleep(10)
+                    await asyncio.sleep(1)
         finally:
             receive_task.cancel()
             try:
