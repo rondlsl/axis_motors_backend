@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from datetime import datetime
 from typing import Dict, Any
 from fastapi import HTTPException
@@ -484,29 +485,44 @@ async def get_user_me_data(db: Session, current_user: User) -> Dict[str, Any]:
                 ContractFile.contract_type == ContractType.MAIN_CONTRACT
             ).first() is not None
 
-            # Для механиков и обычных пользователей проверяем договоры только для активной аренды
             if current_rental:
                 rental_id = current_rental["rental_details"].get("rental_id") if "rental_details" in current_rental else None
                 if rental_id:
                     rental_uuid = safe_sid_to_uuid(rental_id)
-                    
-                    # Для механиков дополнительно проверяем, что это действительно их аренда
-                    # (где они инспектор или доставщик)
+
+                    # Для механиков проверяем подписи договоров только если механик действительно делает осмотр/доставку
+                    # и договоры должны быть подписаны механиком для этого rental_id
                     if current_user.role == UserRole.MECHANIC:
+                        # Для механика проверяем, что он действительно является inspector или delivery_mechanic для этого rental
                         rental_check = db.query(RentalHistory).filter(
                             RentalHistory.id == rental_uuid,
-                            (
-                                (RentalHistory.mechanic_inspector_id == current_user.id) |
-                                (RentalHistory.delivery_mechanic_id == current_user.id)
+                            or_(
+                                RentalHistory.mechanic_inspector_id == current_user.id,
+                                RentalHistory.delivery_mechanic_id == current_user.id
                             )
                         ).first()
                         
-                        # Если это не аренда механика, не проверяем договоры
-                        if not rental_check:
-                            rental_uuid = None
-                    
-                    # Проверяем подписание договоров для найденной аренды
-                    if rental_uuid:
+                        if rental_check:
+                            # Только если механик действительно связан с этим rental, проверяем его подписи
+                            rental_main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                                UserContractSignature.user_id == current_user.id,
+                                UserContractSignature.rental_id == rental_uuid,
+                                ContractFile.contract_type == ContractType.RENTAL_MAIN_CONTRACT
+                            ).first() is not None
+                            
+                            appendix_7_1_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                                UserContractSignature.user_id == current_user.id,
+                                UserContractSignature.rental_id == rental_uuid,
+                                ContractFile.contract_type == ContractType.APPENDIX_7_1
+                            ).first() is not None
+                            
+                            appendix_7_2_signed = db.query(UserContractSignature).join(ContractFile).filter(
+                                UserContractSignature.user_id == current_user.id,
+                                UserContractSignature.rental_id == rental_uuid,
+                                ContractFile.contract_type == ContractType.APPENDIX_7_2
+                            ).first() is not None
+                    else:
+                        # Для обычных пользователей логика без изменений
                         rental_main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
                             UserContractSignature.user_id == current_user.id,
                             UserContractSignature.rental_id == rental_uuid,
