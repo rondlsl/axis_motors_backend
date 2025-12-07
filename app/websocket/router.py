@@ -379,8 +379,6 @@ async def websocket_user_status(
             "timestamp": get_local_time().isoformat()
         })
         
-        last_data_hash = None
-        
         async def receive_messages():
             while True:
                 try:
@@ -405,17 +403,13 @@ async def websocket_user_status(
                     db.refresh(user)
                     
                     user_data = await get_user_status_data(user, db)
-                    current_data_hash = hash(json.dumps(user_data, sort_keys=True, default=str))
+                    await websocket.send_json({
+                        "type": "user_status",
+                        "data": user_data,
+                        "timestamp": get_local_time().isoformat()
+                    })
                     
-                    if current_data_hash != last_data_hash:
-                        await websocket.send_json({
-                            "type": "user_status",
-                            "data": user_data,
-                            "timestamp": get_local_time().isoformat()
-                        })
-                        last_data_hash = current_data_hash
-                    
-                    await asyncio.sleep(10)
+                    await asyncio.sleep(2)
                     
                 except WebSocketDisconnect:
                     break
@@ -426,7 +420,7 @@ async def websocket_user_status(
                         "message": "Error fetching user status data",
                         "timestamp": get_local_time().isoformat()
                     })
-                    await asyncio.sleep(10)
+                    await asyncio.sleep(2)
         finally:
             receive_task.cancel()
             try:
