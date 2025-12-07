@@ -340,7 +340,7 @@ def create_user_devices_table():
         sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
         sa.Column('user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False),
         sa.Column('device_id', sa.String(128), nullable=True),
-        sa.Column('fcm_token', sa.String(), nullable=False),
+        sa.Column('fcm_token', sa.String(), nullable=True),
         sa.Column('platform', sa.String(32), nullable=True),
         sa.Column('model', sa.String(128), nullable=True),
         sa.Column('os_version', sa.String(64), nullable=True),

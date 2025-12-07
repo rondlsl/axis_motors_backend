@@ -40,6 +40,7 @@ class DeviceRegisterRequest(BaseModel):
 class UserDeviceResponse(BaseModel):
     id: str
     device_id: Optional[str] = None
+    fcm_token: Optional[str] = None
     platform: Optional[str] = None
     model: Optional[str] = None
     os_version: Optional[str] = None

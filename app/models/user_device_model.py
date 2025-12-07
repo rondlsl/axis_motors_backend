@@ -13,7 +13,7 @@ class UserDevice(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     device_id = Column(String(128), nullable=True, unique=True)
-    fcm_token = Column(String, nullable=False, unique=True)
+    fcm_token = Column(String, nullable=True, unique=True)
     platform = Column(String(32), nullable=True)
     model = Column(String(128), nullable=True)
     os_version = Column(String(64), nullable=True)
