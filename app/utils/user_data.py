@@ -580,6 +580,7 @@ async def get_user_me_data(db: Session, current_user: User) -> Dict[str, Any]:
             "is_contract_read": current_user.is_contract_read,
             "is_user_agreement": current_user.is_user_agreement,
             "upload_document_at": current_user.upload_document_at.isoformat() if current_user.upload_document_at else None,
+            "created_at": current_user.created_at.isoformat() if current_user.created_at else None,
             "main_contract_signed": main_contract_signed,  # Договор о присоединении
             "rental_main_contract_signed": rental_main_contract_signed,  # Основной договор аренды (только для активной аренды)
             "appendix_7_1_signed": appendix_7_1_signed,  # Акт приема (только для активной аренды)
