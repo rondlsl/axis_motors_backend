@@ -6,7 +6,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, status, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, exists
 
 from app.translations.notifications import get_notification_text
 from app.models.notification_model import Notification
@@ -1017,6 +1017,7 @@ async def notify_no_documents_users(
     """
     Отправляет push-уведомление всем активным пользователям, которые не загрузили документы.
     Условие: upload_document_at IS NULL и created_at < 2025-12-08.
+    Ограничение: не отправляем, если за сегодня уже отправляли уведомление этого типа.
     Доступно только администраторам.
     """
     if current_user.role != UserRole.ADMIN:
@@ -1027,12 +1028,18 @@ async def notify_no_documents_users(
 
     try:
         target_date = datetime(2025, 12, 8)
+        today = get_local_time().date()
         users_to_notify = (
             db.query(User)
             .filter(
                 User.is_active == True,
                 User.upload_document_at.is_(None),
-                User.created_at < target_date
+                User.created_at < target_date,
+                ~exists().where(
+                    (Notification.user_id == User.id)
+                    & (Notification.status == NotificationStatus.MISSING_DOCUMENTS_BONUS)
+                    & (Notification.sent_at >= datetime.combine(today, datetime.min.time()))
+                )
             )
             .all()
         )
