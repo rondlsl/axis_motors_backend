@@ -1,6 +1,7 @@
 from typing import List, Optional
 import asyncio
 import sys
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, status, HTTPException, Request
 from pydantic import BaseModel
@@ -1005,4 +1006,149 @@ async def notify_unverified_email_users(
         raise HTTPException(
             status_code=500,
             detail=f"Ошибка при отправке уведомлений пользователям с неподтвержденной почтой: {str(e)}"
+        )
+
+
+@router.post("/notify-no-documents", status_code=status.HTTP_200_OK)
+async def notify_no_documents_users(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Отправляет push-уведомление всем активным пользователям, которые не загрузили документы.
+    Условие: upload_document_at IS NULL и created_at < 2025-12-08.
+    Доступно только администраторам.
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=403,
+            detail="Only administrators can send notifications"
+        )
+
+    try:
+        target_date = datetime(2025, 12, 8)
+        users_to_notify = (
+            db.query(User)
+            .filter(
+                User.is_active == True,
+                User.upload_document_at.is_(None),
+                User.created_at < target_date
+            )
+            .all()
+        )
+
+        if not users_to_notify:
+            return {
+                "success": 0,
+                "failed": 0,
+                "total_users": 0,
+                "message": "No users found without documents before target date"
+            }
+
+        title = "Загрузите документы"
+        body = "Пожалуйста, загрузите документы, чтобы получить бонус 10 000 тенге."
+
+        users_with_tokens = []
+        users_without_tokens = []
+        for user in users_to_notify:
+            has_token = False
+            devices_count = (
+                db.query(UserDevice)
+                .filter(
+                    UserDevice.user_id == user.id,
+                    UserDevice.is_active == True,
+                    UserDevice.fcm_token.isnot(None),
+                    UserDevice.revoked_at.is_(None)
+                )
+                .count()
+            )
+            if devices_count > 0 or user.fcm_token:
+                has_token = True
+
+            if has_token:
+                users_with_tokens.append(user)
+            else:
+                users_without_tokens.append(user)
+
+        if not users_with_tokens:
+            return {
+                "success": 0,
+                "failed": 0,
+                "total_users": len(users_to_notify),
+                "users_with_tokens": 0,
+                "users_without_tokens": len(users_without_tokens),
+                "message": "No users with FCM tokens found"
+            }
+
+        tasks = []
+        for user in users_with_tokens:
+            task = send_push_to_user_by_id(
+                db,
+                user.id,
+                title,
+                body,
+                status=NotificationStatus.MISSING_DOCUMENTS_BONUS.value
+            )
+            tasks.append(task)
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        success_count = 0
+        failed_count = 0
+        exception_count = 0
+        failed_details = []
+
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                exception_count += 1
+                failed_details.append({
+                    "user_id": str(users_with_tokens[i].id),
+                    "phone": users_with_tokens[i].phone_number,
+                    "error": str(result),
+                    "error_type": type(result).__name__
+                })
+            elif result is True:
+                success_count += 1
+            else:
+                failed_count += 1
+                failed_details.append({
+                    "user_id": str(users_with_tokens[i].id),
+                    "phone": users_with_tokens[i].phone_number,
+                    "reason": "Push notification failed (no token or send failed)"
+                })
+
+        response = {
+            "success": success_count,
+            "failed": failed_count + exception_count,
+            "total_users": len(users_to_notify),
+            "users_with_tokens": len(users_with_tokens),
+            "users_without_tokens": len(users_without_tokens),
+            "exceptions": exception_count,
+            "title": title,
+            "body": body,
+            "message": f"Notification sent to {success_count} users, {failed_count + exception_count} failed"
+        }
+
+        if failed_details:
+            response["failed_details"] = failed_details[:10]
+
+        return response
+
+    except Exception as e:
+        db.rollback()
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "notify_no_documents",
+                    "admin_id": str(current_user.id)
+                }
+            )
+        except:
+            pass
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка при отправке уведомлений пользователям без документов: {str(e)}"
         )

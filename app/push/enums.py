@@ -51,3 +51,4 @@ class NotificationStatus(str, Enum):
     CAR_VIEWED_EXIT = "car_viewed_exit"  # Пользователь смотрел авто и вышел
     DOCUMENTS_UPLOADED = "documents_uploaded"  # Документы загружены
     EMAIL_VERIFICATION_REQUIRED = "email_verification_required"  # Требуется подтверждение почты
+    MISSING_DOCUMENTS_BONUS = "missing_documents_bonus"  # Нет документов, бонус 10 000
