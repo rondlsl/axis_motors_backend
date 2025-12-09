@@ -2591,18 +2591,20 @@ async def check_vehicle_status_for_completion(vehicle_imei: str) -> Dict[str, An
                 errors.append("Для завершения аренды пожалуйста закройте багажник")
             
             # Проверка дверей
-            doors_open = []
-            if vehicle.get("front_left_door_open", False):
-                doors_open.append("передняя левая")
-            if vehicle.get("front_right_door_open", False):
-                doors_open.append("передняя правая")
-            if vehicle.get("rear_left_door_open", False):
-                doors_open.append("задняя левая")
-            if vehicle.get("rear_right_door_open", False):
-                doors_open.append("задняя правая")
-            
-            if doors_open:
-                errors.append(f"Для завершения аренды пожалуйста закройте двери: {', '.join(doors_open)}")
+            # Пропускаем проверку для определенных IMEI (860803068155890, 800298270)
+            if vehicle_imei not in ["860803068155890", "800298270"]:
+                doors_open = []
+                if vehicle.get("front_left_door_open", False):
+                    doors_open.append("передняя левая")
+                if vehicle.get("front_right_door_open", False):
+                    doors_open.append("передняя правая")
+                if vehicle.get("rear_left_door_open", False):
+                    doors_open.append("задняя левая")
+                if vehicle.get("rear_right_door_open", False):
+                    doors_open.append("задняя правая")
+                
+                if doors_open:
+                    errors.append(f"Для завершения аренды пожалуйста закройте двери: {', '.join(doors_open)}")
             
             # Проверка окон (должны быть закрыты)
             windows_open = []
