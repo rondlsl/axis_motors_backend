@@ -64,12 +64,10 @@ async def save_fcm_token(
     Сохраняет/обновляет устройство в таблице user_devices.
     FCM токены хранятся только в таблице user_devices, не в таблице users.
     
-    Логика:
-    1. Если fcm_token или device_id принадлежит другому пользователю - УДАЛЯЕМ эти записи
-    2. Деактивируем (is_active=False) предыдущие устройства текущего пользователя, сохраняя device_id
-    3. Создаем или обновляем устройство текущего пользователя с is_active=True
-    
-    Принцип: user_id главный - один токен/device_id может принадлежать только одному пользователю.
+    Правила:
+    1. У каждого user_id может быть только ОДНО активное устройство (is_active=True)
+    2. Если fcm_token или device_id используется другим user_id - удаляем те записи
+    3. Все старые активные устройства текущего user_id деактивируются
     """
     try:
         token = (payload.fcm_token or "").strip()
@@ -78,10 +76,10 @@ async def save_fcm_token(
         if not token:
             raise HTTPException(status_code=400, detail="FCM token is required")
 
-        print(f"📱 [SAVE_TOKEN] User {current_user.phone_number} - Token: {token[:50]}...")
+        print(f"📱 [SAVE_TOKEN] User {current_user.phone_number} (ID: {current_user.id}) - Token: {token[:50]}...")
+        print(f"📱 [SAVE_TOKEN] device_id: {device_id}")
 
         # 1. УДАЛЯЕМ устройства других пользователей с этим fcm_token
-        # user_id главный - если токен принадлежит другому пользователю, удаляем его запись
         other_devices_with_token = (
             db.query(UserDevice)
             .filter(
@@ -90,15 +88,14 @@ async def save_fcm_token(
             )
             .all()
         )
-        cleared_users = []
+        deleted_users = []
         for other_device in other_devices_with_token:
-            if str(other_device.user_id) not in cleared_users:
-                cleared_users.append(str(other_device.user_id))
-            print(f"🗑️ [SAVE_TOKEN] Deleting device {other_device.id} from user {other_device.user_id} (token moved to new user)")
+            if str(other_device.user_id) not in deleted_users:
+                deleted_users.append(str(other_device.user_id))
+            print(f"🗑️ [SAVE_TOKEN] Deleting device {other_device.id} from user {other_device.user_id} (fcm_token conflict)")
             db.delete(other_device)
         
         # 2. УДАЛЯЕМ устройства других пользователей с этим device_id
-        # (когда пользователь переключается между аккаунтами на одном устройстве)
         if device_id:
             other_devices_with_device_id = (
                 db.query(UserDevice)
@@ -109,13 +106,12 @@ async def save_fcm_token(
                 .all()
             )
             for other_device in other_devices_with_device_id:
-                if str(other_device.user_id) not in cleared_users:
-                    cleared_users.append(str(other_device.user_id))
-                print(f"🗑️ [SAVE_TOKEN] Deleting device {other_device.id} from user {other_device.user_id} (device_id moved to new user)")
+                if str(other_device.user_id) not in deleted_users:
+                    deleted_users.append(str(other_device.user_id))
+                print(f"🗑️ [SAVE_TOKEN] Deleting device {other_device.id} from user {other_device.user_id} (device_id conflict)")
                 db.delete(other_device)
         
-        # 3. Деактивируем ВСЕ текущие активные устройства пользователя
-        # Устанавливаем is_active = False, но оставляем device_id
+        # 3. ДЕАКТИВИРУЕМ все старые активные устройства текущего пользователя
         previous_user_devices = (
             db.query(UserDevice)
             .filter(
@@ -130,18 +126,18 @@ async def save_fcm_token(
             prev_device.update_timestamp()
             db.add(prev_device)
             deactivated_count += 1
-            print(f"🔄 [SAVE_TOKEN] Deactivating previous device {prev_device.id} for current user")
+            print(f"🔄 [SAVE_TOKEN] Deactivating previous device {prev_device.id} for current user (device_id={prev_device.device_id})")
         
         if deactivated_count > 0:
             print(f"✅ [SAVE_TOKEN] Deactivated {deactivated_count} previous devices for user {current_user.id}")
         
-        # Применяем изменения к базе данных ДО создания новых записей
+        # Применяем все изменения (удаления и деактивации)
         db.flush()
 
-        # 4. Находим или создаем устройство в таблице user_devices
+        # 4. Находим или создаем устройство текущего пользователя
         device = None
         
-        # Сначала ищем устройство текущего пользователя с данным device_id (включая деактивированные)
+        # Сначала ищем устройство текущего пользователя с данным device_id
         if device_id:
             device = (
                 db.query(UserDevice)
@@ -152,24 +148,11 @@ async def save_fcm_token(
                 .first()
             )
             if device:
-                print(f"🔍 [SAVE_TOKEN] Found device by device_id: {device.id}, is_active={device.is_active}")
+                print(f"🔍 [SAVE_TOKEN] Found existing device by device_id: {device.id}")
         
-        # Если не найдено по device_id, ищем по fcm_token (включая деактивированные)
+        # Если не найдено по device_id, создаем новое устройство
         if device is None:
-            device = (
-                db.query(UserDevice)
-                .filter(
-                    UserDevice.user_id == current_user.id,
-                    UserDevice.fcm_token == token
-                )
-                .first()
-            )
-            if device:
-                print(f"🔍 [SAVE_TOKEN] Found device by fcm_token: {device.id}, is_active={device.is_active}")
-        
-        # Если устройство не найдено, создаем новое
-        if device is None:
-            print(f"➕ [SAVE_TOKEN] Creating new device for user {current_user.id}, device_id={device_id}, token={token[:30]}...")
+            print(f"➕ [SAVE_TOKEN] Creating new device for user {current_user.id}")
             device = UserDevice(
                 device_id=device_id,
                 user_id=current_user.id,
@@ -177,12 +160,10 @@ async def save_fcm_token(
             )
         else:
             # Обновляем существующее устройство
-            print(f"🔄 [SAVE_TOKEN] Updating existing device {device.id} for user {current_user.id}, current is_active={device.is_active}")
+            print(f"🔄 [SAVE_TOKEN] Updating existing device {device.id}")
             device.fcm_token = token
-            device.is_active = True  # Активируем устройство
             if device_id and not device.device_id:
                 device.device_id = device_id
-                print(f"🔄 [SAVE_TOKEN] Setting device_id={device_id} for existing device")
         
         # Обновляем дополнительные поля устройства
         if payload.platform is not None:
@@ -208,7 +189,7 @@ async def save_fcm_token(
 
         db.add(device)
         
-        print(f"💾 [SAVE_TOKEN] Attempting to save device: user_id={current_user.id}, device_id={device.device_id}, fcm_token={device.fcm_token[:30] if device.fcm_token else None}..., is_active={device.is_active}")
+        print(f"💾 [SAVE_TOKEN] Attempting to save device: user_id={current_user.id}, device_id={device.device_id}, is_active={device.is_active}")
 
         try:
             db.flush()
@@ -217,6 +198,26 @@ async def save_fcm_token(
             print(f"❌ [SAVE_TOKEN] Flush error: {str(flush_error)}")
             db.rollback()
             raise HTTPException(status_code=500, detail=f"Ошибка при сохранении устройства (flush): {str(flush_error)}")
+        
+        # 5. ПРОВЕРКА: убеждаемся, что у текущего user_id нет других активных устройств
+        other_active_devices = (
+            db.query(UserDevice)
+            .filter(
+                UserDevice.user_id == current_user.id,
+                UserDevice.is_active == True,
+                UserDevice.id != device.id
+            )
+            .all()
+        )
+        
+        if other_active_devices:
+            print(f"⚠️ [SAVE_TOKEN] WARNING: Found {len(other_active_devices)} other active devices for user {current_user.id}. Deactivating them...")
+            for other_device in other_active_devices:
+                print(f"🔄 [SAVE_TOKEN] Force deactivating device {other_device.id}")
+                other_device.is_active = False
+                other_device.update_timestamp()
+                db.add(other_device)
+            db.flush()
         
         try:
             db.commit()
@@ -228,21 +229,40 @@ async def save_fcm_token(
         
         db.refresh(device)
         
-        print(f"✅ [SAVE_TOKEN] Token saved successfully for user {current_user.id}, device {device.id}, is_active={device.is_active}")
-        print(f"📊 [SAVE_TOKEN] Device details: device_id={device.device_id}, fcm_token={'***' + device.fcm_token[-10:] if device.fcm_token and len(device.fcm_token) > 10 else 'None'}")
+        # 6. ФИНАЛЬНАЯ ПРОВЕРКА: считаем активные устройства пользователя
+        active_devices_count = (
+            db.query(UserDevice)
+            .filter(
+                UserDevice.user_id == current_user.id,
+                UserDevice.is_active == True
+            )
+            .count()
+        )
+        
+        print(f"✅ [SAVE_TOKEN] Token saved successfully for user {current_user.id}, device {device.id}")
+        print(f"📊 [SAVE_TOKEN] Active devices for user: {active_devices_count} (should be 1)")
+        print(f"📊 [SAVE_TOKEN] Device details: device_id={device.device_id}, is_active={device.is_active}, fcm_token={'***' + device.fcm_token[-10:] if device.fcm_token and len(device.fcm_token) > 10 else 'None'}")
         
         response = {
-            "detail": "FCM token saved",
+            "detail": "FCM token saved successfully",
             "user_id": str(current_user.id),
             "phone": current_user.phone_number,
-            "device_id": str(device.id),
-            "device_device_id": device.device_id,
-            "is_active": device.is_active,
-            "deactivated_previous_devices": deactivated_count
+            "device": {
+                "id": str(device.id),
+                "device_id": device.device_id,
+                "is_active": device.is_active,
+                "platform": device.platform,
+                "model": device.model
+            },
+            "stats": {
+                "deactivated_previous_devices": deactivated_count,
+                "deleted_other_users_devices": len(deleted_users),
+                "active_devices_count": active_devices_count
+            }
         }
 
-        if cleared_users:
-            response["duplicates_cleared"] = cleared_users
+        if deleted_users:
+            response["deleted_from_users"] = deleted_users
 
         return response
     except HTTPException:
