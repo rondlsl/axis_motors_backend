@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from datetime import datetime
 import uuid
 from app.schemas.base import SidMixin
+from app.models.car_model import CarStatus
 
 
 class CarOwnerResponse(BaseModel):
@@ -124,3 +125,8 @@ class TripDetailResponse(BaseModel):
 class MyAutosResponse(BaseModel):
     """Ответ для списка автомобилей владельца"""
     cars: List[CarOwnerResponse] = Field(..., description="Список автомобилей владельца с историей поездок")
+
+
+class CarStatusUpdateRequest(BaseModel):
+    """Запрос на смену статуса автомобиля владельцем"""
+    status: CarStatus = Field(..., description="Новый статус автомобиля (доступны только FREE и OCCUPIED)")

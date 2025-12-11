@@ -14,7 +14,7 @@ from app.models.history_model import RentalHistory, RentalStatus, RentalType, Re
 from app.owner.schemas import (
     MyAutosResponse, CarOwnerResponse, TripsForMonthResponse,
     TripResponse, MonthEarnings, TripDetailResponse, TripPhotos,
-    PhotoGroup, RouteMapData
+    PhotoGroup, RouteMapData, CarStatusUpdateRequest
 )
 from app.gps_api.utils.route_data import get_gps_route_data
 import logging
@@ -218,6 +218,61 @@ def get_my_cars(
         ))
 
     return MyAutosResponse(cars=cars_response)
+
+
+@OwnerRouter.post(
+    "/{vehicle_id}/status",
+    summary="Изменить статус автомобиля",
+    description="Позволяет владельцу перевести автомобиль между статусами FREE и OCCUPIED",
+    responses={
+        200: {"description": "Статус успешно обновлён"},
+        400: {"description": "Некорректный запрос или недопустимый статус"},
+        404: {"description": "Автомобиль не найден или не принадлежит пользователю"}
+    }
+)
+def update_car_status(
+        vehicle_id: str,
+        request: CarStatusUpdateRequest,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    car_uuid = safe_sid_to_uuid(vehicle_id)
+    car = db.query(Car).filter(
+        Car.id == car_uuid,
+        Car.owner_id == current_user.id
+    ).first()
+
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден или не принадлежит вам")
+
+    allowed_statuses = {CarStatus.FREE, CarStatus.OCCUPIED}
+    new_status = request.status
+
+    if new_status not in allowed_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail="Можно менять статус только на FREE или OCCUPIED"
+        )
+
+    if car.status not in allowed_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail="Изменение статуса доступно только из FREE или OCCUPIED"
+        )
+
+    if car.status == new_status:
+        return {
+            "message": "Статус автомобиля уже установлен",
+            "status": car.status.value
+        }
+
+    car.status = new_status
+    db.commit()
+
+    return {
+        "message": "Статус автомобиля обновлён",
+        "status": car.status.value
+    }
 
 
 @OwnerRouter.get("/cars-with-availability-timer")
