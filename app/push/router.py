@@ -74,7 +74,8 @@ async def save_fcm_token(
         print(f"📱 [SAVE_TOKEN] User {current_user.phone_number} - Token: {token[:50]}...")
 
         # 1. Обнуляем fcm_token у устройств других пользователей с этим токеном
-        # Устанавливаем is_active = False, но оставляем device_id
+        # Устанавливаем is_active = False, но оставляем device_id (если он не конфликтует)
+        # ВАЖНО: из-за unique constraint на fcm_token, нужно обнулить его у других пользователей
         other_devices_with_token = (
             db.query(UserDevice)
             .filter(
@@ -88,6 +89,7 @@ async def save_fcm_token(
             if str(other_device.user_id) not in cleared_users:
                 cleared_users.append(str(other_device.user_id))
             print(f"🔄 [SAVE_TOKEN] Deactivating device {other_device.id} from user {other_device.user_id} (token moved)")
+            # Обнуляем fcm_token из-за unique constraint
             other_device.fcm_token = None
             other_device.is_active = False
             other_device.revoked_at = get_local_time()
@@ -96,6 +98,8 @@ async def save_fcm_token(
         
         # 2. Деактивируем устройства других пользователей с этим device_id
         # (когда пользователь переключается между аккаунтами на одном устройстве)
+        # ВАЖНО: из-за unique constraint на device_id, нужно обнулить device_id у других пользователей
+        # чтобы можно было использовать его для текущего пользователя
         if device_id:
             other_devices_with_device_id = (
                 db.query(UserDevice)
@@ -109,6 +113,9 @@ async def save_fcm_token(
                 if str(other_device.user_id) not in cleared_users:
                     cleared_users.append(str(other_device.user_id))
                 print(f"🔄 [SAVE_TOKEN] Deactivating device {other_device.id} from user {other_device.user_id} (device_id moved)")
+                # Обнуляем device_id чтобы избежать unique constraint violation
+                # Но сохраняем его в отдельном поле или просто обнуляем, так как device_id должен быть уникальным
+                other_device.device_id = None  # Обнуляем device_id из-за unique constraint
                 other_device.fcm_token = None
                 other_device.is_active = False
                 other_device.revoked_at = get_local_time()
@@ -142,7 +149,7 @@ async def save_fcm_token(
         # 4. Находим или создаем устройство в таблице user_devices
         device = None
         
-        # Сначала ищем устройство текущего пользователя с данным device_id
+        # Сначала ищем устройство текущего пользователя с данным device_id (включая деактивированные)
         if device_id:
             device = (
                 db.query(UserDevice)
@@ -152,10 +159,35 @@ async def save_fcm_token(
                 )
                 .first()
             )
+            if device:
+                print(f"🔍 [SAVE_TOKEN] Found device by device_id: {device.id}, is_active={device.is_active}")
+        
+        # Если не найдено по device_id, ищем по fcm_token (включая деактивированные)
+        if device is None:
+            device = (
+                db.query(UserDevice)
+                .filter(
+                    UserDevice.user_id == current_user.id,
+                    UserDevice.fcm_token == token
+                )
+                .first()
+            )
+            if device:
+                print(f"🔍 [SAVE_TOKEN] Found device by fcm_token: {device.id}, is_active={device.is_active}")
         
         # Если устройство не найдено, создаем новое
         if device is None:
-            print(f"➕ [SAVE_TOKEN] Creating new device for user {current_user.id}")
+            # Проверяем, нет ли конфликтов с unique constraint перед созданием
+            if device_id:
+                existing_device_with_id = db.query(UserDevice).filter(UserDevice.device_id == device_id).first()
+                if existing_device_with_id:
+                    print(f"⚠️ [SAVE_TOKEN] WARNING: device_id {device_id} already exists for device {existing_device_with_id.id}, user {existing_device_with_id.user_id}")
+            
+            existing_device_with_token = db.query(UserDevice).filter(UserDevice.fcm_token == token).first()
+            if existing_device_with_token:
+                print(f"⚠️ [SAVE_TOKEN] WARNING: fcm_token already exists for device {existing_device_with_token.id}, user {existing_device_with_token.user_id}")
+            
+            print(f"➕ [SAVE_TOKEN] Creating new device for user {current_user.id}, device_id={device_id}, token={token[:30]}...")
             device = UserDevice(
                 device_id=device_id,
                 user_id=current_user.id,
@@ -163,10 +195,12 @@ async def save_fcm_token(
             )
         else:
             # Обновляем существующее устройство
-            print(f"🔄 [SAVE_TOKEN] Updating existing device {device.id} for user {current_user.id}")
+            print(f"🔄 [SAVE_TOKEN] Updating existing device {device.id} for user {current_user.id}, current is_active={device.is_active}")
             device.fcm_token = token
+            device.is_active = True  # Активируем устройство
             if device_id and not device.device_id:
                 device.device_id = device_id
+                print(f"🔄 [SAVE_TOKEN] Setting device_id={device_id} for existing device")
         
         # Обновляем дополнительные поля устройства
         if payload.platform is not None:
@@ -191,18 +225,37 @@ async def save_fcm_token(
         device.update_timestamp()
 
         db.add(device)
+        
+        print(f"💾 [SAVE_TOKEN] Attempting to save device: user_id={current_user.id}, device_id={device.device_id}, fcm_token={device.fcm_token[:30] if device.fcm_token else None}..., is_active={device.is_active}")
 
-        db.flush()
-        db.commit()
+        try:
+            db.flush()
+            print(f"✅ [SAVE_TOKEN] Device flushed successfully, device.id={device.id}")
+        except Exception as flush_error:
+            print(f"❌ [SAVE_TOKEN] Flush error: {str(flush_error)}")
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Ошибка при сохранении устройства (flush): {str(flush_error)}")
+        
+        try:
+            db.commit()
+            print(f"✅ [SAVE_TOKEN] Device committed successfully")
+        except Exception as commit_error:
+            print(f"❌ [SAVE_TOKEN] Commit error: {str(commit_error)}")
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Ошибка при сохранении устройства (commit): {str(commit_error)}")
+        
         db.refresh(device)
         
-        print(f"✅ [SAVE_TOKEN] Token saved successfully for user {current_user.id}, device {device.id}")
+        print(f"✅ [SAVE_TOKEN] Token saved successfully for user {current_user.id}, device {device.id}, is_active={device.is_active}")
+        print(f"📊 [SAVE_TOKEN] Device details: device_id={device.device_id}, fcm_token={'***' + device.fcm_token[-10:] if device.fcm_token and len(device.fcm_token) > 10 else 'None'}")
         
         response = {
             "detail": "FCM token saved",
             "user_id": str(current_user.id),
             "phone": current_user.phone_number,
             "device_id": str(device.id),
+            "device_device_id": device.device_id,
+            "is_active": device.is_active,
             "deactivated_previous_devices": deactivated_count
         }
 
@@ -210,8 +263,13 @@ async def save_fcm_token(
             response["duplicates_cleared"] = cleared_users
 
         return response
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
+        print(f"❌ [SAVE_TOKEN] Unexpected error: {type(e).__name__}: {str(e)}")
+        import traceback
+        print(f"❌ [SAVE_TOKEN] Traceback: {traceback.format_exc()}")
         try:
             await log_error_to_telegram(
                 error=e,
@@ -221,7 +279,8 @@ async def save_fcm_token(
                     "action": "save_fcm_token",
                     "user_id": str(current_user.id),
                     "phone": current_user.phone_number,
-                    "token_preview": payload.fcm_token[:50] if payload.fcm_token else None
+                    "token_preview": payload.fcm_token[:50] if payload.fcm_token else None,
+                    "device_id": payload.device_id
                 }
             )
         except:
