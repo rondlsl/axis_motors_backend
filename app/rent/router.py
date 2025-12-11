@@ -1080,6 +1080,57 @@ async def reserve_delivery(
         refresh_vehicles=True
     )
 
+    # Уведомление в Telegram о новом заказе доставки
+    try:
+        name_parts = []
+        if current_user.first_name:
+            name_parts.append(current_user.first_name)
+        if current_user.middle_name:
+            name_parts.append(current_user.middle_name)
+        if current_user.last_name:
+            name_parts.append(current_user.last_name)
+        full_name = " ".join(name_parts) if name_parts else "Не указано"
+
+        phone_number = current_user.phone_number or "Не указан"
+        email = current_user.email or "Не указан"
+        user_short_id = uuid_to_sid(current_user.id)
+        car_short_id = uuid_to_sid(car.id)
+        rental_short_id = uuid_to_sid(rental.id)
+        duration_text = f"{duration} ед." if duration is not None else "Не указана"
+
+        notification_text = (
+            "🚗 Новый заказ доставки \n\n"
+            f"Клиент: {full_name}\n"
+            f"User ID: {user_short_id}\n"
+            f"Телефон: {phone_number}\n"
+            f"Email: {email}\n\n"
+            f"Авто: {car.name}\n"
+            f"Гос. номер: {car.plate_number or 'Не указан'}\n"
+            f"Car ID: {car_short_id}\n"
+            f"Rental ID: {rental_short_id}\n"
+            f"Точка доставки: {delivery_latitude:.6f}, {delivery_longitude:.6f}"
+        )
+
+        async def _send_delivery_notification(text: str, chat_id: int, bot_token: str):
+            try:
+                async with httpx.AsyncClient() as client:
+                    await client.post(
+                        f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                        json={"chat_id": chat_id, "text": text}
+                    )
+            except Exception as e:
+                logger.error(f"Ошибка отправки Telegram уведомления о доставке (chat {chat_id}): {e}")
+
+        chat_ids = [965048905, 5941825713, 860991388, 1594112444, 808277096]
+        if TELEGRAM_BOT_TOKEN:
+            for chat_id in chat_ids:
+                asyncio.create_task(_send_delivery_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN))
+        if TELEGRAM_BOT_TOKEN_2:
+            for chat_id in chat_ids:
+                asyncio.create_task(_send_delivery_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN_2))
+    except Exception as e:
+        logger.error(f"Не удалось отправить Telegram уведомление о доставке: {e}")
+
     return {
         "message": "Заказ доставки оформлен успешно",
         "rental_id": uuid_to_sid(rental.id),
