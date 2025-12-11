@@ -24,3 +24,4 @@ opencv-python-headless~=4.10.0.84
 tf-keras~=2.20.0
 python-docx~=1.1.2
 beautifulsoup4~=4.12.3
+packaging~=24.2
