@@ -495,11 +495,20 @@ def get_trips_by_month(
 
         available_months = []
         for i, row in enumerate(available_months_query):
+            if row.year is None or row.month is None:
+                logger.warning(
+                    "Пропускаем месяц без даты в available_months (car_id=%s, row=%s)",
+                    vehicle_uuid,
+                    row,
+                )
+                continue
+            row_year = int(row.year)
+            row_month = int(row.month)
             # Рассчитываем доступные минуты для каждого месяца
             available_minutes = calculate_month_availability_minutes(
                 car_id=uuid_to_sid(vehicle_uuid),
-                year=int(row.year),
-                month=int(row.month),
+                year=row_year,
+                month=row_month,
                 owner_id=current_user.id,
                 db=db
             )
@@ -511,8 +520,8 @@ def get_trips_by_month(
                 .filter(
                     RentalHistory.car_id == vehicle_uuid,
                     RentalHistory.rental_status == RentalStatus.COMPLETED,
-                    extract('year', RentalHistory.end_time) == int(row.year),
-                    extract('month', RentalHistory.end_time) == int(row.month),
+                    extract('year', RentalHistory.end_time) == row_year,
+                    extract('month', RentalHistory.end_time) == row_month,
                     User.role != UserRole.MECHANIC
                 )
                 .all()
@@ -525,8 +534,8 @@ def get_trips_by_month(
             
             # Создаем объект MonthEarnings
             month_earnings = MonthEarnings(
-                year=int(row.year),
-                month=int(row.month),
+                year=row_year,
+                month=row_month,
                 total_earnings=corrected_total_earnings,
                 trip_count=int(row.trip_count),
                 available_minutes=available_minutes
@@ -777,4 +786,3 @@ async def get_trip_details(
         trip_detail_data["delivery_cost"] = delivery_cost
     
     return TripDetailResponse(**trip_detail_data)
-
