@@ -1707,6 +1707,33 @@ async def track_car_view(
     return {"message": "Просмотр отслежен"}
 
 
+@Vehicle_Router.post("/app-start", summary="Отслеживание входа пользователя в приложение")
+async def track_app_start(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Endpoint для отслеживания входа пользователя в приложение.
+    Принимает запрос когда пользователь открывает приложение.
+    """
+    try:
+        logger.info(f"User {current_user.id} started the application")
+        
+        # Обновляем время последней активности пользователя
+        from app.utils.time_utils import get_local_time
+        current_user.last_activity_at = get_local_time()
+        db.add(current_user)
+        db.commit()
+        
+        logger.info(f"App start tracked for user {current_user.id} at {current_user.last_activity_at}")
+        
+        return {"message": "App start tracked successfully", "user_id": str(current_user.id)}
+    except Exception as e:
+        logger.error(f"Error tracking app start for user {current_user.id}: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Ошибка отслеживания входа в приложение: {str(e)}")
+
+
 @Vehicle_Router.post("/app-exit", summary="Отслеживание выхода пользователя из приложения")
 async def track_app_exit(
     db: Session = Depends(get_db),
