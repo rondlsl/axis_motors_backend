@@ -192,6 +192,10 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
             except Exception:
                 pass
     
+    # Если топливо = 0, считаем что данных нет (чтобы не затирать старые данные нулём)
+    if fuel_level is not None and fuel_level <= 0:
+        fuel_level = None
+    
     fuel_consumption = None
     consumption_keys = ["can_fuel_consumpt", "Расход топлива"]
     for key in consumption_keys:
