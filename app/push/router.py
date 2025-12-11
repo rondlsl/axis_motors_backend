@@ -63,6 +63,13 @@ async def save_fcm_token(
     Save FCM token for push notifications.
     Сохраняет/обновляет устройство в таблице user_devices.
     FCM токены хранятся только в таблице user_devices, не в таблице users.
+    
+    Логика:
+    1. Если fcm_token или device_id принадлежит другому пользователю - УДАЛЯЕМ эти записи
+    2. Деактивируем (is_active=False) предыдущие устройства текущего пользователя, сохраняя device_id
+    3. Создаем или обновляем устройство текущего пользователя с is_active=True
+    
+    Принцип: user_id главный - один токен/device_id может принадлежать только одному пользователю.
     """
     try:
         token = (payload.fcm_token or "").strip()
@@ -73,9 +80,8 @@ async def save_fcm_token(
 
         print(f"📱 [SAVE_TOKEN] User {current_user.phone_number} - Token: {token[:50]}...")
 
-        # 1. Обнуляем fcm_token у устройств других пользователей с этим токеном
-        # Устанавливаем is_active = False, но оставляем device_id (если он не конфликтует)
-        # ВАЖНО: из-за unique constraint на fcm_token, нужно обнулить его у других пользователей
+        # 1. УДАЛЯЕМ устройства других пользователей с этим fcm_token
+        # user_id главный - если токен принадлежит другому пользователю, удаляем его запись
         other_devices_with_token = (
             db.query(UserDevice)
             .filter(
@@ -88,18 +94,11 @@ async def save_fcm_token(
         for other_device in other_devices_with_token:
             if str(other_device.user_id) not in cleared_users:
                 cleared_users.append(str(other_device.user_id))
-            print(f"🔄 [SAVE_TOKEN] Deactivating device {other_device.id} from user {other_device.user_id} (token moved)")
-            # Обнуляем fcm_token из-за unique constraint
-            other_device.fcm_token = None
-            other_device.is_active = False
-            other_device.revoked_at = get_local_time()
-            other_device.update_timestamp()
-            db.add(other_device)
+            print(f"🗑️ [SAVE_TOKEN] Deleting device {other_device.id} from user {other_device.user_id} (token moved to new user)")
+            db.delete(other_device)
         
-        # 2. Деактивируем устройства других пользователей с этим device_id
+        # 2. УДАЛЯЕМ устройства других пользователей с этим device_id
         # (когда пользователь переключается между аккаунтами на одном устройстве)
-        # ВАЖНО: из-за unique constraint на device_id, нужно обнулить device_id у других пользователей
-        # чтобы можно было использовать его для текущего пользователя
         if device_id:
             other_devices_with_device_id = (
                 db.query(UserDevice)
@@ -112,15 +111,8 @@ async def save_fcm_token(
             for other_device in other_devices_with_device_id:
                 if str(other_device.user_id) not in cleared_users:
                     cleared_users.append(str(other_device.user_id))
-                print(f"🔄 [SAVE_TOKEN] Deactivating device {other_device.id} from user {other_device.user_id} (device_id moved)")
-                # Обнуляем device_id чтобы избежать unique constraint violation
-                # Но сохраняем его в отдельном поле или просто обнуляем, так как device_id должен быть уникальным
-                other_device.device_id = None  # Обнуляем device_id из-за unique constraint
-                other_device.fcm_token = None
-                other_device.is_active = False
-                other_device.revoked_at = get_local_time()
-                other_device.update_timestamp()
-                db.add(other_device)
+                print(f"🗑️ [SAVE_TOKEN] Deleting device {other_device.id} from user {other_device.user_id} (device_id moved to new user)")
+                db.delete(other_device)
         
         # 3. Деактивируем ВСЕ текущие активные устройства пользователя
         # Устанавливаем is_active = False, но оставляем device_id
@@ -177,16 +169,6 @@ async def save_fcm_token(
         
         # Если устройство не найдено, создаем новое
         if device is None:
-            # Проверяем, нет ли конфликтов с unique constraint перед созданием
-            if device_id:
-                existing_device_with_id = db.query(UserDevice).filter(UserDevice.device_id == device_id).first()
-                if existing_device_with_id:
-                    print(f"⚠️ [SAVE_TOKEN] WARNING: device_id {device_id} already exists for device {existing_device_with_id.id}, user {existing_device_with_id.user_id}")
-            
-            existing_device_with_token = db.query(UserDevice).filter(UserDevice.fcm_token == token).first()
-            if existing_device_with_token:
-                print(f"⚠️ [SAVE_TOKEN] WARNING: fcm_token already exists for device {existing_device_with_token.id}, user {existing_device_with_token.user_id}")
-            
             print(f"➕ [SAVE_TOKEN] Creating new device for user {current_user.id}, device_id={device_id}, token={token[:30]}...")
             device = UserDevice(
                 device_id=device_id,
