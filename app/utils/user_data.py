@@ -13,7 +13,8 @@ from app.models.notification_model import Notification
 from app.models.guarantor_model import Guarantor
 from app.rent.utils.user_utils import get_user_available_auto_classes
 from app.rent.utils.calculate_price import get_open_price
-from app.owner.utils import calculate_month_availability_minutes, ALMATY_TZ
+from app.owner.utils import ALMATY_TZ
+from app.owner.availability import update_car_availability_snapshot
 from app.admin.cars.utils import sort_car_photos
 from app.core.config import logger
 from app.utils.time_utils import get_local_time
@@ -382,14 +383,9 @@ async def get_user_me_data(db: Session, current_user: User) -> Dict[str, Any]:
     current_year = now.year
     
     for car in owned_cars_raw:
-        # Рассчитываем доступные минуты для текущего месяца
-        available_minutes = calculate_month_availability_minutes(
-            car_id=uuid_to_sid(car.id),
-            year=current_year,
-            month=current_month,
-            owner_id=current_user.id,
-            db=db
-        )
+        update_car_availability_snapshot(car)
+        db.flush()
+        available_minutes = car.available_minutes or 0
         
         owned_cars.append({
             "id": uuid_to_sid(car.id),
@@ -757,4 +753,3 @@ async def get_user_me_data(db: Session, current_user: User) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
     return response_data
-

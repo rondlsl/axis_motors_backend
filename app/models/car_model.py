@@ -92,6 +92,8 @@ class Car(Base):
     current_renter_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
     status = Column(SAEnum(CarStatus), default=CarStatus.FREE, nullable=True)
+    available_minutes = Column(Integer, default=0, nullable=False)
+    availability_updated_at = Column(DateTime, default=get_local_time, nullable=True)
     created_at = Column(DateTime, default=get_local_time, nullable=False)
     updated_at = Column(DateTime, default=get_local_time, nullable=True)
 

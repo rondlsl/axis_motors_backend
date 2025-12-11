@@ -4,6 +4,11 @@ import uuid
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
+from app.models.car_model import Car
+from app.owner.availability import update_car_availability_snapshot
+from app.utils.short_id import safe_sid_to_uuid
+from app.utils.time_utils import get_local_time
+
 # Алматинское время (GMT+5)
 ALMATY_TZ = timezone(timedelta(hours=5))
 
@@ -162,6 +167,18 @@ def calculate_month_availability_minutes(
     """
     from app.models.history_model import RentalHistory, RentalStatus
     
+    now = datetime.now(ALMATY_TZ)
+    car_uuid = safe_sid_to_uuid(car_id)
+    car = db.query(Car).filter(Car.id == car_uuid).first()
+    if not car:
+        return 0
+    
+    # Для текущего месяца возвращаем накопленный счетчик, чтобы не нагружать БД расчётами
+    if year == now.year and month == now.month:
+        update_car_availability_snapshot(car, get_local_time())
+        db.flush()
+        return car.available_minutes or 0
+    
     # Определяем границы месяца в алматинском времени
     month_start = datetime(year, month, 1, 0, 0, 0, tzinfo=ALMATY_TZ)
     
@@ -172,7 +189,6 @@ def calculate_month_availability_minutes(
         month_end = datetime(year, month + 1, 1, 0, 0, 0, tzinfo=ALMATY_TZ)
     
     # Если это текущий месяц, используем текущее время как конец периода
-    now = datetime.now(ALMATY_TZ)
     if year == now.year and month == now.month:
         calculation_end = now
     else:
@@ -183,9 +199,6 @@ def calculate_month_availability_minutes(
     # Преобразуем времена в naive datetime для сравнения с БД
     calculation_end_naive = calculation_end.replace(tzinfo=None)
     month_start_naive = month_start.replace(tzinfo=None)
-    
-    from app.utils.short_id import safe_sid_to_uuid
-    car_uuid = safe_sid_to_uuid(car_id)
     
     all_rentals = (
         db.query(RentalHistory)

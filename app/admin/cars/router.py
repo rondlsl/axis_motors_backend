@@ -30,6 +30,7 @@ from app.utils.plate_normalizer import normalize_plate_number
 from app.utils.telegram_logger import log_error_to_telegram
 from app.websocket.notifications import notify_vehicles_list_update, notify_user_status_update
 from app.utils.time_utils import get_local_time
+from app.owner.availability import update_car_availability_snapshot
 import asyncio
 import uuid
 
@@ -93,15 +94,9 @@ async def get_car_details(
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
-    from app.owner.utils import calculate_month_availability_minutes, ALMATY_TZ
-    now = datetime.now(ALMATY_TZ)
-    available_minutes = calculate_month_availability_minutes(
-        car_id=uuid_to_sid(car.id),
-        year=now.year,
-        month=now.month,
-        owner_id=uuid_to_sid(car.owner_id),
-        db=db
-    )
+    update_car_availability_snapshot(car)
+    db.flush()
+    available_minutes = car.available_minutes or 0
 
     return CarDetailSchema(
         id=uuid_to_sid(car.id),
@@ -627,15 +622,9 @@ async def get_car_availability_timer(
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
-    from app.owner.utils import calculate_month_availability_minutes, ALMATY_TZ
-    now = datetime.now(ALMATY_TZ)
-    available_minutes = calculate_month_availability_minutes(
-            car_id=uuid_to_sid(car.id),
-        year=now.year,
-        month=now.month,
-        owner_id=uuid_to_sid(car.owner_id),
-        db=db
-    )
+    update_car_availability_snapshot(car)
+    db.flush()
+    available_minutes = car.available_minutes or 0
 
     last_rental = db.query(RentalHistory).filter(
         RentalHistory.car_id == car.id,
@@ -688,6 +677,10 @@ async def get_car_history_summary(
     )
 
     now = get_local_time()
+    update_car_availability_snapshot(car)
+    db.flush()
+    available_minutes = car.available_minutes or 0
+
     last_completed = (
         db.query(RentalHistory)
         .filter(RentalHistory.car_id == car.id, RentalHistory.rental_status == RentalStatus.COMPLETED, RentalHistory.end_time.isnot(None))
@@ -704,7 +697,7 @@ async def get_car_history_summary(
         "plate_number": car.plate_number,
         "total_income": total_income,
         "owner_income": owner_income,
-        "available_minutes": total_available_seconds // 60,
+        "available_minutes": available_minutes,
         "month": month,
         "year": year,
     }

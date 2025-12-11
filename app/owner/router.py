@@ -16,6 +16,7 @@ from app.owner.schemas import (
     TripResponse, MonthEarnings, TripDetailResponse, TripPhotos,
     PhotoGroup, RouteMapData, CarStatusUpdateRequest
 )
+from app.owner.availability import update_car_availability_snapshot
 from app.gps_api.utils.route_data import get_gps_route_data
 import logging
 
@@ -200,14 +201,10 @@ def get_my_cars(
     cars_response = []
     for car in cars_with_history:
         # Рассчитываем доступные минуты для текущего месяца
-        available_minutes = calculate_month_availability_minutes(
-            car_id=uuid_to_sid(car.id),
-            year=current_year,
-            month=current_month,
-            owner_id=current_user.id,
-            db=db
-        )
-        
+        update_car_availability_snapshot(car)
+        db.flush()
+        available_minutes = car.available_minutes or 0
+
         cars_response.append(CarOwnerResponse(
             id=uuid_to_sid(car.id),
             name=car.name,
@@ -266,7 +263,12 @@ def update_car_status(
             "status": car.status.value
         }
 
+    now = get_local_time()
+    update_car_availability_snapshot(car, now)
+    db.flush()
+
     car.status = new_status
+    car.availability_updated_at = now
     db.commit()
 
     return {

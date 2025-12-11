@@ -406,6 +406,8 @@ def create_cars_table():
         sa.Column('owner_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=True),
         sa.Column('current_renter_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=True),
         sa.Column('status', postgresql.ENUM('FREE', 'PENDING', 'IN_USE', 'DELIVERING', 'SERVICE', 'RESERVED', 'SCHEDULED', 'OWNER', 'OCCUPIED', 'free', 'pending', 'in_use', 'delivering', 'service', 'reserved', 'scheduled', 'owner', 'occupied', name='carstatus', create_type=False), nullable=True, server_default='FREE'),
+        sa.Column('available_minutes', sa.Integer(), nullable=False, server_default='0'),
+        sa.Column('availability_updated_at', postgresql.TIMESTAMP(timezone=True), nullable=True, server_default=sa.text('now()')),
         sa.Column('created_at', postgresql.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text('now()')),
         sa.Column('updated_at', postgresql.TIMESTAMP(timezone=True), nullable=True, server_default=sa.text('now()'))
     )

@@ -92,7 +92,7 @@ def car_to_detail_schema(car: Car) -> CarDetailSchema:
         price_per_day=car.price_per_day,
         owner_id=car.owner_id,
         current_renter_id=car.current_renter_id,
-        available_minutes=None,  # Будет рассчитано отдельно
+        available_minutes=car.available_minutes or 0,
         gps_id=car.gps_id,
         gps_imei=car.gps_imei,
         vin=car.vin,
