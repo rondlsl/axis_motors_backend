@@ -9,6 +9,8 @@ from app.core.config import logger
 from app.utils.telegram_logger import log_error_to_telegram
 import asyncio
 
+LOCK_ENGINE_DISABLED_IMEIS = {"860803068143045"}
+
 
 async def get_last_vehicles_data():
     url = "http://195.93.152.69:8667/vehicles/?skip=0&limit=100"
@@ -189,6 +191,9 @@ async def send_take_key(imei: str, token: str, retries: int = 1) -> dict:
 
 
 async def send_lock_engine(imei: str, token: str, retries: int = 1) -> dict:
+    if imei in LOCK_ENGINE_DISABLED_IMEIS:
+        logger.info(f"Lock engine command skipped for IMEI {imei}")
+        return {"skipped": True, "reason": "lock_engine_disabled"}
     commands = get_commands_by_imei(imei)
     vehicle_id = get_vehicle_id_by_imei(imei)
     return await send_command_to_terminal(vehicle_id, commands["lock_engine"], token, retries)
