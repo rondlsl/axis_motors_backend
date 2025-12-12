@@ -22,7 +22,13 @@ from app.models.application_model import Application, ApplicationStatus
 from app.models.car_model import Car, CarStatus, CarAutoClass, CarBodyType
 from app.models.contract_model import UserContractSignature, ContractFile, ContractType
 from app.models.guarantor_model import Guarantor, GuarantorRequest, GuarantorRequestStatus
-from app.push.utils import send_notification_to_all_mechanics_async, send_push_to_user_by_id, send_localized_notification_to_user, send_localized_notification_to_all_mechanics
+from app.push.utils import (
+    send_notification_to_all_mechanics_async,
+    send_push_to_user_by_id,
+    send_localized_notification_to_user,
+    send_localized_notification_to_all_mechanics,
+    user_has_push_tokens,
+)
 from app.rent.exceptions import InsufficientBalanceException
 from app.wallet.utils import record_wallet_transaction
 from app.models.wallet_transaction_model import WalletTransactionType, WalletTransaction, get_local_time
@@ -602,11 +608,11 @@ async def add_money(amount: int,
     asyncio.create_task(notify_user_status_update(str(current_user.id)))
 
     # Отправляем уведомление о пополнении баланса
-    if current_user.fcm_token:
+    if user_has_push_tokens(db, current_user.id):
         asyncio.create_task(
             send_localized_notification_to_user(
-                db, 
-                current_user.id, 
+                db,
+                current_user.id,
                 "balance_top_up",
                 "balance_top_up"
             )
@@ -647,7 +653,7 @@ def apply_promo(body: ApplyPromoRequest,
     db.commit()
     
     # Отправляем уведомление о доступном промокоде
-    if current_user.fcm_token:
+    if user_has_push_tokens(db, current_user.id):
         asyncio.create_task(
             send_localized_notification_to_user(
                 db,

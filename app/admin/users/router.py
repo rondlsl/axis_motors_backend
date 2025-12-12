@@ -30,7 +30,7 @@ from app.admin.users.schemas import (
 from app.owner.router import calculate_owner_earnings
 from app.admin.cars.utils import sort_car_photos
 from app.utils.telegram_logger import log_error_to_telegram
-from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
+from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user, user_has_push_tokens
 from app.websocket.notifications import notify_user_status_update
 from app.utils.time_utils import get_local_time
 import asyncio
@@ -1215,7 +1215,7 @@ async def add_sanction_penalty(
         asyncio.create_task(notify_user_status_update(str(user.id)))
         
         try:
-            if user.fcm_token:
+            if user_has_push_tokens(db, user.id):
                 asyncio.create_task(
                     send_localized_notification_to_user(
                         db,

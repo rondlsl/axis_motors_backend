@@ -24,7 +24,7 @@ from app.models.history_model import RentalStatus, RentalHistory, RentalReview
 from app.models.car_model import Car, CarStatus
 from app.models.rental_actions_model import ActionType, RentalAction
 from app.models.user_model import User
-from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
+from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user, user_has_push_tokens
 from app.wallet.utils import record_wallet_transaction
 from app.models.wallet_transaction_model import WalletTransactionType
 from app.guarantor.sms_utils import send_rental_start_sms, send_rental_complete_sms
@@ -148,7 +148,7 @@ async def accept_delivery(
     db.refresh(car)
 
     user = db.query(User).filter(User.id == rental.user_id).first()
-    if user and user.fcm_token:
+    if user and user_has_push_tokens(db, user.id):
         asyncio.create_task(
             send_localized_notification_to_user(
                 db,
@@ -268,7 +268,7 @@ async def start_delivery(
         logger.error(f"Error sending WebSocket notifications: {e}")
 
     user = db.query(User).filter(User.id == rental.user_id).first()
-    if user and user.fcm_token:
+    if user and user_has_push_tokens(db, user.id):
         await send_localized_notification_to_user(
             db,
             user.id,
@@ -461,7 +461,7 @@ async def complete_delivery(
     
     # Отправляем push-уведомление после WebSocket
     user = db.query(User).filter(User.id == rental.user_id).first()
-    if user and user.fcm_token:
+    if user and user_has_push_tokens(db, user.id):
         # Уведомление о доставке курьером
         await send_localized_notification_to_user(
             db,

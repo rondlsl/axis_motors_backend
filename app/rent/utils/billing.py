@@ -15,7 +15,7 @@ from app.models.history_model import RentalHistory, RentalStatus, RentalType
 from app.models.user_model import User, UserRole
 from app.wallet.utils import record_wallet_transaction
 from app.models.wallet_transaction_model import WalletTransactionType, WalletTransaction
-from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
+from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user, user_has_push_tokens
 from app.core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.car_data import send_lock_engine
@@ -249,7 +249,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                     base_time = rental.reservation_time or rental.start_time
                     waited = (now - base_time).total_seconds() / 60
 
-                if 14 <= waited < 15 and not flags["pre_waiting"] and user.fcm_token:
+                if 14 <= waited < 15 and not flags["pre_waiting"] and user_has_push_tokens(db, user.id):
                     mins_left = math.ceil(15 - waited)
                     push_notifications.append((
                         user.id,
@@ -333,7 +333,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                     )
                                 db.commit()
 
-                            if 0 < user.wallet_balance <= 1000 and not flags["low_balance_1000"] and user.fcm_token:
+                            if 0 < user.wallet_balance <= 1000 and not flags["low_balance_1000"] and user_has_push_tokens(db, user.id):
                                 flags["low_balance_1000"] = True
                                 push_notifications.append((
                                     user.id,
@@ -344,7 +344,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                     }
                                 ))
 
-                            if user.wallet_balance <= 0 and not flags["low_balance_zero"] and user.fcm_token:
+                            if user.wallet_balance <= 0 and not flags["low_balance_zero"] and user_has_push_tokens(db, user.id):
                                 flags["low_balance_zero"] = True
                                 push_notifications.append((
                                     user.id,
@@ -357,7 +357,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                     f") на авто ID {car.id} баланс исчерпан."
                                 )
 
-                            if prev_wait == 0 and not flags["waiting"] and user.fcm_token:
+                            if prev_wait == 0 and not flags["waiting"] and user_has_push_tokens(db, user.id):
                                 push_notifications.append((
                                     user.id,
                                     "waiting_started",
@@ -443,7 +443,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                 else:
                     waited = 0
 
-                if rental.delivery_end_time and 14 <= waited < 15 and not flags["pre_waiting"] and user.fcm_token:
+                if rental.delivery_end_time and 14 <= waited < 15 and not flags["pre_waiting"] and user_has_push_tokens(db, user.id):
                     mins_left = math.ceil(15 - waited)
                     push_notifications.append((
                         user.id,
@@ -492,7 +492,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                         db.commit()
 
                         # Low balance ≤1000 - уведомления отправляются через локализованную функцию
-                        if 0 < user.wallet_balance <= 1000 and not flags["low_balance_1000"] and user.fcm_token:
+                        if 0 < user.wallet_balance <= 1000 and not flags["low_balance_1000"] and user_has_push_tokens(db, user.id):
                             flags["low_balance_1000"] = True
                             push_notifications.append((
                                 user.id,
@@ -510,7 +510,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                             ))
 
                         # Balance zero - уведомления отправляются через локализованную функцию
-                        if user.wallet_balance <= 0 and not flags["low_balance_zero"] and user.fcm_token:
+                        if user.wallet_balance <= 0 and not flags["low_balance_zero"] and user_has_push_tokens(db, user.id):
                             flags["low_balance_zero"] = True
                             push_notifications.append((
                                 user.id,
@@ -524,7 +524,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                             )
 
                         # First paid waiting
-                        if not flags["waiting"] and user.fcm_token:
+                        if not flags["waiting"] and user_has_push_tokens(db, user.id):
                             push_notifications.append((
                                 user.id,
                                 "waiting_started",
@@ -644,7 +644,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                         if car.price_per_minute > 0:
                             minutes_left = user.wallet_balance / car.price_per_minute
                             
-                            if 0 < user.wallet_balance <= ten_minutes_cost and not flags["low_balance_1000"] and user.fcm_token:
+                            if 0 < user.wallet_balance <= ten_minutes_cost and not flags["low_balance_1000"] and user_has_push_tokens(db, user.id):
                                 flags["low_balance_1000"] = True
                                 push_notifications.append((
                                     user.id,
@@ -742,7 +742,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                         )
                                         db.commit()
 
-                    if 0 < remaining <= 10 and not flags["pre_overtime"] and user.fcm_token:
+                    if 0 < remaining <= 10 and not flags["pre_overtime"] and user_has_push_tokens(db, user.id):
                         flags["pre_overtime"] = True
                         push_notifications.append((
                             user.id,
@@ -817,7 +817,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                             if car.price_per_minute > 0:
                                 minutes_left = user.wallet_balance / car.price_per_minute
                                 
-                                if 0 < user.wallet_balance <= ten_minutes_cost and not flags["low_balance_1000"] and user.fcm_token:
+                                if 0 < user.wallet_balance <= ten_minutes_cost and not flags["low_balance_1000"] and user_has_push_tokens(db, user.id):
                                     flags["low_balance_1000"] = True
                                     push_notifications.append((
                                         user.id,
@@ -837,7 +837,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                         f"Аренда будет автоматически завершена при нулевом балансе."
                                     )
 
-                            if user.wallet_balance <= 0 and not flags["low_balance_zero"] and user.fcm_token:
+                            if user.wallet_balance <= 0 and not flags["low_balance_zero"] and user_has_push_tokens(db, user.id):
                                 flags["low_balance_zero"] = True
                                 telegram_alerts.append(
                                     f"🔔 У клиента (тел.: {user.phone_number}" + 
@@ -845,7 +845,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                 f") на авто ID {car.id} баланс исчерпан."
                                 )
 
-                            if not flags["overtime"] and user.fcm_token:
+                            if not flags["overtime"] and user_has_push_tokens(db, user.id):
                                 push_notifications.append((
                                     user.id,
                                     "overtime_charges",

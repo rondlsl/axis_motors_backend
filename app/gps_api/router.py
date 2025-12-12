@@ -29,7 +29,7 @@ from app.gps_api.utils.glonassoft_client import glonassoft_client
 from app.gps_api.utils.telemetry_processor import process_glonassoft_data
 from app.utils.telegram_logger import log_error_to_telegram
 from app.admin.cars.utils import sort_car_photos
-from app.push.utils import send_localized_notification_to_user
+from app.push.utils import send_localized_notification_to_user, user_has_push_tokens, get_user_push_tokens
 from pydantic import BaseModel
 # Временно закомментировано: генерация FCM токенов
 # from app.utils.fcm_token import ensure_user_has_unique_fcm_token
@@ -322,7 +322,7 @@ async def get_vehicle_info(
                     nearby_cars.append(car.id)
 
         # Отправляем уведомление о машинах рядом (только один раз за запрос)
-        if nearby_cars and current_user.fcm_token:
+        if nearby_cars and user_has_push_tokens(db, current_user.id):
             asyncio.create_task(
                 send_localized_notification_to_user(
                     db,
@@ -333,7 +333,7 @@ async def get_vehicle_info(
             )
         
         # Проверка локации аэропорта (координаты аэропорта Алматы: 43.3522, 77.0405)
-        if user_latitude and user_longitude and current_user.fcm_token:
+        if user_latitude and user_longitude and user_has_push_tokens(db, current_user.id):
             from math import radians, cos, sin, asin, sqrt
             
             def haversine(lon1, lat1, lon2, lat2):
@@ -364,9 +364,12 @@ async def get_vehicle_info(
                         )
                     )
 
+        tokens = get_user_push_tokens(db, current_user.id)
+        token = current_user.fcm_token or (tokens[0] if tokens else None)
+
         return {
             "vehicles": vehicles_data,
-            "fcm_token": current_user.fcm_token
+            "fcm_token": token
         }
 
     except Exception as e:
@@ -1636,8 +1639,10 @@ async def notify_from_cars_v2(
         return {"message": "Нет активной аренды для этого автомобиля"}
     
     user = db.query(User).filter(User.id == rental.user_id).first()
-    if not user or not user.fcm_token:
+    if not user:
         return {"message": "Пользователь не найден или нет FCM токена"}
+    if not user_has_push_tokens(db, user.id):
+        return {"message": "У пользователя нет активных пуш-токенов"}
     
     # Определяем ключ уведомления и статус
     notification_map = {
@@ -1759,6 +1764,3 @@ async def track_app_exit(
         logger.error(f"Error tracking app exit for user {current_user.id}: {str(e)}")
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Ошибка отслеживания выхода из приложения: {str(e)}")
-
-
-

@@ -142,7 +142,7 @@ def _update_vehicle_data_sync(vehicles_data: list, db: Session) -> int:
                                 rental = get_active_rental_by_car_id(db, car.id)
                                 if rental:
                                     user = db.query(User).filter(User.id == rental.user_id).first()
-                                    if user and user.fcm_token:
+                                    if user:
                                         asyncio.create_task(
                                             send_localized_notification_to_user(
                                                 db,

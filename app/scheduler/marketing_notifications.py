@@ -48,8 +48,7 @@ async def check_birthdays():
         users = db.query(User).filter(
             extract('month', User.birth_date) == today_month,
             extract('day', User.birth_date) == today_day,
-            User.fcm_token.isnot(None),
-            User.is_active == True
+            User.is_active.is_(True)
         ).all()
         
         sent_count = 0
@@ -92,8 +91,7 @@ async def check_holidays():
         
         # Находим всех активных пользователей с FCM токенами
         users = db.query(User).filter(
-            User.fcm_token.isnot(None),
-            User.is_active == True
+            User.is_active.is_(True)
         ).all()
         
         sent_count = 0
@@ -136,8 +134,7 @@ async def check_weekend_promotions():
         # Пятница 19:00
         if weekday == 4 and hour == 19:
             users = db.query(User).filter(
-                User.fcm_token.isnot(None),
-                User.is_active == True
+                User.is_active.is_(True)
             ).all()
             
             sent_count = 0
@@ -161,8 +158,7 @@ async def check_weekend_promotions():
         # Понедельник 8:00
         elif weekday == 0 and hour == 8:
             users = db.query(User).filter(
-                User.fcm_token.isnot(None),
-                User.is_active == True
+                User.is_active.is_(True)
             ).all()
             
             sent_count = 0
@@ -207,8 +203,7 @@ async def check_new_cars():
             return
 
         users = db.query(User).filter(
-            User.fcm_token.isnot(None),
-            User.is_active == True
+            User.is_active.is_(True)
         ).all()
 
         sent_count = 0
@@ -232,4 +227,3 @@ async def check_new_cars():
         print(f"Ошибка при проверке новых автомобилей: {e}")
     finally:
         db.close()
-

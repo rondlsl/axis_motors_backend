@@ -18,7 +18,7 @@ from app.admin.guarantors.schemas import (
 from app.utils.sid_converter import convert_uuid_response_to_sid
 from app.utils.telegram_logger import log_error_to_telegram
 from app.utils.time_utils import get_local_time
-from app.push.utils import send_localized_notification_to_user
+from app.push.utils import send_localized_notification_to_user, user_has_push_tokens
 from app.websocket.notifications import notify_user_status_update
 
 guarantors_router = APIRouter(tags=["Admin Guarantors"])
@@ -132,7 +132,7 @@ async def approve_guarantor_request(
                 pass
     
     # Отправляем уведомление клиенту о том, что гарант подключён
-    if requestor and requestor.fcm_token:
+    if requestor and user_has_push_tokens(db, requestor.id):
         asyncio.create_task(
             send_localized_notification_to_user(
                 db,
@@ -202,4 +202,3 @@ async def reject_guarantor_request(
                 pass
 
     return {"message": "Заявка отклонена"}
-

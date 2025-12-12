@@ -47,7 +47,7 @@ from app.guarantor.schemas import (
     VerificationStatusSchema
 )
 from app.guarantor.sms_utils import send_guarantor_invitation_sms, send_guarantor_contract_signed_sms, send_client_guarantor_confirmed_sms
-from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
+from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user, user_has_push_tokens
 from app.websocket.notifications import notify_user_status_update
 
 
@@ -358,7 +358,7 @@ async def accept_guarantor_request(
         client_name_parts = [p for p in [requestor.first_name, requestor.last_name, requestor.middle_name] if p]
         client_name = " ".join(client_name_parts) if client_name_parts else requestor.phone_number
         
-        if current_user.fcm_token:
+        if user_has_push_tokens(db, current_user.id):
             asyncio.create_task(
                 send_localized_notification_to_user(
                     db,
@@ -1368,5 +1368,3 @@ async def get_guarantor_relationships(
             guarantor["guarantor_id"] = uuid_to_sid(guarantor["guarantor_id"])
     
     return converted_data
-
-

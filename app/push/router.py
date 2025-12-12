@@ -21,7 +21,12 @@ from app.push.schemas import (
     DeviceRegisterRequest,
     UserDeviceResponse,
 )
-from app.push.utils import send_push_notification_async, send_localized_notification_to_user, send_push_to_user_by_id
+from app.push.utils import (
+    send_push_notification_async,
+    send_localized_notification_to_user,
+    send_push_to_user_by_id,
+    get_user_push_tokens,
+)
 from app.push.enums import NotificationStatus
 from app.utils.telegram_logger import log_error_to_telegram
 from app.utils.time_utils import get_local_time
@@ -638,22 +643,24 @@ async def test_push_by_phone(
     print(f"✅ Пользователь найден: {target_user.id}")
     print(f"   Имя: {target_user.first_name} {target_user.last_name}")
     
-    # Проверяем токен
-    if not target_user.fcm_token:
-        print(f"❌ У пользователя нет FCM токена")
-        raise HTTPException(status_code=400, detail=f"User {target_user.phone_number} doesn't have FCM token")
+    tokens = get_user_push_tokens(db, target_user.id)
+    if not tokens:
+        print(f"❌ У пользователя нет активных FCM токенов")
+        raise HTTPException(status_code=400, detail=f"User {target_user.phone_number} doesn't have active FCM tokens")
     
-    print(f"✅ FCM токен найден: {target_user.fcm_token[:50]}...")
+    print(f"✅ Найдено {len(tokens)} FCM токен(ов)")
     print(f"🚀 Начинаем отправку push-уведомления...")
     print("-"*80)
     sys.stdout.flush()
     
-    # Отправляем push
-    success = await send_push_notification_async(
-        token=target_user.fcm_token,
-        title=payload.title,
-        body=payload.body
-    )
+    success = False
+    for token in tokens:
+        token_success = await send_push_notification_async(
+            token=token,
+            title=payload.title,
+            body=payload.body
+        )
+        success = success or token_success
     
     print("-"*80)
     if success:
@@ -674,7 +681,7 @@ async def test_push_by_phone(
             "phone": target_user.phone_number,
             "name": full_name,
             "role": target_user.role.value if target_user.role else None,
-            "fcm_token": target_user.fcm_token[:30] + "..." if len(target_user.fcm_token) > 30 else target_user.fcm_token
+            "fcm_tokens": [t[:30] + "..." if len(t) > 30 else t for t in tokens]
         },
         "message": "Push notification sent successfully" if success else "Failed to send push notification"
     }

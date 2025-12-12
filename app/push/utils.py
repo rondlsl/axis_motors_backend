@@ -1,9 +1,56 @@
 import asyncio
 import uuid
 import httpx
-from app.models.user_model import User
-from app.translations.notifications import get_notification_text
+from typing import List
 from sqlalchemy.orm import Session
+
+from app.translations.notifications import get_notification_text
+
+
+def get_user_push_tokens(db_session: Session, user_id: uuid.UUID) -> List[str]:
+    """
+    Возвращает активные FCM-токены пользователя из user_devices.
+    Если устройств нет, использует legacy-колонку users.fcm_token.
+    """
+    from app.models.user_device_model import UserDevice
+    from app.models.user_model import User
+
+    device_rows = (
+        db_session
+        .query(UserDevice.fcm_token)
+        .filter(
+            UserDevice.user_id == user_id,
+            UserDevice.is_active.is_(True),
+            UserDevice.fcm_token.isnot(None),
+            UserDevice.revoked_at.is_(None),
+        )
+        .all()
+    )
+    tokens = [row[0] for row in device_rows if row[0]]
+
+    if not tokens:
+        user = (
+            db_session
+            .query(User)
+            .filter(User.id == user_id, User.fcm_token.isnot(None))
+            .first()
+        )
+        if user and user.fcm_token:
+            tokens = [user.fcm_token]
+
+    # Убираем дубликаты, сохраняя порядок
+    seen = set()
+    unique_tokens = []
+    for token in tokens:
+        if token not in seen:
+            seen.add(token)
+            unique_tokens.append(token)
+    return unique_tokens
+
+
+def user_has_push_tokens(db_session: Session, user_id: uuid.UUID) -> bool:
+    """Проверяет наличие хотя бы одного активного FCM-токена пользователя."""
+    return bool(get_user_push_tokens(db_session, user_id))
 
 
 async def send_push_notification_async(token: str, title: str, body: str, max_retries: int = 3):
@@ -158,8 +205,7 @@ async def send_notification_to_all_mechanics_async(
         db_session.query(User)
         .filter(
             User.role == UserRole.MECHANIC,
-            User.is_active == True,
-            User.fcm_token.isnot(None)
+            User.is_active.is_(True)
         )
         .all()
     )
@@ -201,15 +247,32 @@ async def broadcast_push_notification_async(db_session, title: str, body: str):
     from app.models.user_model import User
 
     try:
-        # Fetch all distinct, non-null tokens
-        token_rows = (
+        from app.models.user_device_model import UserDevice
+
+        # Fetch all distinct, non-null tokens from devices
+        device_rows = (
             db_session
-            .query(User.fcm_token)
-            .filter(User.fcm_token.isnot(None))
+            .query(UserDevice.fcm_token)
+            .filter(
+                UserDevice.fcm_token.isnot(None),
+                UserDevice.is_active.is_(True),
+                UserDevice.revoked_at.is_(None),
+            )
             .distinct()
             .all()
         )
-        tokens = [row[0] for row in token_rows]
+        tokens = [row[0] for row in device_rows if row[0]]
+
+        # Fallback: legacy tokens from users table
+        if not tokens:
+            token_rows = (
+                db_session
+                .query(User.fcm_token)
+                .filter(User.fcm_token.isnot(None))
+                .distinct()
+                .all()
+            )
+            tokens = [row[0] for row in token_rows]
 
         if not tokens:
             print("No FCM tokens found for broadcast")
@@ -252,8 +315,7 @@ async def send_push_to_user_by_id(
 ) -> bool:
     from app.models.notification_model import Notification
     from app.push.enums import NotificationStatus
-    from app.models.user_device_model import UserDevice
-    
+
     notif = Notification(user_id=user_id, title=title, body=body)
     if status:
         try:
@@ -263,32 +325,7 @@ async def send_push_to_user_by_id(
     db_session.add(notif)
     db_session.commit()
 
-    devices = (
-        db_session
-        .query(UserDevice)
-        .filter(
-            UserDevice.user_id == user_id,
-            UserDevice.is_active == True,
-            UserDevice.fcm_token.isnot(None),
-            UserDevice.revoked_at.is_(None)
-        )
-        .all()
-    )
-    
-    if not devices:
-        from app.models.user_model import User
-        user = (
-            db_session
-            .query(User)
-            .filter(User.id == user_id, User.fcm_token.isnot(None))
-            .first()
-        )
-        if not user:
-            return False
-        devices_tokens = [user.fcm_token]
-    else:
-        devices_tokens = [device.fcm_token for device in devices if device.fcm_token]
-    
+    devices_tokens = get_user_push_tokens(db_session, user_id)
     if not devices_tokens:
         return False
     
@@ -360,8 +397,7 @@ async def send_localized_notification_to_all_mechanics(
         db_session.query(User)
         .filter(
             User.role == UserRole.MECHANIC,
-            User.is_active == True,
-            User.fcm_token.isnot(None)
+            User.is_active.is_(True)
         )
         .all()
     )

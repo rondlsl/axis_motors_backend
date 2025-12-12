@@ -10,7 +10,7 @@ from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole
 from app.models.application_model import Application, ApplicationStatus
 from app.models.guarantor_model import Guarantor, GuarantorRequest, GuarantorRequestStatus
-from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user
+from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user, user_has_push_tokens
 from app.utils.telegram_logger import log_error_to_telegram
 from app.utils.time_utils import get_local_time
 from app.websocket.notifications import notify_user_status_update
@@ -359,7 +359,7 @@ async def approve_application(
         )
         
         # Уведомление о том, что проверка пройдена (заявка полностью одобрена)
-        if user.fcm_token:
+        if user_has_push_tokens(db, user.id):
             asyncio.create_task(
                 send_localized_notification_to_user(
                     db,
@@ -367,7 +367,7 @@ async def approve_application(
                     "verification_passed",
                     "verification_passed"
                 )
-        )
+            )
     except Exception as e:
         try:
             await log_error_to_telegram(
