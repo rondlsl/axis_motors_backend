@@ -257,7 +257,7 @@ def init_app(app: FastAPI):
             scheduler.add_job(
                 update_cars_availability_job,
                 "interval",
-                minutes=5,
+                minutes=1,
                 id="update_car_availability",
                 coalesce=True,
             )

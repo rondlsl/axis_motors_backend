@@ -1,16 +1,25 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
 
 from app.dependencies.database.database import SessionLocal
 from app.models.car_model import Car, CarStatus
-from app.utils.time_utils import get_local_time
+from app.utils.time_utils import get_local_time, ALMATY_OFFSET
 
 logger = logging.getLogger(__name__)
 
 EXCLUDED_STATUSES = {CarStatus.OWNER, CarStatus.OCCUPIED}
+
+UTC_TZ = timezone.utc
+
+
+def _to_utc(dt: datetime) -> datetime:
+    """Переводим datetime (алматинский) в timezone-aware UTC."""
+    if dt.tzinfo is None:
+        return (dt - ALMATY_OFFSET).replace(tzinfo=UTC_TZ)
+    return dt.astimezone(UTC_TZ)
 
 
 def _month_start(dt: datetime) -> datetime:
@@ -24,26 +33,26 @@ def update_car_availability_snapshot(car: Car, now: Optional[datetime] = None) -
     Работает по принципу «накопительного» таймера: если машина доступна (не OWNER/OCCUPIED),
     добавляем прошедшие минуты к available_minutes. В начале каждого месяца счетчик сбрасывается.
     """
-    now = now or get_local_time()
-    month_start = _month_start(now)
+    local_now = now or get_local_time()
+    now_utc = _to_utc(local_now)
+    month_start_local = _month_start(local_now)
+    month_start_utc = _to_utc(month_start_local)
 
-    last_update = car.availability_updated_at or month_start
-    if last_update < month_start:
+    last_update = _to_utc(car.availability_updated_at) if car.availability_updated_at else month_start_utc
+    if last_update < month_start_utc:
         car.available_minutes = 0
-        last_update = month_start
+        last_update = month_start_utc
 
-    if last_update > now:
-        car.availability_updated_at = now
+    if last_update > now_utc:
+        car.availability_updated_at = now_utc
         return
 
-    # Если машина в статусе, когда не должна копить минуты, просто помечаем время
     if car.status in EXCLUDED_STATUSES:
-        car.availability_updated_at = now
+        car.availability_updated_at = now_utc
         return
 
-    delta_seconds = (now - last_update).total_seconds()
+    delta_seconds = (now_utc - last_update).total_seconds()
     if delta_seconds < 60:
-        # Ждем пока накапает хотя бы минута, чтобы избежать дробных значений
         return
 
     delta_minutes = int(delta_seconds // 60)
@@ -51,14 +60,12 @@ def update_car_availability_snapshot(car: Car, now: Optional[datetime] = None) -
         return
 
     car.available_minutes += delta_minutes
-    month_total_minutes = int((now - month_start).total_seconds() // 60)
+    month_total_minutes = int((now_utc - month_start_utc).total_seconds() // 60)
     if car.available_minutes > month_total_minutes:
         car.available_minutes = month_total_minutes
 
-    # Сохраняем момент, когда в последний раз учли доступность (без остатка < 1 мин)
-    car.availability_updated_at = last_update + timedelta(minutes=delta_minutes)
-    if car.availability_updated_at < now:
-        car.availability_updated_at = now
+    next_update = last_update + timedelta(minutes=delta_minutes)
+    car.availability_updated_at = next_update if next_update > now_utc else now_utc
 
 
 def update_cars_availability_job() -> None:
