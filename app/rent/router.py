@@ -3,6 +3,7 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, status, Query, Security
 from pydantic import BaseModel, constr, Field, conint
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import or_, and_
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 import httpx
@@ -31,7 +32,7 @@ from app.push.utils import (
 )
 from app.rent.exceptions import InsufficientBalanceException
 from app.wallet.utils import record_wallet_transaction
-from app.models.wallet_transaction_model import WalletTransactionType, WalletTransaction, get_local_time
+from app.models.wallet_transaction_model import WalletTransactionType, WalletTransaction
 from app.rent.utils.calculate_price import calculate_total_price, get_open_price, calc_required_balance, calculate_rental_cost_breakdown, calculate_rental_cost_breakdown
 from app.gps_api.utils.route_data import get_gps_route_data
 from app.gps_api.utils.auth_api import get_auth_token
@@ -848,6 +849,26 @@ async def reserve_car(
             "reservation_time": rental.reservation_time.isoformat()
         }
 
+    # Проверяем, был ли у пользователя ранее отмененная бронь для этого же car_id
+    # Отмена бронирования: CANCELLED или COMPLETED без start_time (отменено до начала использования)
+    # Успешное завершение аренды имеет start_time, поэтому не учитывается
+    previous_rental = db.query(RentalHistory).filter(
+        RentalHistory.user_id == current_user.id,
+        RentalHistory.car_id == car.id,
+        or_(
+            RentalHistory.rental_status == RentalStatus.CANCELLED,
+            and_(
+                RentalHistory.rental_status == RentalStatus.COMPLETED,
+                RentalHistory.start_time.is_(None)  # Отмена бронирования до начала использования
+            )
+        )
+    ).order_by(RentalHistory.reservation_time.desc()).first()
+    
+    rebooking_fee = 0
+    if previous_rental:
+        # Если пользователь уже бронировал это авто и отменял/завершал - списываем 500тг
+        rebooking_fee = 500
+
     # НЕ владельцу – проверка баланса
     required_balance = calc_required_balance(
         rental_type=rental_type,
@@ -857,8 +878,11 @@ async def reserve_car(
         is_owner=False
     )
     
-    if current_user.wallet_balance < required_balance:
-        raise InsufficientBalanceException(required_amount=required_balance)
+    # Добавляем комиссию за повторное бронирование к требуемому балансу
+    total_required_balance = required_balance + rebooking_fee
+    
+    if current_user.wallet_balance < total_required_balance:
+        raise InsufficientBalanceException(required_amount=total_required_balance)
 
     if rental_type == RentalType.MINUTES:
         base = 0
@@ -892,6 +916,19 @@ async def reserve_car(
     db.add(rental)
     db.commit()
     db.refresh(rental)
+
+    # Списываем комиссию за повторное бронирование, если применимо
+    if rebooking_fee > 0:
+        balance_before = float(current_user.wallet_balance or 0)
+        current_user.wallet_balance = balance_before - rebooking_fee
+        record_wallet_transaction(
+            db,
+            user=current_user,
+            amount=-rebooking_fee,
+            ttype=WalletTransactionType.RESERVATION_REBOOKING_FEE,
+            description=f"Списание за повторное бронирование того же автомобиля (аренда ID: {rental.id})",
+            related_rental=rental
+        )
 
     # Обновляем машину: устанавливаем текущего арендатора и меняем статус на RESERVED
     car.current_renter_id = current_user.id

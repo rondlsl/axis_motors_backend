@@ -37,6 +37,9 @@ class WalletTransactionType(enum.Enum):
     
     # Владелец
     OWNER_WAITING_FEE_SHARE = "owner_waiting_fee_share"  # 50% от платного ожидания владельцу при отмене
+    
+    # Повторное бронирование
+    RESERVATION_REBOOKING_FEE = "reservation_rebooking_fee"  # Списание за повторное бронирование того же авто после отмены
 
 
 class WalletTransaction(Base):

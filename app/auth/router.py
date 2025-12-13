@@ -477,7 +477,7 @@ ID клиента: {user.id}
             pass
         
         db.commit()
-    
+
     # Возвращаем fcm_token из базы данных
     fcm_token = user.fcm_token if user.fcm_token else None
     return SendSmsResponse(
@@ -1225,22 +1225,22 @@ async def upload_documents(
         # Если email НЕ передан - не трогаем существующий email и его верификацию
 
         if normalized_email:
-            # Приводим normalized_email к None, если это пустая строка для корректного сравнения
-            normalized_email_for_comparison = normalized_email if normalized_email else None
-            
-            if existing_application and existing_application.financier_status == ApplicationStatus.REJECTED:
-                # Пользователь повторно загружает документы после отказа
-                if current_user.is_verified_email:
-                    # Email был подтвержден, но нужна повторная верификация
-                    current_user.is_verified_email = False
-                    email_needs_verification = True
-            elif old_email != normalized_email_for_comparison:
-                # Пользователь изменил email - нужна верификация нового email
+        # Приводим normalized_email к None, если это пустая строка для корректного сравнения
+        normalized_email_for_comparison = normalized_email if normalized_email else None
+        
+        if existing_application and existing_application.financier_status == ApplicationStatus.REJECTED:
+            # Пользователь повторно загружает документы после отказа
+            if current_user.is_verified_email:
+                # Email был подтвержден, но нужна повторная верификация
                 current_user.is_verified_email = False
                 email_needs_verification = True
-            elif not current_user.is_verified_email and normalized_email_for_comparison:
-                # Email еще не был подтвержден (только если email указан)
-                email_needs_verification = True
+        elif old_email != normalized_email_for_comparison:
+            # Пользователь изменил email - нужна верификация нового email
+            current_user.is_verified_email = False
+            email_needs_verification = True
+        elif not current_user.is_verified_email and normalized_email_for_comparison:
+            # Email еще не был подтвержден (только если email указан)
+            email_needs_verification = True
 
         # Обновляем имя в заявках гаранта, где этот пользователь является гарантом
         try:

@@ -277,10 +277,12 @@ def create_enums():
                 'rent_minute_charge', 'rent_overtime_fee', 'rent_distance_fee',
                 'rent_base_charge', 'rent_fuel_fee', 'delivery_fee', 'delivery_penalty',
                 'manual_adjustment', 'damage_penalty', 'fine_penalty', 'owner_waiting_fee_share', 'sanction_penalty',
+                'reservation_rebooking_fee',
                 'DEPOSIT', 'PROMO_BONUS', 'COMPANY_BONUS', 'REFUND', 'RENT_OPEN_FEE', 'RENT_WAITING_FEE',
                 'RENT_MINUTE_CHARGE', 'RENT_OVERTIME_FEE', 'RENT_DISTANCE_FEE',
                 'RENT_BASE_CHARGE', 'RENT_FUEL_FEE', 'DELIVERY_FEE', 'DELIVERY_PENALTY',
-                'MANUAL_ADJUSTMENT', 'DAMAGE_PENALTY', 'FINE_PENALTY', 'OWNER_WAITING_FEE_SHARE', 'SANCTION_PENALTY'
+                'MANUAL_ADJUSTMENT', 'DAMAGE_PENALTY', 'FINE_PENALTY', 'OWNER_WAITING_FEE_SHARE', 'SANCTION_PENALTY',
+                'RESERVATION_REBOOKING_FEE'
             );
         EXCEPTION
             WHEN duplicate_object THEN null;
