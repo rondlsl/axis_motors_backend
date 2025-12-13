@@ -170,11 +170,10 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
     # Топливо и пробег
     fuel_level = None
     fuel_keys = [
-        "Заряд батареи (param67)",
-        "Уровень топлива (param67)",
         "Уровень топлива (param70)",
         "Уровень топлива (can100)",
         "Уровень топлива (can_fuel_volume)",
+        "Заряд батареи (param67)",
     ]
     for key in fuel_keys:
         fuel_value = extract_sensor_value(regs, key)
