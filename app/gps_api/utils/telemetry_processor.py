@@ -188,7 +188,9 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
         raw_param70 = extract_first_match(pkg, ["param70"])
         if raw_param70 and raw_param70.lower() not in ["данных нет", "нет данных"]:
             try:
-                fuel_level = parse_numeric(raw_param70)
+                parsed_value = parse_numeric(raw_param70)
+                if 0 < parsed_value <= 150:
+                    fuel_level = parsed_value
             except Exception:
                 pass
     
