@@ -115,6 +115,8 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
     is_online = glonassoft_data.get("isonline", False)
     is_moving = glonassoft_data.get("ismoving", False)
     
+    is_special_car = (vehicle_id == 800298270 or imei == "860803068155890")
+    
     # Координаты
     latitude = glonassoft_data.get("latitude", 0.0)
     longitude = glonassoft_data.get("longitude", 0.0)
@@ -169,31 +171,49 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
     
     # Топливо и пробег
     fuel_level = None
-    fuel_keys = [
-        "Уровень топлива (param70)",
-        "Уровень топлива (can100)",
-        "Уровень топлива (can_fuel_volume)",
-        "Заряд батареи (param67)",
-    ]
-    for key in fuel_keys:
-        fuel_value = extract_sensor_value(regs, key)
+    
+    if is_special_car:
+        fuel_value = extract_sensor_value(regs, "Уровень топлива (param70)")
         if fuel_value and fuel_value.lower() not in ["данных нет", "нет данных"]:
             fuel_str = fuel_value.replace(" л", "").replace("л", "").strip()
-            fuel_level = parse_numeric(fuel_str)
-            break
+            parsed_fuel = parse_numeric(fuel_str)
+            if parsed_fuel > 0:
+                fuel_level = parsed_fuel
+        
+        if fuel_level is None:
+            raw_param70 = extract_first_match(pkg, ["param70"])
+            if raw_param70 and raw_param70.lower() not in ["данных нет", "нет данных"]:
+                try:
+                    parsed_value = parse_numeric(raw_param70)
+                    if 0 < parsed_value <= 150:
+                        fuel_level = parsed_value
+                except Exception:
+                    pass
+    else:
+        fuel_keys = [
+            "Уровень топлива (param70)",
+            "Уровень топлива (can100)",
+            "Уровень топлива (can_fuel_volume)",
+            "Заряд батареи (param67)",
+        ]
+        for key in fuel_keys:
+            fuel_value = extract_sensor_value(regs, key)
+            if fuel_value and fuel_value.lower() not in ["данных нет", "нет данных"]:
+                fuel_str = fuel_value.replace(" л", "").replace("л", "").strip()
+                fuel_level = parse_numeric(fuel_str)
+                break
 
-    # Fallback: если в RegistredSensors нет уровня топлива, пробуем взять param70 из PackageItems
-    if fuel_level is None:
-        raw_param70 = extract_first_match(pkg, ["param70"])
-        if raw_param70 and raw_param70.lower() not in ["данных нет", "нет данных"]:
-            try:
-                parsed_value = parse_numeric(raw_param70)
-                if 0 < parsed_value <= 150:
-                    fuel_level = parsed_value
-            except Exception:
-                pass
+        # Fallback: если в RegistredSensors нет уровня топлива, пробуем взять param70 из PackageItems
+        if fuel_level is None:
+            raw_param70 = extract_first_match(pkg, ["param70"])
+            if raw_param70 and raw_param70.lower() not in ["данных нет", "нет данных"]:
+                try:
+                    parsed_value = parse_numeric(raw_param70)
+                    if 0 < parsed_value <= 150:
+                        fuel_level = parsed_value
+                except Exception:
+                    pass
     
-    # Если топливо = 0, считаем что данных нет (чтобы не затирать старые данные нулём)
     if fuel_level is not None and fuel_level <= 0:
         fuel_level = None
     
