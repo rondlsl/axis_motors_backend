@@ -689,6 +689,77 @@ async def test_push_by_phone(
     }
 
 
+@router.post("/test_push_to_me", status_code=status.HTTP_200_OK)
+async def test_push_to_me(
+    title: Optional[str] = "Тестовое уведомление",
+    body: Optional[str] = "Это тестовое push-уведомление для проверки работы системы",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Тестовый endpoint для отправки push-уведомления самому себе.
+    Отправляет уведомление текущему авторизованному пользователю.
+    """
+    
+    print("="*80)
+    print("🔔 [TEST_PUSH_TO_ME] Запрос получен")
+    print(f"👤 Пользователь: {current_user.phone_number} (ID: {current_user.id})")
+    print(f"📝 Заголовок: {title}")
+    print(f"📝 Текст: {body}")
+    sys.stdout.flush()
+    
+    tokens = get_user_push_tokens(db, current_user.id)
+    if not tokens:
+        print(f"❌ У вас нет активных FCM токенов")
+        raise HTTPException(
+            status_code=400, 
+            detail="У вас нет активных FCM токенов. Убедитесь, что приложение установлено и зарегистрировано."
+        )
+    
+    print(f"✅ Найдено {len(tokens)} FCM токен(ов)")
+    print(f"🚀 Начинаем отправку push-уведомления...")
+    print("-"*80)
+    sys.stdout.flush()
+    
+    success = False
+    failed_tokens = []
+    for token in tokens:
+        token_success = await send_push_notification_async(
+            token=token,
+            title=title,
+            body=body
+        )
+        if token_success:
+            success = True
+        else:
+            failed_tokens.append(token[:50] + "...")
+    
+    print("-"*80)
+    if success:
+        print(f"✅ [TEST_PUSH_TO_ME] Push отправлен успешно!")
+    else:
+        print(f"❌ [TEST_PUSH_TO_ME] Ошибка отправки push на все устройства")
+    print("="*80)
+    print()
+    sys.stdout.flush()
+    
+    full_name = f"{current_user.first_name or ''} {current_user.last_name or ''} {current_user.middle_name or ''}".strip() or "Не указано"
+    
+    return {
+        "success": success,
+        "message": f"Push notification sent to {current_user.phone_number}",
+        "user": {
+            "id": str(current_user.id),
+            "phone": current_user.phone_number,
+            "full_name": full_name
+        },
+        "tokens_count": len(tokens),
+        "successful_tokens": len([t for t in tokens if t not in failed_tokens]),
+        "failed_tokens_count": len(failed_tokens),
+        "token_preview": tokens[0][:50] + "..." if tokens else None
+    }
+
+
 @router.get("/test_users_with_tokens", status_code=status.HTTP_200_OK)
 async def get_users_with_tokens(
     db: Session = Depends(get_db),
