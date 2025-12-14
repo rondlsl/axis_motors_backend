@@ -701,23 +701,18 @@ async def test_push_to_me(
     Отправляет уведомление текущему авторизованному пользователю.
     """
     
-    print("="*80)
-    print("🔔 [TEST_PUSH_TO_ME] Запрос получен")
-    print(f"👤 Пользователь: {current_user.phone_number} (ID: {current_user.id})")
-    print(f"📝 Заголовок: {title}")
-    print(f"📝 Текст: {body}")
     sys.stdout.flush()
     
     tokens = get_user_push_tokens(db, current_user.id)
     if not tokens:
-        print(f"❌ У вас нет активных FCM токенов")
+        print(f"У вас нет активных FCM токенов")
         raise HTTPException(
             status_code=400, 
             detail="У вас нет активных FCM токенов. Убедитесь, что приложение установлено и зарегистрировано."
         )
     
-    print(f"✅ Найдено {len(tokens)} FCM токен(ов)")
-    print(f"🚀 Начинаем отправку push-уведомления...")
+    print(f"Найдено {len(tokens)} FCM токен(ов)")
+    print(f"Начинаем отправку push-уведомления...")
     print("-"*80)
     sys.stdout.flush()
     
@@ -736,9 +731,9 @@ async def test_push_to_me(
     
     print("-"*80)
     if success:
-        print(f"✅ [TEST_PUSH_TO_ME] Push отправлен успешно!")
+        print(f"[TEST_PUSH_TO_ME] Push отправлен успешно!")
     else:
-        print(f"❌ [TEST_PUSH_TO_ME] Ошибка отправки push на все устройства")
+        print(f"[TEST_PUSH_TO_ME] Ошибка отправки push на все устройства")
     print("="*80)
     print()
     sys.stdout.flush()
