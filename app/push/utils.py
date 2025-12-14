@@ -3,7 +3,7 @@ import uuid
 import httpx
 from typing import List
 from sqlalchemy.orm import Session
-
+from app.models.user_model import User
 from app.translations.notifications import get_notification_text
 
 
@@ -212,16 +212,19 @@ async def send_notification_to_all_mechanics_async(
     if not mechanics:
         return {"success": 0, "failed": 0, "failed_ids": []}
 
+    # Сохраняем ID механиков перед закрытием сессии
+    mechanic_ids = [mech.id for mech in mechanics]
+    
     tasks = [
-        send_push_to_user_by_id(db_session, mech.id, title, body, status)
-        for mech in mechanics
+        send_push_to_user_by_id_async(mech_id, title, body, status)
+        for mech_id in mechanic_ids
     ]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     success = sum(1 for r in results if r is True)
     failed_ids = [
-        mech.id
-        for mech, r in zip(mechanics, results)
+        mech_id
+        for mech_id, r in zip(mechanic_ids, results)
         if r is not True
     ]
 
@@ -372,6 +375,62 @@ async def send_localized_notification_to_user(
     return await send_push_to_user_by_id(db_session, user_id, title, body, status)
 
 
+async def send_localized_notification_to_user_async(
+        user_id: uuid.UUID,
+        translation_key: str,
+        status: str = None,
+        **kwargs
+) -> bool:
+    """
+    Отправить локализованное уведомление пользователю (создает свою сессию БД)
+    Используется для asyncio.create_task, когда сессия может быть закрыта
+    
+    Args:
+        user_id: ID пользователя
+        translation_key: Ключ перевода (например, 'financier_approve')
+        status: Статус уведомления
+        **kwargs: Параметры для форматирования перевода
+        
+    Returns:
+        bool: Успешность отправки
+    """
+    from app.dependencies.database.database import SessionLocal
+    
+    db = SessionLocal()
+    try:
+        return await send_localized_notification_to_user(db, user_id, translation_key, status, **kwargs)
+    finally:
+        db.close()
+
+
+async def send_push_to_user_by_id_async(
+        user_id: uuid.UUID,
+        title: str,
+        body: str,
+        status: str = None
+) -> bool:
+    """
+    Отправить push-уведомление пользователю (создает свою сессию БД)
+    Используется для asyncio.create_task, когда сессия может быть закрыта
+    
+    Args:
+        user_id: ID пользователя
+        title: Заголовок уведомления
+        body: Текст уведомления
+        status: Статус уведомления
+        
+    Returns:
+        bool: Успешность отправки
+    """
+    from app.dependencies.database.database import SessionLocal
+    
+    db = SessionLocal()
+    try:
+        return await send_push_to_user_by_id(db, user_id, title, body, status)
+    finally:
+        db.close()
+
+
 async def send_localized_notification_to_all_mechanics(
         db_session: Session,
         translation_key: str,
@@ -405,12 +464,13 @@ async def send_localized_notification_to_all_mechanics(
     if not mechanics:
         return {"success": 0, "failed": 0, "failed_ids": []}
     
-    # Отправляем локализованные уведомления каждому механику
+    mechanic_ids = [mech.id for mech in mechanics]
+    
+    # Отправляем локализованные уведомления каждому механику (используем async версии)
     tasks = []
-    for mech in mechanics:
-        task = send_localized_notification_to_user(
-            db_session, 
-            mech.id, 
+    for mech_id in mechanic_ids:
+        task = send_localized_notification_to_user_async(
+            mech_id, 
             translation_key, 
             status, 
             **kwargs
@@ -421,7 +481,7 @@ async def send_localized_notification_to_all_mechanics(
     
     success = sum(1 for r in results if r is True)
     failed_ids = [
-        mech.id for mech, r in zip(mechanics, results)
+        mech_id for mech_id, r in zip(mechanic_ids, results)
         if r is not True
     ]
     

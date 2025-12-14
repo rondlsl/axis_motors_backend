@@ -24,7 +24,9 @@ from app.push.schemas import (
 from app.push.utils import (
     send_push_notification_async,
     send_localized_notification_to_user,
+    send_localized_notification_to_user_async,
     send_push_to_user_by_id,
+    send_push_to_user_by_id_async,
     get_user_push_tokens,
 )
 from app.push.enums import NotificationStatus
@@ -961,8 +963,7 @@ async def broadcast_localized_notification(
         
         tasks = []
         for user in users_with_devices:
-            task = send_localized_notification_to_user(
-                db,
+            task = send_localized_notification_to_user_async(
                 user.id,
                 payload.translation_key,
                 notification_status.value if notification_status else None
@@ -1094,8 +1095,7 @@ async def notify_unverified_email_users(
         
         tasks = []
         for user in users_with_tokens:
-            task = send_push_to_user_by_id(
-                db,
+            task = send_push_to_user_by_id_async(
                 user.id,
                 title,
                 body,
@@ -1250,8 +1250,7 @@ async def notify_no_documents_users(
 
         tasks = []
         for user in users_with_tokens:
-            task = send_push_to_user_by_id(
-                db,
+            task = send_push_to_user_by_id_async(
                 user.id,
                 title,
                 body,

@@ -27,6 +27,7 @@ from app.push.utils import (
     send_notification_to_all_mechanics_async,
     send_push_to_user_by_id,
     send_localized_notification_to_user,
+    send_localized_notification_to_user_async,
     send_localized_notification_to_all_mechanics,
     user_has_push_tokens,
 )
@@ -611,8 +612,7 @@ async def add_money(amount: int,
     # Отправляем уведомление о пополнении баланса
     if user_has_push_tokens(db, current_user.id):
         asyncio.create_task(
-            send_localized_notification_to_user(
-                db,
+            send_localized_notification_to_user_async(
                 current_user.id,
                 "balance_top_up",
                 "balance_top_up"
@@ -656,8 +656,7 @@ def apply_promo(body: ApplyPromoRequest,
     # Отправляем уведомление о доступном промокоде
     if user_has_push_tokens(db, current_user.id):
         asyncio.create_task(
-            send_localized_notification_to_user(
-                db,
+            send_localized_notification_to_user_async(
                 current_user.id,
                 "promo_code_available",
                 "promo_code_available"

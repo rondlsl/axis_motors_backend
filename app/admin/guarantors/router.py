@@ -133,9 +133,9 @@ async def approve_guarantor_request(
     
     # Отправляем уведомление клиенту о том, что гарант подключён
     if requestor and user_has_push_tokens(db, requestor.id):
+        from app.push.utils import send_localized_notification_to_user_async
         asyncio.create_task(
-            send_localized_notification_to_user(
-                db,
+            send_localized_notification_to_user_async(
                 requestor.id,
                 "guarantor_connected",
                 "guarantor_connected"

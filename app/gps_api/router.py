@@ -29,7 +29,7 @@ from app.gps_api.utils.glonassoft_client import glonassoft_client
 from app.gps_api.utils.telemetry_processor import process_glonassoft_data
 from app.utils.telegram_logger import log_error_to_telegram
 from app.admin.cars.utils import sort_car_photos
-from app.push.utils import send_localized_notification_to_user, user_has_push_tokens, get_user_push_tokens
+from app.push.utils import send_localized_notification_to_user, send_localized_notification_to_user_async, user_has_push_tokens, get_user_push_tokens
 from pydantic import BaseModel
 # Временно закомментировано: генерация FCM токенов
 # from app.utils.fcm_token import ensure_user_has_unique_fcm_token
@@ -324,8 +324,7 @@ async def get_vehicle_info(
         # Отправляем уведомление о машинах рядом (только один раз за запрос)
         if nearby_cars and user_has_push_tokens(db, current_user.id):
             asyncio.create_task(
-                send_localized_notification_to_user(
-                    db,
+                send_localized_notification_to_user_async(
                     current_user.id,
                     "car_nearby",
                     "car_nearby"
@@ -356,8 +355,7 @@ async def get_vehicle_info(
                 free_cars = [car for car in cars if car.status in [CarStatus.FREE, CarStatus.RESERVED]]
                 if free_cars:
                     asyncio.create_task(
-                        send_localized_notification_to_user(
-                            db,
+                        send_localized_notification_to_user_async(
                             current_user.id,
                             "airport_location",
                             "airport_location"
@@ -1204,8 +1202,7 @@ async def _trigger_car_view_notifications(
         return
 
     asyncio.create_task(
-        send_localized_notification_to_user(
-            db,
+        send_localized_notification_to_user_async(
             current_user.id,
             "car_viewed_exit",
             "car_viewed_exit"
@@ -1664,8 +1661,7 @@ async def notify_from_cars_v2(
     # Отправляем уведомление
     try:
         asyncio.create_task(
-            send_localized_notification_to_user(
-                db,
+            send_localized_notification_to_user_async(
                 user.id,
                 translation_key,
                 status_key

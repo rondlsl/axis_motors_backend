@@ -1307,10 +1307,9 @@ async def upload_documents(
         
         # Отправляем push-уведомление о загрузке документов (перед WebSocket, чтобы не блокировать)
         try:
-            from app.push.utils import send_localized_notification_to_user
+            from app.push.utils import send_localized_notification_to_user_async
             asyncio.create_task(
-                send_localized_notification_to_user(
-                    db,
+                send_localized_notification_to_user_async(
                     current_user.id,
                     "documents_uploaded",
                     "documents_uploaded"

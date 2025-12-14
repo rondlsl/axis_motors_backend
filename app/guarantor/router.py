@@ -47,7 +47,7 @@ from app.guarantor.schemas import (
     VerificationStatusSchema
 )
 from app.guarantor.sms_utils import send_guarantor_invitation_sms, send_guarantor_contract_signed_sms, send_client_guarantor_confirmed_sms
-from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user, user_has_push_tokens
+from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user, send_localized_notification_to_user_async, user_has_push_tokens
 from app.websocket.notifications import notify_user_status_update
 
 
@@ -360,8 +360,7 @@ async def accept_guarantor_request(
         
         if user_has_push_tokens(db, current_user.id):
             asyncio.create_task(
-                send_localized_notification_to_user(
-                    db,
+                send_localized_notification_to_user_async(
                     current_user.id,
                     "guarantor_accepted",
                     "guarantor_accepted",

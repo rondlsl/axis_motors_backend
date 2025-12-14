@@ -137,15 +137,14 @@ def _update_vehicle_data_sync(vehicles_data: list, db: Session) -> int:
                             # Находим активную аренду
                             from app.gps_api.utils.get_active_rental import get_active_rental_by_car_id
                             from app.models.user_model import User
-                            from app.push.utils import send_localized_notification_to_user
+                            from app.push.utils import send_localized_notification_to_user_async
                             try:
                                 rental = get_active_rental_by_car_id(db, car.id)
                                 if rental:
                                     user = db.query(User).filter(User.id == rental.user_id).first()
                                     if user:
                                         asyncio.create_task(
-                                            send_localized_notification_to_user(
-                                                db,
+                                            send_localized_notification_to_user_async(
                                                 user.id,
                                                 "fuel_refill_detected",
                                                 "fuel_refill_detected"

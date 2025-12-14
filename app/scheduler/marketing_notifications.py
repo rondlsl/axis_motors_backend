@@ -11,7 +11,7 @@ from app.dependencies.database.database import SessionLocal
 from app.models.user_model import User
 from app.models.car_model import Car
 
-from app.push.utils import send_localized_notification_to_user
+from app.push.utils import send_localized_notification_to_user_async
 from app.utils.time_utils import get_local_time
 
 
@@ -55,8 +55,7 @@ async def check_birthdays():
         for user in users:
             try:
                 asyncio.create_task(
-                    send_localized_notification_to_user(
-                        db,
+                    send_localized_notification_to_user_async(
                         user.id,
                         "birthday",
                         "birthday"
@@ -98,8 +97,7 @@ async def check_holidays():
         for user in users:
             try:
                 asyncio.create_task(
-                    send_localized_notification_to_user(
-                        db,
+                    send_localized_notification_to_user_async(
                         user.id,
                         "holiday_greeting",
                         "holiday_greeting"
@@ -141,8 +139,7 @@ async def check_weekend_promotions():
             for user in users:
                 try:
                     asyncio.create_task(
-                        send_localized_notification_to_user(
-                            db,
+                        send_localized_notification_to_user_async(
                             user.id,
                             "friday_evening",
                             "friday_evening"
@@ -165,8 +162,7 @@ async def check_weekend_promotions():
             for user in users:
                 try:
                     asyncio.create_task(
-                        send_localized_notification_to_user(
-                            db,
+                        send_localized_notification_to_user_async(
                             user.id,
                             "monday_morning",
                             "monday_morning"
@@ -210,8 +206,7 @@ async def check_new_cars():
         for user in users:
             try:
                 asyncio.create_task(
-                    send_localized_notification_to_user(
-                        db,
+                    send_localized_notification_to_user_async(
                         user.id,
                         "new_car_available",
                         "new_car_available"
