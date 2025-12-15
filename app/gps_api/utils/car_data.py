@@ -10,6 +10,7 @@ from app.utils.telegram_logger import log_error_to_telegram
 import asyncio
 
 LOCK_ENGINE_DISABLED_IMEIS = {"860803068143045"}
+LOCK_ENGINE_DISABLED_VEHICLE_IDS = {800212421}
 
 
 async def get_last_vehicles_data():
@@ -194,8 +195,11 @@ async def send_lock_engine(imei: str, token: str, retries: int = 1) -> dict:
     if imei in LOCK_ENGINE_DISABLED_IMEIS:
         logger.info(f"Lock engine command skipped for IMEI {imei}")
         return {"skipped": True, "reason": "lock_engine_disabled"}
-    commands = get_commands_by_imei(imei)
     vehicle_id = get_vehicle_id_by_imei(imei)
+    if vehicle_id in LOCK_ENGINE_DISABLED_VEHICLE_IDS:
+        logger.info(f"Lock engine command skipped for vehicle_id {vehicle_id} (IMEI {imei})")
+        return {"skipped": True, "reason": "lock_engine_disabled"}
+    commands = get_commands_by_imei(imei)
     return await send_command_to_terminal(vehicle_id, commands["lock_engine"], token, retries)
 
 
@@ -388,12 +392,16 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
             
             # 1. Заблокировать двигатель
             try:
-                lock_engine_cmd = commands.get("lock_engine", "")
-                if lock_engine_cmd:
-                    vehicle_id = get_vehicle_id_by_imei(imei)
-                    result = await send_command_to_terminal(vehicle_id, lock_engine_cmd, token)
-                    results["executed_commands"].append({"step": 1, "action": "lock_engine", "result": result})
-                    logger.info(f"Двигатель автомобиля {imei} заблокирован")
+                vehicle_id = get_vehicle_id_by_imei(imei)
+                if imei in LOCK_ENGINE_DISABLED_IMEIS or vehicle_id in LOCK_ENGINE_DISABLED_VEHICLE_IDS:
+                    logger.info(f"Lock engine command skipped in execute_gps_sequence for IMEI {imei} (vehicle_id {vehicle_id})")
+                    results["executed_commands"].append({"step": 1, "action": "lock_engine", "result": {"skipped": True, "reason": "lock_engine_disabled"}})
+                else:
+                    lock_engine_cmd = commands.get("lock_engine", "")
+                    if lock_engine_cmd:
+                        result = await send_command_to_terminal(vehicle_id, lock_engine_cmd, token)
+                        results["executed_commands"].append({"step": 1, "action": "lock_engine", "result": result})
+                        logger.info(f"Двигатель автомобиля {imei} заблокирован")
                     await asyncio.sleep(2)
             except Exception as e:
                 error_msg = f"Ошибка блокировки двигателя: {e}"
@@ -435,12 +443,16 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
             
             # 1. Заблокировать двигатель
             try:
-                lock_engine_cmd = commands.get("lock_engine", "")
-                if lock_engine_cmd:
-                    vehicle_id = get_vehicle_id_by_imei(imei)
-                    result = await send_command_to_terminal(vehicle_id, lock_engine_cmd, token)
-                    results["executed_commands"].append({"step": 1, "action": "lock_engine", "result": result})
-                    logger.info(f"Двигатель автомобиля {imei} заблокирован")
+                vehicle_id = get_vehicle_id_by_imei(imei)
+                if imei in LOCK_ENGINE_DISABLED_IMEIS or vehicle_id in LOCK_ENGINE_DISABLED_VEHICLE_IDS:
+                    logger.info(f"Lock engine command skipped in execute_gps_sequence for IMEI {imei} (vehicle_id {vehicle_id})")
+                    results["executed_commands"].append({"step": 1, "action": "lock_engine", "result": {"skipped": True, "reason": "lock_engine_disabled"}})
+                else:
+                    lock_engine_cmd = commands.get("lock_engine", "")
+                    if lock_engine_cmd:
+                        result = await send_command_to_terminal(vehicle_id, lock_engine_cmd, token)
+                        results["executed_commands"].append({"step": 1, "action": "lock_engine", "result": result})
+                        logger.info(f"Двигатель автомобиля {imei} заблокирован")
                     await asyncio.sleep(2)
             except Exception as e:
                 error_msg = f"Ошибка блокировки двигателя: {e}"
@@ -480,12 +492,16 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
             
             # 1. Заблокировать двигатель
             try:
-                lock_engine_cmd = commands.get("lock_engine", "")
-                if lock_engine_cmd:
-                    vehicle_id = get_vehicle_id_by_imei(imei)
-                    result = await send_command_to_terminal(vehicle_id, lock_engine_cmd, token)
-                    results["executed_commands"].append({"step": 1, "action": "lock_engine", "result": result})
-                    logger.info(f"Двигатель автомобиля {imei} окончательно заблокирован")
+                vehicle_id = get_vehicle_id_by_imei(imei)
+                if imei in LOCK_ENGINE_DISABLED_IMEIS or vehicle_id in LOCK_ENGINE_DISABLED_VEHICLE_IDS:
+                    logger.info(f"Lock engine command skipped in execute_gps_sequence for IMEI {imei} (vehicle_id {vehicle_id})")
+                    results["executed_commands"].append({"step": 1, "action": "lock_engine", "result": {"skipped": True, "reason": "lock_engine_disabled"}})
+                else:
+                    lock_engine_cmd = commands.get("lock_engine", "")
+                    if lock_engine_cmd:
+                        result = await send_command_to_terminal(vehicle_id, lock_engine_cmd, token)
+                        results["executed_commands"].append({"step": 1, "action": "lock_engine", "result": result})
+                        logger.info(f"Двигатель автомобиля {imei} окончательно заблокирован")
             except Exception as e:
                 error_msg = f"Ошибка окончательной блокировки двигателя: {e}"
                 results["errors"].append(error_msg)
