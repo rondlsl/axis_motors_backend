@@ -179,16 +179,6 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
             parsed_fuel = parse_numeric(fuel_str)
             if parsed_fuel > 0:
                 fuel_level = parsed_fuel
-        
-        if fuel_level is None:
-            raw_param70 = extract_first_match(pkg, ["param70"])
-            if raw_param70 and raw_param70.lower() not in ["данных нет", "нет данных"]:
-                try:
-                    parsed_value = parse_numeric(raw_param70)
-                    if 0 < parsed_value <= 150:
-                        fuel_level = parsed_value
-                except Exception:
-                    pass
     else:
         fuel_keys = [
             "Уровень топлива (param70)",
