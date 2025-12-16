@@ -10,7 +10,7 @@ from starlette import status
 logger = logging.getLogger(__name__)
 
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD, RENTED_CARS_ENDPOINT_KEY
-from app.dependencies.database.database import get_db
+from app.dependencies.database.database import get_db, SessionLocal
 from app.auth.dependencies.get_current_user import get_current_user
 from app.utils.short_id import uuid_to_sid, safe_sid_to_uuid
 from app.gps_api.schemas import RentedCar
@@ -1198,26 +1198,39 @@ async def _trigger_car_view_notifications(
     if current_user.role not in [UserRole.CLIENT, UserRole.USER]:
         return
 
-    rental = db.query(RentalHistory).filter(
-        RentalHistory.user_id == current_user.id,
-        RentalHistory.car_id == car.id,
-        RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
-    ).first()
-
-    if rental:
-        return
-
-    # Отправляем пуш только если машина сейчас свободна
-    if car.status != CarStatus.FREE:
-        return
-
-    asyncio.create_task(
-        send_localized_notification_to_user_async(
-            current_user.id,
-            "car_viewed_exit",
-            "car_viewed_exit"
-        )
-    )
+    user_id = current_user.id
+    car_id = car.id
+    
+    async def send_notification_after_delay():
+        """Отправляет пуш через 4 минуты, если пользователь не забронировал машину"""
+        await asyncio.sleep(240)
+        
+        db_check = SessionLocal()
+        try:
+            rental = db_check.query(RentalHistory).filter(
+                RentalHistory.user_id == user_id,
+                RentalHistory.car_id == car_id,
+                RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
+            ).first()
+            
+            if rental:
+                return
+            
+            car_check = db_check.query(Car).filter(Car.id == car_id).first()
+            if not car_check or car_check.status != CarStatus.FREE:
+                return
+            
+            await send_localized_notification_to_user_async(
+                user_id,
+                "car_viewed_exit",
+                "car_viewed_exit"
+            )
+        except Exception as e:
+            logger.error(f"Ошибка при отправке уведомления car_viewed_exit: {e}")
+        finally:
+            db_check.close()
+    
+    asyncio.create_task(send_notification_after_delay())
 
 
 @Vehicle_Router.get("/telemetry/{car_id}", response_model=VehicleTelemetryResponse)
