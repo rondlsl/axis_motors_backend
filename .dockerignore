@@ -15,17 +15,6 @@ env/
 ENV/
 .venv
 
-# Node.js (frontend)
-frontend/node_modules/
-frontend/.next/
-frontend/out/
-frontend/.cache/
-frontend/.turbo/
-frontend/dist/
-frontend/build/
-frontend/*.log
-frontend/.env*.local
-
 # IDE
 .vscode/
 .idea/
@@ -108,9 +97,4 @@ uploads/
 scripts/
 *.sh
 *.sql
-
-# Frontend build artifacts (если не нужны в контейнере)
-frontend/.next/
-frontend/out/
-frontend/dist/
 

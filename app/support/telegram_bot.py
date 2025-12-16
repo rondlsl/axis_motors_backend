@@ -53,12 +53,20 @@ class SupportBot:
         def has_document(update: Update) -> bool:
             return update.message and update.message.document is not None
         
+        def debug_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            print(f"[DEBUG ALL MESSAGES] Получено сообщение: type={type(update.message)}, chat.type={update.message.chat.type if update.message else 'None'}")
+            logger.info(f"[DEBUG ALL MESSAGES] Получено сообщение: type={type(update.message)}, chat.type={update.message.chat.type if update.message else 'None'}")
+            if update.message:
+                print(f"[DEBUG ALL MESSAGES] message.photo={update.message.photo}, message.video={update.message.video}, message.text={update.message.text}")
+                logger.info(f"[DEBUG ALL MESSAGES] message.photo={update.message.photo}, message.video={update.message.video}, message.text={update.message.text}")
+        
         self.application.add_handler(MessageHandler(filters.PHOTO, self.handle_media))
         self.application.add_handler(MessageHandler(has_document, self.handle_media))
         self.application.add_handler(MessageHandler(filters.VIDEO, self.handle_media))
         self.application.add_handler(MessageHandler(filters.AUDIO, self.handle_media))
         self.application.add_handler(MessageHandler(filters.VOICE, self.handle_media))
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
+        self.application.add_handler(MessageHandler(filters.ALL, debug_handler))
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка команды /start"""
@@ -162,44 +170,57 @@ class SupportBot:
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка текстовых сообщений"""
         print(f"[DEBUG handle_message] Начало обработки текстового сообщения")
+        logger.info(f"[DEBUG handle_message] Начало обработки текстового сообщения")
         user = update.effective_user
         user_id = user.id
         message_text = update.message.text
         print(f"[DEBUG handle_message] user_id: {user_id}, message_text: {message_text[:50] if message_text else 'None'}...")
+        logger.info(f"[DEBUG handle_message] user_id: {user_id}, message_text: {message_text[:50] if message_text else 'None'}...")
         print(f"[DEBUG handle_message] chat.type: {update.message.chat.type}")
+        logger.info(f"[DEBUG handle_message] chat.type: {update.message.chat.type}")
         
         # Обработка сообщений в группах (ответы от поддержки)
         if update.message.chat.type in ['group', 'supergroup']:
             print(f"[DEBUG handle_message] Сообщение в группе")
+            logger.info(f"[DEBUG handle_message] Сообщение в группе")
             if user_id in support_reply_states:
                 print(f"[DEBUG handle_message] Обработка ответа от поддержки")
+                logger.info(f"[DEBUG handle_message] Обработка ответа от поддержки")
                 await self.handle_support_reply(update, message_text)
             return
         
         # Обработка сообщений от клиентов (личные чаты)
         print(f"[DEBUG handle_message] Проверка user_states: {user_id in user_states}")
+        logger.info(f"[DEBUG handle_message] Проверка user_states: {user_id in user_states}")
         if user_id not in user_states:
             print(f"[DEBUG handle_message] Пользователь не в user_states, запуск start_command")
+            logger.info(f"[DEBUG handle_message] Пользователь не в user_states, запуск start_command")
             await self.start_command(update, context)
             return
         
         state = user_states[user_id]["state"]
         print(f"[DEBUG handle_message] Текущее состояние: {state}")
+        logger.info(f"[DEBUG handle_message] Текущее состояние: {state}")
         
         if state == BotState.WAITING_FOR_NAME:
             print(f"[DEBUG handle_message] Обработка ввода имени")
+            logger.info(f"[DEBUG handle_message] Обработка ввода имени")
             await self.handle_name_input(update, message_text)
         elif state == BotState.WAITING_FOR_PHONE:
             print(f"[DEBUG handle_message] Обработка ввода телефона")
+            logger.info(f"[DEBUG handle_message] Обработка ввода телефона")
             await self.handle_phone_input(update, message_text)
         elif state == BotState.WAITING_FOR_MESSAGE:
             print(f"[DEBUG handle_message] Обработка ввода сообщения")
+            logger.info(f"[DEBUG handle_message] Обработка ввода сообщения")
             await self.handle_message_input(update, message_text)
         elif state == BotState.IN_CHAT:
             print(f"[DEBUG handle_message] Обработка сообщения в чате")
+            logger.info(f"[DEBUG handle_message] Обработка сообщения в чате")
             await self.handle_chat_message(update, message_text)
         else:
             print(f"[WARNING handle_message] Неизвестное состояние: {state}")
+            logger.warning(f"[WARNING handle_message] Неизвестное состояние: {state}")
 
     async def handle_name_input(self, update: Update, name: str):
         """Обработка ввода имени"""
@@ -324,19 +345,24 @@ class SupportBot:
     async def handle_media(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка медиа файлов (фото, документы, видео, аудио)"""
         print(f"[DEBUG handle_media] Начало обработки медиа")
+        logger.info(f"[DEBUG handle_media] Начало обработки медиа")
         user = update.effective_user
         user_id = user.id
         print(f"[DEBUG handle_media] user_id: {user_id}, chat.type: {update.message.chat.type}")
+        logger.info(f"[DEBUG handle_media] user_id: {user_id}, chat.type: {update.message.chat.type}")
         
         # Игнорируем медиа в группах
         if update.message.chat.type in ['group', 'supergroup']:
             print(f"[DEBUG handle_media] Игнорируем медиа в группе")
+            logger.info(f"[DEBUG handle_media] Игнорируем медиа в группе")
             return
         
         # Проверяем, есть ли активный чат
         print(f"[DEBUG handle_media] Проверка user_states: {user_id in user_states}")
+        logger.info(f"[DEBUG handle_media] Проверка user_states: {user_id in user_states}")
         if user_id not in user_states:
             print(f"[ERROR handle_media] Пользователь не в user_states")
+            logger.error(f"[ERROR handle_media] Пользователь не в user_states")
             await update.message.reply_text(
                 "❌ У вас нет активного обращения в поддержку. "
                 "Используйте /start для создания нового обращения."
@@ -345,8 +371,10 @@ class SupportBot:
         
         state = user_states[user_id].get("state")
         print(f"[DEBUG handle_media] Текущее состояние: {state}, ожидается: {BotState.IN_CHAT}")
+        logger.info(f"[DEBUG handle_media] Текущее состояние: {state}, ожидается: {BotState.IN_CHAT}")
         if state != BotState.IN_CHAT:
             print(f"[ERROR handle_media] Состояние не IN_CHAT, текущее: {state}")
+            logger.error(f"[ERROR handle_media] Состояние не IN_CHAT, текущее: {state}")
             await update.message.reply_text(
                 "❌ Пожалуйста, сначала создайте обращение в поддержку через /start"
             )
