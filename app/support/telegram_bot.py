@@ -59,6 +59,8 @@ class SupportBot:
             if update.message:
                 print(f"[DEBUG ALL MESSAGES] message.photo={update.message.photo}, message.video={update.message.video}, message.text={update.message.text}")
                 logger.info(f"[DEBUG ALL MESSAGES] message.photo={update.message.photo}, message.video={update.message.video}, message.text={update.message.text}")
+                print(f"[DEBUG ALL MESSAGES] message.document={update.message.document}, message.audio={update.message.audio}, message.voice={update.message.voice}")
+                logger.info(f"[DEBUG ALL MESSAGES] message.document={update.message.document}, message.audio={update.message.audio}, message.voice={update.message.voice}")
         
         self.application.add_handler(MessageHandler(filters.PHOTO, self.handle_media))
         self.application.add_handler(MessageHandler(has_document, self.handle_media))
