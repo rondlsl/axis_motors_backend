@@ -31,6 +31,8 @@ from app.utils.telegram_logger import log_error_to_telegram
 from app.admin.cars.utils import sort_car_photos
 from app.push.utils import send_localized_notification_to_user, send_localized_notification_to_user_async, user_has_push_tokens, get_user_push_tokens
 from pydantic import BaseModel
+from app.models.guarantor_model import Guarantor, GuarantorRequest, GuarantorRequestStatus
+
 # Временно закомментировано: генерация FCM токенов
 # from app.utils.fcm_token import ensure_user_has_unique_fcm_token
 
@@ -79,9 +81,7 @@ def validate_user_can_control_car(current_user: User, db: Session) -> None:
         )
     
     # Пользователи с финансовыми проблемами не могут управлять
-    if current_user.role == UserRole.REJECTFIRST:
-        from app.models.guarantor_model import Guarantor, GuarantorRequest, GuarantorRequestStatus
-        
+    if current_user.role == UserRole.REJECTFIRST:        
         active_guarantor = db.query(Guarantor).join(
             GuarantorRequest, Guarantor.request_id == GuarantorRequest.id
         ).options(
@@ -97,9 +97,7 @@ def validate_user_can_control_car(current_user: User, db: Session) -> None:
                 status_code=403, 
                 detail="Управление недоступно по финансовым причинам"
             )
-        
-        # Если гарант есть - разрешаем управление (не поднимаем исключение)
-    
+            
     # Пользователи в процессе верификации не могут управлять
     if current_user.role in [UserRole.PENDINGTOFIRST, UserRole.PENDINGTOSECOND]:
         raise HTTPException(
