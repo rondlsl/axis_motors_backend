@@ -341,41 +341,56 @@ class SupportBot:
         file_size = None
         caption = message.caption or ""
         
+        print(f"[DEBUG handle_media] message.photo: {message.photo}")
+        print(f"[DEBUG handle_media] message.document: {message.document}")
+        print(f"[DEBUG handle_media] message.video: {message.video}")
+        print(f"[DEBUG handle_media] message.audio: {message.audio}")
+        print(f"[DEBUG handle_media] message.voice: {message.voice}")
+        
         if message.photo:
             # Берем самое большое фото
             file_obj = message.photo[-1]
             media_type = "photo"
             file_name = f"photo_{file_obj.file_id}.jpg"
+            print(f"[DEBUG handle_media] Обработка фото: file_id={file_obj.file_id}, file_obj={file_obj}, type={type(file_obj)}")
         elif message.document:
             file_obj = message.document
             media_type = "document"
             file_name = file_obj.file_name or f"document_{file_obj.file_id}"
             file_size = file_obj.file_size
+            print(f"[DEBUG handle_media] Обработка документа: file_id={file_obj.file_id}, file_name={file_name}")
         elif message.video:
             file_obj = message.video
             media_type = "video"
             file_name = file_obj.file_name or f"video_{file_obj.file_id}.mp4"
             file_size = file_obj.file_size
+            print(f"[DEBUG handle_media] Обработка видео: file_id={file_obj.file_id}")
         elif message.audio:
             file_obj = message.audio
             media_type = "audio"
             file_name = file_obj.file_name or f"audio_{file_obj.file_id}.mp3"
             file_size = file_obj.file_size
+            print(f"[DEBUG handle_media] Обработка аудио: file_id={file_obj.file_id}")
         elif message.voice:
             file_obj = message.voice
             media_type = "voice"
             file_name = f"voice_{file_obj.file_id}.ogg"
             file_size = file_obj.file_size
+            print(f"[DEBUG handle_media] Обработка голосового: file_id={file_obj.file_id}")
         
         if not file_obj:
+            print(f"[ERROR handle_media] file_obj не определен!")
             await update.message.reply_text("❌ Не удалось обработать медиа файл")
             return
         
+        print(f"[DEBUG handle_media] Вызов download_telegram_file с file_obj={file_obj}, media_type={media_type}")
         try:
             # Скачиваем файл
             media_url = await self.download_telegram_file(file_obj, media_type)
+            print(f"[DEBUG handle_media] download_telegram_file вернул: {media_url}")
             
             if not media_url:
+                print(f"[ERROR handle_media] media_url пустой!")
                 await update.message.reply_text("❌ Ошибка при сохранении файла")
                 return
             
@@ -423,31 +438,46 @@ class SupportBot:
     async def download_telegram_file(self, file_obj, media_type: str) -> Optional[str]:
         """Скачать файл из Telegram и сохранить локально"""
         try:
+            print(f"[DEBUG] Начало скачивания файла: media_type={media_type}, file_id={file_obj.file_id}")
+            print(f"[DEBUG] file_obj type: {type(file_obj)}, file_obj: {file_obj}")
+            
             # Получаем информацию о файле
             file_info = await self.application.bot.get_file(file_obj.file_id)
+            print(f"[DEBUG] file_info получен: {file_info}")
+            print(f"[DEBUG] file_info type: {type(file_info)}")
+            print(f"[DEBUG] file_info.file_path: {file_info.file_path if file_info else 'None'}")
+            print(f"[DEBUG] file_info.file_size: {file_info.file_size if file_info else 'None'}")
             
             if not file_info:
+                print(f"[ERROR] Не удалось получить информацию о файле: file_id={file_obj.file_id}")
                 logger.error(f"Не удалось получить информацию о файле: file_id={file_obj.file_id}")
                 return None
             
             if not file_info.file_path:
+                print(f"[WARNING] file_path отсутствует для file_id={file_obj.file_id}, media_type={media_type}")
                 logger.error(f"file_path отсутствует для file_id={file_obj.file_id}, media_type={media_type}")
                 # Для фото file_path может быть None, используем file_id
                 if media_type == "photo":
                     file_info.file_path = f"photos/{file_obj.file_id}.jpg"
+                    print(f"[DEBUG] Установлен file_path для фото: {file_info.file_path}")
                 else:
                     return None
             
             # Создаем директорию для медиа поддержки
             upload_dir = Path("uploads/support")
+            print(f"[DEBUG] Создание директории: {upload_dir}")
+            print(f"[DEBUG] Абсолютный путь: {upload_dir.resolve()}")
             try:
                 upload_dir.mkdir(parents=True, exist_ok=True)
+                print(f"[DEBUG] Директория создана/существует")
             except Exception as e:
+                print(f"[ERROR] Ошибка создания директории {upload_dir}: {e}")
                 logger.error(f"Ошибка создания директории {upload_dir}: {e}")
                 return None
             
             # Генерируем уникальное имя файла
             file_extension = Path(file_info.file_path).suffix if file_info.file_path else ""
+            print(f"[DEBUG] Расширение из file_path: {file_extension}")
             if not file_extension:
                 # Определяем расширение по типу медиа
                 extensions = {
@@ -458,32 +488,56 @@ class SupportBot:
                     "voice": ".ogg"
                 }
                 file_extension = extensions.get(media_type, ".bin")
+                print(f"[DEBUG] Расширение из словаря: {file_extension}")
             
             unique_filename = f"{uuid.uuid4()}{file_extension}"
             file_path = upload_dir / unique_filename
+            print(f"[DEBUG] Имя файла: {unique_filename}")
+            print(f"[DEBUG] Полный путь: {file_path}")
+            print(f"[DEBUG] Абсолютный путь файла: {file_path.resolve()}")
             
             # Скачиваем файл
+            download_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN_2}/{file_info.file_path}"
+            print(f"[DEBUG] URL для скачивания: {download_url}")
             async with httpx.AsyncClient() as client:
-                download_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN_2}/{file_info.file_path}"
                 try:
+                    print(f"[DEBUG] Начало HTTP запроса...")
                     response = await client.get(download_url, timeout=30.0)
+                    print(f"[DEBUG] HTTP статус: {response.status_code}")
+                    print(f"[DEBUG] Размер контента: {len(response.content) if response.content else 0} байт")
                     response.raise_for_status()
+                    print(f"[DEBUG] HTTP запрос успешен")
                 except Exception as e:
+                    print(f"[ERROR] Ошибка скачивания файла с URL {download_url}: {e}")
+                    print(f"[ERROR] Тип ошибки: {type(e)}")
                     logger.error(f"Ошибка скачивания файла с URL {download_url}: {e}")
                     return None
                 
                 # Сохраняем файл
                 try:
+                    print(f"[DEBUG] Начало сохранения файла в {file_path}")
                     with open(file_path, "wb") as f:
                         f.write(response.content)
+                    print(f"[DEBUG] Файл успешно сохранен")
+                    # Проверяем, что файл действительно создан
+                    if file_path.exists():
+                        print(f"[DEBUG] Файл существует, размер: {file_path.stat().st_size} байт")
+                    else:
+                        print(f"[ERROR] Файл не найден после сохранения!")
                 except Exception as e:
+                    print(f"[ERROR] Ошибка сохранения файла {file_path}: {e}")
+                    print(f"[ERROR] Тип ошибки: {type(e)}")
                     logger.error(f"Ошибка сохранения файла {file_path}: {e}")
                     return None
             
             # Возвращаем относительный путь
-            return str(file_path)
+            result_path = str(file_path)
+            print(f"[DEBUG] Возвращаемый путь: {result_path}")
+            return result_path
             
         except Exception as e:
+            print(f"[ERROR] Общая ошибка в download_telegram_file: {e}")
+            print(f"[ERROR] Тип ошибки: {type(e)}")
             logger.error(f"Error downloading Telegram file: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             return None
