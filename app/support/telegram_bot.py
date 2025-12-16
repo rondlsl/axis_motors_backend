@@ -426,9 +426,25 @@ class SupportBot:
             # Получаем информацию о файле
             file_info = await self.application.bot.get_file(file_obj.file_id)
             
+            if not file_info:
+                logger.error(f"Не удалось получить информацию о файле: file_id={file_obj.file_id}")
+                return None
+            
+            if not file_info.file_path:
+                logger.error(f"file_path отсутствует для file_id={file_obj.file_id}, media_type={media_type}")
+                # Для фото file_path может быть None, используем file_id
+                if media_type == "photo":
+                    file_info.file_path = f"photos/{file_obj.file_id}.jpg"
+                else:
+                    return None
+            
             # Создаем директорию для медиа поддержки
             upload_dir = Path("uploads/support")
-            upload_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                upload_dir.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                logger.error(f"Ошибка создания директории {upload_dir}: {e}")
+                return None
             
             # Генерируем уникальное имя файла
             file_extension = Path(file_info.file_path).suffix if file_info.file_path else ""
@@ -436,7 +452,7 @@ class SupportBot:
                 # Определяем расширение по типу медиа
                 extensions = {
                     "photo": ".jpg",
-                    "document": Path(file_info.file_path).suffix if file_info.file_path else ".bin",
+                    "document": ".bin",
                     "video": ".mp4",
                     "audio": ".mp3",
                     "voice": ".ogg"
@@ -449,15 +465,23 @@ class SupportBot:
             # Скачиваем файл
             async with httpx.AsyncClient() as client:
                 download_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN_2}/{file_info.file_path}"
-                response = await client.get(download_url, timeout=30.0)
-                response.raise_for_status()
+                try:
+                    response = await client.get(download_url, timeout=30.0)
+                    response.raise_for_status()
+                except Exception as e:
+                    logger.error(f"Ошибка скачивания файла с URL {download_url}: {e}")
+                    return None
                 
                 # Сохраняем файл
-                with open(file_path, "wb") as f:
-                    f.write(response.content)
+                try:
+                    with open(file_path, "wb") as f:
+                        f.write(response.content)
+                except Exception as e:
+                    logger.error(f"Ошибка сохранения файла {file_path}: {e}")
+                    return None
             
             # Возвращаем относительный путь
-            return str(file_path.relative_to(Path(".")))
+            return str(file_path)
             
         except Exception as e:
             logger.error(f"Error downloading Telegram file: {e}")
