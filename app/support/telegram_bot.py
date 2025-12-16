@@ -24,11 +24,7 @@ class BotState:
     WAITING_FOR_MESSAGE = "waiting_for_message"
     IN_CHAT = "in_chat"
 
-# Хранилище состояний пользователей
 user_states: Dict[int, Dict] = {}
-
-# Хранилище состояний ожидания ответа от поддержки (для работы в группе)
-# Ключ: user_id поддержки, Значение: {"chat_id": str, "client_telegram_id": int}
 support_reply_states: Dict[int, Dict] = {}
 
 
@@ -64,7 +60,8 @@ class SupportBot:
             logger.error(f"[ERROR HANDLER] Traceback: {traceback.format_exc()}")
         
         self.application.add_error_handler(error_handler)
-        self.application.add_handler(MessageHandler(filters.ALL, log_all_updates), group=-1)  # Группа -1 для выполнения первым
+        # Сохраняем log_all_updates для использования в setup_handlers
+        self.log_all_updates_func = log_all_updates
         
         self.setup_handlers()
 
@@ -103,7 +100,10 @@ class SupportBot:
             return result
         
         self.application.add_handler(MessageHandler(is_text_not_command, self.handle_message))
+        # Debug handler в конце (перехватит все, что не обработано выше)
         self.application.add_handler(MessageHandler(filters.ALL, debug_handler))
+        # log_all_updates в самом конце для отладки
+        self.application.add_handler(MessageHandler(filters.ALL, self.log_all_updates_func), group=1)
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка команды /start"""
