@@ -475,11 +475,15 @@ class SupportBot:
                 logger.error(f"Ошибка создания директории {upload_dir}: {e}")
                 return None
             
-            # Генерируем уникальное имя файла
-            file_extension = Path(file_info.file_path).suffix if file_info.file_path else ""
+            file_path_str = file_info.file_path
+            if file_path_str.startswith("http"):
+                from urllib.parse import urlparse
+                parsed = urlparse(file_path_str)
+                file_path_str = parsed.path
+            
+            file_extension = Path(file_path_str).suffix if file_path_str else ""
             print(f"[DEBUG] Расширение из file_path: {file_extension}")
             if not file_extension:
-                # Определяем расширение по типу медиа
                 extensions = {
                     "photo": ".jpg",
                     "document": ".bin",
@@ -496,8 +500,10 @@ class SupportBot:
             print(f"[DEBUG] Полный путь: {file_path}")
             print(f"[DEBUG] Абсолютный путь файла: {file_path.resolve()}")
             
-            # Скачиваем файл
-            download_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN_2}/{file_info.file_path}"
+            if file_info.file_path.startswith("http"):
+                download_url = file_info.file_path
+            else:
+                download_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN_2}/{file_info.file_path}"
             print(f"[DEBUG] URL для скачивания: {download_url}")
             async with httpx.AsyncClient() as client:
                 try:
