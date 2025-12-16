@@ -94,10 +94,13 @@ class SupportBot:
         self.application.add_handler(MessageHandler(filters.VOICE, self.handle_media))
         
         def is_text_not_command(update: Update) -> bool:
-            if not update.message or not update.message.text:
-                return False
-            text = update.message.text.strip()
-            return len(text) > 0 and not text.startswith('/')
+            result = False
+            if update.message and update.message.text:
+                text = update.message.text.strip()
+                result = len(text) > 0 and not text.startswith('/')
+            print(f"[DEBUG FILTER] is_text_not_command вызван: result={result}, text={update.message.text if update.message and update.message.text else 'None'}")
+            logger.info(f"[DEBUG FILTER] is_text_not_command вызван: result={result}, text={update.message.text if update.message and update.message.text else 'None'}")
+            return result
         
         self.application.add_handler(MessageHandler(is_text_not_command, self.handle_message))
         self.application.add_handler(MessageHandler(filters.ALL, debug_handler))
