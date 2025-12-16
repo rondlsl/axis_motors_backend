@@ -6,7 +6,7 @@ import uuid
 from typing import Dict, Optional
 from pathlib import Path
 import httpx
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, InputMediaDocument, InputMediaVideo, InputMediaAudio, InputMediaVoice
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
 from app.core.config import TELEGRAM_BOT_TOKEN_2
