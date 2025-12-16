@@ -92,12 +92,18 @@ class SupportBot:
         self.application.add_handler(MessageHandler(filters.VIDEO, self.handle_media))
         self.application.add_handler(MessageHandler(filters.AUDIO, self.handle_media))
         self.application.add_handler(MessageHandler(filters.VOICE, self.handle_media))
-        self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
+        
+        def is_text_not_command(update: Update) -> bool:
+            if not update.message or not update.message.text:
+                return False
+            text = update.message.text.strip()
+            return len(text) > 0 and not text.startswith('/')
+        
+        self.application.add_handler(MessageHandler(is_text_not_command, self.handle_message))
         self.application.add_handler(MessageHandler(filters.ALL, debug_handler))
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка команды /start"""
-        # Игнорируем команды в группах и супергруппах
         if update.message.chat.type in ['group', 'supergroup']:
             return
         
