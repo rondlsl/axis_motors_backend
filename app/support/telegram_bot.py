@@ -61,6 +61,8 @@ class SupportBot:
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка команды /start"""
         try:
+            logger.info(f"Получена команда /start от пользователя {update.effective_user.id if update.effective_user else 'unknown'}")
+            
             # Проверяем наличие сообщения
             if not update.message:
                 logger.warning("start_command: update.message is None")
@@ -68,6 +70,7 @@ class SupportBot:
             
             # Игнорируем команды в группах и супергруппах
             if update.message.chat.type in ['group', 'supergroup']:
+                logger.info("start_command: команда в группе, игнорируем")
                 return
             
             user = update.effective_user
@@ -87,6 +90,7 @@ class SupportBot:
             )
             
             await update.message.reply_text(welcome_text, reply_markup=reply_markup)
+            logger.info(f"Ответ на /start отправлен пользователю {user.id}")
         except Exception as e:
             logger.error(f"Ошибка в start_command: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -847,14 +851,19 @@ class SupportBot:
     async def run(self):
         """Запуск бота"""
         try:
+            logger.info("Инициализация Telegram бота поддержки...")
             await self.application.initialize()
+            logger.info("Запуск Telegram бота поддержки...")
             await self.application.start()
+            logger.info("Запуск polling для Telegram бота поддержки...")
             await self.application.updater.start_polling()
+            logger.info("✅ Telegram бот поддержки успешно запущен и готов к работе")
             
             # Ждем бесконечно (бот работает в фоне)
             await asyncio.Event().wait()
         except Exception as e:
             logger.error(f"Ошибка запуска бота: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
             raise
 
 
