@@ -44,18 +44,18 @@ class SupportBot:
         
         # Добавляем обработчик всех обновлений для отладки
         async def log_all_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            print(f"[DEBUG UPDATE] Получено обновление: {update.update_id}, type={update.update_type}")
-            logger.info(f"[DEBUG UPDATE] Получено обновление: {update.update_id}, type={update.update_type}")
+            print(f"[DEBUG UPDATE] Получено обновление: {update.update_id}")
+            logger.info(f"[DEBUG UPDATE] Получено обновление: {update.update_id}")
             if update.message:
                 print(f"[DEBUG UPDATE] message.text={update.message.text}, chat.id={update.message.chat.id}, chat.type={update.message.chat.type}")
                 logger.info(f"[DEBUG UPDATE] message.text={update.message.text}, chat.id={update.message.chat.id}, chat.type={update.message.chat.type}")
                 print(f"[DEBUG UPDATE] message.photo={update.message.photo}, message.video={update.message.video}, message.document={update.message.document}")
                 logger.info(f"[DEBUG UPDATE] message.photo={update.message.photo}, message.video={update.message.video}, message.document={update.message.document}")
-                # Проверяем фильтры
-                is_text = filters.TEXT.check_update(update)
-                is_command = filters.COMMAND.check_update(update)
-                print(f"[DEBUG UPDATE] filters.TEXT.check_update={is_text}, filters.COMMAND.check_update={is_command}")
-                logger.info(f"[DEBUG UPDATE] filters.TEXT.check_update={is_text}, filters.COMMAND.check_update={is_command}")
+                # Проверяем фильтры правильно
+                is_text = update.message.text is not None and len(update.message.text.strip()) > 0
+                is_command = update.message.text is not None and update.message.text.startswith('/')
+                print(f"[DEBUG UPDATE] is_text={is_text}, is_command={is_command}")
+                logger.info(f"[DEBUG UPDATE] is_text={is_text}, is_command={is_command}")
         
         # Добавляем обработчик ошибок
         async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
