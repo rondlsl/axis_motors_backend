@@ -38,10 +38,14 @@ class SupportBot:
         
         # Проверяем токен бота
         if not TELEGRAM_BOT_TOKEN_2:
+            logger.error("❌ TELEGRAM_BOT_TOKEN_2 не установлен")
             raise ValueError("TELEGRAM_BOT_TOKEN_2 не установлен")
         
+        logger.info("🔧 Создание Application для Telegram бота...")
         self.application = Application.builder().token(TELEGRAM_BOT_TOKEN_2).build()
+        logger.info("🔧 Настройка обработчиков...")
         self.setup_handlers()
+        logger.info("✅ Обработчики настроены")
 
     def setup_handlers(self):
         """Настройка обработчиков команд"""
@@ -871,9 +875,11 @@ class SupportBot:
 async def start_support_bot(db_session_factory):
     """Запустить бота поддержки"""
     try:
+        logger.info("🔧 Создание экземпляра SupportBot...")
         bot = SupportBot(db_session_factory)
+        logger.info("✅ SupportBot создан, запуск бота...")
         await bot.run()
     except Exception as e:
-        logger.error(f"Ошибка запуска бота поддержки: {e}")
-        import traceback
+        logger.error(f"❌ Ошибка запуска бота поддержки: {e}")
         logger.error(f"Traceback: {traceback.format_exc()}")
+        raise
