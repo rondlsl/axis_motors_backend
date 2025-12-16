@@ -17,7 +17,6 @@ from app.schemas.support_schemas import SupportChatCreate, SupportMessageCreate
 
 logger = logging.getLogger(__name__)
 
-# Состояния пользователей в боте
 class BotState:
     WAITING_FOR_NAME = "waiting_for_name"
     WAITING_FOR_PHONE = "waiting_for_phone"
@@ -637,8 +636,6 @@ class SupportBot:
                 else:
                     logger.warning(f"Неизвестный тип медиа: {media_type}")
                     return
-                
-                logger.info(f"Медиа {media_type} отправлено в группу поддержки: {SUPPORT_GROUP_ID}")
             except Exception as send_error:
                 logger.error(f"Ошибка отправки медиа в группу: {send_error}")
                 logger.error(f"Traceback: {traceback.format_exc()}")
@@ -707,7 +704,6 @@ class SupportBot:
                         json=payload
                     )
                     response.raise_for_status()
-                    logger.info(f"Уведомление отправлено в группу поддержки: {SUPPORT_GROUP_ID}")
             else:
                 parts = []
                 current_part = ""
@@ -753,8 +749,6 @@ class SupportBot:
                         
                         if i < len(parts) - 1:
                             await asyncio.sleep(0.1)
-                    
-                    logger.info(f"Уведомление отправлено в группу поддержки ({len(parts)} частей): {SUPPORT_GROUP_ID}")
                 
         except Exception as e:
             logger.error(f"Ошибка отправки в группу поддержки: {e}")
@@ -865,8 +859,6 @@ class SupportBot:
             
             # Подтверждение в группе
             await update.message.reply_text("✅ Ответ отправлен клиенту!")
-            
-            logger.info(f"Ответ от поддержки отправлен клиенту {client_telegram_id}")
             
         except Exception as e:
             logger.error(f"Ошибка в handle_support_reply: {e}")
