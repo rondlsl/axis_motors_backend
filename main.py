@@ -251,14 +251,26 @@ def init_app(app: FastAPI):
             db.close()
 
         try:
-            scheduler.add_job(check_vehicle_conditions, "interval", seconds=1)
-            scheduler.add_job(auto_close_support_chats, "interval", hours=1)  # Каждый час проверяем чаты
+            scheduler.add_job(
+                check_vehicle_conditions,
+                "interval",
+                seconds=5,
+                coalesce=True 
+            )
+            scheduler.add_job(
+                auto_close_support_chats,
+                "interval",
+                hours=1,
+                max_instances=1,
+                coalesce=True
+            )  
             scheduler.add_job(
                 update_cars_availability_job,
                 "interval",
                 minutes=1,
                 id="update_car_availability",
-                coalesce=True,
+                max_instances=1,  
+                coalesce=True,  
             )
             
             # Маркетинговые уведомления
