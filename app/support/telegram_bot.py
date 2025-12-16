@@ -60,24 +60,41 @@ class SupportBot:
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка команды /start"""
-        # Игнорируем команды в группах и супергруппах
-        if update.message.chat.type in ['group', 'supergroup']:
-            return
-        
-        user = update.effective_user
-        
-        keyboard = [
-            [InlineKeyboardButton("🆘 Обратиться в техподдержку", callback_data="start_support")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        welcome_text = (
-            f"👋 Привет, {user.first_name}!\n\n"
-            "Добро пожаловать в службу поддержки AZV Motors!\n\n"
-            "Здесь вы можете получить помощь по любым вопросам, связанным с нашим сервисом."
-        )
-        
-        await update.message.reply_text(welcome_text, reply_markup=reply_markup)
+        try:
+            # Проверяем наличие сообщения
+            if not update.message:
+                logger.warning("start_command: update.message is None")
+                return
+            
+            # Игнорируем команды в группах и супергруппах
+            if update.message.chat.type in ['group', 'supergroup']:
+                return
+            
+            user = update.effective_user
+            if not user:
+                logger.warning("start_command: effective_user is None")
+                return
+            
+            keyboard = [
+                [InlineKeyboardButton("🆘 Обратиться в техподдержку", callback_data="start_support")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            welcome_text = (
+                f"👋 Привет, {user.first_name}!\n\n"
+                "Добро пожаловать в службу поддержки AZV Motors!\n\n"
+                "Здесь вы можете получить помощь по любым вопросам, связанным с нашим сервисом."
+            )
+            
+            await update.message.reply_text(welcome_text, reply_markup=reply_markup)
+        except Exception as e:
+            logger.error(f"Ошибка в start_command: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            try:
+                if update.message:
+                    await update.message.reply_text("❌ Произошла ошибка. Попробуйте еще раз.")
+            except:
+                pass
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка команды /help"""
