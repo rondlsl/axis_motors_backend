@@ -281,12 +281,28 @@ async def broadcast_push_notification_async(db_session, title: str, body: str):
             print("No FCM tokens found for broadcast")
             return {"success": 0, "failed": 0, "failed_tokens": []}
 
-        # Fire off one task per unique token
-        tasks = [
-            send_push_notification_async(token=token, title=title, body=body)
-            for token in tokens
-        ]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        # Отправляем батчами, чтобы не перегрузить сервер
+        MAX_CONCURRENT = 50
+        BATCH_SIZE = 100
+        BATCH_DELAY = 1.0
+        
+        semaphore = asyncio.Semaphore(MAX_CONCURRENT)
+        results = []
+        
+        async def send_with_semaphore(token):
+            async with semaphore:
+                return await send_push_notification_async(token=token, title=title, body=body)
+        
+        # Разбиваем на батчи
+        for i in range(0, len(tokens), BATCH_SIZE):
+            batch = tokens[i:i + BATCH_SIZE]
+            batch_tasks = [send_with_semaphore(token) for token in batch]
+            batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+            results.extend(batch_results)
+            
+            # Задержка между батчами
+            if i + BATCH_SIZE < len(tokens):
+                await asyncio.sleep(BATCH_DELAY)
 
         # Tally results
         success_count = sum(1 for r in results if r is True)

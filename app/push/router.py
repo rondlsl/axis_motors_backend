@@ -912,11 +912,28 @@ async def broadcast_notification(
         print(f"   Заголовок: {payload.title}")
         print(f"   Текст: {payload.body[:100]}...")
         
-        tasks = [
-            send_push_notification_async(token=token, title=payload.title, body=payload.body)
-            for token in tokens
-        ]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        # Отправляем батчами, чтобы не перегрузить сервер
+        MAX_CONCURRENT = 50
+        BATCH_SIZE = 100
+        BATCH_DELAY = 1.0
+        
+        semaphore = asyncio.Semaphore(MAX_CONCURRENT)
+        results = []
+        
+        async def send_with_semaphore(token):
+            async with semaphore:
+                return await send_push_notification_async(token=token, title=payload.title, body=payload.body)
+        
+        # Разбиваем на батчи
+        for i in range(0, len(tokens), BATCH_SIZE):
+            batch = tokens[i:i + BATCH_SIZE]
+            batch_tasks = [send_with_semaphore(token) for token in batch]
+            batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+            results.extend(batch_results)
+            
+            # Задержка между батчами
+            if i + BATCH_SIZE < len(tokens):
+                await asyncio.sleep(BATCH_DELAY)
         
         success_count = sum(1 for r in results if r is True)
         failed_count = len(tokens) - success_count
@@ -1027,16 +1044,34 @@ async def broadcast_localized_notification(
         except ValueError:
             pass
         
-        tasks = []
-        for user in users_with_devices:
-            task = send_localized_notification_to_user_async(
-                user.id,
-                payload.translation_key,
-                notification_status.value if notification_status else None
-            )
-            tasks.append(task)
+        # Отправляем батчами, чтобы не перегрузить сервер
+        MAX_CONCURRENT = 50
+        BATCH_SIZE = 100
+        BATCH_DELAY = 1.0
         
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        semaphore = asyncio.Semaphore(MAX_CONCURRENT)
+        results = []
+        
+        async def send_with_semaphore(user_id):
+            async with semaphore:
+                return await send_localized_notification_to_user_async(
+                    user_id,
+                    payload.translation_key,
+                    notification_status.value if notification_status else None
+                )
+        
+        user_ids = [user.id for user in users_with_devices]
+        
+        # Разбиваем на батчи
+        for i in range(0, len(user_ids), BATCH_SIZE):
+            batch = user_ids[i:i + BATCH_SIZE]
+            batch_tasks = [send_with_semaphore(user_id) for user_id in batch]
+            batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+            results.extend(batch_results)
+            
+            # Задержка между батчами
+            if i + BATCH_SIZE < len(user_ids):
+                await asyncio.sleep(BATCH_DELAY)
         
         success_count = sum(1 for r in results if r is True)
         failed_count = total_users - success_count
@@ -1159,17 +1194,35 @@ async def notify_unverified_email_users(
                 "message": "No users with FCM tokens found"
             }
         
-        tasks = []
-        for user in users_with_tokens:
-            task = send_push_to_user_by_id_async(
-                user.id,
-                title,
-                body,
-                status=NotificationStatus.EMAIL_VERIFICATION_REQUIRED.value
-            )
-            tasks.append(task)
+        # Отправляем батчами, чтобы не перегрузить сервер
+        MAX_CONCURRENT = 50
+        BATCH_SIZE = 100
+        BATCH_DELAY = 1.0
         
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        semaphore = asyncio.Semaphore(MAX_CONCURRENT)
+        results = []
+        
+        async def send_with_semaphore(user_id):
+            async with semaphore:
+                return await send_push_to_user_by_id_async(
+                    user_id,
+                    title,
+                    body,
+                    status=NotificationStatus.EMAIL_VERIFICATION_REQUIRED.value
+                )
+        
+        user_ids = [user.id for user in users_with_tokens]
+        
+        # Разбиваем на батчи
+        for i in range(0, len(user_ids), BATCH_SIZE):
+            batch = user_ids[i:i + BATCH_SIZE]
+            batch_tasks = [send_with_semaphore(user_id) for user_id in batch]
+            batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+            results.extend(batch_results)
+            
+            # Задержка между батчами
+            if i + BATCH_SIZE < len(user_ids):
+                await asyncio.sleep(BATCH_DELAY)
         
         # Детальный анализ результатов
         success_count = 0
@@ -1314,17 +1367,35 @@ async def notify_no_documents_users(
                 "message": "No users with FCM tokens found"
             }
 
-        tasks = []
-        for user in users_with_tokens:
-            task = send_push_to_user_by_id_async(
-                user.id,
-                title,
-                body,
-                status=NotificationStatus.MISSING_DOCUMENTS_BONUS.value
-            )
-            tasks.append(task)
-
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        # Отправляем батчами, чтобы не перегрузить сервер
+        MAX_CONCURRENT = 50
+        BATCH_SIZE = 100
+        BATCH_DELAY = 1.0
+        
+        semaphore = asyncio.Semaphore(MAX_CONCURRENT)
+        results = []
+        
+        async def send_with_semaphore(user_id):
+            async with semaphore:
+                return await send_push_to_user_by_id_async(
+                    user_id,
+                    title,
+                    body,
+                    status=NotificationStatus.MISSING_DOCUMENTS_BONUS.value
+                )
+        
+        user_ids = [user.id for user in users_with_tokens]
+        
+        # Разбиваем на батчи
+        for i in range(0, len(user_ids), BATCH_SIZE):
+            batch = user_ids[i:i + BATCH_SIZE]
+            batch_tasks = [send_with_semaphore(user_id) for user_id in batch]
+            batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+            results.extend(batch_results)
+            
+            # Задержка между батчами
+            if i + BATCH_SIZE < len(user_ids):
+                await asyncio.sleep(BATCH_DELAY)
 
         success_count = 0
         failed_count = 0

@@ -14,6 +14,11 @@ from app.models.car_model import Car
 from app.push.utils import send_localized_notification_to_user_async
 from app.utils.time_utils import get_local_time
 
+# Ограничение параллелизма для массовых уведомлений
+MAX_CONCURRENT_NOTIFICATIONS = 50  # Максимум одновременных задач
+BATCH_SIZE = 100  # Размер батча для обработки
+BATCH_DELAY = 1.0  # Задержка между батчами в секундах
+
 
 # Государственные праздники (месяц, день)
 KZ_HOLIDAYS = [
@@ -36,6 +41,38 @@ KZ_HOLIDAYS = [
 ]
 
 
+async def send_notifications_in_batches(user_ids: List, notification_key: str, semaphore: asyncio.Semaphore):
+    """Отправляет уведомления батчами с ограничением параллелизма"""
+    tasks = []
+    sent_count = 0
+    
+    async def send_with_semaphore(user_id):
+        async with semaphore:
+            try:
+                await send_localized_notification_to_user_async(
+                    user_id,
+                    notification_key,
+                    notification_key
+                )
+                return True
+            except Exception as e:
+                print(f"Ошибка отправки уведомления пользователю {user_id}: {e}")
+                return False
+    
+    # Разбиваем на батчи
+    for i in range(0, len(user_ids), BATCH_SIZE):
+        batch = user_ids[i:i + BATCH_SIZE]
+        batch_tasks = [send_with_semaphore(user_id) for user_id in batch]
+        results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+        sent_count += sum(1 for r in results if r is True)
+        
+        # Задержка между батчами, чтобы не перегружать систему
+        if i + BATCH_SIZE < len(user_ids):
+            await asyncio.sleep(BATCH_DELAY)
+    
+    return sent_count
+
+
 async def check_birthdays():
     """Проверка дней рождения пользователей и отправка уведомлений"""
     db = SessionLocal()
@@ -51,19 +88,12 @@ async def check_birthdays():
             User.is_active.is_(True)
         ).all()
         
-        sent_count = 0
-        for user in users:
-            try:
-                asyncio.create_task(
-                    send_localized_notification_to_user_async(
-                        user.id,
-                        "birthday",
-                        "birthday"
-                    )
-                )
-                sent_count += 1
-            except Exception as e:
-                print(f"Ошибка отправки уведомления о дне рождения пользователю {user.id}: {e}")
+        if not users:
+            return
+        
+        user_ids = [user.id for user in users]
+        semaphore = asyncio.Semaphore(MAX_CONCURRENT_NOTIFICATIONS)
+        sent_count = await send_notifications_in_batches(user_ids, "birthday", semaphore)
         
         if sent_count > 0:
             print(f"Отправлено {sent_count} уведомлений о днях рождения")
@@ -88,24 +118,17 @@ async def check_holidays():
         if not is_holiday:
             return
         
-        # Находим всех активных пользователей с FCM токенами
+        # Находим всех активных пользователей
         users = db.query(User).filter(
             User.is_active.is_(True)
         ).all()
         
-        sent_count = 0
-        for user in users:
-            try:
-                asyncio.create_task(
-                    send_localized_notification_to_user_async(
-                        user.id,
-                        "holiday_greeting",
-                        "holiday_greeting"
-                    )
-                )
-                sent_count += 1
-            except Exception as e:
-                print(f"Ошибка отправки праздничного уведомления пользователю {user.id}: {e}")
+        if not users:
+            return
+        
+        user_ids = [user.id for user in users]
+        semaphore = asyncio.Semaphore(MAX_CONCURRENT_NOTIFICATIONS)
+        sent_count = await send_notifications_in_batches(user_ids, "holiday_greeting", semaphore)
         
         if sent_count > 0:
             print(f"Отправлено {sent_count} праздничных уведомлений")
@@ -135,19 +158,12 @@ async def check_weekend_promotions():
                 User.is_active.is_(True)
             ).all()
             
-            sent_count = 0
-            for user in users:
-                try:
-                    asyncio.create_task(
-                        send_localized_notification_to_user_async(
-                            user.id,
-                            "friday_evening",
-                            "friday_evening"
-                        )
-                    )
-                    sent_count += 1
-                except Exception as e:
-                    print(f"Ошибка отправки уведомления пятницы пользователю {user.id}: {e}")
+            if not users:
+                return
+            
+            user_ids = [user.id for user in users]
+            semaphore = asyncio.Semaphore(MAX_CONCURRENT_NOTIFICATIONS)
+            sent_count = await send_notifications_in_batches(user_ids, "friday_evening", semaphore)
             
             if sent_count > 0:
                 print(f"Отправлено {sent_count} уведомлений 'Пятница вечер'")
@@ -158,19 +174,12 @@ async def check_weekend_promotions():
                 User.is_active.is_(True)
             ).all()
             
-            sent_count = 0
-            for user in users:
-                try:
-                    asyncio.create_task(
-                        send_localized_notification_to_user_async(
-                            user.id,
-                            "monday_morning",
-                            "monday_morning"
-                        )
-                    )
-                    sent_count += 1
-                except Exception as e:
-                    print(f"Ошибка отправки уведомления понедельника пользователю {user.id}: {e}")
+            if not users:
+                return
+            
+            user_ids = [user.id for user in users]
+            semaphore = asyncio.Semaphore(MAX_CONCURRENT_NOTIFICATIONS)
+            sent_count = await send_notifications_in_batches(user_ids, "monday_morning", semaphore)
             
             if sent_count > 0:
                 print(f"Отправлено {sent_count} уведомлений 'Понедельник утро'")
@@ -202,19 +211,12 @@ async def check_new_cars():
             User.is_active.is_(True)
         ).all()
 
-        sent_count = 0
-        for user in users:
-            try:
-                asyncio.create_task(
-                    send_localized_notification_to_user_async(
-                        user.id,
-                        "new_car_available",
-                        "new_car_available"
-                    )
-                )
-                sent_count += 1
-            except Exception as e:
-                print(f"Ошибка отправки уведомления о новом авто пользователю {user.id}: {e}")
+        if not users:
+            return
+
+        user_ids = [user.id for user in users]
+        semaphore = asyncio.Semaphore(MAX_CONCURRENT_NOTIFICATIONS)
+        sent_count = await send_notifications_in_batches(user_ids, "new_car_available", semaphore)
 
         if sent_count > 0:
             print(f"Отправлено {sent_count} уведомлений о новых автомобилях")
