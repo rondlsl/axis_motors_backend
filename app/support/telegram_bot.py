@@ -38,18 +38,10 @@ class SupportBot:
         
         # Проверяем токен бота
         if not TELEGRAM_BOT_TOKEN_2:
-            print("❌ TELEGRAM_BOT_TOKEN_2 не установлен")
-            logger.error("❌ TELEGRAM_BOT_TOKEN_2 не установлен")
             raise ValueError("TELEGRAM_BOT_TOKEN_2 не установлен")
         
-        print("🔧 Создание Application для Telegram бота...")
-        logger.info("🔧 Создание Application для Telegram бота...")
         self.application = Application.builder().token(TELEGRAM_BOT_TOKEN_2).build()
-        print("🔧 Настройка обработчиков...")
-        logger.info("🔧 Настройка обработчиков...")
         self.setup_handlers()
-        print("✅ Обработчики настроены")
-        logger.info("✅ Обработчики настроены")
 
     def setup_handlers(self):
         """Настройка обработчиков команд"""
@@ -70,45 +62,24 @@ class SupportBot:
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка команды /start"""
-        try:
-            logger.info(f"Получена команда /start от пользователя {update.effective_user.id if update.effective_user else 'unknown'}")
-            
-            # Проверяем наличие сообщения
-            if not update.message:
-                logger.warning("start_command: update.message is None")
-                return
-            
-            # Игнорируем команды в группах и супергруппах
-            if update.message.chat.type in ['group', 'supergroup']:
-                logger.info("start_command: команда в группе, игнорируем")
-                return
-            
-            user = update.effective_user
-            if not user:
-                logger.warning("start_command: effective_user is None")
-                return
-            
-            keyboard = [
-                [InlineKeyboardButton("🆘 Обратиться в техподдержку", callback_data="start_support")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            welcome_text = (
-                f"👋 Привет, {user.first_name}!\n\n"
-                "Добро пожаловать в службу поддержки AZV Motors!\n\n"
-                "Здесь вы можете получить помощь по любым вопросам, связанным с нашим сервисом."
-            )
-            
-            await update.message.reply_text(welcome_text, reply_markup=reply_markup)
-            logger.info(f"Ответ на /start отправлен пользователю {user.id}")
-        except Exception as e:
-            logger.error(f"Ошибка в start_command: {e}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            try:
-                if update.message:
-                    await update.message.reply_text("❌ Произошла ошибка. Попробуйте еще раз.")
-            except:
-                pass
+        # Игнорируем команды в группах и супергруппах
+        if update.message.chat.type in ['group', 'supergroup']:
+            return
+        
+        user = update.effective_user
+        
+        keyboard = [
+            [InlineKeyboardButton("🆘 Обратиться в техподдержку", callback_data="start_support")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        welcome_text = (
+            f"👋 Привет, {user.first_name}!\n\n"
+            "Добро пожаловать в службу поддержки AZV Motors!\n\n"
+            "Здесь вы можете получить помощь по любым вопросам, связанным с нашим сервисом."
+        )
+        
+        await update.message.reply_text(welcome_text, reply_markup=reply_markup)
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка команды /help"""
@@ -861,22 +832,13 @@ class SupportBot:
     async def run(self):
         """Запуск бота"""
         try:
-            print("Инициализация Telegram бота поддержки...")
-            logger.info("Инициализация Telegram бота поддержки...")
             await self.application.initialize()
-            print("Запуск Telegram бота поддержки...")
-            logger.info("Запуск Telegram бота поддержки...")
             await self.application.start()
-            print("Запуск polling для Telegram бота поддержки...")
-            logger.info("Запуск polling для Telegram бота поддержки...")
             await self.application.updater.start_polling()
-            print("✅ Telegram бот поддержки успешно запущен и готов к работе")
-            logger.info("✅ Telegram бот поддержки успешно запущен и готов к работе")
             
             # Ждем бесконечно (бот работает в фоне)
             await asyncio.Event().wait()
         except Exception as e:
-            print(f"Ошибка запуска бота: {e}")
             logger.error(f"Ошибка запуска бота: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             raise
@@ -886,14 +848,9 @@ class SupportBot:
 async def start_support_bot(db_session_factory):
     """Запустить бота поддержки"""
     try:
-        print("🔧 Создание экземпляра SupportBot...")
-        logger.info("🔧 Создание экземпляра SupportBot...")
         bot = SupportBot(db_session_factory)
-        print("✅ SupportBot создан, запуск бота...")
-        logger.info("✅ SupportBot создан, запуск бота...")
         await bot.run()
     except Exception as e:
-        print(f"❌ Ошибка запуска бота поддержки: {e}")
-        logger.error(f"❌ Ошибка запуска бота поддержки: {e}")
+        logger.error(f"Ошибка запуска бота поддержки: {e}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise
