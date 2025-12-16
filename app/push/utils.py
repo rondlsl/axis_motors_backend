@@ -1,10 +1,11 @@
 import asyncio
 import uuid
 import httpx
-from typing import List
+from typing import List, Optional
 from sqlalchemy.orm import Session
 from app.models.user_model import User
 from app.translations.notifications import get_notification_text
+from app.push.enums import NotificationStatus
 
 
 def get_user_push_tokens(db_session: Session, user_id: uuid.UUID) -> List[str]:
@@ -330,17 +331,13 @@ async def send_push_to_user_by_id(
     user_id: uuid.UUID,
     title: str,
     body: str,
-    status: str = None
+    status: Optional[NotificationStatus] = None
 ) -> bool:
     from app.models.notification_model import Notification
-    from app.push.enums import NotificationStatus
 
     notif = Notification(user_id=user_id, title=title, body=body)
     if status:
-        try:
-            notif.status = NotificationStatus(status)
-        except ValueError:
-            pass
+        notif.status = status
     db_session.add(notif)
     db_session.commit()
 
@@ -423,7 +420,7 @@ async def send_push_to_user_by_id_async(
         user_id: uuid.UUID,
         title: str,
         body: str,
-        status: str = None
+        status: Optional[NotificationStatus] = None
 ) -> bool:
     """
     Отправить push-уведомление пользователю (создает свою сессию БД)

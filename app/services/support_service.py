@@ -105,7 +105,11 @@ class SupportService:
             sender_type=message_data.sender_type,
             sender_user_id=sender_user_id,
             message_text=message_data.message_text,
-            is_from_bot=True
+            is_from_bot=True,
+            media_type=message_data.media_type,
+            media_url=message_data.media_url,
+            media_file_name=message_data.media_file_name,
+            media_file_size=message_data.media_file_size
         )
         
         self.db.add(message)

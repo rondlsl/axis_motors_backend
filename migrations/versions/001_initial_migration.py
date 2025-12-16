@@ -706,6 +706,10 @@ def create_support_messages_table():
         sa.Column('telegram_chat_id', sa.BigInteger(), nullable=True),
         sa.Column('is_from_bot', sa.Boolean(), nullable=False, server_default='false'),
         sa.Column('is_read', sa.Boolean(), nullable=False, server_default='false'),
+        sa.Column('media_type', sa.String(20), nullable=True),
+        sa.Column('media_url', sa.String(512), nullable=True),
+        sa.Column('media_file_name', sa.String(255), nullable=True),
+        sa.Column('media_file_size', sa.Integer(), nullable=True),
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now())
     )
     

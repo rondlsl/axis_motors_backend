@@ -4,7 +4,7 @@ import sys
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, status, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, exists
 
@@ -1455,4 +1455,209 @@ async def notify_no_documents_users(
         raise HTTPException(
             status_code=500,
             detail=f"Ошибка при отправке уведомлений пользователям без документов: {str(e)}"
+        )
+
+
+class DocumentsApprovedRequest(BaseModel):
+    phone_numbers: List[str] = Field(
+        ...,
+        description="Массив номеров телефонов пользователей",
+        example=["+77001234567", "+77009876543"]
+    )
+
+
+@router.post("/notify-documents-approved", status_code=status.HTTP_200_OK)
+async def notify_documents_approved(
+    payload: DocumentsApprovedRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Отправляет push-уведомление пользователям о том, что их документы одобрены.
+    Принимает массив номеров телефонов.
+    Доступно только администраторам.
+    
+    Текст уведомления:
+    Заголовок: "Документы одобрены"
+    Текст: "Ваши документы успешно проверены и одобрены. Теперь вы можете арендовать автомобили."
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=403,
+            detail="Only administrators can send notifications about approved documents"
+        )
+    
+    try:
+        if not payload.phone_numbers:
+            raise HTTPException(
+                status_code=400,
+                detail="phone_numbers array cannot be empty"
+            )
+        
+        # Нормализуем номера телефонов (убираем + и пробелы)
+        normalized_phones = []
+        for phone in payload.phone_numbers:
+            normalized = phone.strip().replace("+", "").replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+            if normalized:
+                normalized_phones.append(normalized)
+        
+        if not normalized_phones:
+            raise HTTPException(
+                status_code=400,
+                detail="No valid phone numbers provided"
+            )
+        
+        # Находим пользователей по номерам телефонов
+        users = (
+            db.query(User)
+            .filter(User.phone_number.in_(normalized_phones))
+            .all()
+        )
+        
+        found_phones = {user.phone_number for user in users}
+        not_found_phones = [phone for phone in normalized_phones if phone not in found_phones]
+        
+        if not users:
+            return {
+                "success": 0,
+                "failed": 0,
+                "total_requested": len(normalized_phones),
+                "users_found": 0,
+                "users_not_found": len(not_found_phones),
+                "not_found_phones": not_found_phones,
+                "message": "No users found with provided phone numbers"
+            }
+        
+        title = "Документы одобрены"
+        body = "Ваши документы успешно проверены и одобрены. Теперь вы можете арендовать автомобили."
+        
+        print(f"📢 [NOTIFY_DOCUMENTS_APPROVED] Отправка уведомления {len(users)} пользователям")
+        print(f"   Заголовок: {title}")
+        print(f"   Текст: {body}")
+        print(f"   Найдено пользователей: {len(users)}")
+        print(f"   Не найдено: {len(not_found_phones)}")
+        
+        # Проверяем наличие токенов у пользователей
+        users_with_tokens = []
+        users_without_tokens = []
+        
+        for user in users:
+            tokens = get_user_push_tokens(db, user.id)
+            if tokens:
+                users_with_tokens.append(user)
+            else:
+                users_without_tokens.append(user)
+        
+        print(f"   Пользователей с токенами: {len(users_with_tokens)}")
+        print(f"   Пользователей без токенов: {len(users_without_tokens)}")
+        
+        if not users_with_tokens:
+            return {
+                "success": 0,
+                "failed": 0,
+                "total_requested": len(normalized_phones),
+                "users_found": len(users),
+                "users_with_tokens": 0,
+                "users_without_tokens": len(users_without_tokens),
+                "not_found_phones": not_found_phones,
+                "message": "No users with FCM tokens found"
+            }
+        
+        # Отправляем батчами, чтобы не перегрузить сервер
+        MAX_CONCURRENT = 50
+        BATCH_SIZE = 100
+        BATCH_DELAY = 1.0
+        
+        semaphore = asyncio.Semaphore(MAX_CONCURRENT)
+        results = []
+        
+        async def send_with_semaphore(user_id):
+            async with semaphore:
+                return await send_push_to_user_by_id_async(
+                    user_id,
+                    title,
+                    body,
+                    status=NotificationStatus.VERIFICATION_PASSED
+                )
+        
+        user_ids = [user.id for user in users_with_tokens]
+        
+        # Разбиваем на батчи
+        for i in range(0, len(user_ids), BATCH_SIZE):
+            batch = user_ids[i:i + BATCH_SIZE]
+            batch_tasks = [send_with_semaphore(user_id) for user_id in batch]
+            batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+            results.extend(batch_results)
+            
+            # Задержка между батчами
+            if i + BATCH_SIZE < len(user_ids):
+                await asyncio.sleep(BATCH_DELAY)
+        
+        # Анализ результатов
+        success_count = 0
+        failed_count = 0
+        exception_count = 0
+        failed_details = []
+        
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                exception_count += 1
+                failed_details.append({
+                    "user_id": str(users_with_tokens[i].id),
+                    "phone": users_with_tokens[i].phone_number,
+                    "error": str(result),
+                    "error_type": type(result).__name__
+                })
+                print(f"❌ [NOTIFY_DOCUMENTS_APPROVED] Ошибка для пользователя {users_with_tokens[i].phone_number}: {type(result).__name__}: {result}")
+            elif result is True:
+                success_count += 1
+            else:
+                failed_count += 1
+                failed_details.append({
+                    "user_id": str(users_with_tokens[i].id),
+                    "phone": users_with_tokens[i].phone_number,
+                    "reason": "Push notification failed (no token or send failed)"
+                })
+        
+        print(f"✅ [NOTIFY_DOCUMENTS_APPROVED] Успешно: {success_count}, Неудачно: {failed_count}, Исключений: {exception_count}")
+        
+        response = {
+            "success": success_count,
+            "failed": failed_count + exception_count,
+            "total_requested": len(normalized_phones),
+            "users_found": len(users),
+            "users_with_tokens": len(users_with_tokens),
+            "users_without_tokens": len(users_without_tokens),
+            "not_found_phones": not_found_phones,
+            "exceptions": exception_count,
+            "title": title,
+            "body": body,
+            "message": f"Notification sent to {success_count} users, {failed_count + exception_count} failed"
+        }
+        
+        if failed_details:
+            response["failed_details"] = failed_details[:20]  # Ограничиваем до 20 для читаемости
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "notify_documents_approved",
+                    "admin_id": str(current_user.id),
+                    "phone_count": len(payload.phone_numbers) if payload else 0
+                }
+            )
+        except:
+            pass
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка при отправке уведомлений об одобрении документов: {str(e)}"
         )

@@ -74,6 +74,26 @@ class SupportMessageCreate(SupportMessageBase):
         description="Тип отправителя: client, support, system",
         example="support"
     )
+    media_type: Optional[str] = Field(
+        None,
+        description="Тип медиа: photo, document, video, audio, voice",
+        example="photo"
+    )
+    media_url: Optional[str] = Field(
+        None,
+        description="URL или путь к медиа файлу",
+        example="uploads/support/photo_123.jpg"
+    )
+    media_file_name: Optional[str] = Field(
+        None,
+        description="Имя файла",
+        example="photo.jpg"
+    )
+    media_file_size: Optional[int] = Field(
+        None,
+        description="Размер файла в байтах",
+        example=102400
+    )
 
 
 class SupportMessageReply(SupportMessageBase):
@@ -94,6 +114,10 @@ class SupportMessageResponse(SidMixin):
     telegram_message_id: Optional[int]
     is_from_bot: bool
     is_read: bool
+    media_type: Optional[str] = None
+    media_url: Optional[str] = None
+    media_file_name: Optional[str] = None
+    media_file_size: Optional[int] = None
     created_at: datetime
     sender_name: str
 

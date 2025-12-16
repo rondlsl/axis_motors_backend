@@ -23,6 +23,11 @@ class SupportMessage(Base):
     telegram_chat_id = Column(BigInteger, nullable=True)    # ID чата в Telegram
     is_from_bot = Column(Boolean, default=False, nullable=False)  # Отправлено через бота
     is_read = Column(Boolean, default=False, nullable=False)     # Прочитано получателем
+    # Медиа файлы
+    media_type = Column(String(20), nullable=True)  # photo, document, video, audio, voice
+    media_url = Column(String(512), nullable=True)  # Путь к файлу или URL
+    media_file_name = Column(String(255), nullable=True)  # Имя файла
+    media_file_size = Column(Integer, nullable=True)  # Размер файла в байтах
     created_at = Column(DateTime, default=get_local_time, nullable=False)
     chat = relationship("SupportChat", back_populates="messages")
     sender_user = relationship("User", back_populates="support_messages")

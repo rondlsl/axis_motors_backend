@@ -1,9 +1,12 @@
 import asyncio
 import logging
 import traceback
+import os
+import uuid
 from typing import Dict, Optional
+from pathlib import Path
 import httpx
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, InputMediaDocument, InputMediaVideo, InputMediaAudio, InputMediaVoice
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
 from app.core.config import TELEGRAM_BOT_TOKEN_2
@@ -46,6 +49,13 @@ class SupportBot:
         self.application.add_handler(CommandHandler("help", self.help_command))
         self.application.add_handler(CommandHandler("cancel", self.cancel_command))
         self.application.add_handler(CallbackQueryHandler(self.button_callback))
+        # Обработчики медиа
+        self.application.add_handler(MessageHandler(filters.PHOTO, self.handle_media))
+        self.application.add_handler(MessageHandler(filters.DOCUMENT, self.handle_media))
+        self.application.add_handler(MessageHandler(filters.VIDEO, self.handle_media))
+        self.application.add_handler(MessageHandler(filters.AUDIO, self.handle_media))
+        self.application.add_handler(MessageHandler(filters.VOICE, self.handle_media))
+        # Обработчик текстовых сообщений (в конце, чтобы не перехватывать медиа)
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -275,7 +285,11 @@ class SupportBot:
                 message_text=message_text
             )
             
-            support_service.add_message(message_data)
+            saved_message = support_service.add_message(message_data)
+            
+            saved_message.telegram_message_id = update.message.message_id
+            saved_message.telegram_chat_id = update.message.chat.id
+            db.commit()
             
             # Отправляем уведомление в группу поддержки
             chat = support_service.get_chat_by_sid(chat_id)
@@ -290,6 +304,163 @@ class SupportBot:
             await update.message.reply_text("❌ Ошибка при отправке сообщения")
         finally:
             db.close()
+
+    async def handle_media(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработка медиа файлов (фото, документы, видео, аудио)"""
+        user = update.effective_user
+        user_id = user.id
+        
+        # Игнорируем медиа в группах
+        if update.message.chat.type in ['group', 'supergroup']:
+            return
+        
+        # Проверяем, есть ли активный чат
+        if user_id not in user_states:
+            await update.message.reply_text(
+                "❌ У вас нет активного обращения в поддержку. "
+                "Используйте /start для создания нового обращения."
+            )
+            return
+        
+        state = user_states[user_id].get("state")
+        if state != BotState.IN_CHAT:
+            await update.message.reply_text(
+                "❌ Пожалуйста, сначала создайте обращение в поддержку через /start"
+            )
+            return
+        
+        chat_id = user_states[user_id]["chat_id"]
+        message = update.message
+        
+        # Определяем тип медиа и получаем файл
+        media_type = None
+        file_obj = None
+        file_name = None
+        file_size = None
+        caption = message.caption or ""
+        
+        if message.photo:
+            # Берем самое большое фото
+            file_obj = message.photo[-1]
+            media_type = "photo"
+            file_name = f"photo_{file_obj.file_id}.jpg"
+        elif message.document:
+            file_obj = message.document
+            media_type = "document"
+            file_name = file_obj.file_name or f"document_{file_obj.file_id}"
+            file_size = file_obj.file_size
+        elif message.video:
+            file_obj = message.video
+            media_type = "video"
+            file_name = file_obj.file_name or f"video_{file_obj.file_id}.mp4"
+            file_size = file_obj.file_size
+        elif message.audio:
+            file_obj = message.audio
+            media_type = "audio"
+            file_name = file_obj.file_name or f"audio_{file_obj.file_id}.mp3"
+            file_size = file_obj.file_size
+        elif message.voice:
+            file_obj = message.voice
+            media_type = "voice"
+            file_name = f"voice_{file_obj.file_id}.ogg"
+            file_size = file_obj.file_size
+        
+        if not file_obj:
+            await update.message.reply_text("❌ Не удалось обработать медиа файл")
+            return
+        
+        try:
+            # Скачиваем файл
+            media_url = await self.download_telegram_file(file_obj, media_type)
+            
+            if not media_url:
+                await update.message.reply_text("❌ Ошибка при сохранении файла")
+                return
+            
+            # Сохраняем сообщение в БД
+            db_gen = self.db_session_factory()
+            db = next(db_gen)
+            try:
+                support_service = SupportService(db)
+                
+                message_data = SupportMessageCreate(
+                    chat_id=chat_id,
+                    sender_type=SupportMessageSenderType.CLIENT,
+                    message_text=caption or f"[{media_type.upper()}]",
+                    media_type=media_type,
+                    media_url=media_url,
+                    media_file_name=file_name,
+                    media_file_size=file_size
+                )
+                
+                saved_message = support_service.add_message(message_data)
+                
+                saved_message.telegram_message_id = message.message_id
+                saved_message.telegram_chat_id = message.chat.id
+                db.commit()
+                
+                # Отправляем медиа в группу поддержки
+                chat = support_service.get_chat_by_sid(chat_id)
+                if chat:
+                    await self.send_media_to_support_group(chat, file_obj, media_type, file_name, caption)
+                
+                await update.message.reply_text("✅ Медиа файл отправлен!")
+                
+            except Exception as e:
+                logger.error(f"Error saving media message: {e}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                await update.message.reply_text("❌ Ошибка при отправке медиа файла")
+            finally:
+                db.close()
+                
+        except Exception as e:
+            logger.error(f"Error handling media: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await update.message.reply_text("❌ Ошибка при обработке медиа файла")
+
+    async def download_telegram_file(self, file_obj, media_type: str) -> Optional[str]:
+        """Скачать файл из Telegram и сохранить локально"""
+        try:
+            # Получаем информацию о файле
+            file_info = await self.application.bot.get_file(file_obj.file_id)
+            
+            # Создаем директорию для медиа поддержки
+            upload_dir = Path("uploads/support")
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Генерируем уникальное имя файла
+            file_extension = Path(file_info.file_path).suffix if file_info.file_path else ""
+            if not file_extension:
+                # Определяем расширение по типу медиа
+                extensions = {
+                    "photo": ".jpg",
+                    "document": Path(file_info.file_path).suffix if file_info.file_path else ".bin",
+                    "video": ".mp4",
+                    "audio": ".mp3",
+                    "voice": ".ogg"
+                }
+                file_extension = extensions.get(media_type, ".bin")
+            
+            unique_filename = f"{uuid.uuid4()}{file_extension}"
+            file_path = upload_dir / unique_filename
+            
+            # Скачиваем файл
+            async with httpx.AsyncClient() as client:
+                download_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN_2}/{file_info.file_path}"
+                response = await client.get(download_url, timeout=30.0)
+                response.raise_for_status()
+                
+                # Сохраняем файл
+                with open(file_path, "wb") as f:
+                    f.write(response.content)
+            
+            # Возвращаем относительный путь
+            return str(file_path.relative_to(Path(".")))
+            
+        except Exception as e:
+            logger.error(f"Error downloading Telegram file: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return None
 
     async def send_notification_to_support_group(self, chat):
         """Отправить уведомление о новом чате в группу поддержки"""
@@ -320,6 +491,103 @@ class SupportBot:
         except Exception as e:
             logger.error(f"Error sending notification: {e}")
 
+    async def send_media_to_support_group(self, chat, file_obj, media_type: str, file_name: str, caption: str = ""):
+        """Отправить медиа файл в группу поддержки"""
+        try:
+            from app.core.config import SUPPORT_GROUP_ID
+            
+            if not SUPPORT_GROUP_ID:
+                logger.warning("SUPPORT_GROUP_ID не установлен")
+                return
+            
+            telegram_username = f"@{chat.user_telegram_username}" if chat.user_telegram_username else "Не указан"
+            
+            # Формируем подпись с информацией о клиенте
+            media_caption = (
+                f"📎 {media_type.upper()}: {file_name}\n\n"
+                f"👤 Клиент: {chat.user_name}\n"
+                f"📞 Телефон: {chat.user_phone}\n"
+                f"📱 Telegram: {telegram_username}\n"
+            )
+            if caption:
+                media_caption += f"💬 Подпись: {caption}\n"
+            media_caption += f"\nID чата: {chat.sid}"
+            
+            if len(media_caption) > 1024:
+                media_caption = media_caption[:1021] + "..."
+            
+            keyboard = [
+                [InlineKeyboardButton("💬 Ответить", callback_data=f"reply_{chat.sid}")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            try:
+                if media_type == "photo":
+                    # Для фото используем send_photo
+                    await self.application.bot.send_photo(
+                        chat_id=SUPPORT_GROUP_ID,
+                        photo=file_obj.file_id,
+                        caption=media_caption,
+                        reply_markup=reply_markup
+                    )
+                    
+                elif media_type == "document":
+                    # Для документов используем send_document
+                    await self.application.bot.send_document(
+                        chat_id=SUPPORT_GROUP_ID,
+                        document=file_obj.file_id,
+                        caption=media_caption,
+                        reply_markup=reply_markup
+                    )
+                    
+                elif media_type == "video":
+                    # Для видео используем send_video
+                    await self.application.bot.send_video(
+                        chat_id=SUPPORT_GROUP_ID,
+                        video=file_obj.file_id,
+                        caption=media_caption,
+                        reply_markup=reply_markup
+                    )
+                    
+                elif media_type == "audio":
+                    # Для аудио используем send_audio
+                    await self.application.bot.send_audio(
+                        chat_id=SUPPORT_GROUP_ID,
+                        audio=file_obj.file_id,
+                        caption=media_caption,
+                        reply_markup=reply_markup
+                    )
+                    
+                elif media_type == "voice":
+                    # Для голосовых сообщений используем send_voice
+                    await self.application.bot.send_voice(
+                        chat_id=SUPPORT_GROUP_ID,
+                        voice=file_obj.file_id,
+                        caption=media_caption,
+                        reply_markup=reply_markup
+                    )
+                else:
+                    logger.warning(f"Неизвестный тип медиа: {media_type}")
+                    return
+                
+                logger.info(f"Медиа {media_type} отправлено в группу поддержки: {SUPPORT_GROUP_ID}")
+            except Exception as send_error:
+                logger.error(f"Ошибка отправки медиа в группу: {send_error}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                raise
+                
+        except Exception as e:
+            logger.error(f"Error sending media to support group: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            # В случае ошибки отправляем текстовое уведомление
+            try:
+                media_text = f"📎 {media_type.upper()}: {file_name}"
+                if caption:
+                    media_text = f"{media_text}\n💬 {caption}"
+                await self.send_message_notification_to_support_group(chat, media_text)
+            except:
+                pass
+
     async def send_message_notification_to_support_group(self, chat, message_text):
         """Отправить уведомление о новом сообщении в группу поддержки"""
         try:
@@ -334,7 +602,6 @@ class SupportBot:
                 f"ID чата: {chat.sid}"
             )
             
-            # Создаем кнопку "Ответить"
             keyboard = [
                 [InlineKeyboardButton("💬 Ответить", callback_data=f"reply_{chat.sid}")]
             ]
@@ -356,15 +623,12 @@ class SupportBot:
             
             MAX_MESSAGE_LENGTH = 4096
             
-            # Подготовка payload
             payload = {
                 "chat_id": SUPPORT_GROUP_ID,
                 "text": text
             }
             
-            # Добавляем клавиатуру, если есть
             if reply_markup:
-                # Конвертируем InlineKeyboardMarkup в JSON
                 keyboard_json = reply_markup.to_dict()
                 payload["reply_markup"] = keyboard_json
             
@@ -432,7 +696,6 @@ class SupportBot:
         try:
             user_id = query.from_user.id
             
-            # Получаем информацию о чате
             db_gen = self.db_session_factory()
             db = next(db_gen)
             try:
@@ -443,16 +706,13 @@ class SupportBot:
                     await query.answer("❌ Чат не найден", show_alert=True)
                     return
                 
-                # Сохраняем состояние ожидания ответа
                 support_reply_states[user_id] = {
                     "chat_id": chat_id,
                     "client_telegram_id": chat.user_telegram_id
                 }
                 
-                # Отправляем подтверждение
                 await query.answer("✅ Теперь отправьте ваш ответ клиенту в эту группу")
                 
-                # Отправляем сообщение в группу с инструкцией
                 from app.core.config import SUPPORT_GROUP_ID
                 instruction_text = (
                     f"👤 {query.from_user.first_name} готов ответить клиенту\n"
