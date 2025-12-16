@@ -1,0 +1,116 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# Node.js (frontend)
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.cache/
+frontend/.turbo/
+frontend/dist/
+frontend/build/
+frontend/*.log
+frontend/.env*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Docker
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+env_config.txt
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+test_*.py
+*_test.py
+tests/
+
+# Documentation
+*.md
+README*
+docs/
+CHECK_*.md
+FIX_*.md
+PUSH_*.md
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+*.orig
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Migration backups
+*.pyc.bak
+
+# Uploads (большие файлы - не нужны в образе)
+uploads/
+!uploads/.gitkeep
+
+# Scripts (обычно не нужны в контейнере)
+scripts/
+*.sh
+*.sql
+
+# Frontend build artifacts (если не нужны в контейнере)
+frontend/.next/
+frontend/out/
+frontend/dist/
+
