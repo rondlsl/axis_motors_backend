@@ -96,6 +96,7 @@ class Car(Base):
     availability_updated_at = Column(DateTime, default=get_local_time, nullable=True)
     created_at = Column(DateTime, default=get_local_time, nullable=False)
     updated_at = Column(DateTime, default=get_local_time, nullable=True)
+    rating = Column(Float, nullable=True) 
 
     owner = relationship("User", foreign_keys=[owner_id], back_populates="owned_cars")
     current_renter = relationship("User", foreign_keys=[current_renter_id], back_populates="active_rental")

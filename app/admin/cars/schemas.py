@@ -31,6 +31,7 @@ class CarListItemSchema(BaseModel):
     photos: Optional[List[str]] = None
     vin: Optional[str] = None
     color: Optional[str] = None
+    rating: Optional[float] = None 
 
     class Config:
         from_attributes = True
@@ -51,6 +52,7 @@ class CarMapItemSchema(BaseModel):
     current_renter: Optional[dict] = None
     vin: Optional[str] = None
     color: Optional[str] = None
+    rating: Optional[float] = None 
 
 
 class CarStatusUpdateSchema(BaseModel):
@@ -140,6 +142,7 @@ class CarDetailSchema(BaseModel):
     gps_imei: Optional[str] = None
     vin: Optional[str] = None
     color: Optional[str] = None
+    rating: Optional[float] = None  
     
     class Config:
         from_attributes = True

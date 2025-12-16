@@ -97,6 +97,7 @@ def car_to_detail_schema(car: Car) -> CarDetailSchema:
         gps_imei=car.gps_imei,
         vin=car.vin,
         color=car.color,
+        rating=car.rating,
     )
 
 

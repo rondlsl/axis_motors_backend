@@ -331,6 +331,7 @@ def create_users_table():
         sa.Column('last_activity_at', sa.DateTime(), nullable=True),
         sa.Column('upload_document_at', sa.DateTime(), nullable=True),
         sa.Column('admin_comment', sa.String(), nullable=True),
+        sa.Column('rating', sa.Float(), nullable=True), 
         sa.UniqueConstraint('phone_number'),
         sa.UniqueConstraint('digital_signature')
     )
@@ -411,7 +412,8 @@ def create_cars_table():
         sa.Column('available_minutes', sa.Integer(), nullable=False, server_default='0'),
         sa.Column('availability_updated_at', postgresql.TIMESTAMP(timezone=True), nullable=True, server_default=sa.text('now()')),
         sa.Column('created_at', postgresql.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text('now()')),
-        sa.Column('updated_at', postgresql.TIMESTAMP(timezone=True), nullable=True, server_default=sa.text('now()'))
+        sa.Column('updated_at', postgresql.TIMESTAMP(timezone=True), nullable=True, server_default=sa.text('now()')),
+        sa.Column('rating', sa.Float(), nullable=True) 
     )
 
 
@@ -520,7 +522,8 @@ def create_rental_history_table():
         sa.Column('mechanic_inspection_start_latitude', sa.Float(), nullable=True),
         sa.Column('mechanic_inspection_start_longitude', sa.Float(), nullable=True),
         sa.Column('mechanic_inspection_end_latitude', sa.Float(), nullable=True),
-        sa.Column('mechanic_inspection_end_longitude', sa.Float(), nullable=True)
+        sa.Column('mechanic_inspection_end_longitude', sa.Float(), nullable=True),
+        sa.Column('rating', sa.Float(), nullable=True) 
     )
 
 

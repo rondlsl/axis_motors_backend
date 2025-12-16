@@ -211,7 +211,8 @@ def get_my_cars(
             plate_number=car.plate_number,
             available_minutes=available_minutes,
             vin=car.vin,
-            color=car.color
+            color=car.color,
+            rating=car.rating
         ))
 
     return MyAutosResponse(cars=cars_response)
@@ -384,6 +385,7 @@ async def get_owner_cars_with_availability_timer(
             "open_price": get_open_price(car),
             "owned_car": True,
             "description": car.description,
+            "rating": car.rating,
         }
 
         # Дополнительная статистика
@@ -521,6 +523,8 @@ def get_trips_by_month(
             if trip.user_id == car.owner_id:
                 trip_data["fuel_cost"] = fuel_cost
                 trip_data["delivery_cost"] = delivery_cost
+            
+            trip_data["rating"] = trip.rating
             
             trips_response.append(TripResponse(**trip_data))
 
@@ -841,5 +845,7 @@ async def get_trip_details(
     if trip.user_id == car.owner_id:
         trip_detail_data["fuel_cost"] = fuel_cost
         trip_detail_data["delivery_cost"] = delivery_cost
+    
+    trip_detail_data["rating"] = trip.rating
     
     return TripDetailResponse(**trip_detail_data)

@@ -72,7 +72,8 @@ async def get_pending_users(
             "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
             "narcology_certificate_url": user.narcology_certificate_url,
             "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
-            "auto_class": user.auto_class or []
+            "auto_class": user.auto_class or [],
+            "rating": float(user.rating) if user.rating else None
         }
         
         converted_data = convert_uuid_response_to_sid(user_data, ["id"])
@@ -152,7 +153,8 @@ async def get_all_users(
             "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
             "narcology_certificate_url": user.narcology_certificate_url,
             "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
-            "auto_class": user.auto_class or []
+            "auto_class": user.auto_class or [],
+            "rating": float(user.rating) if user.rating else None
         }
         
         converted_data = convert_uuid_response_to_sid(user_data, ["id"])
@@ -194,7 +196,8 @@ async def get_all_clients(
             "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
             "narcology_certificate_url": user.narcology_certificate_url,
             "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
-            "auto_class": user.auto_class or []
+            "auto_class": user.auto_class or [],
+            "rating": float(user.rating) if user.rating else None
         }
         
         converted_data = convert_uuid_response_to_sid(user_data, ["id"])
@@ -275,6 +278,8 @@ async def get_user_profile(
         narcology_certificate_url=user.narcology_certificate_url,
         pension_contributions_certificate_url=user.pension_contributions_certificate_url,
         auto_class=auto_class_list,
+        digital_signature=user.digital_signature,
+        rating=float(user.rating) if user.rating else None
     )
 
 
@@ -452,7 +457,8 @@ async def get_users_list(
             "auto_class": auto_class_list,
             "selfie_url": user.selfie_url,
             "is_blocked": not user.is_active,
-            "current_rental_car": current_car
+            "current_rental_car": current_car,
+            "rating": float(user.rating) if user.rating else None
         }
         
         converted_data = convert_uuid_response_to_sid(user_data, ["id"])
@@ -602,7 +608,8 @@ async def get_user_card(
         "admin_comment": user.admin_comment,
         "current_rental_car": current_car,
         "owner_earnings_current_month": owner_earnings["current_month"] if owner_earnings else None,
-        "owner_earnings_total": owner_earnings["total"] if owner_earnings else None
+        "owner_earnings_total": owner_earnings["total"] if owner_earnings else None,
+        "rating": float(user.rating) if user.rating else None
     }
     
     converted_data = convert_uuid_response_to_sid(user_data, ["id"])

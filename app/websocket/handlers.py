@@ -284,6 +284,7 @@ async def get_vehicles_data_for_user(user: User, db: Session) -> Dict[str, Any]:
                 "vin": car.vin,
                 "color": car.color,
                 "description": car.description,
+                "rating": car.rating,
                 "photo_before_selfie_uploaded": photo_before_selfie_uploaded,
                 "photo_before_car_uploaded": photo_before_car_uploaded,
                 "photo_before_interior_uploaded": photo_before_interior_uploaded,

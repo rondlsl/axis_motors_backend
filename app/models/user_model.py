@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Enum, Numeric, Boolean, text
+from sqlalchemy import Column, Integer, String, DateTime, Enum, Numeric, Boolean, Float, text
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 import enum
 import uuid
@@ -76,6 +76,7 @@ class User(Base):
     last_activity_at = Column(DateTime, nullable=True)
     upload_document_at = Column(DateTime, nullable=True) 
     admin_comment = Column(String, nullable=True)  # Комментарий админа/поддержки/механика
+    rating = Column(Float, nullable=True) 
 
     rental_history = relationship("RentalHistory", back_populates="user",
                                   foreign_keys="[RentalHistory.user_id]")

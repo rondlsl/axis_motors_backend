@@ -29,6 +29,7 @@ class UserProfileSchema(SidMixin):
     pension_contributions_certificate_url: Optional[str] = None
     auto_class: List[str] = []
     digital_signature: Optional[str] = None
+    rating: Optional[float] = None 
 
 
 class UserCardSchema(SidMixin):
@@ -74,6 +75,7 @@ class UserCardSchema(SidMixin):
     current_rental_car: Optional[Dict[str, Any]] = None
     owner_earnings_current_month: Optional[float] = None
     owner_earnings_total: Optional[float] = None
+    rating: Optional[float] = None 
 
 
 class UserListSchema(SidMixin):
@@ -94,6 +96,7 @@ class UserListSchema(SidMixin):
     selfie_url: Optional[str] = None
     is_blocked: bool = False
     current_rental_car: Optional[Dict[str, Any]] = None
+    rating: Optional[float] = None 
 
 
 class UserMapPositionSchema(SidMixin):
@@ -183,6 +186,7 @@ class TripDetailSchema(SidMixin):
     
     client_rating: Optional[int] = None
     mechanic_rating: Optional[int] = None
+    rating: Optional[float] = None  
     
     start_latitude: Optional[float] = None
     start_longitude: Optional[float] = None

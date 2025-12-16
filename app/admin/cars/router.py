@@ -130,6 +130,7 @@ async def get_car_details(
         gps_imei=car.gps_imei,
         vin=car.vin,
         color=car.color,
+        rating=car.rating,
     )
 
 
@@ -182,7 +183,8 @@ async def get_all_cars_for_admin(
             "course": car.course or 0,
             "user": current_renter_details,
             "vin": car.vin,
-            "color": car.color
+            "color": car.color,
+            "rating": car.rating
         }
         vehicles_data.append(vehicle_data)
     
@@ -820,6 +822,7 @@ async def get_trip_detail(
         "client_comment": review.comment if review else None,
         "mechanic_rating": review.mechanic_rating if review else None,
         "mechanic_comment": review.mechanic_comment if review else None,
+        "rating": rental.rating,
         "route_map": {
             "start_latitude": rental.start_latitude,
             "start_longitude": rental.start_longitude,
@@ -989,6 +992,7 @@ async def get_cars_list(
             photos=sort_car_photos(car.photos or []),
             vin=car.vin,
             color=car.color,
+            rating=car.rating,
         ))
 
     return CarListResponseSchema(
@@ -1432,6 +1436,7 @@ async def get_car_rental_history(
             "photos_after": rental.photos_after or [],
             "mechanic_photos_before": rental.mechanic_photos_before or [],
             "mechanic_photos_after": rental.mechanic_photos_after or [],
+            "rating": rental.rating,  
             "review": {
                 "rating": review.rating if review else None,
                 "comment": review.comment if review else None,

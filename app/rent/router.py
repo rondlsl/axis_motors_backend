@@ -38,6 +38,7 @@ from app.rent.utils.calculate_price import calculate_total_price, get_open_price
 from app.gps_api.utils.route_data import get_gps_route_data
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.car_data import auto_lock_vehicle_after_rental, execute_gps_sequence, send_open, send_unlock_engine
+from app.RateLimitedHTTPClient import RateLimitedHTTPClient
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD, TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2, FORTE_SHOP_ID, FORTE_SECRET_KEY
 from app.utils.atomic_operations import delete_uploaded_files
 from app.utils.telegram_logger import log_error_to_telegram
@@ -215,6 +216,99 @@ def to_utc_for_glonass(dt: datetime) -> str | None:
     return utc_time.strftime('%Y-%m-%dT%H:%M:%S.000Z')
 
 
+async def get_ecodriving_rating(vehicle_id: str, start_time: datetime, end_time: datetime) -> Optional[float]:
+    """
+    Получает рейтинг вождения (EcoDriving) из Glonasssoft API.
+    
+    :param vehicle_id: ID автомобиля в системе Glonasssoft (gps_id)
+    :param start_time: Время начала аренды (в UTC+5)
+    :param end_time: Время окончания аренды (в UTC+5)
+    :return: Рейтинг (score) от 0 до 6, или None при ошибке
+    """
+    try:
+        auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+        if not auth_token:
+            logger.error("Failed to get auth token for EcoDriving rating")
+            return None
+        
+        from_utc = to_utc_for_glonass(start_time)
+        to_utc = to_utc_for_glonass(end_time)
+        
+        if not from_utc or not to_utc:
+            logger.error("Failed to convert datetime to UTC for EcoDriving rating")
+            return None
+        
+        try:
+            vehicle_id_int = int(vehicle_id)
+        except (ValueError, TypeError):
+            logger.error(f"Invalid vehicle_id format: {vehicle_id}")
+            return None
+        
+        client = RateLimitedHTTPClient.get_instance()
+        url = "https://regions.glonasssoft.ru/api/v3/EcoDriving/rating"
+        headers = {
+            "X-Auth": auth_token,
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "vehicleIds": [vehicle_id_int],
+            "from": from_utc,
+            "to": to_utc
+        }
+        
+        response = await client.send_request("POST", url, headers=headers, json=payload)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "items" in data and len(data["items"]) > 0:
+                score = data["items"][0].get("score")
+                if score is not None:
+                    score = min(float(score), 6.0)
+                    logger.info(f"EcoDriving rating retrieved: {score} for vehicle {vehicle_id}")
+                    return score
+                else:
+                    logger.warning(f"No score in EcoDriving response for vehicle {vehicle_id}")
+            else:
+                logger.warning(f"No items in EcoDriving response for vehicle {vehicle_id}")
+        else:
+            logger.error(f"EcoDriving API error: {response.status_code} - {response.text}")
+        
+        return None
+    except Exception as e:
+        logger.error(f"Error getting EcoDriving rating: {e}", exc_info=True)
+        return None
+
+
+def update_user_rating(user_id: uuid.UUID, db: Session) -> None:
+    """
+    Обновляет рейтинг пользователя как среднее арифметическое всех рейтингов из rental_history.
+    
+    :param user_id: ID пользователя
+    :param db: Сессия базы данных
+    """
+    try:
+        rentals = db.query(RentalHistory).filter(
+            RentalHistory.user_id == user_id,
+            RentalHistory.rental_status == RentalStatus.COMPLETED,
+            RentalHistory.rating.isnot(None)
+        ).all()
+        
+        if not rentals:
+            return
+        
+        ratings = [float(rental.rating) for rental in rentals if rental.rating is not None]
+        if ratings:
+            average_rating = sum(ratings) / len(ratings)
+            average_rating = min(average_rating, 6.0)
+            
+            user = db.query(User).filter(User.id == user_id).first()
+            if user:
+                user.rating = average_rating
+                logger.info(f"Updated user {user_id} rating to {average_rating} (based on {len(ratings)} rentals)")
+    except Exception as e:
+        logger.error(f"Error updating user rating: {e}", exc_info=True)
+
+
 @RentRouter.get("/history")
 def get_trip_history(
         db: Session = Depends(get_db),
@@ -306,7 +400,8 @@ def get_trip_history(
             "mechanic_rating": review.mechanic_rating if review else None,
             "mechanic_comment": review.mechanic_comment if review else None,
             "delivery_mechanic_rating": review.delivery_mechanic_rating if review else None,
-            "delivery_mechanic_comment": review.delivery_mechanic_comment if review else None
+            "delivery_mechanic_comment": review.delivery_mechanic_comment if review else None,
+            "rating": rental.rating 
         })
 
     return {"trip_history": result}
@@ -378,6 +473,7 @@ async def get_trip_history_detail(
         "waiting_fee": rental.waiting_fee,
         "overtime_fee": rental.overtime_fee,
         "distance_fee": rental.distance_fee,
+        "rating": rental.rating, 
     }
 
     if car:
@@ -3034,8 +3130,37 @@ async def complete_rental(
         except:
             pass
 
-    # 14) Коммит и уведомление механиков
+    # 14) Получаем рейтинг вождения из Glonasssoft API
+    try:
+        if car.gps_id and rental.start_time:
+            if rental.end_time is None:
+                logger.warning(f"rental.end_time is None, using current time for EcoDriving rating request")
+                rating_end_time = now
+            else:
+                rating_end_time = rental.end_time
+            
+            eco_rating = await get_ecodriving_rating(
+                vehicle_id=car.gps_id,
+                start_time=rental.start_time,
+                end_time=rating_end_time
+            )
+            if eco_rating is not None:
+                rental.rating = eco_rating
+                logger.info(f"EcoDriving rating {eco_rating} saved for rental {rental.id}")
+            else:
+                logger.warning(f"Failed to get EcoDriving rating for rental {rental.id}")
+        else:
+            logger.warning(f"Cannot get EcoDriving rating: gps_id={car.gps_id}, start_time={rental.start_time}")
+    except Exception as e:
+        logger.error(f"Error getting EcoDriving rating: {e}", exc_info=True)
+
     db.commit()
+    
+    try:
+        update_user_rating(current_user.id, db)
+        db.commit()
+    except Exception as e:
+        logger.error(f"Error updating user rating: {e}", exc_info=True)
     try:
         await send_localized_notification_to_all_mechanics(
             db,
@@ -3079,7 +3204,6 @@ async def complete_rental(
         refresh_vehicles=True
     )
 
-    # Обновляем все данные из БД для получения свежих данных (после всех операций)
     db.expire_all()
     db.refresh(current_user)
     db.refresh(rental)
@@ -3089,7 +3213,6 @@ async def complete_rental(
         if owner:
             db.refresh(owner)
 
-    # Отправляем WebSocket уведомления в самом конце, после всех операций
     try:
         await notify_user_status_update(str(current_user.id))
         if car.owner_id:

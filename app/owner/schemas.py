@@ -14,6 +14,7 @@ class CarOwnerResponse(BaseModel):
     available_minutes: int = Field(..., description="Доступные минуты в текущем месяце", example=38400)
     vin: Optional[str] = Field(None, description="VIN номер автомобиля", example="1HGBH41JXMN109186")
     color: Optional[str] = Field(None, description="Цвет автомобиля", example="Красный")
+    rating: Optional[float] = Field(None, description="Рейтинг автомобиля (например, 5.9, 3.4)")
     
     class Config:
         from_attributes = True
@@ -30,6 +31,7 @@ class TripResponse(SidMixin):
     user_id: str = Field(..., description="ID водителя (пользователя)", example="VQ6EAOKbQdSnFkRmVUQAAA")
     fuel_cost: Optional[int] = Field(None, description="Стоимость топлива в тенге (только для поездок владельца)", example=2250)
     delivery_cost: Optional[int] = Field(None, description="Стоимость доставки в тенге (только для поездок владельца)", example=5000)
+    rating: Optional[float] = Field(None, description="Рейтинг аренды (например, 5.9, 3.4)")
     
     class Config:
         from_attributes = True
@@ -117,6 +119,7 @@ class TripDetailResponse(BaseModel):
     route_map: RouteMapData = Field(..., description="Данные маршрута для карты")
     mechanic_delivery: Optional[Dict[str, Any]] = Field(None, description="Информация о доставке механика")
     mechanic_inspection: Optional[Dict[str, Any]] = Field(None, description="Информация об осмотре механика")
+    rating: Optional[float] = Field(None, description="Рейтинг аренды (например, 5.9, 3.4)")
     
     class Config:
         from_attributes = True

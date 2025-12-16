@@ -111,6 +111,7 @@ class RentalHistory(Base):
     mechanic_inspection_start_longitude = Column(Float, nullable=True)
     mechanic_inspection_end_latitude = Column(Float, nullable=True)
     mechanic_inspection_end_longitude = Column(Float, nullable=True)
+    rating = Column(Float, nullable=True) 
 
     # Явно задаём связь для механика доставки:
     delivery_mechanic = relationship("User", foreign_keys=[delivery_mechanic_id])
