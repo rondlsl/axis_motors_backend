@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy import or_, and_, func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import Dict, Any, List, Optional
 import asyncio
 import logging
@@ -80,10 +80,25 @@ def validate_user_can_control_car(current_user: User, db: Session) -> None:
     
     # Пользователи с финансовыми проблемами не могут управлять
     if current_user.role == UserRole.REJECTFIRST:
-        raise HTTPException(
-            status_code=403, 
-            detail="Управление недоступно по финансовым причинам"
-        )
+        from app.models.guarantor_model import Guarantor, GuarantorRequest, GuarantorRequestStatus
+        
+        active_guarantor = db.query(Guarantor).join(
+            GuarantorRequest, Guarantor.request_id == GuarantorRequest.id
+        ).options(
+            joinedload(Guarantor.guarantor_user)
+        ).filter(
+            Guarantor.client_id == current_user.id,
+            Guarantor.is_active == True,
+            GuarantorRequest.status == GuarantorRequestStatus.ACCEPTED
+        ).first()
+        
+        if not active_guarantor or not active_guarantor.guarantor_user or not active_guarantor.guarantor_user.auto_class:
+            raise HTTPException(
+                status_code=403, 
+                detail="Управление недоступно по финансовым причинам"
+            )
+        
+        # Если гарант есть - разрешаем управление (не поднимаем исключение)
     
     # Пользователи в процессе верификации не могут управлять
     if current_user.role in [UserRole.PENDINGTOFIRST, UserRole.PENDINGTOSECOND]:

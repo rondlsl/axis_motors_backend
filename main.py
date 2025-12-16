@@ -254,7 +254,7 @@ def init_app(app: FastAPI):
             scheduler.add_job(
                 check_vehicle_conditions,
                 "interval",
-                seconds=5,
+                seconds=1,
                 coalesce=True 
             )
             scheduler.add_job(
