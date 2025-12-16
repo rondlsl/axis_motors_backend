@@ -41,6 +41,31 @@ class SupportBot:
             raise ValueError("TELEGRAM_BOT_TOKEN_2 не установлен")
         
         self.application = Application.builder().token(TELEGRAM_BOT_TOKEN_2).build()
+        
+        # Добавляем обработчик всех обновлений для отладки
+        async def log_all_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            print(f"[DEBUG UPDATE] Получено обновление: {update.update_id}, type={update.update_type}")
+            logger.info(f"[DEBUG UPDATE] Получено обновление: {update.update_id}, type={update.update_type}")
+            if update.message:
+                print(f"[DEBUG UPDATE] message.text={update.message.text}, chat.id={update.message.chat.id}, chat.type={update.message.chat.type}")
+                logger.info(f"[DEBUG UPDATE] message.text={update.message.text}, chat.id={update.message.chat.id}, chat.type={update.message.chat.type}")
+                print(f"[DEBUG UPDATE] message.photo={update.message.photo}, message.video={update.message.video}, message.document={update.message.document}")
+                logger.info(f"[DEBUG UPDATE] message.photo={update.message.photo}, message.video={update.message.video}, message.document={update.message.document}")
+                # Проверяем фильтры
+                is_text = filters.TEXT.check_update(update)
+                is_command = filters.COMMAND.check_update(update)
+                print(f"[DEBUG UPDATE] filters.TEXT.check_update={is_text}, filters.COMMAND.check_update={is_command}")
+                logger.info(f"[DEBUG UPDATE] filters.TEXT.check_update={is_text}, filters.COMMAND.check_update={is_command}")
+        
+        # Добавляем обработчик ошибок
+        async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+            print(f"[ERROR HANDLER] Ошибка: {context.error}")
+            logger.error(f"[ERROR HANDLER] Ошибка: {context.error}")
+            logger.error(f"[ERROR HANDLER] Traceback: {traceback.format_exc()}")
+        
+        self.application.add_error_handler(error_handler)
+        self.application.add_handler(MessageHandler(filters.ALL, log_all_updates), group=-1)  # Группа -1 для выполнения первым
+        
         self.setup_handlers()
 
     def setup_handlers(self):
