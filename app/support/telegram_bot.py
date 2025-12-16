@@ -57,13 +57,15 @@ class SupportBot:
         self.application.add_handler(CommandHandler("help", self.help_command))
         self.application.add_handler(CommandHandler("cancel", self.cancel_command))
         self.application.add_handler(CallbackQueryHandler(self.button_callback))
-        # Обработчики медиа
+
+        def has_document(update: Update) -> bool:
+            return update.message and update.message.document is not None
+        
         self.application.add_handler(MessageHandler(filters.PHOTO, self.handle_media))
-        self.application.add_handler(MessageHandler(filters.DOCUMENT, self.handle_media))
+        self.application.add_handler(MessageHandler(has_document, self.handle_media))
         self.application.add_handler(MessageHandler(filters.VIDEO, self.handle_media))
         self.application.add_handler(MessageHandler(filters.AUDIO, self.handle_media))
         self.application.add_handler(MessageHandler(filters.VOICE, self.handle_media))
-        # Обработчик текстовых сообщений (в конце, чтобы не перехватывать медиа)
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
