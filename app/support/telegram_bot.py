@@ -183,20 +183,50 @@ class SupportBot:
         if update.message.chat.type in ['group', 'supergroup']:
             print(f"[DEBUG handle_message] Сообщение в группе")
             logger.info(f"[DEBUG handle_message] Сообщение в группе")
+            print(f"[DEBUG handle_message] support_reply_states: {support_reply_states}")
+            logger.info(f"[DEBUG handle_message] support_reply_states: {support_reply_states}")
+            print(f"[DEBUG handle_message] user_id в support_reply_states: {user_id in support_reply_states}")
+            logger.info(f"[DEBUG handle_message] user_id в support_reply_states: {user_id in support_reply_states}")
             if user_id in support_reply_states:
                 print(f"[DEBUG handle_message] Обработка ответа от поддержки")
                 logger.info(f"[DEBUG handle_message] Обработка ответа от поддержки")
                 await self.handle_support_reply(update, message_text)
+            else:
+                print(f"[WARNING handle_message] Сообщение в группе, но пользователь не в support_reply_states")
+                logger.warning(f"[WARNING handle_message] Сообщение в группе, но пользователь не в support_reply_states")
             return
         
         # Обработка сообщений от клиентов (личные чаты)
         print(f"[DEBUG handle_message] Проверка user_states: {user_id in user_states}")
         logger.info(f"[DEBUG handle_message] Проверка user_states: {user_id in user_states}")
         if user_id not in user_states:
-            print(f"[DEBUG handle_message] Пользователь не в user_states, запуск start_command")
-            logger.info(f"[DEBUG handle_message] Пользователь не в user_states, запуск start_command")
-            await self.start_command(update, context)
-            return
+            print(f"[DEBUG handle_message] Пользователь не в user_states, проверяем активный чат в БД")
+            logger.info(f"[DEBUG handle_message] Пользователь не в user_states, проверяем активный чат в БД")
+            # Проверяем, есть ли активный чат в БД
+            db_gen = self.db_session_factory()
+            db = next(db_gen)
+            try:
+                support_service = SupportService(db)
+                existing_chat = support_service.get_chat_by_telegram_id(user_id)
+                if existing_chat:
+                    print(f"[DEBUG handle_message] Найден активный чат: {existing_chat.sid}")
+                    logger.info(f"[DEBUG handle_message] Найден активный чат: {existing_chat.sid}")
+                    user_states[user_id] = {"state": BotState.IN_CHAT, "chat_id": existing_chat.sid}
+                    # Обрабатываем сообщение как сообщение в чате
+                    await self.handle_chat_message(update, message_text)
+                    return
+                else:
+                    print(f"[DEBUG handle_message] Активный чат не найден, запуск start_command")
+                    logger.info(f"[DEBUG handle_message] Активный чат не найден, запуск start_command")
+                    await self.start_command(update, context)
+                    return
+            except Exception as e:
+                print(f"[ERROR handle_message] Ошибка при проверке чата: {e}")
+                logger.error(f"[ERROR handle_message] Ошибка при проверке чата: {e}")
+                await self.start_command(update, context)
+                return
+            finally:
+                db.close()
         
         state = user_states[user_id]["state"]
         print(f"[DEBUG handle_message] Текущее состояние: {state}")
@@ -874,11 +904,17 @@ class SupportBot:
     
     async def handle_support_reply(self, update: Update, message_text: str):
         """Обработка ответа от поддержки в группе"""
+        print(f"[DEBUG handle_support_reply] Начало обработки ответа от поддержки")
+        logger.info(f"[DEBUG handle_support_reply] Начало обработки ответа от поддержки")
         user_id = update.effective_user.id
         message_sent_to_client = False
         
         try:
+            print(f"[DEBUG handle_support_reply] user_id: {user_id}, support_reply_states: {support_reply_states}")
+            logger.info(f"[DEBUG handle_support_reply] user_id: {user_id}, support_reply_states: {support_reply_states}")
             if user_id not in support_reply_states:
+                print(f"[WARNING handle_support_reply] Пользователь не в support_reply_states")
+                logger.warning(f"[WARNING handle_support_reply] Пользователь не в support_reply_states")
                 return
             
             reply_state = support_reply_states[user_id]
