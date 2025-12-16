@@ -1,8 +1,8 @@
 import asyncio
 import logging
-import traceback
 import os
 import uuid
+import traceback
 from typing import Dict, Optional
 from pathlib import Path
 import httpx
@@ -37,32 +37,6 @@ class SupportBot:
             raise ValueError("TELEGRAM_BOT_TOKEN_2 не установлен")
         
         self.application = Application.builder().token(TELEGRAM_BOT_TOKEN_2).build()
-        
-        # Добавляем обработчик всех обновлений для отладки
-        async def log_all_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            print(f"[DEBUG UPDATE] Получено обновление: {update.update_id}")
-            logger.info(f"[DEBUG UPDATE] Получено обновление: {update.update_id}")
-            if update.message:
-                print(f"[DEBUG UPDATE] message.text={update.message.text}, chat.id={update.message.chat.id}, chat.type={update.message.chat.type}")
-                logger.info(f"[DEBUG UPDATE] message.text={update.message.text}, chat.id={update.message.chat.id}, chat.type={update.message.chat.type}")
-                print(f"[DEBUG UPDATE] message.photo={update.message.photo}, message.video={update.message.video}, message.document={update.message.document}")
-                logger.info(f"[DEBUG UPDATE] message.photo={update.message.photo}, message.video={update.message.video}, message.document={update.message.document}")
-                # Проверяем фильтры правильно
-                is_text = update.message.text is not None and len(update.message.text.strip()) > 0
-                is_command = update.message.text is not None and update.message.text.startswith('/')
-                print(f"[DEBUG UPDATE] is_text={is_text}, is_command={is_command}")
-                logger.info(f"[DEBUG UPDATE] is_text={is_text}, is_command={is_command}")
-        
-        # Добавляем обработчик ошибок
-        async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-            print(f"[ERROR HANDLER] Ошибка: {context.error}")
-            logger.error(f"[ERROR HANDLER] Ошибка: {context.error}")
-            logger.error(f"[ERROR HANDLER] Traceback: {traceback.format_exc()}")
-        
-        self.application.add_error_handler(error_handler)
-        # Сохраняем log_all_updates для использования в setup_handlers
-        self.log_all_updates_func = log_all_updates
-        
         self.setup_handlers()
 
     def setup_handlers(self):
@@ -71,39 +45,16 @@ class SupportBot:
         self.application.add_handler(CommandHandler("help", self.help_command))
         self.application.add_handler(CommandHandler("cancel", self.cancel_command))
         self.application.add_handler(CallbackQueryHandler(self.button_callback))
-
-        def has_document(update: Update) -> bool:
-            return update.message and update.message.document is not None
         
-        def debug_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            print(f"[DEBUG ALL MESSAGES] Получено сообщение: type={type(update.message)}, chat.type={update.message.chat.type if update.message else 'None'}")
-            logger.info(f"[DEBUG ALL MESSAGES] Получено сообщение: type={type(update.message)}, chat.type={update.message.chat.type if update.message else 'None'}")
-            if update.message:
-                print(f"[DEBUG ALL MESSAGES] message.photo={update.message.photo}, message.video={update.message.video}, message.text={update.message.text}")
-                logger.info(f"[DEBUG ALL MESSAGES] message.photo={update.message.photo}, message.video={update.message.video}, message.text={update.message.text}")
-                print(f"[DEBUG ALL MESSAGES] message.document={update.message.document}, message.audio={update.message.audio}, message.voice={update.message.voice}")
-                logger.info(f"[DEBUG ALL MESSAGES] message.document={update.message.document}, message.audio={update.message.audio}, message.voice={update.message.voice}")
-        
+        # Обработчики медиа
         self.application.add_handler(MessageHandler(filters.PHOTO, self.handle_media))
-        self.application.add_handler(MessageHandler(has_document, self.handle_media))
+        self.application.add_handler(MessageHandler(filters.Document.ALL, self.handle_media))
         self.application.add_handler(MessageHandler(filters.VIDEO, self.handle_media))
         self.application.add_handler(MessageHandler(filters.AUDIO, self.handle_media))
         self.application.add_handler(MessageHandler(filters.VOICE, self.handle_media))
         
-        def is_text_not_command(update: Update) -> bool:
-            result = False
-            if update.message and update.message.text:
-                text = update.message.text.strip()
-                result = len(text) > 0 and not text.startswith('/')
-            print(f"[DEBUG FILTER] is_text_not_command вызван: result={result}, text={update.message.text if update.message and update.message.text else 'None'}")
-            logger.info(f"[DEBUG FILTER] is_text_not_command вызван: result={result}, text={update.message.text if update.message and update.message.text else 'None'}")
-            return result
-        
-        self.application.add_handler(MessageHandler(is_text_not_command, self.handle_message))
-        # Debug handler в конце (перехватит все, что не обработано выше)
-        self.application.add_handler(MessageHandler(filters.ALL, debug_handler))
-        # log_all_updates в самом конце для отладки
-        self.application.add_handler(MessageHandler(filters.ALL, self.log_all_updates_func), group=1)
+        # Обработчик текстовых сообщений (не команд)
+        self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка команды /start"""
@@ -205,39 +156,18 @@ class SupportBot:
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка текстовых сообщений"""
-        print(f"[DEBUG handle_message] Начало обработки текстового сообщения")
-        logger.info(f"[DEBUG handle_message] Начало обработки текстового сообщения")
         user = update.effective_user
         user_id = user.id
         message_text = update.message.text
-        print(f"[DEBUG handle_message] user_id: {user_id}, message_text: {message_text[:50] if message_text else 'None'}...")
-        logger.info(f"[DEBUG handle_message] user_id: {user_id}, message_text: {message_text[:50] if message_text else 'None'}...")
-        print(f"[DEBUG handle_message] chat.type: {update.message.chat.type}")
-        logger.info(f"[DEBUG handle_message] chat.type: {update.message.chat.type}")
         
         # Обработка сообщений в группах (ответы от поддержки)
         if update.message.chat.type in ['group', 'supergroup']:
-            print(f"[DEBUG handle_message] Сообщение в группе")
-            logger.info(f"[DEBUG handle_message] Сообщение в группе")
-            print(f"[DEBUG handle_message] support_reply_states: {support_reply_states}")
-            logger.info(f"[DEBUG handle_message] support_reply_states: {support_reply_states}")
-            print(f"[DEBUG handle_message] user_id в support_reply_states: {user_id in support_reply_states}")
-            logger.info(f"[DEBUG handle_message] user_id в support_reply_states: {user_id in support_reply_states}")
             if user_id in support_reply_states:
-                print(f"[DEBUG handle_message] Обработка ответа от поддержки")
-                logger.info(f"[DEBUG handle_message] Обработка ответа от поддержки")
                 await self.handle_support_reply(update, message_text)
-            else:
-                print(f"[WARNING handle_message] Сообщение в группе, но пользователь не в support_reply_states")
-                logger.warning(f"[WARNING handle_message] Сообщение в группе, но пользователь не в support_reply_states")
             return
         
         # Обработка сообщений от клиентов (личные чаты)
-        print(f"[DEBUG handle_message] Проверка user_states: {user_id in user_states}")
-        logger.info(f"[DEBUG handle_message] Проверка user_states: {user_id in user_states}")
         if user_id not in user_states:
-            print(f"[DEBUG handle_message] Пользователь не в user_states, проверяем активный чат в БД")
-            logger.info(f"[DEBUG handle_message] Пользователь не в user_states, проверяем активный чат в БД")
             # Проверяем, есть ли активный чат в БД
             db_gen = self.db_session_factory()
             db = next(db_gen)
@@ -245,48 +175,30 @@ class SupportBot:
                 support_service = SupportService(db)
                 existing_chat = support_service.get_chat_by_telegram_id(user_id)
                 if existing_chat:
-                    print(f"[DEBUG handle_message] Найден активный чат: {existing_chat.sid}")
-                    logger.info(f"[DEBUG handle_message] Найден активный чат: {existing_chat.sid}")
                     user_states[user_id] = {"state": BotState.IN_CHAT, "chat_id": existing_chat.sid}
                     # Обрабатываем сообщение как сообщение в чате
                     await self.handle_chat_message(update, message_text)
                     return
                 else:
-                    print(f"[DEBUG handle_message] Активный чат не найден, запуск start_command")
-                    logger.info(f"[DEBUG handle_message] Активный чат не найден, запуск start_command")
                     await self.start_command(update, context)
                     return
             except Exception as e:
-                print(f"[ERROR handle_message] Ошибка при проверке чата: {e}")
-                logger.error(f"[ERROR handle_message] Ошибка при проверке чата: {e}")
+                logger.error(f"Ошибка при проверке чата: {e}")
                 await self.start_command(update, context)
                 return
             finally:
                 db.close()
         
         state = user_states[user_id]["state"]
-        print(f"[DEBUG handle_message] Текущее состояние: {state}")
-        logger.info(f"[DEBUG handle_message] Текущее состояние: {state}")
         
         if state == BotState.WAITING_FOR_NAME:
-            print(f"[DEBUG handle_message] Обработка ввода имени")
-            logger.info(f"[DEBUG handle_message] Обработка ввода имени")
             await self.handle_name_input(update, message_text)
         elif state == BotState.WAITING_FOR_PHONE:
-            print(f"[DEBUG handle_message] Обработка ввода телефона")
-            logger.info(f"[DEBUG handle_message] Обработка ввода телефона")
             await self.handle_phone_input(update, message_text)
         elif state == BotState.WAITING_FOR_MESSAGE:
-            print(f"[DEBUG handle_message] Обработка ввода сообщения")
-            logger.info(f"[DEBUG handle_message] Обработка ввода сообщения")
             await self.handle_message_input(update, message_text)
         elif state == BotState.IN_CHAT:
-            print(f"[DEBUG handle_message] Обработка сообщения в чате")
-            logger.info(f"[DEBUG handle_message] Обработка сообщения в чате")
             await self.handle_chat_message(update, message_text)
-        else:
-            print(f"[WARNING handle_message] Неизвестное состояние: {state}")
-            logger.warning(f"[WARNING handle_message] Неизвестное состояние: {state}")
 
     async def handle_name_input(self, update: Update, name: str):
         """Обработка ввода имени"""
@@ -410,37 +322,40 @@ class SupportBot:
 
     async def handle_media(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка медиа файлов (фото, документы, видео, аудио)"""
-        print(f"[DEBUG handle_media] Начало обработки медиа")
-        logger.info(f"[DEBUG handle_media] Начало обработки медиа")
         user = update.effective_user
         user_id = user.id
-        print(f"[DEBUG handle_media] user_id: {user_id}, chat.type: {update.message.chat.type}")
-        logger.info(f"[DEBUG handle_media] user_id: {user_id}, chat.type: {update.message.chat.type}")
         
-        # Игнорируем медиа в группах
         if update.message.chat.type in ['group', 'supergroup']:
-            print(f"[DEBUG handle_media] Игнорируем медиа в группе")
-            logger.info(f"[DEBUG handle_media] Игнорируем медиа в группе")
             return
         
         # Проверяем, есть ли активный чат
-        print(f"[DEBUG handle_media] Проверка user_states: {user_id in user_states}")
-        logger.info(f"[DEBUG handle_media] Проверка user_states: {user_id in user_states}")
         if user_id not in user_states:
-            print(f"[ERROR handle_media] Пользователь не в user_states")
-            logger.error(f"[ERROR handle_media] Пользователь не в user_states")
-            await update.message.reply_text(
-                "❌ У вас нет активного обращения в поддержку. "
-                "Используйте /start для создания нового обращения."
-            )
-            return
+            # Проверяем, есть ли активный чат в БД
+            db_gen = self.db_session_factory()
+            db = next(db_gen)
+            try:
+                support_service = SupportService(db)
+                existing_chat = support_service.get_chat_by_telegram_id(user_id)
+                if existing_chat:
+                    user_states[user_id] = {"state": BotState.IN_CHAT, "chat_id": existing_chat.sid}
+                else:
+                    await update.message.reply_text(
+                        "❌ У вас нет активного обращения в поддержку. "
+                        "Используйте /start для создания нового обращения."
+                    )
+                    return
+            except Exception as e:
+                logger.error(f"Ошибка при проверке чата: {e}")
+                await update.message.reply_text(
+                    "❌ У вас нет активного обращения в поддержку. "
+                    "Используйте /start для создания нового обращения."
+                )
+                return
+            finally:
+                db.close()
         
         state = user_states[user_id].get("state")
-        print(f"[DEBUG handle_media] Текущее состояние: {state}, ожидается: {BotState.IN_CHAT}")
-        logger.info(f"[DEBUG handle_media] Текущее состояние: {state}, ожидается: {BotState.IN_CHAT}")
         if state != BotState.IN_CHAT:
-            print(f"[ERROR handle_media] Состояние не IN_CHAT, текущее: {state}")
-            logger.error(f"[ERROR handle_media] Состояние не IN_CHAT, текущее: {state}")
             await update.message.reply_text(
                 "❌ Пожалуйста, сначала создайте обращение в поддержку через /start"
             )
@@ -456,56 +371,41 @@ class SupportBot:
         file_size = None
         caption = message.caption or ""
         
-        print(f"[DEBUG handle_media] message.photo: {message.photo}")
-        print(f"[DEBUG handle_media] message.document: {message.document}")
-        print(f"[DEBUG handle_media] message.video: {message.video}")
-        print(f"[DEBUG handle_media] message.audio: {message.audio}")
-        print(f"[DEBUG handle_media] message.voice: {message.voice}")
-        
         if message.photo:
             # Берем самое большое фото
             file_obj = message.photo[-1]
             media_type = "photo"
             file_name = f"photo_{file_obj.file_id}.jpg"
-            print(f"[DEBUG handle_media] Обработка фото: file_id={file_obj.file_id}, file_obj={file_obj}, type={type(file_obj)}")
         elif message.document:
             file_obj = message.document
             media_type = "document"
             file_name = file_obj.file_name or f"document_{file_obj.file_id}"
             file_size = file_obj.file_size
-            print(f"[DEBUG handle_media] Обработка документа: file_id={file_obj.file_id}, file_name={file_name}")
         elif message.video:
             file_obj = message.video
             media_type = "video"
             file_name = file_obj.file_name or f"video_{file_obj.file_id}.mp4"
             file_size = file_obj.file_size
-            print(f"[DEBUG handle_media] Обработка видео: file_id={file_obj.file_id}")
         elif message.audio:
             file_obj = message.audio
             media_type = "audio"
             file_name = file_obj.file_name or f"audio_{file_obj.file_id}.mp3"
             file_size = file_obj.file_size
-            print(f"[DEBUG handle_media] Обработка аудио: file_id={file_obj.file_id}")
         elif message.voice:
             file_obj = message.voice
             media_type = "voice"
             file_name = f"voice_{file_obj.file_id}.ogg"
             file_size = file_obj.file_size
-            print(f"[DEBUG handle_media] Обработка голосового: file_id={file_obj.file_id}")
         
         if not file_obj:
-            print(f"[ERROR handle_media] file_obj не определен!")
             await update.message.reply_text("❌ Не удалось обработать медиа файл")
             return
         
-        print(f"[DEBUG handle_media] Вызов download_telegram_file с file_obj={file_obj}, media_type={media_type}")
         try:
             # Скачиваем файл
             media_url = await self.download_telegram_file(file_obj, media_type)
-            print(f"[DEBUG handle_media] download_telegram_file вернул: {media_url}")
             
             if not media_url:
-                print(f"[ERROR handle_media] media_url пустой!")
                 await update.message.reply_text("❌ Ошибка при сохранении файла")
                 return
             
@@ -553,40 +453,27 @@ class SupportBot:
     async def download_telegram_file(self, file_obj, media_type: str) -> Optional[str]:
         """Скачать файл из Telegram и сохранить локально"""
         try:
-            print(f"[DEBUG] Начало скачивания файла: media_type={media_type}, file_id={file_obj.file_id}")
-            print(f"[DEBUG] file_obj type: {type(file_obj)}, file_obj: {file_obj}")
             
             # Получаем информацию о файле
             file_info = await self.application.bot.get_file(file_obj.file_id)
-            print(f"[DEBUG] file_info получен: {file_info}")
-            print(f"[DEBUG] file_info type: {type(file_info)}")
-            print(f"[DEBUG] file_info.file_path: {file_info.file_path if file_info else 'None'}")
-            print(f"[DEBUG] file_info.file_size: {file_info.file_size if file_info else 'None'}")
             
             if not file_info:
-                print(f"[ERROR] Не удалось получить информацию о файле: file_id={file_obj.file_id}")
                 logger.error(f"Не удалось получить информацию о файле: file_id={file_obj.file_id}")
                 return None
             
             if not file_info.file_path:
-                print(f"[WARNING] file_path отсутствует для file_id={file_obj.file_id}, media_type={media_type}")
                 logger.error(f"file_path отсутствует для file_id={file_obj.file_id}, media_type={media_type}")
                 # Для фото file_path может быть None, используем file_id
                 if media_type == "photo":
                     file_info.file_path = f"photos/{file_obj.file_id}.jpg"
-                    print(f"[DEBUG] Установлен file_path для фото: {file_info.file_path}")
                 else:
                     return None
             
             # Создаем директорию для медиа поддержки
             upload_dir = Path("uploads/support")
-            print(f"[DEBUG] Создание директории: {upload_dir}")
-            print(f"[DEBUG] Абсолютный путь: {upload_dir.resolve()}")
             try:
                 upload_dir.mkdir(parents=True, exist_ok=True)
-                print(f"[DEBUG] Директория создана/существует")
             except Exception as e:
-                print(f"[ERROR] Ошибка создания директории {upload_dir}: {e}")
                 logger.error(f"Ошибка создания директории {upload_dir}: {e}")
                 return None
             
@@ -597,7 +484,6 @@ class SupportBot:
                 file_path_str = parsed.path
             
             file_extension = Path(file_path_str).suffix if file_path_str else ""
-            print(f"[DEBUG] Расширение из file_path: {file_extension}")
             if not file_extension:
                 extensions = {
                     "photo": ".jpg",
@@ -607,58 +493,39 @@ class SupportBot:
                     "voice": ".ogg"
                 }
                 file_extension = extensions.get(media_type, ".bin")
-                print(f"[DEBUG] Расширение из словаря: {file_extension}")
             
             unique_filename = f"{uuid.uuid4()}{file_extension}"
             file_path = upload_dir / unique_filename
-            print(f"[DEBUG] Имя файла: {unique_filename}")
-            print(f"[DEBUG] Полный путь: {file_path}")
-            print(f"[DEBUG] Абсолютный путь файла: {file_path.resolve()}")
             
             if file_info.file_path.startswith("http"):
                 download_url = file_info.file_path
             else:
                 download_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN_2}/{file_info.file_path}"
-            print(f"[DEBUG] URL для скачивания: {download_url}")
             async with httpx.AsyncClient() as client:
                 try:
-                    print(f"[DEBUG] Начало HTTP запроса...")
                     response = await client.get(download_url, timeout=30.0)
-                    print(f"[DEBUG] HTTP статус: {response.status_code}")
-                    print(f"[DEBUG] Размер контента: {len(response.content) if response.content else 0} байт")
                     response.raise_for_status()
-                    print(f"[DEBUG] HTTP запрос успешен")
                 except Exception as e:
-                    print(f"[ERROR] Ошибка скачивания файла с URL {download_url}: {e}")
-                    print(f"[ERROR] Тип ошибки: {type(e)}")
                     logger.error(f"Ошибка скачивания файла с URL {download_url}: {e}")
                     return None
                 
                 # Сохраняем файл
                 try:
-                    print(f"[DEBUG] Начало сохранения файла в {file_path}")
                     with open(file_path, "wb") as f:
                         f.write(response.content)
-                    print(f"[DEBUG] Файл успешно сохранен")
                     # Проверяем, что файл действительно создан
-                    if file_path.exists():
-                        print(f"[DEBUG] Файл существует, размер: {file_path.stat().st_size} байт")
-                    else:
-                        print(f"[ERROR] Файл не найден после сохранения!")
+                    if not file_path.exists():
+                        logger.error(f"Файл не найден после сохранения: {file_path}")
+                        return None
                 except Exception as e:
-                    print(f"[ERROR] Ошибка сохранения файла {file_path}: {e}")
-                    print(f"[ERROR] Тип ошибки: {type(e)}")
                     logger.error(f"Ошибка сохранения файла {file_path}: {e}")
                     return None
             
             # Возвращаем относительный путь
             result_path = str(file_path)
-            print(f"[DEBUG] Возвращаемый путь: {result_path}")
             return result_path
             
         except Exception as e:
-            print(f"[ERROR] Общая ошибка в download_telegram_file: {e}")
-            print(f"[ERROR] Тип ошибки: {type(e)}")
             logger.error(f"Error downloading Telegram file: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             return None
@@ -940,17 +807,11 @@ class SupportBot:
     
     async def handle_support_reply(self, update: Update, message_text: str):
         """Обработка ответа от поддержки в группе"""
-        print(f"[DEBUG handle_support_reply] Начало обработки ответа от поддержки")
-        logger.info(f"[DEBUG handle_support_reply] Начало обработки ответа от поддержки")
         user_id = update.effective_user.id
         message_sent_to_client = False
         
         try:
-            print(f"[DEBUG handle_support_reply] user_id: {user_id}, support_reply_states: {support_reply_states}")
-            logger.info(f"[DEBUG handle_support_reply] user_id: {user_id}, support_reply_states: {support_reply_states}")
             if user_id not in support_reply_states:
-                print(f"[WARNING handle_support_reply] Пользователь не в support_reply_states")
-                logger.warning(f"[WARNING handle_support_reply] Пользователь не в support_reply_states")
                 return
             
             reply_state = support_reply_states[user_id]
