@@ -19,6 +19,7 @@ def setup_support_system(app: FastAPI, db_session_factory):
     # Запускаем телеграм бота в фоновом режиме
     async def start_support_bot_task():
         try:
+            print("🚀 Запуск Telegram бота поддержки...")
             logger.info("🚀 Запуск Telegram бота поддержки...")
             def db_session_gen():
                 db = db_session_factory()
@@ -28,6 +29,7 @@ def setup_support_system(app: FastAPI, db_session_factory):
                     db.close()
             
             # Создаем задачу и обрабатываем ошибки
+            print("🔧 Создание задачи для Telegram бота...")
             task = asyncio.create_task(start_support_bot(db_session_gen))
             
             # Добавляем обработчик ошибок для задачи
@@ -35,14 +37,16 @@ def setup_support_system(app: FastAPI, db_session_factory):
                 try:
                     task.result()
                 except Exception as e:
+                    print(f"❌ Ошибка в задаче Telegram бота: {e}")
                     logger.error(f"❌ Ошибка в задаче Telegram бота: {e}")
                     logger.error(f"Traceback: {traceback.format_exc()}")
             
             task.add_done_callback(handle_task_exception)
+            print("✅ Задача Telegram бота создана")
             logger.info("✅ Задача Telegram бота создана")
         except Exception as e:
+            print(f"❌ Ошибка при создании задачи Telegram бота: {e}")
             logger.error(f"❌ Ошибка при создании задачи Telegram бота: {e}")
-            import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
     
     # Возвращаем функцию для запуска

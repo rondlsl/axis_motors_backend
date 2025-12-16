@@ -38,13 +38,17 @@ class SupportBot:
         
         # Проверяем токен бота
         if not TELEGRAM_BOT_TOKEN_2:
+            print("❌ TELEGRAM_BOT_TOKEN_2 не установлен")
             logger.error("❌ TELEGRAM_BOT_TOKEN_2 не установлен")
             raise ValueError("TELEGRAM_BOT_TOKEN_2 не установлен")
         
+        print("🔧 Создание Application для Telegram бота...")
         logger.info("🔧 Создание Application для Telegram бота...")
         self.application = Application.builder().token(TELEGRAM_BOT_TOKEN_2).build()
+        print("🔧 Настройка обработчиков...")
         logger.info("🔧 Настройка обработчиков...")
         self.setup_handlers()
+        print("✅ Обработчики настроены")
         logger.info("✅ Обработчики настроены")
 
     def setup_handlers(self):
@@ -855,17 +859,22 @@ class SupportBot:
     async def run(self):
         """Запуск бота"""
         try:
+            print("Инициализация Telegram бота поддержки...")
             logger.info("Инициализация Telegram бота поддержки...")
             await self.application.initialize()
+            print("Запуск Telegram бота поддержки...")
             logger.info("Запуск Telegram бота поддержки...")
             await self.application.start()
+            print("Запуск polling для Telegram бота поддержки...")
             logger.info("Запуск polling для Telegram бота поддержки...")
             await self.application.updater.start_polling()
+            print("✅ Telegram бот поддержки успешно запущен и готов к работе")
             logger.info("✅ Telegram бот поддержки успешно запущен и готов к работе")
             
             # Ждем бесконечно (бот работает в фоне)
             await asyncio.Event().wait()
         except Exception as e:
+            print(f"Ошибка запуска бота: {e}")
             logger.error(f"Ошибка запуска бота: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             raise
@@ -875,11 +884,14 @@ class SupportBot:
 async def start_support_bot(db_session_factory):
     """Запустить бота поддержки"""
     try:
+        print("🔧 Создание экземпляра SupportBot...")
         logger.info("🔧 Создание экземпляра SupportBot...")
         bot = SupportBot(db_session_factory)
+        print("✅ SupportBot создан, запуск бота...")
         logger.info("✅ SupportBot создан, запуск бота...")
         await bot.run()
     except Exception as e:
+        print(f"❌ Ошибка запуска бота поддержки: {e}")
         logger.error(f"❌ Ошибка запуска бота поддержки: {e}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise
