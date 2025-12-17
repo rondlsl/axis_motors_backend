@@ -89,3 +89,18 @@ class RentalCalculatorResponse(BaseModel):
     include_delivery: bool
     breakdown: RentalCostBreakdown
     total_minimum_balance: int = Field(..., description="Минимальный баланс для аренды")
+
+
+class ExtendRentalRequest(BaseModel):
+    """Схема запроса для продления суточного тарифа"""
+    days: int = Field(..., ge=1, le=30, description="Количество дней для продления (от 1 до 30)")
+
+
+class ExtendRentalResponse(BaseModel):
+    """Схема ответа для продления аренды"""
+    message: str
+    rental_id: str
+    new_duration: int = Field(..., description="Новая продолжительность аренды в днях")
+    extension_cost: int = Field(..., description="Стоимость продления")
+    new_base_price: int = Field(..., description="Новая базовая стоимость аренды")
+    remaining_balance: float = Field(..., description="Оставшийся баланс пользователя")

@@ -86,7 +86,7 @@ async def save_fcm_token(
             raise HTTPException(status_code=400, detail="FCM token is required")
 
         is_mechanic = current_user.role == UserRole.MECHANIC
-
+        
         # 1. УДАЛЯЕМ устройства других пользователей с этим fcm_token
         other_devices_with_token = (
             db.query(UserDevice)

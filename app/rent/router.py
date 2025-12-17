@@ -34,6 +34,7 @@ from app.push.utils import (
 from app.rent.exceptions import InsufficientBalanceException
 from app.wallet.utils import record_wallet_transaction
 from app.models.wallet_transaction_model import WalletTransactionType, WalletTransaction
+from app.push.enums import NotificationStatus
 from app.rent.utils.calculate_price import calculate_total_price, get_open_price, calc_required_balance, calculate_rental_cost_breakdown, calculate_rental_cost_breakdown
 from app.gps_api.utils.route_data import get_gps_route_data
 from app.gps_api.utils.auth_api import get_auth_token
@@ -54,7 +55,9 @@ from app.rent.schemas import (
     CancelBookingResponse,
     RentalCalculatorRequest,
     RentalCalculatorResponse,
-    RentalCostBreakdown
+    RentalCostBreakdown,
+    ExtendRentalRequest,
+    ExtendRentalResponse
 )
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -2827,6 +2830,183 @@ async def check_vehicle_status_for_completion(vehicle_imei: str) -> Dict[str, An
             
     except Exception as e:
         return {"error": f"Ошибка при проверке состояния автомобиля: {str(e)}"}
+
+
+@RentRouter.post("/extend", response_model=ExtendRentalResponse)
+async def extend_rental(
+        request: ExtendRentalRequest,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    """
+    Продление суточного тарифа аренды.
+    
+    Доступно только для аренд типа DAYS со статусом IN_USE.
+    Можно продлить только после окончания основного тарифа (когда начался поминутный тариф).
+    """
+    from math import ceil
+    
+    validate_user_can_rent(current_user, db)
+    
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.user_id == current_user.id,
+        RentalHistory.rental_status == RentalStatus.IN_USE
+    ).first()
+    
+    if not rental:
+        raise HTTPException(
+            status_code=404,
+            detail="Активная аренда не найдена"
+        )
+    
+    if rental.rental_type != RentalType.DAYS:
+        raise HTTPException(
+            status_code=400,
+            detail="Продление доступно только для суточного тарифа"
+        )
+    
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    if car.status != CarStatus.IN_USE:
+        raise HTTPException(
+            status_code=400,
+            detail="Автомобиль недоступен для продления аренды"
+        )
+    
+    if not rental.start_time:
+        raise HTTPException(
+            status_code=400,
+            detail="Аренда еще не началась"
+        )
+    
+    now = get_local_time()
+    elapsed = (now - rental.start_time).total_seconds() / 60 
+    planned_minutes = rental.duration * 1440  
+    
+    remaining_minutes = planned_minutes - elapsed
+    if elapsed < planned_minutes - 120:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Продление доступно только когда осталось менее 2 часов до окончания тарифа или после его окончания. Осталось: {ceil(remaining_minutes / 60)} часов"
+        )
+    
+    total_duration = rental.duration + request.days
+    extension_cost = calculate_total_price(
+        rental_type=RentalType.DAYS,
+        duration=request.days,
+        price_per_hour=0, 
+        price_per_day=car.price_per_day
+    )
+    
+    if current_user.wallet_balance < extension_cost:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Недостаточно средств для продления. Требуется: {extension_cost} ₸, доступно: {int(current_user.wallet_balance)} ₸"
+        )
+    
+    balance_before = float(current_user.wallet_balance)
+    current_user.wallet_balance = balance_before - extension_cost
+    
+    # Обновляем время последней активности пользователя
+    current_user.last_activity_at = get_local_time()
+    
+    try:
+        record_wallet_transaction(
+            db,
+            user=current_user,
+            amount=-extension_cost,
+            ttype=WalletTransactionType.RENT_BASE_CHARGE,
+            description=f"Продление аренды на {request.days} {'день' if request.days == 1 else 'дня' if request.days < 5 else 'дней'}",
+            related_rental=rental
+        )
+        
+        old_duration = rental.duration
+        old_base_price = rental.base_price or 0
+        
+        rental.duration = total_duration
+        rental.base_price = old_base_price + extension_cost
+        
+        if rental.overtime_fee and rental.overtime_fee > 0:
+            rental.overtime_fee = 0
+        
+        if current_user.wallet_balance >= 0:
+            rental.already_payed = (
+                (rental.base_price or 0) +
+                (rental.open_fee or 0) +
+                (rental.delivery_fee or 0) +
+                (rental.waiting_fee or 0) +
+                (rental.overtime_fee or 0)
+            )
+        
+        rental.total_price = (
+            (rental.base_price or 0) +
+            (rental.open_fee or 0) +
+            (rental.delivery_fee or 0) +
+            (rental.waiting_fee or 0) +
+            (rental.overtime_fee or 0) +
+            (rental.distance_fee or 0)
+        )
+        
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        # Откатываем изменение баланса
+        current_user.wallet_balance = balance_before
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка при продлении аренды: {str(e)}"
+        )
+    
+    try:
+        user_locale = current_user.locale or "ru"
+        
+        if user_locale == "ru":
+            days_text = "день" if request.days == 1 else "дня" if request.days < 5 else "дней"
+            days_text2 = "день" if total_duration == 1 else "дня" if total_duration < 5 else "дней"
+        elif user_locale == "en":
+            days_text = "day" if request.days == 1 else "days"
+            days_text2 = "day" if total_duration == 1 else "days"
+        elif user_locale == "kz":
+            days_text = "күн"
+            days_text2 = "күн"
+        elif user_locale == "zh":
+            days_text = "天"
+            days_text2 = "天"
+        else:
+            days_text = "день" if request.days == 1 else "дня" if request.days < 5 else "дней"
+            days_text2 = "день" if total_duration == 1 else "дня" if total_duration < 5 else "дней"
+        
+        asyncio.create_task(
+            send_localized_notification_to_user_async(
+                current_user.id,
+                "rental_extended",
+                "rental_extended",
+                days=request.days,
+                days_text=days_text,
+                new_duration=total_duration,
+                days_text2=days_text2,
+                cost=extension_cost
+            )
+        )
+    except Exception:
+        pass
+    
+    try:
+        loop = asyncio.get_running_loop()
+        asyncio.create_task(notify_user_status_update(str(current_user.id)))
+    except RuntimeError:
+        pass
+    
+    return ExtendRentalResponse(
+        message=f"Аренда успешно продлена на {request.days} {'день' if request.days == 1 else 'дня' if request.days < 5 else 'дней'}",
+        rental_id=uuid_to_sid(rental.id),
+        new_duration=total_duration,
+        extension_cost=extension_cost,
+        new_base_price=rental.base_price,
+        remaining_balance=float(current_user.wallet_balance)
+    )
 
 
 @RentRouter.post("/complete")

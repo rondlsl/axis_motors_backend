@@ -156,7 +156,10 @@ NOTIFICATIONS_TRANSLATIONS = {
         "airport_location_body": "Добро пожаловать! На локации аэропорта доступны свободные авто.",
         
         "car_viewed_exit_title": "Авто всё ещё доступно",
-        "car_viewed_exit_body": "Авто всё ещё доступно. Забронируйте в один клик, пока не увели."
+        "car_viewed_exit_body": "Авто всё ещё доступно. Забронируйте в один клик, пока не увели.",
+        
+        "rental_extended_title": "Аренда продлена",
+        "rental_extended_body": "Аренда успешно продлена на {days} {days_text}. Общая продолжительность: {new_duration} {days_text2}. Стоимость продления: {cost}₸."
     },
     
     "en": {
@@ -316,7 +319,10 @@ NOTIFICATIONS_TRANSLATIONS = {
         "airport_location_body": "Welcome! Free cars are available at the airport location.",
         
         "car_viewed_exit_title": "Car Still Available",
-        "car_viewed_exit_body": "Car is still available. Book it in one click before it's taken."
+        "car_viewed_exit_body": "Car is still available. Book it in one click before it's taken.",
+        
+        "rental_extended_title": "Rental Extended",
+        "rental_extended_body": "Rental successfully extended for {days} {days_text}. Total duration: {new_duration} {days_text2}. Extension cost: {cost}₸."
     },
     
     "kz": {
@@ -476,7 +482,10 @@ NOTIFICATIONS_TRANSLATIONS = {
         "airport_location_body": "Қош келдіңіз! Әуежай орналасуында бос автомобильдер қолжетімді.",
         
         "car_viewed_exit_title": "Автомобиль әлі қолжетімді",
-        "car_viewed_exit_body": "Автомобиль әлі қолжетімді. Ол алынбай тұрып, бір басып брондаңыз."
+        "car_viewed_exit_body": "Автомобиль әлі қолжетімді. Ол алынбай тұрып, бір басып брондаңыз.",
+        
+        "rental_extended_title": "Жалға алу ұзартылды",
+        "rental_extended_body": "Жалға алу {days} {days_text} үшін сәтті ұзартылды. Жаңа ұзақтығы: {new_duration} {days_text2}. Ұзарту құны: {cost}₸."
     },
     
     "zh": {
@@ -636,7 +645,10 @@ NOTIFICATIONS_TRANSLATIONS = {
         "airport_location_body": "欢迎！机场位置有可用车辆。",
         
         "car_viewed_exit_title": "车辆仍然可用",
-        "car_viewed_exit_body": "车辆仍然可用。在被预订之前一键预订。"
+        "car_viewed_exit_body": "车辆仍然可用。在被预订之前一键预订。",
+        
+        "rental_extended_title": "租赁已延长",
+        "rental_extended_body": "租赁已成功延长 {days} {days_text}。新时长：{new_duration} {days_text2}。延长费用：{cost}₸。"
     }
 }
 
