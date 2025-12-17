@@ -32,8 +32,16 @@ from app.utils.time_utils import get_local_time
 FUEL_PRICE_PER_LITER = 350
 ELECTRIC_FUEL_PRICE_PER_LITER = 100
 
-# Кэш флагов уведомлений: rental_id -> flags (в т.ч. timestamp нулевого баланса)
 _notification_flags: dict[int, dict[str, object]] = {}
+_websocket_notification_semaphore: asyncio.Semaphore | None = None
+
+
+def _get_websocket_semaphore() -> asyncio.Semaphore:
+    """Ленивая инициализация семафора для WebSocket уведомлений."""
+    global _websocket_notification_semaphore
+    if _websocket_notification_semaphore is None:
+        _websocket_notification_semaphore = asyncio.Semaphore(10)
+    return _websocket_notification_semaphore
 
 
 async def billing_job():
@@ -171,10 +179,20 @@ async def billing_job():
             if car and car.owner_id:
                 user_ids.add(str(car.owner_id))
         
+        semaphore = _get_websocket_semaphore()
+        async def _notify_with_semaphore(user_id: str):
+            async with semaphore:
+                try:
+                    await notify_user_status_update(user_id)
+                except Exception as e:
+                    print(f"Ошибка отправки уведомления пользователю {user_id}: {e}")
+        
         for user_id in user_ids:
-            asyncio.create_task(notify_user_status_update(user_id))
+            asyncio.create_task(_notify_with_semaphore(user_id))
     except Exception as e:
         print(f"Error sending WebSocket notifications in billing_job: {e}")
+    finally:
+        db.close()
 
     await asyncio.sleep(0)
 
