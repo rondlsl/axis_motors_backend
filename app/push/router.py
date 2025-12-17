@@ -86,10 +86,6 @@ async def save_fcm_token(
             raise HTTPException(status_code=400, detail="FCM token is required")
 
         is_mechanic = current_user.role == UserRole.MECHANIC
-        
-        print(f"📱 [SAVE_TOKEN] User {current_user.phone_number} (ID: {current_user.id}, Role: {current_user.role.value if current_user.role else None}) - Token: {token[:50]}...")
-        print(f"📱 [SAVE_TOKEN] device_id: {device_id}")
-        print(f"📱 [SAVE_TOKEN] Is mechanic: {is_mechanic}")
 
         # 1. УДАЛЯЕМ устройства других пользователей с этим fcm_token
         other_devices_with_token = (
@@ -104,7 +100,6 @@ async def save_fcm_token(
         for other_device in other_devices_with_token:
             if str(other_device.user_id) not in deleted_users:
                 deleted_users.append(str(other_device.user_id))
-            print(f"🗑️ [SAVE_TOKEN] Deleting device {other_device.id} from user {other_device.user_id} (fcm_token conflict)")
             db.delete(other_device)
         
         # 2. УДАЛЯЕМ устройства других пользователей с этим device_id
@@ -120,7 +115,6 @@ async def save_fcm_token(
             for other_device in other_devices_with_device_id:
                 if str(other_device.user_id) not in deleted_users:
                     deleted_users.append(str(other_device.user_id))
-                print(f"🗑️ [SAVE_TOKEN] Deleting device {other_device.id} from user {other_device.user_id} (device_id conflict)")
                 db.delete(other_device)
         
         # 3. Обрабатываем предыдущие устройства текущего пользователя
@@ -150,7 +144,6 @@ async def save_fcm_token(
                 prev_device.update_timestamp()
                 db.add(prev_device)
                 deactivated_count += 1
-                print(f"🔄 [SAVE_TOKEN] Deactivating previous device {prev_device.id} for mechanic (same fcm_token, different device_id)")
         else:
             # Для обычных пользователей: УДАЛЯЕМ все предыдущие устройства
             previous_user_devices = (
@@ -159,14 +152,8 @@ async def save_fcm_token(
                 .all()
             )
             for prev_device in previous_user_devices:
-                print(f"🗑️ [SAVE_TOKEN] Deleting previous device {prev_device.id} for user (device_id={prev_device.device_id})")
                 db.delete(prev_device)
                 deleted_count += 1
-        
-        if deleted_count > 0:
-            print(f"✅ [SAVE_TOKEN] Deleted {deleted_count} previous devices for user {current_user.id}")
-        if deactivated_count > 0:
-            print(f"✅ [SAVE_TOKEN] Deactivated {deactivated_count} previous devices for mechanic {current_user.id}")
         
         # Применяем все изменения (удаления и деактивации)
         db.flush()
@@ -184,8 +171,6 @@ async def save_fcm_token(
                 )
                 .first()
             )
-            if device:
-                print(f"🔍 [SAVE_TOKEN] Found existing device by device_id: {device.id}")
         
         # Если не найдено по device_id, ищем по fcm_token (для механиков может быть несколько устройств)
         if device is None and is_mechanic:
@@ -197,12 +182,9 @@ async def save_fcm_token(
                 )
                 .first()
             )
-            if device:
-                print(f"🔍 [SAVE_TOKEN] Found existing device by fcm_token: {device.id}")
         
         # Если не найдено, создаем новое устройство
         if device is None:
-            print(f"➕ [SAVE_TOKEN] Creating new device for user {current_user.id}")
             device = UserDevice(
                 device_id=device_id,
                 user_id=current_user.id,
@@ -210,7 +192,6 @@ async def save_fcm_token(
             )
         else:
             # Обновляем существующее устройство
-            print(f"🔄 [SAVE_TOKEN] Updating existing device {device.id}")
             device.fcm_token = token
             if device_id and not device.device_id:
                 device.device_id = device_id
@@ -238,14 +219,10 @@ async def save_fcm_token(
         device.update_timestamp()
 
         db.add(device)
-        
-        print(f"💾 [SAVE_TOKEN] Attempting to save device: user_id={current_user.id}, device_id={device.device_id}, is_active={device.is_active}")
 
         try:
             db.flush()
-            print(f"✅ [SAVE_TOKEN] Device flushed successfully, device.id={device.id}")
         except Exception as flush_error:
-            print(f"❌ [SAVE_TOKEN] Flush error: {str(flush_error)}")
             db.rollback()
             raise HTTPException(status_code=500, detail=f"Ошибка при сохранении устройства (flush): {str(flush_error)}")
         
@@ -262,17 +239,13 @@ async def save_fcm_token(
             )
             
             if other_active_devices:
-                print(f"⚠️ [SAVE_TOKEN] WARNING: Found {len(other_active_devices)} other active devices for user {current_user.id}. Deleting them...")
                 for other_device in other_active_devices:
-                    print(f"🗑️ [SAVE_TOKEN] Force deleting device {other_device.id}")
                     db.delete(other_device)
                 db.flush()
         
         try:
             db.commit()
-            print(f"✅ [SAVE_TOKEN] Device committed successfully")
         except Exception as commit_error:
-            print(f"❌ [SAVE_TOKEN] Commit error: {str(commit_error)}")
             db.rollback()
             raise HTTPException(status_code=500, detail=f"Ошибка при сохранении устройства (commit): {str(commit_error)}")
         
@@ -289,9 +262,6 @@ async def save_fcm_token(
         )
         
         expected_count = "1" if not is_mechanic else ">=1"
-        print(f"✅ [SAVE_TOKEN] Token saved successfully for user {current_user.id}, device {device.id}")
-        print(f"📊 [SAVE_TOKEN] Active devices for user: {active_devices_count} (expected: {expected_count})")
-        print(f"📊 [SAVE_TOKEN] Device details: device_id={device.device_id}, is_active={device.is_active}, fcm_token={'***' + device.fcm_token[-10:] if device.fcm_token and len(device.fcm_token) > 10 else 'None'}")
         
         response = {
             "detail": "FCM token saved successfully",
@@ -322,9 +292,6 @@ async def save_fcm_token(
         raise
     except Exception as e:
         db.rollback()
-        print(f"❌ [SAVE_TOKEN] Unexpected error: {type(e).__name__}: {str(e)}")
-        import traceback
-        print(f"❌ [SAVE_TOKEN] Traceback: {traceback.format_exc()}")
         try:
             await log_error_to_telegram(
                 error=e,
