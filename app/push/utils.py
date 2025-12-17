@@ -65,9 +65,6 @@ async def send_push_notification_async(token: str, title: str, body: str, max_re
         body: Notification body
         max_retries: Maximum number of retry attempts (default: 3)
     """
-    # Log token format for debugging
-    print(f'📱 Sending push to token: {token[:50]}...' if len(token) > 50 else f'📱 Sending push to token: {token}')
-    
     # Expo Push API endpoints (primary and fallback)
     urls = [
         "https://exp.host/--/api/v2/push/send",
@@ -83,8 +80,6 @@ async def send_push_notification_async(token: str, title: str, body: str, max_re
         "priority": "high",
         "channelId": "default"
     }
-    
-    print(f'📤 Sending to Expo: {message}')
     
     # Retry logic with exponential backoff
     for attempt in range(max_retries):
@@ -111,18 +106,11 @@ async def send_push_notification_async(token: str, title: str, body: str, max_re
                     follow_redirects=True,
                     http2=False  # Отключаем HTTP/2 для совместимости
                 ) as client:
-                    if attempt > 0 or url_idx > 0:
-                        print(f'🔄 Retry attempt {attempt + 1}/{max_retries}, endpoint {url_idx + 1}/{len(urls)}')
-                    
                     response = await client.post(url, json=message)
-                    
-                print(f'📥 Expo response status: {response.status_code}')
-                print(f'📥 Expo response body: {response.text}')
                 
                 # Check response
                 if response.status_code == 200:
                     result = response.json()
-                    print(f'📊 Expo response JSON: {result}')
                     
                     # Expo returns different formats:
                     # Single: {"data": {"status": "ok", "id": "..."}}
@@ -136,50 +124,38 @@ async def send_push_notification_async(token: str, title: str, body: str, max_re
                         data = response_data
                     
                     if data.get('status') == 'ok':
-                        print(f'✅ Expo push sent successfully: {data.get("id", "no-id")}')
                         return True
                     elif data.get('status') == 'error':
-                        error_msg = data.get('message', 'Unknown error')
-                        error_details = data.get('details', {})
-                        print(f'❌ Expo push error: {error_msg}')
-                        print(f'❌ Error details: {error_details}')
                         return False
                     else:
-                        print(f'❌ Expo push unexpected response: {data}')
                         return False
                 else:
-                    print(f'❌ Expo push HTTP error: {response.status_code} - {response.text}')
                     # Try next URL if available
                     if url_idx < len(urls) - 1:
                         continue
                     return False
                     
             except (httpx.TimeoutException, httpx.ConnectTimeout, httpx.ReadTimeout) as e:
-                print(f'⏱️ Push timeout error (attempt {attempt + 1}/{max_retries}, endpoint {url_idx + 1}): {e}')
                 # Try next URL if available
                 if url_idx < len(urls) - 1:
                     continue
                 # Exponential backoff before retry
                 if attempt < max_retries - 1:
                     wait_time = (2 ** attempt) * 1  # 1, 2, 4 seconds
-                    print(f'⏳ Waiting {wait_time}s before retry...')
                     await asyncio.sleep(wait_time)
                     break  # Break inner loop to retry with first URL
                     
             except (httpx.ConnectError, httpx.NetworkError) as e:
-                print(f'🌐 Push network error (attempt {attempt + 1}/{max_retries}, endpoint {url_idx + 1}): {type(e).__name__}: {e}')
                 # Try next URL if available
                 if url_idx < len(urls) - 1:
                     continue
                 # Exponential backoff before retry
                 if attempt < max_retries - 1:
                     wait_time = (2 ** attempt) * 1
-                    print(f'⏳ Waiting {wait_time}s before retry...')
                     await asyncio.sleep(wait_time)
                     break  # Break inner loop to retry with first URL
                     
             except Exception as e:
-                print(f'❌ Push unexpected error (attempt {attempt + 1}/{max_retries}): {type(e).__name__}: {e}')
                 import traceback
                 traceback.print_exc()
                 # Try next URL if available
@@ -187,7 +163,6 @@ async def send_push_notification_async(token: str, title: str, body: str, max_re
                     continue
                 return False
     
-    print(f'❌ Failed to send push after {max_retries} retries')
     return False
 
 
