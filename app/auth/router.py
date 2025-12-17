@@ -356,7 +356,6 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
         user.sms_code_valid_until = current_time + timedelta(hours=1)
 
     db.commit()
-    print(sms_code)
     
     # Формируем SMS с информацией о клиенте
     if not user.digital_signature:

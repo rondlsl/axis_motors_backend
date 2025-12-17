@@ -143,15 +143,19 @@ def _update_vehicle_data_sync(vehicles_data: list, db: Session) -> int:
                                 if rental:
                                     user = db.query(User).filter(User.id == rental.user_id).first()
                                     if user:
-                                        asyncio.create_task(
-                                            send_localized_notification_to_user_async(
-                                                user.id,
-                                                "fuel_refill_detected",
-                                                "fuel_refill_detected"
+                                        try:
+                                            loop = asyncio.get_running_loop()
+                                            asyncio.create_task(
+                                                send_localized_notification_to_user_async(
+                                                    user.id,
+                                                    "fuel_refill_detected",
+                                                    "fuel_refill_detected"
+                                                )
                                             )
-                                        )
+                                        except RuntimeError:
+                                            pass
                             except Exception:
-                                pass  # Нет активной аренды или ошибка
+                                pass 
                     
                     car.fuel_level = fuel
                 

@@ -20,8 +20,6 @@ def decrypt_phone_number(encrypted_phone_number: str) -> str:
 
 def create_access_token(data: dict):
     phone_number = data.get("sub")
-    print(data)
-    print(phone_number)
     encrypted_phone_number = encrypt_phone_number(phone_number)
     to_encode = {"sub": encrypted_phone_number, "token_type": "access"}
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
