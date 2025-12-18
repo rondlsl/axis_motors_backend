@@ -1010,13 +1010,6 @@ async def upload_photos_before(
     """
     До осмотра (часть 1): selfie + внешние фото. Салон загружается отдельно.
     """
-    print(f"=== /mechanic/upload-photos-before START ===")
-    print(f"Mechanic ID: {current_mechanic.id}")
-    print(f"Mechanic Name: {getattr(current_mechanic, 'first_name', 'N/A')} {getattr(current_mechanic, 'last_name', 'N/A')}")
-    print(f"Selfie filename: {selfie.filename}, content_type: {selfie.content_type}")
-    print(f"Car photos count: {len(car_photos)}")
-    for idx, photo in enumerate(car_photos):
-        print(f"  Car photo {idx+1}: {photo.filename}, content_type: {photo.content_type}")
     
     rental = db.query(RentalHistory).filter(
         RentalHistory.mechanic_inspector_id == current_mechanic.id,
@@ -1024,13 +1017,15 @@ async def upload_photos_before(
     ).first()
     
     if not rental:
-        print(f"ERROR: Нет активной проверки для механика {current_mechanic.id}")
+        logger.error(f"Нет активной проверки для механика {current_mechanic.id}")
         raise HTTPException(status_code=404, detail="Нет активной проверки (PENDING, IN_USE или SERVICE)")
-    
-    print(f"Found rental: ID={rental.id}, car_id={rental.car_id}, status={rental.mechanic_inspection_status}")
-    print(f"Existing photos before: {rental.mechanic_photos_before}")
 
-    print(f"Validating selfie...")
+    logger.info(
+        f"/mechanic/upload-photos-before START: mechanic_id={current_mechanic.id}, "
+        f"rental_id={rental.id}, car_id={rental.car_id}, selfie={selfie.filename}, "
+        f"car_photos_count={len(car_photos)}"
+    )
+
     validate_photos([selfie], "selfie")
     # try:
     #     # Сверяем селфи механика с документом
@@ -1042,59 +1037,41 @@ async def upload_photos_before(
     # except Exception as e:
     #     raise HTTPException(status_code=400, detail="Ой! Похоже на фотографии не вы, но если это вы, то пожалуйста сделайте селфи как в профиле.")
     
-    print(f"Validating car photos...")
     validate_photos(car_photos, "car_photos")
-    print(f"All photos validated successfully")
     
     uploaded_files = []
     try:
-        print(f"Starting file upload process...")
         urls = list(rental.mechanic_photos_before or [])
-        print(f"Saving selfie...")
         selfie_url = await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/mechanic/before/selfie/")
         urls.append(selfie_url)
         uploaded_files.append(selfie_url)
-        print(f"Selfie saved: {selfie_url}")
-        
-        for idx, p in enumerate(car_photos):
-            print(f"Saving car photo {idx+1}/{len(car_photos)}: {p.filename}")
+
+        for p in car_photos:
             car_photo_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/mechanic/before/car/")
             urls.append(car_photo_url)
             uploaded_files.append(car_photo_url)
-            print(f"Car photo {idx+1} saved: {car_photo_url}")
         
         rental.mechanic_photos_before = urls
-        print(f"All photos saved. Total URLs: {len(urls)}")
-        
+
         # Универсальная GPS последовательность после загрузки селфи+кузов
-        print(f"Starting GPS sequence...")
         car = db.query(Car).get(rental.car_id)
-        print(f"Car found: ID={car.id if car else 'None'}, gps_imei={car.gps_imei if car else 'None'}")
-        
+
         if car and car.gps_imei:
-            print(f"Executing GPS sequence for IMEI: {car.gps_imei}")
-            
-            print(f"Getting GPS auth token...")
             auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-            print(f"Auth token received: {auth_token[:20]}..." if auth_token else "No token")
-            
+
             # Универсальная последовательность: открыть замки → выдать ключ → открыть замки → забрать ключ
-            print(f"Executing GPS sequence 'selfie_exterior'...")
             result = await execute_gps_sequence(car.gps_imei, auth_token, "selfie_exterior")
-            print(f"GPS sequence result: {result}")
-            
+
             if not result["success"]:
                 error_msg = result.get('error', 'Unknown error')
-                print(f"ERROR: GPS последовательность failed: {error_msg}")
+                logger.error(f"GPS последовательность 'selfie_exterior' для механика {current_mechanic.id} и авто {car.id} завершилась с ошибкой: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
-            
-            print(f"GPS sequence completed successfully")
+
+            logger.info(f"GPS последовательность 'selfie_exterior' успешно выполнена для механика {current_mechanic.id}, авто {car.id}")
         else:
-            print(f"Skipping GPS sequence - car or gps_imei not available")
-        
-        print(f"Committing to database...")
+            logger.info(f"Пропускаем GPS последовательность в upload-photos-before: car_id={car.id if car else 'None'}, gps_imei={car.gps_imei if car else 'None'}")
+
         db.commit()
-        print(f"Database commit successful")
         
         # Обновляем все данные из БД для получения свежих данных
         db.expire_all()
@@ -1121,20 +1098,18 @@ async def upload_photos_before(
             logger.info(f"WebSocket notifications sent after mechanic upload-photos-before for rental {rental.id}")
         except Exception as e:
             logger.error(f"Error sending WebSocket notifications: {e}")
-        
-        print(f"=== /mechanic/upload-photos-before SUCCESS ===")
+
+        logger.info(f"/mechanic/upload-photos-before SUCCESS: mechanic_id={current_mechanic.id}, rental_id={rental.id}, total_photos={len(urls)}")
         return {"message": "Фотографии до проверки (selfie+car) загружены", "photo_count": len(urls)}
     except HTTPException as he:
-        print(f"ERROR: HTTPException in upload-photos-before: {he.detail}")
-        print(f"Rolling back database and deleting uploaded files...")
+        logger.error(f"HTTPException in upload-photos-before: {he.detail}")
         db.rollback()
         delete_uploaded_files(uploaded_files)
         raise
     except Exception as e:
-        print(f"ERROR: Exception in upload-photos-before: {type(e).__name__}: {str(e)}")
         import traceback
-        print(f"Traceback: {traceback.format_exc()}")
-        print(f"Rolling back database and deleting uploaded files...")
+        logger.error(f"Exception in upload-photos-before: {type(e).__name__}: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         db.rollback()
         delete_uploaded_files(uploaded_files)
         try:
@@ -1501,16 +1476,15 @@ async def complete_rental(
     # Окончательная блокировка двигателя при завершении проверки механиком
     try:
         if car and car.gps_imei:
-            
             auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
             # Универсальная последовательность: заблокировать двигатель
             result = await execute_gps_sequence(car.gps_imei, auth_token, "final_lock")
             if result["success"]:
-                print(f"Двигатель автомобиля {car.name} окончательно заблокирован после завершения проверки механиком")
+                logger.info(f"Двигатель автомобиля {car.name} окончательно заблокирован после завершения проверки механиком")
             else:
-                print(f"Ошибка GPS последовательности при окончательной блокировке механиком: {result.get('error', 'Unknown error')}")
+                logger.error(f"Ошибка GPS последовательности при окончательной блокировке механиком: {result.get('error', 'Unknown error')}")
     except Exception as e:
-        print(f"Ошибка GPS команд при окончательной блокировке механиком: {e}")
+        logger.error(f"Ошибка GPS команд при окончательной блокировке механиком: {e}")
     
     try:
         db.commit()

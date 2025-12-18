@@ -395,16 +395,15 @@ async def complete_delivery(
     # Окончательная блокировка двигателя при завершении доставки
     try:
         if car and car.gps_imei:
-            
             auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
             # Универсальная последовательность: заблокировать двигатель
             result = await execute_gps_sequence(car.gps_imei, auth_token, "final_lock")
             if result["success"]:
-                print(f"Двигатель автомобиля {car.name} окончательно заблокирован после завершения доставки")
+                logger.info(f"Двигатель автомобиля {car.name} окончательно заблокирован после завершения доставки")
             else:
-                print(f"Ошибка GPS последовательности при окончательной блокировке доставки: {result.get('error', 'Unknown error')}")
+                logger.error(f"Ошибка GPS последовательности при окончательной блокировке доставки: {result.get('error', 'Unknown error')}")
     except Exception as e:
-        print(f"Ошибка GPS команд при окончательной блокировке доставки: {e}")
+        logger.error(f"Ошибка GPS команд при окончательной блокировке доставки: {e}")
         try:
             await log_error_to_telegram(
                 error=e,

@@ -34,6 +34,10 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
+
+# Уменьшаем шум от APScheduler: показываем только ошибки
+logging.getLogger("apscheduler").setLevel(logging.ERROR)
+logging.getLogger("apscheduler.executors.default").setLevel(logging.ERROR)
 from app.gps_api.router import Vehicle_Router
 from app.mechanic.router import MechanicRouter
 from app.seed.init_data import init_test_data

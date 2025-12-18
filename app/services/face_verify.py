@@ -100,7 +100,6 @@ def verify_user_upload_against_profile(user, upload_file) -> Tuple[bool, str]:
     ВРЕМЕННО ОТКЛЮЧЕНО - всегда возвращает True для экономии RAM.
     """
     # ВРЕМЕННО ОТКЛЮЧЕНО: AI проверка закомментирована для экономии памяти
-    print("⚠️ Face verification временно отключена")
     return True, "ok"
     
     # === КОД НИЖЕ ЗАКОММЕНТИРОВАН ===

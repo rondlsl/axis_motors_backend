@@ -882,6 +882,7 @@ async def reserve_car(
     price_per_hour = car.price_per_hour
     price_per_day = car.price_per_day
 
+    # Владелец: берёт свою машину бесплатно
     if car.owner_id == current_user.id:
         # Перед тем как владелец «снимет с аренды» (берёт у себя),
         # проверяем, нет ли активных/запланированных аренд клиентов
@@ -909,7 +910,6 @@ async def reserve_car(
                 detail="Нельзя снять с аренды: автомобиль забронирован/в доставке/в использовании клиентом",
             )
 
-        # Владелец берёт свою машину бесплатно
         total_price = 0
         rental = RentalHistory(
             user_id=current_user.id,
@@ -1700,15 +1700,15 @@ async def start_rental(
         # Автоматическая разблокировка двигателя при начале аренды (для владельца)
         try:
             auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-            
+
             # Универсальная последовательность: разблокировать двигатель
             result = await execute_gps_sequence(car.gps_imei, auth_token, "start")
             if result["success"]:
-                print(f"Двигатель автомобиля {car.name} разблокирован при начале аренды (владелец)")
+                logger.info(f"Двигатель автомобиля {car.name} разблокирован при начале аренды (владелец)")
             else:
-                print(f"Ошибка GPS последовательности для владельца: {result.get('error', 'Unknown error')}")
+                logger.error(f"Ошибка GPS последовательности для владельца: {result.get('error', 'Unknown error')}")
         except Exception as e:
-            print(f"Ошибка разблокировки двигателя при начале аренды (владелец): {e}")
+            logger.error(f"Ошибка разблокировки двигателя при начале аренды (владелец): {e}")
             # Логируем критическую ошибку GPS команды
             try:
                 await log_error_to_telegram(
@@ -2056,17 +2056,17 @@ async def upload_photos_before(
         
         car = db.query(Car).get(rental.car_id)
         if car and car.gps_imei:
-            
             auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-            
+
             # Универсальная последовательность: открыть замки → выдать ключ → открыть замки → забрать ключ
             result = await execute_gps_sequence(car.gps_imei, auth_token, "selfie_exterior")
             if not result["success"]:
                 error_msg = result.get('error', 'Unknown error')
-                print(f"Ошибка GPS последовательности для селфи+кузов: {error_msg}")
+                logger.error(f"Ошибка GPS последовательности для селфи+кузов: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
             else:
-                print(f"GPS последовательность выполнена успешно: {result.get('executed_commands', [])}")
+                # Логируем только краткую информацию, без детального списка команд
+                logger.info(f"GPS последовательность 'selfie_exterior' успешно выполнена для авто {car.id}")
         
         db.commit()
         
@@ -3281,15 +3281,15 @@ async def complete_rental(
     # 13) Окончательная блокировка двигателя при завершении аренды
     try:
         auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-        
+
         # Универсальная последовательность: заблокировать двигатель
         result = await execute_gps_sequence(car.gps_imei, auth_token, "final_lock")
         if result["success"]:
-            print(f"Двигатель автомобиля {car.name} окончательно заблокирован после завершения аренды")
+            logger.info(f"Двигатель автомобиля {car.name} окончательно заблокирован после завершения аренды")
         else:
-            print(f"Ошибка GPS последовательности при окончательной блокировке: {result.get('error', 'Unknown error')}")
+            logger.error(f"Ошибка GPS последовательности при окончательной блокировке: {result.get('error', 'Unknown error')}")
     except Exception as e:
-        print(f"Ошибка блокировки двигателя: {e}")
+        logger.error(f"Ошибка блокировки двигателя: {e}")
         # Логируем критическую ошибку GPS команды
         try:
             await log_error_to_telegram(
