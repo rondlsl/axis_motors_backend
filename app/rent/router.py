@@ -2928,9 +2928,6 @@ async def extend_rental(
         rental.duration = total_duration
         rental.base_price = old_base_price + extension_cost
         
-        if rental.overtime_fee and rental.overtime_fee > 0:
-            rental.overtime_fee = 0
-        
         if current_user.wallet_balance >= 0:
             rental.already_payed = (
                 (rental.base_price or 0) +
