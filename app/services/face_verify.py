@@ -17,10 +17,9 @@ def verify_faces(img1_path: str, img2_path: str,
     
     ВНИМАНИЕ: Импорт DeepFace происходит только внутри функции для ленивой загрузки.
     """
-    # Импортируем DeepFace только когда функция действительно вызывается
-    # Это предотвращает загрузку TensorFlow при старте приложения
+
     try:
-    from deepface import DeepFace
+        from deepface import DeepFace
     except ImportError as e:
         raise Exception(f"DeepFace не установлен или не может быть загружен: {e}")
 
