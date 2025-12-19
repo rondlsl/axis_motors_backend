@@ -984,19 +984,26 @@ async def get_cars_list(
                     role=renter.role.value if renter.role else "client"
                 )
 
-        # Проверяем статус активной аренды для машин в доставке
-        car_status = car.status
-        if car.status == CarStatus.DELIVERING:
+        # Определяем статус машины с учетом статуса активной аренды
+        car_status = car.status.value if isinstance(car.status, CarStatus) else str(car.status)
+        
+        # Если машина в доставке, проверяем статус активной аренды
+        if car.status == CarStatus.DELIVERING and car.current_renter_id:
             active_rental = db.query(RentalHistory).filter(
                 RentalHistory.car_id == car.id,
+                RentalHistory.user_id == car.current_renter_id,
                 RentalHistory.rental_status.in_([
                     RentalStatus.DELIVERING,
                     RentalStatus.DELIVERY_RESERVED,
                     RentalStatus.DELIVERING_IN_PROGRESS
                 ])
-            ).first()
-            if active_rental and active_rental.rental_status == RentalStatus.DELIVERY_RESERVED:
-                car_status = "DELIVERY_RESERVED"
+            ).order_by(RentalHistory.reservation_time.desc()).first()
+            
+            if active_rental:
+                if active_rental.rental_status == RentalStatus.DELIVERY_RESERVED:
+                    car_status = "DELIVERY_RESERVED"
+                elif active_rental.rental_status == RentalStatus.DELIVERING_IN_PROGRESS:
+                    car_status = "DELIVERING_IN_PROGRESS"
         
         is_occupied = car.status in [CarStatus.OCCUPIED, CarStatus.IN_USE]
         latitude = -1.0 if is_occupied else car.latitude
