@@ -985,14 +985,18 @@ async def get_cars_list(
                     role=renter.role.value if renter.role else "client"
                 )
 
+        is_occupied = car.status in [CarStatus.OCCUPIED, CarStatus.IN_USE]
+        latitude = -1.0 if is_occupied else car.latitude
+        longitude = -1.0 if is_occupied else car.longitude
+
         items.append(CarListItemSchema(
             id=uuid_to_sid(car.id),
             name=car.name,
             plate_number=car.plate_number,
             status=car.status,
             status_display=_status_display(car.status),
-            latitude=car.latitude,
-            longitude=car.longitude,
+            latitude=latitude,
+            longitude=longitude,
             fuel_level=car.fuel_level,
             mileage=car.mileage,
             auto_class=car.auto_class.value if car.auto_class else "",
