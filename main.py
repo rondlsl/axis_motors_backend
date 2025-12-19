@@ -102,7 +102,7 @@ async def get_last_vehicles_data():
         return []
 
 
-def _update_vehicle_data_sync(vehicles_data: list, db: Session) -> int:
+def _update_vehicle_data_sync(vehicles_data: list, db: Session, loop=None) -> int:
     updated = 0
     try:
         for vehicle in vehicles_data:
@@ -141,23 +141,27 @@ def _update_vehicle_data_sync(vehicles_data: list, db: Session) -> int:
                             # Находим активную аренду
                             from app.gps_api.utils.get_active_rental import get_active_rental_by_car_id
                             from app.models.user_model import User
-                            from app.push.utils import send_localized_notification_to_user_async
+                            from app.push.utils import send_localized_notification_to_user_async, get_global_push_notification_semaphore
                             try:
                                 rental = get_active_rental_by_car_id(db, car.id)
                                 if rental:
                                     user = db.query(User).filter(User.id == rental.user_id).first()
-                                    if user:
-                                        try:
-                                            loop = asyncio.get_running_loop()
-                                        asyncio.create_task(
-                                            send_localized_notification_to_user_async(
-                                                user.id,
-                                                "fuel_refill_detected",
-                                                "fuel_refill_detected"
-                                            )
-                                        )
-                                        except RuntimeError:
-                                            pass
+                                    if user and loop:
+                                        push_semaphore = get_global_push_notification_semaphore()
+                                        
+                                        async def _send_fuel_notification():
+                                            async with push_semaphore:
+                                                try:
+                                                    await send_localized_notification_to_user_async(
+                                                        user.id,
+                                                        "fuel_refill_detected",
+                                                        "fuel_refill_detected"
+                                                    )
+                                                except Exception as e:
+                                                    logger.error(f"Ошибка отправки уведомления о заправке пользователю {user.id}: {e}")
+                                        
+                                        # Запускаем корутину из другого потока
+                                        asyncio.run_coroutine_threadsafe(_send_fuel_notification(), loop)
                             except Exception:
                                 pass 
                     
@@ -173,11 +177,11 @@ def _update_vehicle_data_sync(vehicles_data: list, db: Session) -> int:
     return updated
 
 
-def _update_in_thread(vehicles_data: list) -> int:
+def _update_in_thread(vehicles_data: list, loop=None) -> int:
     db_gen = get_db()
     db = next(db_gen)
     try:
-        return _update_vehicle_data_sync(vehicles_data, db)
+        return _update_vehicle_data_sync(vehicles_data, db, loop)
     except Exception as e:
         logger.error(f"Ошибка в потоке обновления данных: {e}")
         return 0
@@ -192,7 +196,7 @@ async def update_vehicle_data():
 
     try:
         loop = asyncio.get_event_loop()
-        updated = await loop.run_in_executor(None, _update_in_thread, vehicles_data)
+        updated = await loop.run_in_executor(None, _update_in_thread, vehicles_data, loop)
         
         if updated > 0:
             from app.websocket.notifications import notify_vehicles_list_update
