@@ -14,8 +14,10 @@ from app.models.car_model import Car
 from app.push.utils import send_localized_notification_to_user_async, get_global_push_notification_semaphore
 from app.utils.time_utils import get_local_time
 
-BATCH_SIZE = 50  
-BATCH_DELAY = 1.5  
+BATCH_SIZE = 20  # Меньший размер батча для более плавной отправки
+BATCH_DELAY = 3.0  # Увеличена задержка между батчами
+MAX_RETRIES = 3  # Количество попыток при ошибках БД
+RETRY_DELAY = 1.0  # Задержка перед повтором (секунды)  
 
 
 # Государственные праздники (месяц, день)
@@ -40,12 +42,13 @@ KZ_HOLIDAYS = [
 
 
 async def send_notifications_in_batches(user_ids: List, notification_key: str):
-    """Отправляет уведомления батчами с ограничением параллелизма через глобальный семафор"""
+    """Отправляет уведомления батчами с ограничением параллелизма через глобальный семафор и retry"""
     sent_count = 0
     # Используем глобальный семафор для координации со всеми задачами
     semaphore = get_global_push_notification_semaphore()
     
-    async def send_with_semaphore(user_id):
+    async def send_with_retry(user_id, retry_count=0):
+        """Отправка с повторными попытками при ошибках БД"""
         async with semaphore:
             try:
                 await send_localized_notification_to_user_async(
@@ -55,17 +58,29 @@ async def send_notifications_in_batches(user_ids: List, notification_key: str):
                 )
                 return True
             except Exception as e:
-                print(f"Ошибка отправки уведомления пользователю {user_id}: {e}")
-                return False
+                error_str = str(e)
+                # Если это ошибка БД (QueuePool, connection), пробуем повторить
+                is_db_error = "QueuePool" in error_str or "connection" in error_str.lower() or "timeout" in error_str.lower()
+                
+                if is_db_error and retry_count < MAX_RETRIES:
+                    # Экспоненциальная задержка перед повтором
+                    delay = RETRY_DELAY * (2 ** retry_count)
+                    await asyncio.sleep(delay)
+                    return await send_with_retry(user_id, retry_count + 1)
+                else:
+                    # Не логируем ошибки QueuePool после всех попыток - они ожидаемы
+                    if not is_db_error:
+                        print(f"Ошибка отправки уведомления пользователю {user_id}: {e}")
+                    return False
     
     # Разбиваем на батчи
     for i in range(0, len(user_ids), BATCH_SIZE):
         batch = user_ids[i:i + BATCH_SIZE]
-        batch_tasks = [send_with_semaphore(user_id) for user_id in batch]
+        batch_tasks = [send_with_retry(user_id) for user_id in batch]
         results = await asyncio.gather(*batch_tasks, return_exceptions=True)
         sent_count += sum(1 for r in results if r is True)
         
-        # Задержка между батчами, чтобы не перегружать систему
+        # Задержка между батчами, чтобы не перегружать систему и дать БД освободить соединения
         if i + BATCH_SIZE < len(user_ids):
             await asyncio.sleep(BATCH_DELAY)
     

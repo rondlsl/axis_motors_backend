@@ -12,6 +12,31 @@ class CarFilterSchema(BaseModel):
     auto_class: Optional[str] = None
 
 
+class OwnerSchema(BaseModel):
+    """Схема владельца автомобиля"""
+    owner_id: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    middle_name: Optional[str] = None
+    phone_number: str
+
+    class Config:
+        from_attributes = True
+
+
+class CurrentRenterSchema(BaseModel):
+    """Схема текущего арендатора автомобиля"""
+    current_renter_id: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    middle_name: Optional[str] = None
+    phone_number: str
+    role: str
+
+    class Config:
+        from_attributes = True
+
+
 class CarListItemSchema(BaseModel):
     """Схема элемента списка автомобилей"""
     id: str
@@ -26,8 +51,8 @@ class CarListItemSchema(BaseModel):
     auto_class: str
     body_type: str
     year: Optional[int] = None
-    owner_name: Optional[str] = None
-    current_renter_name: Optional[str] = None
+    owner: Optional[OwnerSchema] = None
+    current_renter: Optional[CurrentRenterSchema] = None
     photos: Optional[List[str]] = None
     vin: Optional[str] = None
     color: Optional[str] = None

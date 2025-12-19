@@ -59,32 +59,42 @@ async def billing_job():
 
     push_semaphore = get_global_push_notification_semaphore()
     
-    async def _send_notification_with_semaphore(notification):
+    async def _send_notification_with_retry(notification, retry_count=0):
+        """Отправка с повторными попытками при ошибках БД"""
         async with push_semaphore:
             try:
-                if len(notification) == 4:  # (user_id, translation_key, status, kwargs)
+                if len(notification) == 4:  
                     user_id, translation_key, status, kwargs = notification
                     await send_localized_notification_to_user_async(user_id, translation_key, status, **kwargs)
-                elif len(notification) == 3:  # (user_id, title, body) - для обратной совместимости
+                elif len(notification) == 3:  
                     user_id, title, body = notification
                     await send_push_to_user_by_id_async(user_id, title, body)
-                else:  # Неожиданный формат
+                else:  
                     print(f"Unexpected notification format: {notification}")
             except Exception as e:
-                print(f"Ошибка отправки push-уведомления: {e}")
+                error_str = str(e)
+                is_db_error = "QueuePool" in error_str or "connection" in error_str.lower() or "timeout" in error_str.lower()
+                
+                if is_db_error and retry_count < MAX_RETRIES:
+                    delay = RETRY_DELAY * (2 ** retry_count)
+                    await asyncio.sleep(delay)
+                    return await _send_notification_with_retry(notification, retry_count + 1)
+                else:
+                    if not is_db_error:
+                        print(f"Ошибка отправки push-уведомления: {e}")
     
     # Отправляем уведомления батчами с ограничением параллелизма
-    BATCH_SIZE = 50
-    BATCH_DELAY = 0.5
+    BATCH_SIZE = 20
+    BATCH_DELAY = 2.0
+    MAX_RETRIES = 3
+    RETRY_DELAY = 1.0
     
     for i in range(0, len(push_notifications), BATCH_SIZE):
         batch = push_notifications[i:i + BATCH_SIZE]
-        batch_tasks = [asyncio.create_task(_send_notification_with_semaphore(notif)) for notif in batch]
+        batch_tasks = [asyncio.create_task(_send_notification_with_retry(notif)) for notif in batch]
         
-        # Ждем завершения батча перед следующим
         await asyncio.gather(*batch_tasks, return_exceptions=True)
         
-        # Задержка между батчами, чтобы не перегружать систему
         if i + BATCH_SIZE < len(push_notifications):
             await asyncio.sleep(BATCH_DELAY)
 
@@ -585,16 +595,11 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                             ))
                             flags["waiting"] = True
 
-            # === IN_USE stage ===
             elif rental.rental_status == RentalStatus.IN_USE:
-                # Для поминутного списания используем start_time (время начала аренды)
-                # start_time устанавливается только при вызове /start/{car_id}
                 if not rental.start_time:
-                    # Если start_time не установлен, пропускаем расчет (не должно происходить)
                     continue
                 elapsed = (now - rental.start_time).total_seconds() / 60
 
-                # Проверка уровня топлива и отправка уведомления в Telegram (для всех активных аренд)
                 if car.fuel_level is not None and not flags["low_fuel_alert"]:
                     is_low_fuel = False
                     fuel_message = ""

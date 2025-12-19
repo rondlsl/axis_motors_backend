@@ -21,7 +21,7 @@ from app.admin.cars.schemas import (
     CarCommentCreateSchema, CarCommentUpdateSchema,
     CarAvailabilityTimerSchema, CarCurrentUserSchema,
     CarListResponseSchema, CarMapResponseSchema, CarStatisticsSchema,
-    CarListItemSchema, CarMapItemSchema
+    CarListItemSchema, CarMapItemSchema, OwnerSchema, CurrentRenterSchema
 )
 from app.admin.cars.utils import car_to_detail_schema, status_display, _get_drive_type_display, sort_car_photos
 from app.gps_api.utils.route_data import get_gps_route_data
@@ -963,16 +963,30 @@ async def get_cars_list(
 
     items: List[CarListItemSchema] = []
     for car in filtered_cars:
-        owner_name = None
+        owner_obj = None
         if car.owner_id:
             owner = db.query(User).filter(User.id == car.owner_id).first()
             if owner:
-                owner_name = f"{owner.first_name or ''} {owner.last_name or ''} {owner.middle_name or ''}".strip() or owner.phone_number
-        current_renter_name = None
+                owner_obj = OwnerSchema(
+                    owner_id=uuid_to_sid(owner.id),
+                    first_name=owner.first_name,
+                    last_name=owner.last_name,
+                    middle_name=owner.middle_name,
+                    phone_number=owner.phone_number
+                )
+        
+        current_renter_obj = None
         if car.current_renter_id:
             renter = db.query(User).filter(User.id == car.current_renter_id).first()
             if renter:
-                current_renter_name = f"{renter.first_name or ''} {renter.last_name or ''} {renter.middle_name or ''}".strip() or renter.phone_number
+                current_renter_obj = CurrentRenterSchema(
+                    current_renter_id=uuid_to_sid(renter.id),
+                    first_name=renter.first_name,
+                    last_name=renter.last_name,
+                    middle_name=renter.middle_name,
+                    phone_number=renter.phone_number,
+                    role=renter.role.value if renter.role else "client"
+                )
 
         items.append(CarListItemSchema(
             id=uuid_to_sid(car.id),
@@ -987,8 +1001,8 @@ async def get_cars_list(
             auto_class=car.auto_class.value if car.auto_class else "",
             body_type=car.body_type.value if car.body_type else "",
             year=car.year,
-            owner_name=owner_name,
-            current_renter_name=current_renter_name,
+            owner=owner_obj,
+            current_renter=current_renter_obj,
             photos=sort_car_photos(car.photos or []),
             vin=car.vin,
             color=car.color,
