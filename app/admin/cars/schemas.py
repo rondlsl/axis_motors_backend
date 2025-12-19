@@ -19,6 +19,7 @@ class OwnerSchema(BaseModel):
     last_name: Optional[str] = None
     middle_name: Optional[str] = None
     phone_number: str
+    selfie: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -32,6 +33,7 @@ class CurrentRenterSchema(BaseModel):
     middle_name: Optional[str] = None
     phone_number: str
     role: str
+    selfie: Optional[str] = None
 
     class Config:
         from_attributes = True

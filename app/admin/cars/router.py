@@ -968,7 +968,8 @@ async def get_cars_list(
                     first_name=owner.first_name,
                     last_name=owner.last_name,
                     middle_name=owner.middle_name,
-                    phone_number=owner.phone_number
+                    phone_number=owner.phone_number,
+                    selfie=owner.selfie_url or owner.selfie_with_license_url
                 )
         
         current_renter_obj = None
@@ -981,7 +982,8 @@ async def get_cars_list(
                     last_name=renter.last_name,
                     middle_name=renter.middle_name,
                     phone_number=renter.phone_number,
-                    role=renter.role.value if renter.role else "client"
+                    role=renter.role.value if renter.role else "client",
+                    selfie=renter.selfie_url or renter.selfie_with_license_url
                 )
 
         # Определяем статус машины с учетом статуса активной аренды
