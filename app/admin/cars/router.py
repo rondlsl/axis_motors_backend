@@ -935,9 +935,6 @@ async def get_cars_list(
     query = db.query(Car)
     if status is not None:
         query = query.filter(Car.status == status.value)
-    else:
-        # По умолчанию исключаем занятые и забронированные машины
-        query = query.filter(Car.status.notin_([CarStatus.OCCUPIED, CarStatus.SCHEDULED]))
     if search_query:
         like = f"%{search_query}%"
         query = query.filter(or_(Car.plate_number.ilike(like), Car.name.ilike(like)))
