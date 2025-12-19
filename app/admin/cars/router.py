@@ -948,10 +948,9 @@ async def get_cars_list(
             "IN_USE": "В аренде",
             "SERVICE": "На тех обслуживании",
             "DELIVERING": "В доставке",
+            "DELIVERY_RESERVED": "Доставка зарезервирована",
             "DELIVERING_IN_PROGRESS": "Доставлено",
-            "DELIVERING": "В доставке",
             "COMPLETED": "Завершено",
-            "SERVICE": "На обслуживании",
             "RESERVED": "Зарезервирована",
             "SCHEDULED": "Забронирована заранее",
             "OWNER": "У владельца",
@@ -985,6 +984,20 @@ async def get_cars_list(
                     role=renter.role.value if renter.role else "client"
                 )
 
+        # Проверяем статус активной аренды для машин в доставке
+        car_status = car.status
+        if car.status == CarStatus.DELIVERING:
+            active_rental = db.query(RentalHistory).filter(
+                RentalHistory.car_id == car.id,
+                RentalHistory.rental_status.in_([
+                    RentalStatus.DELIVERING,
+                    RentalStatus.DELIVERY_RESERVED,
+                    RentalStatus.DELIVERING_IN_PROGRESS
+                ])
+            ).first()
+            if active_rental and active_rental.rental_status == RentalStatus.DELIVERY_RESERVED:
+                car_status = "DELIVERY_RESERVED"
+        
         is_occupied = car.status in [CarStatus.OCCUPIED, CarStatus.IN_USE]
         latitude = -1.0 if is_occupied else car.latitude
         longitude = -1.0 if is_occupied else car.longitude
@@ -993,8 +1006,8 @@ async def get_cars_list(
             id=uuid_to_sid(car.id),
             name=car.name,
             plate_number=car.plate_number,
-            status=car.status,
-            status_display=_status_display(car.status),
+            status=car_status,
+            status_display=_status_display(car_status),
             latitude=latitude,
             longitude=longitude,
             fuel_level=car.fuel_level,
