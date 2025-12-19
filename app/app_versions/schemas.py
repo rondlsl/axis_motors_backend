@@ -9,6 +9,7 @@ class AppVersionCreate(BaseModel):
     ios_version: Optional[str] = Field(None, description="Версия iOS приложения")
     ios_link: Optional[str] = Field(None, description="Ссылка на iOS приложение")
     android_link: Optional[str] = Field(None, description="Ссылка на Android приложение")
+    ai_is_worked: Optional[bool] = Field(None, description="Работает ли AI")
 
 
 class AppVersionResponse(BaseModel):
@@ -18,6 +19,7 @@ class AppVersionResponse(BaseModel):
     ios_version: Optional[str] = None
     ios_link: Optional[str] = None
     android_link: Optional[str] = None
+    ai_is_worked: Optional[bool] = None
     created_at: datetime
     updated_at: datetime
 

@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, DateTime
+from sqlalchemy import Column, String, DateTime, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.dependencies.database.database import Base
@@ -14,6 +14,7 @@ class AppVersion(Base):
     ios_version = Column(String(64), nullable=True)
     ios_link = Column(String(512), nullable=True)
     android_link = Column(String(512), nullable=True)
+    ai_is_worked = Column(Boolean, nullable=True)
     created_at = Column(DateTime, nullable=False, default=get_local_time)
     updated_at = Column(DateTime, nullable=False, default=get_local_time)
 

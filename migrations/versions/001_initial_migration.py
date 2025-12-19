@@ -729,6 +729,7 @@ def create_app_versions_table():
         sa.Column('ios_version', sa.String(64), nullable=True),
         sa.Column('ios_link', sa.String(512), nullable=True),
         sa.Column('android_link', sa.String(512), nullable=True),
+        sa.Column('ai_is_worked', sa.Boolean(), nullable=True),
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.func.now())
     )
