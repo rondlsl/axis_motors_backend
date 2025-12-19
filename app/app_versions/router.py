@@ -126,6 +126,8 @@ async def create_app_version(
         existing.ios_version = app_version_data.ios_version
         existing.ios_link = app_version_data.ios_link
         existing.android_link = app_version_data.android_link
+        if app_version_data.ai_is_worked is not None:
+            existing.ai_is_worked = app_version_data.ai_is_worked
         existing.update_timestamp()
         db.commit()
         db.refresh(existing)
@@ -136,6 +138,7 @@ async def create_app_version(
             "ios_version": existing.ios_version,
             "ios_link": existing.ios_link,
             "android_link": existing.android_link,
+            "ai_is_worked": existing.ai_is_worked,
             "created_at": existing.created_at,
             "updated_at": existing.updated_at
         }
@@ -144,7 +147,8 @@ async def create_app_version(
         android_version=app_version_data.android_version,
         ios_version=app_version_data.ios_version,
         ios_link=app_version_data.ios_link,
-        android_link=app_version_data.android_link
+        android_link=app_version_data.android_link,
+        ai_is_worked=app_version_data.ai_is_worked
     )
     
     db.add(app_version)
@@ -157,6 +161,7 @@ async def create_app_version(
         "ios_version": app_version.ios_version,
         "ios_link": app_version.ios_link,
         "android_link": app_version.android_link,
+        "ai_is_worked": app_version.ai_is_worked,
         "created_at": app_version.created_at,
         "updated_at": app_version.updated_at
     }
@@ -183,6 +188,7 @@ async def get_app_version(
         "ios_version": app_version.ios_version,
         "ios_link": app_version.ios_link,
         "android_link": app_version.android_link,
+        "ai_is_worked": app_version.ai_is_worked,
         "created_at": app_version.created_at,
         "updated_at": app_version.updated_at
     }
