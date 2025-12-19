@@ -1700,7 +1700,7 @@ async def start_rental(
         # Автоматическая разблокировка двигателя при начале аренды (для владельца)
         try:
             auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-
+            
             # Универсальная последовательность: разблокировать двигатель
             result = await execute_gps_sequence(car.gps_imei, auth_token, "start")
             if result["success"]:
@@ -2057,7 +2057,7 @@ async def upload_photos_before(
         car = db.query(Car).get(rental.car_id)
         if car and car.gps_imei:
             auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-
+            
             # Универсальная последовательность: открыть замки → выдать ключ → открыть замки → забрать ключ
             result = await execute_gps_sequence(car.gps_imei, auth_token, "selfie_exterior")
             if not result["success"]:
@@ -3278,7 +3278,7 @@ async def complete_rental(
     # 13) Окончательная блокировка двигателя при завершении аренды
     try:
         auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-
+        
         # Универсальная последовательность: заблокировать двигатель
         result = await execute_gps_sequence(car.gps_imei, auth_token, "final_lock")
         if result["success"]:

@@ -149,13 +149,13 @@ def _update_vehicle_data_sync(vehicles_data: list, db: Session) -> int:
                                     if user:
                                         try:
                                             loop = asyncio.get_running_loop()
-                                            asyncio.create_task(
-                                                send_localized_notification_to_user_async(
-                                                    user.id,
-                                                    "fuel_refill_detected",
-                                                    "fuel_refill_detected"
-                                                )
+                                        asyncio.create_task(
+                                            send_localized_notification_to_user_async(
+                                                user.id,
+                                                "fuel_refill_detected",
+                                                "fuel_refill_detected"
                                             )
+                                        )
                                         except RuntimeError:
                                             pass
                             except Exception:

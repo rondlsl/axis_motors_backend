@@ -20,7 +20,8 @@ from app.push.utils import (
     send_localized_notification_to_user, 
     send_push_to_user_by_id_async,
     send_localized_notification_to_user_async,
-    user_has_push_tokens
+    user_has_push_tokens,
+    get_global_push_notification_semaphore
 )
 from app.core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.gps_api.utils.auth_api import get_auth_token
@@ -52,22 +53,40 @@ async def billing_job():
       3) Send telegram alerts.
       4) Yield control to event loop.
     """
-    # 1) Run sync processing in thread pool
     push_notifications, telegram_alerts, lock_requests = await asyncio.to_thread(process_rentals_sync)
 
-    # 2) Open one DB session 
     db = SessionLocal()
 
-    # 3) Fire-and-forget push notifications (используем async версии с собственной сессией БД)
-    for notification in push_notifications:
-        if len(notification) == 4:  # (user_id, translation_key, status, kwargs)
-            user_id, translation_key, status, kwargs = notification
-            asyncio.create_task(send_localized_notification_to_user_async(user_id, translation_key, status, **kwargs))
-        elif len(notification) == 3:  # (user_id, title, body) - для обратной совместимости
-            user_id, title, body = notification
-            asyncio.create_task(send_push_to_user_by_id_async(user_id, title, body))
-        else:  # Неожиданный формат
-            print(f"Unexpected notification format: {notification}")
+    push_semaphore = get_global_push_notification_semaphore()
+    
+    async def _send_notification_with_semaphore(notification):
+        async with push_semaphore:
+            try:
+                if len(notification) == 4:  # (user_id, translation_key, status, kwargs)
+                    user_id, translation_key, status, kwargs = notification
+                    await send_localized_notification_to_user_async(user_id, translation_key, status, **kwargs)
+                elif len(notification) == 3:  # (user_id, title, body) - для обратной совместимости
+                    user_id, title, body = notification
+                    await send_push_to_user_by_id_async(user_id, title, body)
+                else:  # Неожиданный формат
+                    print(f"Unexpected notification format: {notification}")
+            except Exception as e:
+                print(f"Ошибка отправки push-уведомления: {e}")
+    
+    # Отправляем уведомления батчами с ограничением параллелизма
+    BATCH_SIZE = 50
+    BATCH_DELAY = 0.5
+    
+    for i in range(0, len(push_notifications), BATCH_SIZE):
+        batch = push_notifications[i:i + BATCH_SIZE]
+        batch_tasks = [asyncio.create_task(_send_notification_with_semaphore(notif)) for notif in batch]
+        
+        # Ждем завершения батча перед следующим
+        await asyncio.gather(*batch_tasks, return_exceptions=True)
+        
+        # Задержка между батчами, чтобы не перегружать систему
+        if i + BATCH_SIZE < len(push_notifications):
+            await asyncio.sleep(BATCH_DELAY)
 
     # 4) Fire-and-forget Telegram alerts - ОБА БОТА
     async def _send_telegram(text: str, chat_id: int, bot_token: str):
@@ -94,8 +113,14 @@ async def billing_job():
             for imei, car_name, user_id in lock_requests:
                 try:
                     await send_lock_engine(imei, auth_token)
-                    # Уведомим пользователя в приложение
-                    asyncio.create_task(send_localized_notification_to_user_async(user_id, "engine_locked_due_to_balance", "engine_locked_due_to_balance", car_name=car_name))
+                    # Уведомим пользователя в приложение (с ограничением параллелизма)
+                    async def _notify_engine_locked():
+                        async with push_semaphore:
+                            try:
+                                await send_localized_notification_to_user_async(user_id, "engine_locked_due_to_balance", "engine_locked_due_to_balance", car_name=car_name)
+                            except Exception as e:
+                                print(f"Ошибка отправки уведомления о блокировке двигателя пользователю {user_id}: {e}")
+                    asyncio.create_task(_notify_engine_locked())
                     # И в телеграм
                     user = db.query(User).filter(User.id == user_id).first()
                     user_info = f"user_id={user_id}"

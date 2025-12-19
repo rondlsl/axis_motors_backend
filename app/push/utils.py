@@ -7,6 +7,19 @@ from app.models.user_model import User
 from app.translations.notifications import get_notification_text
 from app.push.enums import NotificationStatus
 
+_global_push_notification_semaphore: asyncio.Semaphore | None = None
+
+
+def get_global_push_notification_semaphore() -> asyncio.Semaphore:
+    """
+    Возвращает глобальный семафор для ограничения параллелизма push-уведомлений.
+    Все задачи (billing_job, marketing_notifications, и т.д.) должны использовать этот семафор.
+    """
+    global _global_push_notification_semaphore
+    if _global_push_notification_semaphore is None:
+        _global_push_notification_semaphore = asyncio.Semaphore(25)
+    return _global_push_notification_semaphore
+
 
 def get_user_push_tokens(db_session: Session, user_id: uuid.UUID) -> List[str]:
     """

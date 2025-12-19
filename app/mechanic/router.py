@@ -1019,7 +1019,7 @@ async def upload_photos_before(
     if not rental:
         logger.error(f"Нет активной проверки для механика {current_mechanic.id}")
         raise HTTPException(status_code=404, detail="Нет активной проверки (PENDING, IN_USE или SERVICE)")
-
+    
     logger.info(
         f"/mechanic/upload-photos-before START: mechanic_id={current_mechanic.id}, "
         f"rental_id={rental.id}, car_id={rental.car_id}, selfie={selfie.filename}, "
@@ -1045,32 +1045,32 @@ async def upload_photos_before(
         selfie_url = await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/mechanic/before/selfie/")
         urls.append(selfie_url)
         uploaded_files.append(selfie_url)
-
+        
         for p in car_photos:
             car_photo_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/mechanic/before/car/")
             urls.append(car_photo_url)
             uploaded_files.append(car_photo_url)
         
         rental.mechanic_photos_before = urls
-
+        
         # Универсальная GPS последовательность после загрузки селфи+кузов
         car = db.query(Car).get(rental.car_id)
-
+        
         if car and car.gps_imei:
             auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-
+            
             # Универсальная последовательность: открыть замки → выдать ключ → открыть замки → забрать ключ
             result = await execute_gps_sequence(car.gps_imei, auth_token, "selfie_exterior")
-
+            
             if not result["success"]:
                 error_msg = result.get('error', 'Unknown error')
                 logger.error(f"GPS последовательность 'selfie_exterior' для механика {current_mechanic.id} и авто {car.id} завершилась с ошибкой: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
-
+            
             logger.info(f"GPS последовательность 'selfie_exterior' успешно выполнена для механика {current_mechanic.id}, авто {car.id}")
         else:
             logger.info(f"Пропускаем GPS последовательность в upload-photos-before: car_id={car.id if car else 'None'}, gps_imei={car.gps_imei if car else 'None'}")
-
+        
         db.commit()
         
         # Обновляем все данные из БД для получения свежих данных
@@ -1098,7 +1098,7 @@ async def upload_photos_before(
             logger.info(f"WebSocket notifications sent after mechanic upload-photos-before for rental {rental.id}")
         except Exception as e:
             logger.error(f"Error sending WebSocket notifications: {e}")
-
+        
         logger.info(f"/mechanic/upload-photos-before SUCCESS: mechanic_id={current_mechanic.id}, rental_id={rental.id}, total_photos={len(urls)}")
         return {"message": "Фотографии до проверки (selfie+car) загружены", "photo_count": len(urls)}
     except HTTPException as he:

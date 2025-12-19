@@ -11,13 +11,11 @@ from app.dependencies.database.database import SessionLocal
 from app.models.user_model import User
 from app.models.car_model import Car
 
-from app.push.utils import send_localized_notification_to_user_async
+from app.push.utils import send_localized_notification_to_user_async, get_global_push_notification_semaphore
 from app.utils.time_utils import get_local_time
 
-# Ограничение параллелизма для массовых уведомлений
-MAX_CONCURRENT_NOTIFICATIONS = 50  # Максимум одновременных задач
-BATCH_SIZE = 100  # Размер батча для обработки
-BATCH_DELAY = 1.0  # Задержка между батчами в секундах
+BATCH_SIZE = 50  
+BATCH_DELAY = 1.5  
 
 
 # Государственные праздники (месяц, день)
@@ -41,10 +39,11 @@ KZ_HOLIDAYS = [
 ]
 
 
-async def send_notifications_in_batches(user_ids: List, notification_key: str, semaphore: asyncio.Semaphore):
-    """Отправляет уведомления батчами с ограничением параллелизма"""
-    tasks = []
+async def send_notifications_in_batches(user_ids: List, notification_key: str):
+    """Отправляет уведомления батчами с ограничением параллелизма через глобальный семафор"""
     sent_count = 0
+    # Используем глобальный семафор для координации со всеми задачами
+    semaphore = get_global_push_notification_semaphore()
     
     async def send_with_semaphore(user_id):
         async with semaphore:
@@ -92,8 +91,7 @@ async def check_birthdays():
             return
         
         user_ids = [user.id for user in users]
-        semaphore = asyncio.Semaphore(MAX_CONCURRENT_NOTIFICATIONS)
-        sent_count = await send_notifications_in_batches(user_ids, "birthday", semaphore)
+        sent_count = await send_notifications_in_batches(user_ids, "birthday")
         
         if sent_count > 0:
             print(f"Отправлено {sent_count} уведомлений о днях рождения")
@@ -127,8 +125,7 @@ async def check_holidays():
             return
         
         user_ids = [user.id for user in users]
-        semaphore = asyncio.Semaphore(MAX_CONCURRENT_NOTIFICATIONS)
-        sent_count = await send_notifications_in_batches(user_ids, "holiday_greeting", semaphore)
+        sent_count = await send_notifications_in_batches(user_ids, "holiday_greeting")
         
         if sent_count > 0:
             print(f"Отправлено {sent_count} праздничных уведомлений")
@@ -162,8 +159,7 @@ async def check_weekend_promotions():
                 return
             
             user_ids = [user.id for user in users]
-            semaphore = asyncio.Semaphore(MAX_CONCURRENT_NOTIFICATIONS)
-            sent_count = await send_notifications_in_batches(user_ids, "friday_evening", semaphore)
+            sent_count = await send_notifications_in_batches(user_ids, "friday_evening")
             
             if sent_count > 0:
                 print(f"Отправлено {sent_count} уведомлений 'Пятница вечер'")
@@ -178,8 +174,7 @@ async def check_weekend_promotions():
                 return
             
             user_ids = [user.id for user in users]
-            semaphore = asyncio.Semaphore(MAX_CONCURRENT_NOTIFICATIONS)
-            sent_count = await send_notifications_in_batches(user_ids, "monday_morning", semaphore)
+            sent_count = await send_notifications_in_batches(user_ids, "monday_morning")
             
             if sent_count > 0:
                 print(f"Отправлено {sent_count} уведомлений 'Понедельник утро'")
@@ -215,8 +210,7 @@ async def check_new_cars():
             return
 
         user_ids = [user.id for user in users]
-        semaphore = asyncio.Semaphore(MAX_CONCURRENT_NOTIFICATIONS)
-        sent_count = await send_notifications_in_batches(user_ids, "new_car_available", semaphore)
+        sent_count = await send_notifications_in_batches(user_ids, "new_car_available")
 
         if sent_count > 0:
             print(f"Отправлено {sent_count} уведомлений о новых автомобилях")
