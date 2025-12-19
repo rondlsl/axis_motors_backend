@@ -991,9 +991,9 @@ async def get_cars_list(
         if car.status == CarStatus.DELIVERING:
             car_status = "DELIVERY_RESERVED"
         
-        is_occupied = car.status in [CarStatus.OCCUPIED, CarStatus.IN_USE]
-        latitude = -1.0 if is_occupied else car.latitude
-        longitude = -1.0 if is_occupied else car.longitude
+        has_gps = car.gps_id is not None and car.gps_id.strip() != ""
+        latitude = -1.0 if not has_gps else car.latitude
+        longitude = -1.0 if not has_gps else car.longitude
 
         items.append(CarListItemSchema(
             id=uuid_to_sid(car.id),

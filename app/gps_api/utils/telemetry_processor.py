@@ -122,7 +122,7 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
     longitude = glonassoft_data.get("longitude", 0.0)
     
     # Основные параметры движения
-    # Скорость (PackageItems) - как в azv_motors_cars_v2
+    # Скорость (PackageItems) 
     raw_speed = extract_sensor_value(pkg, "Скорость")
     try:
         speed = parse_numeric(raw_speed) if raw_speed else 0.0
@@ -177,7 +177,7 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
         if fuel_value and fuel_value.lower() not in ["данных нет", "нет данных"]:
             fuel_str = fuel_value.replace(" л", "").replace("л", "").strip()
             parsed_fuel = parse_numeric(fuel_str)
-            if parsed_fuel > 0:
+            if 0 < parsed_fuel <= 150:
                 fuel_level = parsed_fuel
         
         if fuel_level is None:
