@@ -10,7 +10,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 if [ -f "$PROJECT_ROOT/.env" ]; then
-    export $(grep -v '^#' "$PROJECT_ROOT/.env" | xargs)
+    while IFS= read -r line || [ -n "$line" ]; do
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        [[ -z "${line// }" ]] && continue
+        if [[ "$line" =~ ^[[:space:]]*POSTGRES_(HOST|PORT|DB|USER|PASSWORD)=(.*)$ ]]; then
+            eval "export $line" 2>/dev/null || true
+        fi
+    done < "$PROJECT_ROOT/.env"
 fi
 
 DB_HOST="${POSTGRES_HOST:-localhost}"
@@ -48,7 +54,22 @@ BACKUP_TYPE=${1:-"full"}
 BACKUP_PERIOD=${2:-"daily"}
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
-mkdir -p "$BACKUP_DIR/$BACKUP_PERIOD"
+if [ ! -d "$BACKUP_DIR/$BACKUP_PERIOD" ]; then
+    mkdir -p "$BACKUP_DIR/$BACKUP_PERIOD" 2>/dev/null || {
+        echo "Ошибка: Не удалось создать директорию $BACKUP_DIR/$BACKUP_PERIOD"
+        echo "Проверьте права доступа или создайте директорию вручную:"
+        echo "  sudo mkdir -p $BACKUP_DIR/$BACKUP_PERIOD"
+        echo "  sudo chown -R \$USER:\$USER $BACKUP_DIR"
+        exit 1
+    }
+fi
+
+if [ ! -w "$BACKUP_DIR/$BACKUP_PERIOD" ]; then
+    echo "Ошибка: Нет прав на запись в директорию $BACKUP_DIR/$BACKUP_PERIOD"
+    echo "Исправьте права доступа:"
+    echo "  sudo chown -R \$USER:\$USER $BACKUP_DIR"
+    exit 1
+fi
 
 check_disk_space() {
     local available_space=$(df "$BACKUP_DIR" | tail -1 | awk '{print $4}')
@@ -96,16 +117,42 @@ create_full_backup() {
         echo "Продолжаем создание backup несмотря на предупреждение..."
     fi
     
-    docker exec "$DOCKER_CONTAINER" pg_dump -U "$DB_USER" -d "$DB_NAME" \
-        --verbose \
+    local temp_filepath="${filepath}.tmp"
+    
+    rm -f "$temp_filepath"
+    
+    if ! docker exec "$DOCKER_CONTAINER" pg_dump -U "$DB_USER" -d "$DB_NAME" \
         --no-password \
         --format=plain \
         --create \
         --clean \
         --if-exists \
-        --exclude-table-data='alembic_version' | gzip > "$filepath"
+        --exclude-table-data='alembic_version' 2>/dev/null | gzip > "$temp_filepath"; then
+        echo "Ошибка при создании полного бэкапа"
+        rm -f "$temp_filepath"
+        exit 1
+    fi
     
     local dump_exit_code=${PIPESTATUS[0]}
+    local gzip_exit_code=${PIPESTATUS[1]}
+    
+    if [ $dump_exit_code -ne 0 ]; then
+        echo "Ошибка: pg_dump завершился с кодом $dump_exit_code"
+        rm -f "$temp_filepath"
+        exit 1
+    fi
+    
+    if [ $gzip_exit_code -ne 0 ]; then
+        echo "Ошибка: gzip завершился с кодом $gzip_exit_code"
+        rm -f "$temp_filepath"
+        exit 1
+    fi
+    
+    if ! mv "$temp_filepath" "$filepath"; then
+        echo "Ошибка: Не удалось переименовать временный файл"
+        rm -f "$temp_filepath"
+        exit 1
+    fi
     
     if [ $dump_exit_code -ne 0 ]; then
         echo "Ошибка при создании полного бэкапа (pg_dump exit code: $dump_exit_code)"
@@ -126,22 +173,35 @@ create_full_backup() {
 create_incremental_backup() {
     local filename="backup_incremental_${TIMESTAMP}.sql.gz"
     local filepath="$BACKUP_DIR/$BACKUP_PERIOD/$filename"
+    local temp_filepath="${filepath}.tmp"
     
     echo "Создание инкрементального бэкапа: $filepath"
     echo "Время начала: $(date '+%Y-%m-%d %H:%M:%S')"
     
-    docker exec "$DOCKER_CONTAINER" pg_dump -U "$DB_USER" -d "$DB_NAME" \
-        --verbose \
+    rm -f "$temp_filepath"
+    
+    if ! docker exec "$DOCKER_CONTAINER" pg_dump -U "$DB_USER" -d "$DB_NAME" \
         --no-password \
         --data-only \
         --inserts \
-        --exclude-table='alembic_version' | gzip > "$filepath"
+        --exclude-table='alembic_version' 2>/dev/null | gzip > "$temp_filepath"; then
+        echo "Ошибка при создании инкрементального бэкапа"
+        rm -f "$temp_filepath"
+        exit 1
+    fi
     
     local dump_exit_code=${PIPESTATUS[0]}
+    local gzip_exit_code=${PIPESTATUS[1]}
     
-    if [ $dump_exit_code -ne 0 ]; then
-        echo "Ошибка при создании инкрементального бэкапа (pg_dump exit code: $dump_exit_code)"
-        rm -f "$filepath"
+    if [ $dump_exit_code -ne 0 ] || [ $gzip_exit_code -ne 0 ]; then
+        echo "Ошибка при создании инкрементального бэкапа (pg_dump: $dump_exit_code, gzip: $gzip_exit_code)"
+        rm -f "$temp_filepath"
+        exit 1
+    fi
+    
+    if ! mv "$temp_filepath" "$filepath"; then
+        echo "Ошибка: Не удалось переименовать временный файл"
+        rm -f "$temp_filepath"
         exit 1
     fi
     
@@ -158,23 +218,36 @@ create_incremental_backup() {
 create_schema_backup() {
     local filename="backup_schema_${TIMESTAMP}.sql.gz"
     local filepath="$BACKUP_DIR/$BACKUP_PERIOD/$filename"
+    local temp_filepath="${filepath}.tmp"
     
     echo "Создание бэкапа схемы: $filepath"
     echo "Время начала: $(date '+%Y-%m-%d %H:%M:%S')"
     
-    docker exec "$DOCKER_CONTAINER" pg_dump -U "$DB_USER" -d "$DB_NAME" \
-        --verbose \
+    rm -f "$temp_filepath"
+    
+    if ! docker exec "$DOCKER_CONTAINER" pg_dump -U "$DB_USER" -d "$DB_NAME" \
         --no-password \
         --schema-only \
         --create \
         --clean \
-        --if-exists | gzip > "$filepath"
+        --if-exists 2>/dev/null | gzip > "$temp_filepath"; then
+        echo "Ошибка при создании бэкапа схемы"
+        rm -f "$temp_filepath"
+        exit 1
+    fi
     
     local dump_exit_code=${PIPESTATUS[0]}
+    local gzip_exit_code=${PIPESTATUS[1]}
     
-    if [ $dump_exit_code -ne 0 ]; then
-        echo "Ошибка при создании бэкапа схемы (pg_dump exit code: $dump_exit_code)"
-        rm -f "$filepath"
+    if [ $dump_exit_code -ne 0 ] || [ $gzip_exit_code -ne 0 ]; then
+        echo "Ошибка при создании бэкапа схемы (pg_dump: $dump_exit_code, gzip: $gzip_exit_code)"
+        rm -f "$temp_filepath"
+        exit 1
+    fi
+    
+    if ! mv "$temp_filepath" "$filepath"; then
+        echo "Ошибка: Не удалось переименовать временный файл"
+        rm -f "$temp_filepath"
         exit 1
     fi
     
