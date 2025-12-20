@@ -14,6 +14,7 @@ services:
     volumes:
       - ./uploads:/app/uploads  # Монтируем всю директорию uploads
       - ./contracts:/app/contracts  # Монтируем папку contracts
+      - ./backups:/app/backups  # Монтируем директорию для backup'ов
 
 
 

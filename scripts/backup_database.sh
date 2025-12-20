@@ -5,15 +5,36 @@
 # Типы: full, incremental, schema-only
 # Периоды: daily, weekly, monthly, manual
 
-DB_HOST="localhost"
-DB_PORT="5432"
-DB_NAME="postgres"
-DB_USER="postgres"
-BACKUP_DIR="../backups"
-# Определяем контейнер для текущего проекта
+# Загружаем переменные из .env файла (если есть)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+if [ -f "$PROJECT_ROOT/.env" ]; then
+    export $(grep -v '^#' "$PROJECT_ROOT/.env" | xargs)
+fi
+
+DB_HOST="${POSTGRES_HOST:-localhost}"
+DB_PORT="${POSTGRES_PORT:-5432}"
+DB_NAME="${POSTGRES_DB:-postgres}"
+DB_USER="${POSTGRES_USER:-postgres}"
+
+if [ -z "$BACKUP_DIR" ]; then
+    BACKUP_DIR="$PROJECT_ROOT/backups"
+else
+    if [[ ! "$BACKUP_DIR" = /* ]]; then
+        BACKUP_DIR="$PROJECT_ROOT/$BACKUP_DIR"
+    fi
+fi
+
 DOCKER_CONTAINER=$(docker ps --filter "name=azv_motors_backend_v2-db-1" --format "{{.Names}}" | head -1)
 if [ -z "$DOCKER_CONTAINER" ]; then
-    echo "Ошибка: Контейнер PostgreSQL для azv_motors_backend_v2 не найден"
+    DOCKER_CONTAINER=$(docker ps --filter "name=db" --filter "ancestor=postgres" --format "{{.Names}}" | head -1)
+fi
+if [ -z "$DOCKER_CONTAINER" ]; then
+    DOCKER_CONTAINER=$(docker ps --filter "ancestor=postgres" --format "{{.Names}}" | head -1)
+fi
+if [ -z "$DOCKER_CONTAINER" ]; then
+    echo "Ошибка: Контейнер PostgreSQL не найден"
     echo "Доступные контейнеры PostgreSQL:"
     docker ps --filter "ancestor=postgres" --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
     exit 1
@@ -29,11 +50,51 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 mkdir -p "$BACKUP_DIR/$BACKUP_PERIOD"
 
+check_disk_space() {
+    local available_space=$(df "$BACKUP_DIR" | tail -1 | awk '{print $4}')
+    local min_space_kb=1048576  
+    
+    if [ "$available_space" -lt "$min_space_kb" ]; then
+        echo "ВНИМАНИЕ: Мало свободного места на диске: $(df -h "$BACKUP_DIR" | tail -1 | awk '{print $4}')"
+        echo "Рекомендуется освободить место перед созданием backup"
+        return 1
+    fi
+    return 0
+}
+
+validate_backup() {
+    local filepath="$1"
+    
+    if [ ! -f "$filepath" ]; then
+        echo "Ошибка: Файл backup не создан: $filepath"
+        return 1
+    fi
+    
+    local file_size=$(stat -f%z "$filepath" 2>/dev/null || stat -c%s "$filepath" 2>/dev/null)
+    if [ "$file_size" -eq 0 ]; then
+        echo "Ошибка: Файл backup пустой: $filepath"
+        rm -f "$filepath"
+        return 1
+    fi
+    
+    if ! gzip -t "$filepath" 2>/dev/null; then
+        echo "Ошибка: Backup файл поврежден (gzip test failed): $filepath"
+        return 1
+    fi
+    
+    return 0
+}
+
 create_full_backup() {
     local filename="backup_full_${TIMESTAMP}.sql.gz"
     local filepath="$BACKUP_DIR/$BACKUP_PERIOD/$filename"
     
     echo "Создание полного бэкапа: $filepath"
+    echo "Время начала: $(date '+%Y-%m-%d %H:%M:%S')"
+    
+    if ! check_disk_space; then
+        echo "Продолжаем создание backup несмотря на предупреждение..."
+    fi
     
     docker exec "$DOCKER_CONTAINER" pg_dump -U "$DB_USER" -d "$DB_NAME" \
         --verbose \
@@ -44,13 +105,22 @@ create_full_backup() {
         --if-exists \
         --exclude-table-data='alembic_version' | gzip > "$filepath"
     
-    if [ $? -eq 0 ]; then
-        echo "Полный бэкап создан: $filepath"
-        echo "Размер файла: $(du -h "$filepath" | cut -f1)"
-    else
-        echo "Ошибка при создании полного бэкапа"
+    local dump_exit_code=${PIPESTATUS[0]}
+    
+    if [ $dump_exit_code -ne 0 ]; then
+        echo "Ошибка при создании полного бэкапа (pg_dump exit code: $dump_exit_code)"
+        rm -f "$filepath"
         exit 1
     fi
+    
+    if ! validate_backup "$filepath"; then
+        exit 1
+    fi
+    
+    local file_size=$(du -h "$filepath" | cut -f1)
+    echo "Полный бэкап создан успешно: $filepath"
+    echo "Размер файла: $file_size"
+    echo "Время завершения: $(date '+%Y-%m-%d %H:%M:%S')"
 }
 
 create_incremental_backup() {
@@ -58,6 +128,7 @@ create_incremental_backup() {
     local filepath="$BACKUP_DIR/$BACKUP_PERIOD/$filename"
     
     echo "Создание инкрементального бэкапа: $filepath"
+    echo "Время начала: $(date '+%Y-%m-%d %H:%M:%S')"
     
     docker exec "$DOCKER_CONTAINER" pg_dump -U "$DB_USER" -d "$DB_NAME" \
         --verbose \
@@ -66,13 +137,22 @@ create_incremental_backup() {
         --inserts \
         --exclude-table='alembic_version' | gzip > "$filepath"
     
-    if [ $? -eq 0 ]; then
-        echo "Инкрементальный бэкап создан: $filepath"
-        echo "Размер файла: $(du -h "$filepath" | cut -f1)"
-    else
-        echo "Ошибка при создании инкрементального бэкапа"
+    local dump_exit_code=${PIPESTATUS[0]}
+    
+    if [ $dump_exit_code -ne 0 ]; then
+        echo "Ошибка при создании инкрементального бэкапа (pg_dump exit code: $dump_exit_code)"
+        rm -f "$filepath"
         exit 1
     fi
+    
+    if ! validate_backup "$filepath"; then
+        exit 1
+    fi
+    
+    local file_size=$(du -h "$filepath" | cut -f1)
+    echo "Инкрементальный бэкап создан успешно: $filepath"
+    echo "Размер файла: $file_size"
+    echo "Время завершения: $(date '+%Y-%m-%d %H:%M:%S')"
 }
 
 create_schema_backup() {
@@ -80,6 +160,7 @@ create_schema_backup() {
     local filepath="$BACKUP_DIR/$BACKUP_PERIOD/$filename"
     
     echo "Создание бэкапа схемы: $filepath"
+    echo "Время начала: $(date '+%Y-%m-%d %H:%M:%S')"
     
     docker exec "$DOCKER_CONTAINER" pg_dump -U "$DB_USER" -d "$DB_NAME" \
         --verbose \
@@ -89,30 +170,45 @@ create_schema_backup() {
         --clean \
         --if-exists | gzip > "$filepath"
     
-    if [ $? -eq 0 ]; then
-        echo "Бэкап схемы создан: $filepath"
-        echo "Размер файла: $(du -h "$filepath" | cut -f1)"
-    else
-        echo "Ошибка при создании бэкапа схемы"
+    local dump_exit_code=${PIPESTATUS[0]}
+    
+    if [ $dump_exit_code -ne 0 ]; then
+        echo "Ошибка при создании бэкапа схемы (pg_dump exit code: $dump_exit_code)"
+        rm -f "$filepath"
         exit 1
     fi
+    
+    if ! validate_backup "$filepath"; then
+        exit 1
+    fi
+    
+    local file_size=$(du -h "$filepath" | cut -f1)
+    echo "Бэкап схемы создан успешно: $filepath"
+    echo "Размер файла: $file_size"
+    echo "Время завершения: $(date '+%Y-%m-%d %H:%M:%S')"
 }
 
 cleanup_old_backups() {
     echo "Очистка старых бэкапов..."
     
+    local deleted_count=0
     case "$BACKUP_PERIOD" in
         "daily")
-            find "$BACKUP_DIR/daily" -name "*.sql.gz" -mtime +$RETENTION_DAYS -delete 2>/dev/null
+            deleted_count=$(find "$BACKUP_DIR/daily" -name "*.sql.gz" -mtime +$RETENTION_DAYS -delete -print 2>/dev/null | wc -l | tr -d ' ')
             ;;
         "weekly")
-            find "$BACKUP_DIR/weekly" -name "*.sql.gz" -mtime +$((RETENTION_WEEKS * 7)) -delete 2>/dev/null
+            deleted_count=$(find "$BACKUP_DIR/weekly" -name "*.sql.gz" -mtime +$((RETENTION_WEEKS * 7)) -delete -print 2>/dev/null | wc -l | tr -d ' ')
             ;;
         "monthly")
-            find "$BACKUP_DIR/monthly" -name "*.sql.gz" -mtime +$((RETENTION_MONTHS * 30)) -delete 2>/dev/null
+            deleted_count=$(find "$BACKUP_DIR/monthly" -name "*.sql.gz" -mtime +$((RETENTION_MONTHS * 30)) -delete -print 2>/dev/null | wc -l | tr -d ' ')
             ;;
     esac
     
+    if [ "$deleted_count" -gt 0 ]; then
+        echo "Удалено старых бэкапов: $deleted_count"
+    else
+        echo "Старые бэкапы не найдены"
+    fi
     echo "Очистка завершена"
 }
 
@@ -139,5 +235,12 @@ case "$BACKUP_TYPE" in
 esac
 
 cleanup_old_backups
+
+echo ""
+echo "=== Статистика backup'ов ==="
+echo "Директория: $BACKUP_DIR/$BACKUP_PERIOD"
+echo "Количество файлов: $(find "$BACKUP_DIR/$BACKUP_PERIOD" -name "*.sql.gz" 2>/dev/null | wc -l | tr -d ' ')"
+echo "Общий размер: $(du -sh "$BACKUP_DIR/$BACKUP_PERIOD" 2>/dev/null | cut -f1)"
+echo ""
 
 echo "Бэкап завершен успешно!"
