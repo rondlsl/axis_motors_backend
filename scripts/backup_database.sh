@@ -54,20 +54,48 @@ BACKUP_TYPE=${1:-"full"}
 BACKUP_PERIOD=${2:-"daily"}
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
-if [ ! -d "$BACKUP_DIR/$BACKUP_PERIOD" ]; then
-    mkdir -p "$BACKUP_DIR/$BACKUP_PERIOD" 2>/dev/null || {
-        echo "Ошибка: Не удалось создать директорию $BACKUP_DIR/$BACKUP_PERIOD"
-        echo "Проверьте права доступа или создайте директорию вручную:"
-        echo "  sudo mkdir -p $BACKUP_DIR/$BACKUP_PERIOD"
-        echo "  sudo chown -R \$USER:\$USER $BACKUP_DIR"
+if [ ! -d "$BACKUP_DIR" ]; then
+    if ! mkdir -p "$BACKUP_DIR" 2>/dev/null; then
+        echo "Ошибка: Не удалось создать директорию $BACKUP_DIR"
+        echo "Попробуйте создать директорию вручную:"
+        echo "  mkdir -p $BACKUP_DIR"
+        echo "  chmod 755 $BACKUP_DIR"
         exit 1
-    }
+    fi
+fi
+
+if [ ! -d "$BACKUP_DIR/$BACKUP_PERIOD" ]; then
+    if ! mkdir -p "$BACKUP_DIR/$BACKUP_PERIOD" 2>/dev/null; then
+        echo "Ошибка: Не удалось создать директорию $BACKUP_DIR/$BACKUP_PERIOD"
+        echo "Текущий пользователь: $(whoami)"
+        echo "Права на родительскую директорию:"
+        ls -ld "$BACKUP_DIR" 2>/dev/null || echo "  (не удалось получить информацию)"
+        echo ""
+        echo "Попробуйте создать директорию вручную:"
+        echo "  mkdir -p $BACKUP_DIR/$BACKUP_PERIOD"
+        echo "  chmod 755 $BACKUP_DIR/$BACKUP_PERIOD"
+        if [ "$(id -u)" != "0" ]; then
+            echo "Или с правами root:"
+            echo "  sudo mkdir -p $BACKUP_DIR/$BACKUP_PERIOD"
+            echo "  sudo chown -R \$(whoami):\$(whoami) $BACKUP_DIR"
+        fi
+        exit 1
+    fi
 fi
 
 if [ ! -w "$BACKUP_DIR/$BACKUP_PERIOD" ]; then
     echo "Ошибка: Нет прав на запись в директорию $BACKUP_DIR/$BACKUP_PERIOD"
+    echo "Текущий пользователь: $(whoami)"
+    echo "Владелец директории: $(stat -c '%U:%G' "$BACKUP_DIR/$BACKUP_PERIOD" 2>/dev/null || echo 'неизвестно')"
+    echo ""
     echo "Исправьте права доступа:"
-    echo "  sudo chown -R \$USER:\$USER $BACKUP_DIR"
+    if [ "$(id -u)" != "0" ]; then
+        echo "  sudo chown -R \$(whoami):\$(whoami) $BACKUP_DIR"
+        echo "  sudo chmod -R 755 $BACKUP_DIR"
+    else
+        echo "  chown -R \$(whoami):\$(whoami) $BACKUP_DIR"
+        echo "  chmod -R 755 $BACKUP_DIR"
+    fi
     exit 1
 fi
 
