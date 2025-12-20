@@ -166,7 +166,7 @@ async def get_vehicle_info(
         
         if current_user.role == UserRole.MECHANIC:
             query = db.query(Car)
-            if current_user.phone_number not in ["71011111111", "71234567890", "77057726400", "71234567876"]:
+            if current_user.phone_number not in ["71011111111", "71234567890", "77057726400", "71234567876", "77766639210"]:
                 query = query.filter(Car.plate_number != "666AZV02")
         else:
             active_rental = db.query(RentalHistory).filter(
@@ -179,7 +179,7 @@ async def get_vehicle_info(
             else:
                 query = db.query(Car).filter(Car.status.in_([CarStatus.FREE, CarStatus.OCCUPIED]))
                 
-                if current_user.phone_number not in ["71011111111", "71234567890", "77057726400", "71234567876"]:
+                if current_user.phone_number not in ["71011111111", "71234567890", "77057726400", "71234567876", "77766639210"]:
                     query = query.filter(Car.plate_number != "666AZV02")
 
         if current_user.role == UserRole.USER and bool(current_user.documents_verified):
@@ -410,7 +410,7 @@ def search_vehicles(
                     Car.plate_number.ilike(f"%{query}%")
                 )
             )
-            if current_user.phone_number not in ["71011111111", "71234567890", "77057726400", "71234567876"]:
+            if current_user.phone_number not in ["71011111111", "71234567890", "77057726400", "71234567876", "77766639210"]:
                 mechanic_query = mechanic_query.filter(Car.plate_number != "666AZV02")
             cars = mechanic_query.all()
         else:
@@ -440,7 +440,7 @@ def search_vehicles(
                     Car.status.in_([CarStatus.FREE, CarStatus.OCCUPIED])
                 )
                 
-                if current_user.phone_number not in ["71011111111", "71234567890", "77057726400", "71234567876"]:
+                if current_user.phone_number not in ["71011111111", "71234567890", "77057726400", "71234567876", "77766639210"]:
                     search_query = search_query.filter(Car.plate_number != "666AZV02")
                 
                 cars = search_query.all()
