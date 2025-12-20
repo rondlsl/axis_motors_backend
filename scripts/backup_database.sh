@@ -56,47 +56,74 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 if [ ! -d "$BACKUP_DIR" ]; then
     if ! mkdir -p "$BACKUP_DIR" 2>/dev/null; then
-        echo "Ошибка: Не удалось создать директорию $BACKUP_DIR"
-        echo "Попробуйте создать директорию вручную:"
-        echo "  mkdir -p $BACKUP_DIR"
-        echo "  chmod 755 $BACKUP_DIR"
-        exit 1
+        if command -v sudo >/dev/null 2>&1 && [ "$(id -u)" != "0" ]; then
+            echo "Попытка создать директорию через sudo..."
+            if sudo mkdir -p "$BACKUP_DIR" 2>/dev/null; then
+                sudo chown -R "$(whoami):$(whoami)" "$BACKUP_DIR" 2>/dev/null
+                sudo chmod 755 "$BACKUP_DIR" 2>/dev/null
+            else
+                echo "Ошибка: Не удалось создать директорию $BACKUP_DIR"
+                echo "Выполните вручную:"
+                echo "  sudo mkdir -p $BACKUP_DIR"
+                echo "  sudo chown -R \$(whoami):\$(whoami) $BACKUP_DIR"
+                exit 1
+            fi
+        else
+            echo "Ошибка: Не удалось создать директорию $BACKUP_DIR"
+            exit 1
+        fi
     fi
 fi
 
 if [ ! -d "$BACKUP_DIR/$BACKUP_PERIOD" ]; then
     if ! mkdir -p "$BACKUP_DIR/$BACKUP_PERIOD" 2>/dev/null; then
-        echo "Ошибка: Не удалось создать директорию $BACKUP_DIR/$BACKUP_PERIOD"
-        echo "Текущий пользователь: $(whoami)"
-        echo "Права на родительскую директорию:"
-        ls -ld "$BACKUP_DIR" 2>/dev/null || echo "  (не удалось получить информацию)"
-        echo ""
-        echo "Попробуйте создать директорию вручную:"
-        echo "  mkdir -p $BACKUP_DIR/$BACKUP_PERIOD"
-        echo "  chmod 755 $BACKUP_DIR/$BACKUP_PERIOD"
-        if [ "$(id -u)" != "0" ]; then
-            echo "Или с правами root:"
-            echo "  sudo mkdir -p $BACKUP_DIR/$BACKUP_PERIOD"
-            echo "  sudo chown -R \$(whoami):\$(whoami) $BACKUP_DIR"
+        if command -v sudo >/dev/null 2>&1 && [ "$(id -u)" != "0" ]; then
+            echo "Попытка создать директорию через sudo..."
+            if sudo mkdir -p "$BACKUP_DIR/$BACKUP_PERIOD" 2>/dev/null; then
+                sudo chown -R "$(whoami):$(whoami)" "$BACKUP_DIR" 2>/dev/null
+                sudo chmod -R 755 "$BACKUP_DIR" 2>/dev/null
+            else
+                echo "Ошибка: Не удалось создать директорию $BACKUP_DIR/$BACKUP_PERIOD"
+                echo "Текущий пользователь: $(whoami)"
+                echo "Права на родительскую директорию:"
+                ls -ld "$BACKUP_DIR" 2>/dev/null || echo "  (не удалось получить информацию)"
+                echo ""
+                echo "Выполните вручную:"
+                echo "  sudo mkdir -p $BACKUP_DIR/$BACKUP_PERIOD"
+                echo "  sudo chown -R \$(whoami):\$(whoami) $BACKUP_DIR"
+                exit 1
+            fi
+        else
+            echo "Ошибка: Не удалось создать директорию $BACKUP_DIR/$BACKUP_PERIOD"
+            exit 1
         fi
-        exit 1
     fi
 fi
 
 if [ ! -w "$BACKUP_DIR/$BACKUP_PERIOD" ]; then
-    echo "Ошибка: Нет прав на запись в директорию $BACKUP_DIR/$BACKUP_PERIOD"
+    echo "Нет прав на запись в директорию $BACKUP_DIR/$BACKUP_PERIOD"
     echo "Текущий пользователь: $(whoami)"
     echo "Владелец директории: $(stat -c '%U:%G' "$BACKUP_DIR/$BACKUP_PERIOD" 2>/dev/null || echo 'неизвестно')"
-    echo ""
-    echo "Исправьте права доступа:"
-    if [ "$(id -u)" != "0" ]; then
-        echo "  sudo chown -R \$(whoami):\$(whoami) $BACKUP_DIR"
-        echo "  sudo chmod -R 755 $BACKUP_DIR"
+    
+    if command -v sudo >/dev/null 2>&1 && [ "$(id -u)" != "0" ]; then
+        echo "Попытка исправить права доступа через sudo..."
+        if sudo chown -R "$(whoami):$(whoami)" "$BACKUP_DIR" 2>/dev/null && \
+           sudo chmod -R 755 "$BACKUP_DIR" 2>/dev/null; then
+            echo "Права доступа успешно исправлены"
+        else
+            echo "Ошибка: Не удалось исправить права доступа"
+            echo "Выполните вручную:"
+            echo "  sudo chown -R \$(whoami):\$(whoami) $BACKUP_DIR"
+            echo "  sudo chmod -R 755 $BACKUP_DIR"
+            exit 1
+        fi
     else
+        echo "Ошибка: Нет прав на запись и невозможно исправить автоматически"
+        echo "Выполните вручную:"
         echo "  chown -R \$(whoami):\$(whoami) $BACKUP_DIR"
         echo "  chmod -R 755 $BACKUP_DIR"
+        exit 1
     fi
-    exit 1
 fi
 
 check_disk_space() {
