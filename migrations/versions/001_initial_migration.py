@@ -54,10 +54,10 @@ def create_enums():
         DO $$ BEGIN
             CREATE TYPE userrole AS ENUM (
                 'admin', 'user', 'rejected', 'client', 'pending', 'mechanic', 'garant', 
-                'financier', 'mvd', 'support', 'pendingtofirst', 'pendingtosecond', 
+                'financier', 'mvd', 'support', 'driver', 'pendingtofirst', 'pendingtosecond', 
                 'rejectfirstdoc', 'rejectfirstcert', 'rejectfirst', 'rejectsecond',
                 'ADMIN', 'USER', 'REJECTED', 'CLIENT', 'PENDING', 'MECHANIC', 'GARANT',
-                'FINANCIER', 'MVD', 'SUPPORT', 'PENDINGTOFIRST', 'PENDINGTOSECOND', 
+                'FINANCIER', 'MVD', 'SUPPORT', 'DRIVER', 'PENDINGTOFIRST', 'PENDINGTOSECOND', 
                 'REJECTFIRSTDOC', 'REJECTFIRSTCERT', 'REJECTFIRST', 'REJECTSECOND'
             );
         EXCEPTION
@@ -279,12 +279,12 @@ def create_enums():
                 'rent_minute_charge', 'rent_overtime_fee', 'rent_distance_fee',
                 'rent_base_charge', 'rent_fuel_fee', 'delivery_fee', 'delivery_penalty',
                 'manual_adjustment', 'damage_penalty', 'fine_penalty', 'owner_waiting_fee_share', 'sanction_penalty',
-                'reservation_rebooking_fee',
+                'reservation_rebooking_fee', 'rent_driver_fee',
                 'DEPOSIT', 'PROMO_BONUS', 'COMPANY_BONUS', 'REFUND', 'RENT_OPEN_FEE', 'RENT_WAITING_FEE',
                 'RENT_MINUTE_CHARGE', 'RENT_OVERTIME_FEE', 'RENT_DISTANCE_FEE',
                 'RENT_BASE_CHARGE', 'RENT_FUEL_FEE', 'DELIVERY_FEE', 'DELIVERY_PENALTY',
                 'MANUAL_ADJUSTMENT', 'DAMAGE_PENALTY', 'FINE_PENALTY', 'OWNER_WAITING_FEE_SHARE', 'SANCTION_PENALTY',
-                'RESERVATION_REBOOKING_FEE'
+                'RESERVATION_REBOOKING_FEE', 'RENT_DRIVER_FEE'
             );
         EXCEPTION
             WHEN duplicate_object THEN null;
@@ -525,7 +525,9 @@ def create_rental_history_table():
         sa.Column('mechanic_inspection_start_longitude', sa.Float(), nullable=True),
         sa.Column('mechanic_inspection_end_latitude', sa.Float(), nullable=True),
         sa.Column('mechanic_inspection_end_longitude', sa.Float(), nullable=True),
-        sa.Column('rating', sa.Float(), nullable=True) 
+        sa.Column('rating', sa.Float(), nullable=True),
+        sa.Column('with_driver', sa.Boolean(), nullable=False, server_default='false'),
+        sa.Column('driver_fee', sa.Integer(), nullable=True, server_default='0')
     )
 
 

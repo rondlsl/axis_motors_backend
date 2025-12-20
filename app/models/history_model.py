@@ -1,7 +1,7 @@
 import enum
 import uuid
 
-from sqlalchemy import Column, Integer, ForeignKey, Enum, Float, DateTime, ARRAY, String, Text
+from sqlalchemy import Column, Integer, ForeignKey, Enum, Float, DateTime, ARRAY, String, Text, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -111,7 +111,11 @@ class RentalHistory(Base):
     mechanic_inspection_start_longitude = Column(Float, nullable=True)
     mechanic_inspection_end_latitude = Column(Float, nullable=True)
     mechanic_inspection_end_longitude = Column(Float, nullable=True)
-    rating = Column(Float, nullable=True) 
+    rating = Column(Float, nullable=True)
+    
+    # Поля для аренды с водителем
+    with_driver = Column(Boolean, default=False, server_default="false", nullable=False)  
+    driver_fee = Column(Integer, nullable=True, default=0, server_default="0")  
 
     # Явно задаём связь для механика доставки:
     delivery_mechanic = relationship("User", foreign_keys=[delivery_mechanic_id])

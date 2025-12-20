@@ -404,7 +404,9 @@ def get_trip_history(
             "mechanic_comment": review.mechanic_comment if review else None,
             "delivery_mechanic_rating": review.delivery_mechanic_rating if review else None,
             "delivery_mechanic_comment": review.delivery_mechanic_comment if review else None,
-            "rating": rental.rating 
+            "rating": rental.rating,
+            "with_driver": rental.with_driver,
+            "driver_fee": rental.driver_fee or 0
         })
 
     return {"trip_history": result}
@@ -476,7 +478,9 @@ async def get_trip_history_detail(
         "waiting_fee": rental.waiting_fee,
         "overtime_fee": rental.overtime_fee,
         "distance_fee": rental.distance_fee,
-        "rating": rental.rating, 
+        "rating": rental.rating,
+        "with_driver": rental.with_driver,
+        "driver_fee": rental.driver_fee or 0,
     }
 
     if car:
@@ -805,7 +809,8 @@ async def calculate_rental_cost(
             duration=request.duration,
             car=car,
             include_delivery=request.include_delivery,
-            is_owner=is_owner
+            is_owner=is_owner,
+            with_driver=request.with_driver
         )
     except HTTPException:
         raise
@@ -829,6 +834,7 @@ async def reserve_car(
         car_id: str,
         rental_type: RentalType,
         duration: Optional[int] = None,
+        with_driver: bool = Query(False, description="Аренда с водителем"),
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user),
 ):
@@ -926,7 +932,8 @@ async def reserve_car(
             overtime_fee=0,
             distance_fee=0,
             total_price=total_price,
-            reservation_time=get_local_time()
+            reservation_time=get_local_time(),
+            with_driver=with_driver
         )
         db.add(rental)
         db.commit()
@@ -1009,7 +1016,8 @@ async def reserve_car(
         overtime_fee=0,
         distance_fee=0,
         total_price=base,
-        reservation_time=get_local_time()
+        reservation_time=get_local_time(),
+        with_driver=with_driver
     )
     db.add(rental)
     db.commit()
@@ -1056,6 +1064,7 @@ async def reserve_delivery(
         delivery_latitude: float = Query(..., description="Координата широты доставки"),
         delivery_longitude: float = Query(..., description="Координата долготы доставки"),
         duration: Optional[int] = None,
+        with_driver: bool = Query(False, description="Аренда с водителем"),
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ) -> dict:
@@ -1179,7 +1188,8 @@ async def reserve_delivery(
         total_price=total_price,
         reservation_time=get_local_time(),
         delivery_latitude=delivery_latitude,
-        delivery_longitude=delivery_longitude
+        delivery_longitude=delivery_longitude,
+        with_driver=with_driver
     )
     db.add(rental)
     db.commit()

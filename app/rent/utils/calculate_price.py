@@ -9,6 +9,10 @@ FUEL_PRICE_PER_LITER = 350
 ELECTRIC_FUEL_PRICE_PER_LITER = 100
 FULL_TANK_LITERS = 100  # Стандартный объем полного бака
 
+# Стоимость водителя
+DRIVER_FEE_PER_HOUR = 2000  # 2000₸ за каждый час (поминутный/часовой тариф)
+DRIVER_FEE_PER_DAY = 20000  # 20000₸ за каждые сутки (суточный тариф)
+
 
 def get_open_price(car: Car) -> int:
     if car.gps_imei == "860803068155890":
@@ -66,6 +70,7 @@ def calc_required_balance(
         car: Car,
         include_delivery: bool,
         is_owner: bool,
+        with_driver: bool = False,
 ) -> int:
     """
     Рассчитывает минимальный баланс для аренды:
@@ -84,7 +89,8 @@ def calc_required_balance(
     # Стоимость аренды
     if rental_type == RentalType.MINUTES:
         # Минутный: открытие дверей + price_per_minute * 120
-        required = open_fee + (car.price_per_minute * 120) + delivery_fee
+        driver_fee = DRIVER_FEE_PER_HOUR * 2 if with_driver else 0  # 2 часа резерв
+        required = open_fee + (car.price_per_minute * 120) + delivery_fee + driver_fee
         return int(required)
     
     elif rental_type == RentalType.HOURS:
@@ -110,7 +116,8 @@ def calc_required_balance(
             tank_liters = FULL_TANK_LITERS
         full_tank_cost = tank_liters * price_per_liter
         
-        required = open_fee + base_price + one_hour_minute_cost + full_tank_cost + delivery_fee
+        driver_fee = DRIVER_FEE_PER_HOUR * duration if with_driver else 0
+        required = open_fee + base_price + one_hour_minute_cost + full_tank_cost + delivery_fee + driver_fee
         return int(required)
     
     else:  # RentalType.DAYS
@@ -147,7 +154,8 @@ def calc_required_balance(
             tank_liters = FULL_TANK_LITERS
         full_tank_cost = tank_liters * price_per_liter
         
-        required = base_price + one_hour_minute_cost + full_tank_cost + delivery_fee
+        driver_fee = DRIVER_FEE_PER_DAY * duration if with_driver else 0
+        required = base_price + one_hour_minute_cost + full_tank_cost + delivery_fee + driver_fee
     return int(required)
 
 
@@ -158,6 +166,7 @@ def calculate_rental_cost_breakdown(
         car: Car,
         include_delivery: bool,
         is_owner: bool = False,
+        with_driver: bool = False,
 ) -> Dict[str, any]:
     """
     Рассчитывает детализированную стоимость аренды для калькулятора.
@@ -170,13 +179,15 @@ def calculate_rental_cost_breakdown(
             "fuel_cost": 0,
             "delivery_fee": 0,
             "minute_cost_reserve": 0,
+            "driver_fee": 0,
             "total_minimum_balance": 0,
             "breakdown": {
                 "base_price": 0,
                 "open_fee": 0,
                 "fuel_cost": 0,
                 "delivery_fee": 0,
-                "minute_cost_reserve": 0
+                "minute_cost_reserve": 0,
+                "driver_fee": 0
             }
         }
     
@@ -187,7 +198,8 @@ def calculate_rental_cost_breakdown(
         base_price = 0 
         minute_cost_reserve = car.price_per_minute * 120  
         fuel_cost = 0
-        total_minimum_balance = int(open_fee + minute_cost_reserve + delivery_fee)
+        driver_fee = DRIVER_FEE_PER_HOUR * 2 if with_driver else 0  # 2 часа резерв
+        total_minimum_balance = int(open_fee + minute_cost_reserve + delivery_fee + driver_fee)
     elif rental_type == RentalType.HOURS:
         if duration is None:
             raise HTTPException(status_code=400,
@@ -207,7 +219,8 @@ def calculate_rental_cost_breakdown(
             tank_liters = FULL_TANK_LITERS
         fuel_cost = tank_liters * price_per_liter
         
-        total_minimum_balance = int(open_fee + base_price + minute_cost_reserve + fuel_cost + delivery_fee)
+        driver_fee = DRIVER_FEE_PER_HOUR * duration if with_driver else 0
+        total_minimum_balance = int(open_fee + base_price + minute_cost_reserve + fuel_cost + delivery_fee + driver_fee)
     else:  
         if duration is None:
             raise HTTPException(status_code=400,
@@ -226,7 +239,8 @@ def calculate_rental_cost_breakdown(
             tank_liters = FULL_TANK_LITERS
         fuel_cost = tank_liters * price_per_liter
         
-        total_minimum_balance = int(base_price + minute_cost_reserve + fuel_cost + delivery_fee)
+        driver_fee = DRIVER_FEE_PER_DAY * duration if with_driver else 0
+        total_minimum_balance = int(base_price + minute_cost_reserve + fuel_cost + delivery_fee + driver_fee)
     
     breakdown_open_fee = int(open_fee) if rental_type != RentalType.DAYS else 0
     
@@ -236,12 +250,14 @@ def calculate_rental_cost_breakdown(
         "fuel_cost": int(fuel_cost),
         "delivery_fee": int(delivery_fee),
         "minute_cost_reserve": int(minute_cost_reserve),
+        "driver_fee": int(driver_fee),
         "total_minimum_balance": total_minimum_balance,
         "breakdown": {
             "base_price": int(base_price),
             "open_fee": breakdown_open_fee,  
             "fuel_cost": int(fuel_cost),
             "delivery_fee": int(delivery_fee),
-            "minute_cost_reserve": int(minute_cost_reserve)
+            "minute_cost_reserve": int(minute_cost_reserve),
+            "driver_fee": int(driver_fee)
         }
     }

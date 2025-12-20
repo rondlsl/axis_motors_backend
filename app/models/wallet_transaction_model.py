@@ -40,6 +40,9 @@ class WalletTransactionType(enum.Enum):
     
     # Повторное бронирование
     RESERVATION_REBOOKING_FEE = "reservation_rebooking_fee"  # Списание за повторное бронирование того же авто после отмены
+    
+    # Аренда с водителем
+    RENT_DRIVER_FEE = "rent_driver_fee"  # Оплата услуг водителя
 
 
 class WalletTransaction(Base):

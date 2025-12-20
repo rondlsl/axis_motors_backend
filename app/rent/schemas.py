@@ -15,6 +15,7 @@ class AdvanceBookingRequest(BaseModel):
     scheduled_end_time: Optional[datetime] = Field(None, description="Запланированное время окончания аренды")
     delivery_latitude: Optional[float] = Field(None, description="Широта доставки")
     delivery_longitude: Optional[float] = Field(None, description="Долгота доставки")
+    with_driver: bool = Field(False, description="Аренда с водителем")
 
 
 class BookingResponse(SidMixin):
@@ -69,6 +70,7 @@ class RentalCalculatorRequest(BaseModel):
     rental_type: RentalType = Field(..., description="Тип аренды: MINUTES, HOURS, DAYS")
     duration: Optional[int] = Field(None, description="Продолжительность (обязательна для HOURS и DAYS)")
     include_delivery: bool = Field(False, description="Включить доставку")
+    with_driver: bool = Field(False, description="Аренда с водителем")
 
 
 class RentalCostBreakdown(BaseModel):
@@ -78,6 +80,7 @@ class RentalCostBreakdown(BaseModel):
     fuel_cost: int = Field(..., description="Стоимость топлива (резерв)")
     delivery_fee: int = Field(..., description="Стоимость доставки")
     minute_cost_reserve: int = Field(..., description="Резерв на поминутную оплату")
+    driver_fee: int = Field(0, description="Стоимость водителя")
 
 
 class RentalCalculatorResponse(BaseModel):

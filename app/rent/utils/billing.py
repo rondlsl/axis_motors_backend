@@ -33,6 +33,10 @@ from app.utils.time_utils import get_local_time
 FUEL_PRICE_PER_LITER = 350
 ELECTRIC_FUEL_PRICE_PER_LITER = 100
 
+# Стоимость водителя
+DRIVER_FEE_PER_HOUR = 2000  # 2000₸ за каждый час (поминутный/часовой тариф)
+DRIVER_FEE_PER_DAY = 20000  # 20000₸ за каждые сутки (суточный тариф)
+
 _notification_flags: dict[int, dict[str, object]] = {}
 _websocket_notification_semaphore: asyncio.Semaphore | None = None
 
@@ -371,7 +375,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                     (rental.delivery_fee or 0) +
                                     rental.waiting_fee +
                                     (rental.overtime_fee or 0) +
-                                    (rental.distance_fee or 0)
+                                    (rental.distance_fee or 0) +
+                                    (rental.driver_fee or 0)
                             )
                             db.commit()
                             if user.wallet_balance >= 0:
@@ -381,14 +386,16 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                         (rental.open_fee or 0) +
                                         (rental.delivery_fee or 0) +
                                         rental.waiting_fee +
-                                        (rental.overtime_fee or 0)
+                                        (rental.overtime_fee or 0) +
+                                        (rental.driver_fee or 0)
                                     )
                                 elif rental.rental_type == RentalType.MINUTES:
                                     rental.already_payed = (
                                         (rental.open_fee or 0) +
                                         (rental.delivery_fee or 0) +
                                         rental.waiting_fee +
-                                        (rental.overtime_fee or 0)
+                                        (rental.overtime_fee or 0) +
+                                        (rental.driver_fee or 0)
                                     )
                                 db.commit()
 
@@ -473,7 +480,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                     (rental.delivery_fee or 0) +
                                     rental.waiting_fee +
                                     (rental.overtime_fee or 0) +
-                                    (rental.distance_fee or 0)
+                                    (rental.distance_fee or 0) +
+                                    (rental.driver_fee or 0)
                             )
                             db.commit()
                             if user.wallet_balance >= 0:
@@ -483,14 +491,16 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                         (rental.open_fee or 0) +
                                         (rental.delivery_fee or 0) +
                                         rental.waiting_fee +
-                                        (rental.overtime_fee or 0)
+                                        (rental.overtime_fee or 0) +
+                                        (rental.driver_fee or 0)
                                     )
                                 elif rental.rental_type == RentalType.MINUTES:
                                     rental.already_payed = (
                                         (rental.open_fee or 0) +
                                         (rental.delivery_fee or 0) +
                                         rental.waiting_fee +
-                                        (rental.overtime_fee or 0)
+                                        (rental.overtime_fee or 0) +
+                                        (rental.driver_fee or 0)
                                     )
                                 db.commit()
             
@@ -529,7 +539,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                 (rental.delivery_fee or 0) +
                                 rental.waiting_fee +
                                 (rental.overtime_fee or 0) +
-                                (rental.distance_fee or 0)
+                                (rental.distance_fee or 0) +
+                                (rental.driver_fee or 0)
                         )
                         record_wallet_transaction(db, user=user, amount=-charge, ttype=WalletTransactionType.RENT_WAITING_FEE, description=f"Платное ожидание {extra} мин", related_rental=rental)
                         user.wallet_balance -= charge
@@ -540,13 +551,15 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                     (rental.base_price or 0) +
                                     (rental.open_fee or 0) +
                                     (rental.delivery_fee or 0) +
-                                    rental.waiting_fee
+                                    rental.waiting_fee +
+                                    (rental.driver_fee or 0)
                                 )
                             elif rental.rental_type == RentalType.MINUTES:
                                 rental.already_payed = (
                                     (rental.open_fee or 0) +
                                     (rental.delivery_fee or 0) +
-                                    rental.waiting_fee
+                                    rental.waiting_fee +
+                                    (rental.driver_fee or 0)
                                 )
                         db.commit()
 
@@ -633,6 +646,89 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                         flags["low_fuel_alert"] = True
                         telegram_alerts.append(fuel_message)
 
+                # Списание за водителя: 2000₸ за каждый час (поминутный/часовой) или 20000₸ за сутки
+                if rental.with_driver:
+                    elapsed_hours = math.ceil(elapsed / 60)  # Округляем вверх до целых часов
+                    elapsed_days = math.ceil(elapsed / 1440)  # Округляем вверх до целых суток
+                    
+                    # Получаем уже оплаченные часы/дни за водителя
+                    prev_driver_hours_paid = flags.get("driver_hours_paid", 0)
+                    prev_driver_days_paid = flags.get("driver_days_paid", 0)
+                    
+                    if rental.rental_type in (RentalType.MINUTES, RentalType.HOURS):
+                        # Поминутный и часовой тариф: списание 2000₸ за каждый новый час
+                        new_hours = elapsed_hours - prev_driver_hours_paid
+                        if new_hours > 0:
+                            driver_charge = new_hours * DRIVER_FEE_PER_HOUR
+                            total_driver_fee = elapsed_hours * DRIVER_FEE_PER_HOUR
+                            
+                            rental.driver_fee = total_driver_fee
+                            
+                            balance_before = float(user.wallet_balance or 0)
+                            user.wallet_balance = balance_before - driver_charge
+                            
+                            existing_driver_tx = db.query(WalletTransaction).filter(
+                                WalletTransaction.related_rental_id == rental.id,
+                                WalletTransaction.transaction_type == WalletTransactionType.RENT_DRIVER_FEE
+                            ).first()
+                            
+                            if existing_driver_tx:
+                                existing_driver_tx.amount = -total_driver_fee
+                                existing_driver_tx.description = f"Оплата водителя за {elapsed_hours} ч"
+                                existing_driver_tx.balance_after = user.wallet_balance
+                            else:
+                                tx = WalletTransaction(
+                                    user_id=user.id,
+                                    amount=-total_driver_fee,
+                                    transaction_type=WalletTransactionType.RENT_DRIVER_FEE,
+                                    description=f"Оплата водителя за {elapsed_hours} ч",
+                                    balance_before=balance_before,
+                                    balance_after=user.wallet_balance,
+                                    related_rental_id=rental.id,
+                                    created_at=get_local_time()
+                                )
+                                db.add(tx)
+                            
+                            flags["driver_hours_paid"] = elapsed_hours
+                            db.commit()
+                    
+                    elif rental.rental_type == RentalType.DAYS:
+                        # Суточный тариф: списание 20000₸ за каждые новые сутки
+                        new_days = elapsed_days - prev_driver_days_paid
+                        if new_days > 0:
+                            driver_charge = new_days * DRIVER_FEE_PER_DAY
+                            total_driver_fee = elapsed_days * DRIVER_FEE_PER_DAY
+                            
+                            rental.driver_fee = total_driver_fee
+                            
+                            balance_before = float(user.wallet_balance or 0)
+                            user.wallet_balance = balance_before - driver_charge
+                            
+                            existing_driver_tx = db.query(WalletTransaction).filter(
+                                WalletTransaction.related_rental_id == rental.id,
+                                WalletTransaction.transaction_type == WalletTransactionType.RENT_DRIVER_FEE
+                            ).first()
+                            
+                            if existing_driver_tx:
+                                existing_driver_tx.amount = -total_driver_fee
+                                existing_driver_tx.description = f"Оплата водителя за {elapsed_days} сут"
+                                existing_driver_tx.balance_after = user.wallet_balance
+                            else:
+                                tx = WalletTransaction(
+                                    user_id=user.id,
+                                    amount=-total_driver_fee,
+                                    transaction_type=WalletTransactionType.RENT_DRIVER_FEE,
+                                    description=f"Оплата водителя за {elapsed_days} сут",
+                                    balance_before=balance_before,
+                                    balance_after=user.wallet_balance,
+                                    related_rental_id=rental.id,
+                                    created_at=get_local_time()
+                                )
+                                db.add(tx)
+                            
+                            flags["driver_days_paid"] = elapsed_days
+                            db.commit()
+
                 if rental.rental_type == RentalType.MINUTES:
                     # Получаем уже списанные минуты из существующей транзакции
                     existing_tx = db.query(WalletTransaction).filter(
@@ -664,7 +760,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                 (rental.delivery_fee or 0) +
                                 (rental.waiting_fee or 0) +
                                 rental.overtime_fee +
-                                (rental.distance_fee or 0)
+                                (rental.distance_fee or 0) +
+                                (rental.driver_fee or 0)
                         )
                         
                         if existing_tx:
@@ -689,7 +786,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                             rental.already_payed = (
                                 (rental.open_fee or 0) +
                                 (rental.delivery_fee or 0) +
-                                rental.overtime_fee
+                                rental.overtime_fee +
+                                (rental.driver_fee or 0)
                             )
                             db.commit()
                     
@@ -792,7 +890,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                             (rental.delivery_fee or 0) +
                                             (rental.waiting_fee or 0) +
                                             (rental.overtime_fee or 0) +
-                                            total_fuel_fee
+                                            total_fuel_fee +
+                                            (rental.driver_fee or 0)
                                         )
                                         db.commit()
 
@@ -828,6 +927,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                 + (rental.waiting_fee or 0)
                                 + rental.overtime_fee
                                 + (rental.distance_fee or 0)
+                                + (rental.driver_fee or 0)
                             )
                             existing_tx = db.query(WalletTransaction).filter(
                                 WalletTransaction.related_rental_id == rental.id,
@@ -864,7 +964,8 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                     (rental.delivery_fee or 0) +
                                     (rental.waiting_fee or 0) +
                                     rental.overtime_fee +
-                                    fuel_fee
+                                    fuel_fee +
+                                    (rental.driver_fee or 0)
                                 )
                                 db.commit()
                             ten_minutes_cost = 10 * car.price_per_minute

@@ -18,13 +18,14 @@ class UserRole(enum.Enum):
     GARANT = "GARANT"
     FINANCIER = "financier"
     MVD = "mvd"
-    SUPPORT = "SUPPORT"                         # Служба поддержки
+    SUPPORT = "SUPPORT"                        # Служба поддержки
+    DRIVER = "DRIVER"                          # Водитель для аренды с водителем
     PENDINGTOFIRST = "PENDINGTOFIRST"          # Загрузил документы, ждёт финансиста
     PENDINGTOSECOND = "PENDINGTOSECOND"        # Одобрен финансистом, ждёт МВД
     REJECTFIRSTDOC = "REJECTFIRSTDOC"          # Отказ финансиста: неверные документы
     REJECTFIRSTCERT = "REJECTFIRSTCERT"        # Отказ финансиста: отсутствуют сертификаты/справки для граждан Казахстана
-    REJECTFIRST = "REJECTFIRST"                 # Отказ финансиста: финансовые причины
-    REJECTSECOND = "REJECTSECOND"               # Отказ МВД: полный блок
+    REJECTFIRST = "REJECTFIRST"                # Отказ финансиста: финансовые причины
+    REJECTSECOND = "REJECTSECOND"              # Отказ МВД: полный блок
 
 
 class AutoClass(enum.Enum):
