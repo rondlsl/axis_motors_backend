@@ -3,6 +3,7 @@ import os
 import re
 from app.models.car_model import Car
 from app.admin.cars.schemas import CarDetailSchema
+from app.utils.short_id import uuid_to_sid
 
 
 def sort_car_photos(photos: List[str]) -> List[str]:
@@ -66,7 +67,7 @@ def status_display(status: Optional[str]) -> str:
 def car_to_detail_schema(car: Car) -> CarDetailSchema:
     """Преобразует модель Car в CarDetailSchema"""
     return CarDetailSchema(
-        id=car.id,
+        id=uuid_to_sid(car.id),
         name=car.name,
         plate_number=car.plate_number,
         engine_volume=car.engine_volume,
@@ -90,8 +91,8 @@ def car_to_detail_schema(car: Car) -> CarDetailSchema:
         price_per_minute=car.price_per_minute,
         price_per_hour=car.price_per_hour,
         price_per_day=car.price_per_day,
-        owner_id=car.owner_id,
-        current_renter_id=car.current_renter_id,
+        owner_id=uuid_to_sid(car.owner_id) if car.owner_id else None,
+        current_renter_id=uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
         available_minutes=car.available_minutes or 0,
         gps_id=car.gps_id,
         gps_imei=car.gps_imei,

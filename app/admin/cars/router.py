@@ -124,7 +124,7 @@ async def get_car_details(
         price_per_hour=car.price_per_hour,
         price_per_day=car.price_per_day,
         owner_id=uuid_to_sid(car.owner_id),
-        current_renter_id=car.current_renter_id,
+        current_renter_id=uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
         available_minutes=available_minutes,
         gps_id=car.gps_id,
         gps_imei=car.gps_imei,
