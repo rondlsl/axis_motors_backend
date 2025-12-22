@@ -77,7 +77,7 @@ async def edit_car(
     db.commit()
     db.refresh(car)
 
-    return car_to_detail_schema(car)
+    return car_to_detail_schema(car, db)
 
 
 @cars_router.get("/{car_id}/details", response_model=CarDetailSchema)
@@ -97,6 +97,35 @@ async def get_car_details(
     update_car_availability_snapshot(car)
     db.flush()
     available_minutes = car.available_minutes or 0
+
+    # Получаем информацию о владельце
+    owner_obj = None
+    if car.owner_id:
+        owner = db.query(User).filter(User.id == car.owner_id).first()
+        if owner:
+            owner_obj = OwnerSchema(
+                owner_id=uuid_to_sid(owner.id),
+                first_name=owner.first_name,
+                last_name=owner.last_name,
+                middle_name=owner.middle_name,
+                phone_number=owner.phone_number,
+                selfie=owner.selfie_url or owner.selfie_with_license_url
+            )
+    
+    # Получаем информацию о текущем арендаторе
+    current_renter_obj = None
+    if car.current_renter_id:
+        renter = db.query(User).filter(User.id == car.current_renter_id).first()
+        if renter:
+            current_renter_obj = CurrentRenterSchema(
+                current_renter_id=uuid_to_sid(renter.id),
+                first_name=renter.first_name,
+                last_name=renter.last_name,
+                middle_name=renter.middle_name,
+                phone_number=renter.phone_number,
+                role=renter.role.value if renter.role else "client",
+                selfie=renter.selfie_url or renter.selfie_with_license_url
+            )
 
     return CarDetailSchema(
         id=uuid_to_sid(car.id),
@@ -123,8 +152,10 @@ async def get_car_details(
         price_per_minute=car.price_per_minute,
         price_per_hour=car.price_per_hour,
         price_per_day=car.price_per_day,
-        owner_id=uuid_to_sid(car.owner_id),
+        owner_id=uuid_to_sid(car.owner_id) if car.owner_id else None,
         current_renter_id=uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
+        owner=owner_obj,
+        current_renter=current_renter_obj,
         available_minutes=available_minutes,
         gps_id=car.gps_id,
         gps_imei=car.gps_imei,

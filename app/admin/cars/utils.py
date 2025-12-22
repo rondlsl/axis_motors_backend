@@ -1,8 +1,10 @@
 from typing import Optional, List
 import os
 import re
+from sqlalchemy.orm import Session
 from app.models.car_model import Car
-from app.admin.cars.schemas import CarDetailSchema
+from app.models.user_model import User
+from app.admin.cars.schemas import CarDetailSchema, OwnerSchema, CurrentRenterSchema
 from app.utils.short_id import uuid_to_sid
 
 
@@ -64,8 +66,37 @@ def status_display(status: Optional[str]) -> str:
     }.get(status or "", status or "")
 
 
-def car_to_detail_schema(car: Car) -> CarDetailSchema:
+def car_to_detail_schema(car: Car, db: Optional[Session] = None) -> CarDetailSchema:
     """Преобразует модель Car в CarDetailSchema"""
+    # Получаем информацию о владельце
+    owner_obj = None
+    if car.owner_id and db:
+        owner = db.query(User).filter(User.id == car.owner_id).first()
+        if owner:
+            owner_obj = OwnerSchema(
+                owner_id=uuid_to_sid(owner.id),
+                first_name=owner.first_name,
+                last_name=owner.last_name,
+                middle_name=owner.middle_name,
+                phone_number=owner.phone_number,
+                selfie=owner.selfie_url or owner.selfie_with_license_url
+            )
+    
+    # Получаем информацию о текущем арендаторе
+    current_renter_obj = None
+    if car.current_renter_id and db:
+        renter = db.query(User).filter(User.id == car.current_renter_id).first()
+        if renter:
+            current_renter_obj = CurrentRenterSchema(
+                current_renter_id=uuid_to_sid(renter.id),
+                first_name=renter.first_name,
+                last_name=renter.last_name,
+                middle_name=renter.middle_name,
+                phone_number=renter.phone_number,
+                role=renter.role.value if renter.role else "client",
+                selfie=renter.selfie_url or renter.selfie_with_license_url
+            )
+    
     return CarDetailSchema(
         id=uuid_to_sid(car.id),
         name=car.name,
@@ -93,6 +124,8 @@ def car_to_detail_schema(car: Car) -> CarDetailSchema:
         price_per_day=car.price_per_day,
         owner_id=uuid_to_sid(car.owner_id) if car.owner_id else None,
         current_renter_id=uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
+        owner=owner_obj,
+        current_renter=current_renter_obj,
         available_minutes=car.available_minutes or 0,
         gps_id=car.gps_id,
         gps_imei=car.gps_imei,

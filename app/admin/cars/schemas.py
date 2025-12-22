@@ -166,6 +166,8 @@ class CarDetailSchema(BaseModel):
     price_per_day: int
     owner_id: Optional[str] = None
     current_renter_id: Optional[str] = None
+    owner: Optional[OwnerSchema] = None
+    current_renter: Optional[CurrentRenterSchema] = None
     available_minutes: Optional[int] = None
     gps_id: Optional[str] = None
     gps_imei: Optional[str] = None
