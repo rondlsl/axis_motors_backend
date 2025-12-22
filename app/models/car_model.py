@@ -59,6 +59,7 @@ class Car(Base):
     fuel_level = Column(Float)
     mileage = Column(Integer)
     course = Column(Integer, nullable=True)
+    speed = Column(Float, nullable=True)  # Скорость в км/ч
 
     price_per_minute = Column(Integer, nullable=False)
     price_per_hour = Column(Integer, nullable=False)
