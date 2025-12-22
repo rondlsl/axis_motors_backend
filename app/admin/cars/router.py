@@ -624,8 +624,7 @@ async def get_car_availability_timer(
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
-    update_car_availability_snapshot(car)
-    db.flush()
+    # Берем значение напрямую из таблицы без пересчета
     available_minutes = car.available_minutes or 0
 
     last_rental = db.query(RentalHistory).filter(
