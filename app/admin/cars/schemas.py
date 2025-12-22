@@ -51,6 +51,7 @@ class CarListItemSchema(BaseModel):
     longitude: Optional[float] = None
     fuel_level: Optional[float] = None
     mileage: Optional[int] = None
+    speed: Optional[float] = None  # Скорость в км/ч
     auto_class: str
     body_type: str
     year: Optional[int] = None

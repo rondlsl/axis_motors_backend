@@ -1056,6 +1056,7 @@ async def get_cars_list(
             longitude=longitude,
             fuel_level=car.fuel_level,
             mileage=car.mileage,
+            speed=car.speed if hasattr(car, 'speed') else None,
             auto_class=car.auto_class.value if car.auto_class else "",
             body_type=car.body_type.value if car.body_type else "",
             year=car.year,
