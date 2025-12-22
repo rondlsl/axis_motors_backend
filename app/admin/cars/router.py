@@ -802,6 +802,27 @@ async def get_trip_detail(
     except Exception:
         route_data = None
 
+    # Calculate fuel fee (same logic as user endpoint)
+    from math import ceil, floor
+    from app.rent.utils.calculate_price import FUEL_PRICE_PER_LITER, ELECTRIC_FUEL_PRICE_PER_LITER
+    
+    fuel_fee = 0
+    if rental.fuel_before is not None and rental.fuel_after is not None and rental.fuel_after < rental.fuel_before:
+        fuel_consumed = ceil(rental.fuel_before) - floor(rental.fuel_after)
+        if fuel_consumed > 0:
+            fuel_price = ELECTRIC_FUEL_PRICE_PER_LITER if car.body_type == CarBodyType.ELECTRIC else FUEL_PRICE_PER_LITER
+            fuel_fee = int(fuel_consumed * fuel_price)
+    
+    # Calculate total price without fuel
+    total_price_without_fuel = (
+        (rental.base_price or 0) +
+        (rental.open_fee or 0) +
+        (rental.delivery_fee or 0) +
+        (rental.waiting_fee or 0) +
+        (rental.overtime_fee or 0) +
+        (rental.distance_fee or 0)
+    )
+
     result = {
         "rental_id": uuid_to_sid(rental.id),
         "car_name": car.name,
@@ -809,7 +830,30 @@ async def get_trip_detail(
         "start_time": rental.start_time.isoformat() if rental.start_time else None,
         "end_time": rental.end_time.isoformat() if rental.end_time else None,
         "duration_minutes": int((rental.end_time - rental.start_time).total_seconds() // 60) if rental.start_time and rental.end_time else 0,
+        
+        # Billing information
+        "already_payed": rental.already_payed,
         "total_price": rental.total_price,
+        "total_price_without_fuel": total_price_without_fuel,
+        "rental_status": rental.rental_status.value,
+        "rental_type": rental.rental_type.value,
+        
+        # Price breakdown
+        "base_price": rental.base_price or 0,
+        "open_fee": rental.open_fee or 0,
+        "delivery_fee": rental.delivery_fee or 0,
+        "fuel_fee": fuel_fee,
+        "waiting_fee": rental.waiting_fee or 0,
+        "overtime_fee": rental.overtime_fee or 0,
+        "distance_fee": rental.distance_fee or 0,
+        "with_driver": rental.with_driver,
+        "driver_fee": rental.driver_fee or 0,
+        
+        # Fuel levels
+        "fuel_before": rental.fuel_before,
+        "fuel_after": rental.fuel_after,
+        "fuel_after_main_tariff": rental.fuel_after_main_tariff,
+        
         "renter": {
             "id": uuid_to_sid(renter.id),
             "first_name": renter.first_name,
