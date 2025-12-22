@@ -1,6 +1,7 @@
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
+import asyncio
 
 from app.models.car_model import Car, CarStatus
 from app.models.user_model import User
@@ -12,6 +13,8 @@ from app.admin.cars.schemas import (
     OwnerSchema, 
     CurrentRenterSchema
 )
+from app.gps_api.utils.glonassoft_client import glonassoft_client
+from app.gps_api.utils.telemetry_processor import process_glonassoft_data
 
 async def get_admin_cars_list_data(
     db: Session, 
@@ -34,6 +37,37 @@ async def get_admin_cars_list_data(
     
     total_count = db.query(Car).count()
     filtered_cars = query.all()
+    
+    # Получаем скорости для всех машин из телеметрии
+    async def get_car_speed(car: Car) -> Optional[float]:
+        """Получить скорость машины из телеметрии"""
+        try:
+            vehicle_imei = (
+                getattr(car, 'gps_imei', None)
+                or getattr(car, 'imei', None)
+                or getattr(car, 'vehicle_imei', None)
+            )
+            if not vehicle_imei:
+                return None
+            
+            glonassoft_data = await glonassoft_client.get_vehicle_data(vehicle_imei)
+            if glonassoft_data:
+                telemetry = process_glonassoft_data(glonassoft_data, car.name)
+                return telemetry.speed if hasattr(telemetry, 'speed') else None
+            return None
+        except Exception:
+            return None
+    
+    # Асинхронно получаем скорости для всех машин
+    speed_tasks = [get_car_speed(car) for car in filtered_cars]
+    speeds = await asyncio.gather(*speed_tasks, return_exceptions=True)
+    car_speeds = {}
+    for i, car in enumerate(filtered_cars):
+        speed = speeds[i]
+        if isinstance(speed, Exception) or speed is None:
+            car_speeds[car.id] = None
+        else:
+            car_speeds[car.id] = speed
 
     def _status_display(s: Optional[str]) -> str:
         return {
@@ -104,7 +138,7 @@ async def get_admin_cars_list_data(
             "longitude": longitude,
             "fuel_level": car.fuel_level,
             "mileage": car.mileage,
-            "speed": car.speed if hasattr(car, 'speed') else None,
+            "speed": car_speeds.get(car.id),
             "auto_class": car.auto_class.value if car.auto_class else "",
             "body_type": car.body_type.value if car.body_type else "",
             "year": car.year,
