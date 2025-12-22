@@ -672,10 +672,13 @@ async def get_car_history_summary(
     rentals = q.all()
     total_income = sum(int(r.total_price or 0) for r in rentals)
 
-    owner_income = sum(
+    raw_owner_income = sum(
         int((r.base_price or 0) + (r.waiting_fee or 0) + (r.overtime_fee or 0) + (r.distance_fee or 0))
         for r in rentals
     )
+    
+    after_50_percent = raw_owner_income * 0.5
+    owner_income = int(after_50_percent * 0.97)
 
     now = get_local_time()
     update_car_availability_snapshot(car)
@@ -755,6 +758,7 @@ async def get_car_trips_list(
                 "first_name": renter.first_name,
                 "last_name": renter.last_name,
                 "phone_number": renter.phone_number,
+                "selfie": renter.selfie_url,
             }
         })
 
@@ -859,6 +863,7 @@ async def get_trip_detail(
             "first_name": renter.first_name,
             "last_name": renter.last_name,
             "phone_number": renter.phone_number,
+            "selfie": renter.selfie_url,
         },
         "photos": photos,
         "client_rating": review.rating if review else None,
@@ -1029,12 +1034,13 @@ async def get_cars_list(
                     selfie=renter.selfie_url or renter.selfie_with_license_url
                 )
 
-        # Определяем статус машины с учетом статуса активной аренды
         car_status = car.status.value if isinstance(car.status, CarStatus) else str(car.status)
         
-        # Если машина в доставке, всегда выводим DELIVERY_RESERVED
         if car.status == CarStatus.DELIVERING:
             car_status = "DELIVERY_RESERVED"
+            
+        if current_renter_obj and current_renter_obj.role == "mechanic":
+            car_status = "SERVICE"
         
         has_gps = car.gps_id is not None and car.gps_id.strip() != ""
         latitude = -1.0 if not has_gps else car.latitude

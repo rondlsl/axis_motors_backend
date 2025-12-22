@@ -177,7 +177,7 @@ async def get_vehicle_info(
             if active_rental:
                 query = db.query(Car).filter(Car.id == active_rental.car_id)
             else:
-                query = db.query(Car).filter(Car.status.in_([CarStatus.FREE, CarStatus.OCCUPIED]))
+                query = db.query(Car).filter(Car.status.in_([CarStatus.FREE, CarStatus.OCCUPIED, CarStatus.IN_USE]))
                 
                 if current_user.phone_number not in ["71011111111", "71234567890", "77057726400", "71234567876", "77766639210"]:
                     query = query.filter(Car.plate_number != "666AZV02")
