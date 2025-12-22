@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from app.models.car_model import CarStatus
 import uuid
+from datetime import datetime
 from app.schemas.base import SidMixin
 
 
@@ -235,3 +236,17 @@ class CarCurrentUserSchema(SidMixin):
     last_name: Optional[str] = None
     phone_number: Optional[str] = None
     selfie_url: Optional[str] = None
+
+
+class CarAvailabilityHistorySchema(BaseModel):
+    """Схема истории доступности автомобиля"""
+    id: str
+    car_id: str
+    year: int
+    month: int
+    available_minutes: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True

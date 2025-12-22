@@ -44,6 +44,7 @@ def upgrade() -> None:
     create_support_chats_table()
     create_support_messages_table()
     create_app_versions_table()
+    create_car_availability_history_table()
 
 
 def create_enums():
@@ -737,9 +738,23 @@ def create_app_versions_table():
     )
 
 
+def create_car_availability_history_table():
+    """Create car_availability_history table"""
+    op.create_table('car_availability_history',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
+        sa.Column('car_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('cars.id'), nullable=False),
+        sa.Column('year', sa.Integer(), nullable=False),
+        sa.Column('month', sa.Integer(), nullable=False),
+        sa.Column('available_minutes', sa.Integer(), nullable=False, server_default='0'),
+        sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        sa.Column('updated_at', sa.DateTime(), nullable=True, server_default=sa.func.now())
+    )
+
+
 def downgrade() -> None:
     # Drop all tables in reverse order
     # Drop indexes first (with existence check)
+    op.drop_table('car_availability_history')
     op.execute("""
         DO $$ BEGIN
             IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'ix_auth_tokens_token') THEN

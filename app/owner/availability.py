@@ -2,10 +2,10 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.dependencies.database.database import SessionLocal
-from app.models.car_model import Car, CarStatus
+from app.models.car_model import Car, CarStatus, CarAvailabilityHistory
 from app.utils.time_utils import get_local_time, ALMATY_OFFSET
 
 logger = logging.getLogger(__name__)
@@ -40,6 +40,26 @@ def update_car_availability_snapshot(car: Car, now: Optional[datetime] = None) -
 
     last_update = _to_utc(car.availability_updated_at) if car.availability_updated_at else month_start_utc
     if last_update < month_start_utc:
+        db = object_session(car)
+        if db:
+            prev_month_date = month_start_local - timedelta(days=1)
+            
+            existing_history = db.query(CarAvailabilityHistory).filter(
+                CarAvailabilityHistory.car_id == car.id,
+                CarAvailabilityHistory.year == prev_month_date.year,
+                CarAvailabilityHistory.month == prev_month_date.month
+            ).first()
+            
+            if not existing_history:
+                history = CarAvailabilityHistory(
+                    car_id=car.id,
+                    year=prev_month_date.year,
+                    month=prev_month_date.month,
+                    available_minutes=car.available_minutes,
+                    created_at=get_local_time()
+                )
+                db.add(history)
+        
         car.available_minutes = 0
         last_update = month_start_utc
 

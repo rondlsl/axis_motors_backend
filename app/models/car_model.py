@@ -109,3 +109,18 @@ class Car(Base):
     def sid(self) -> str:
         from app.utils.short_id import uuid_to_sid
         return uuid_to_sid(self.id)
+
+
+class CarAvailabilityHistory(Base):
+    __tablename__ = "car_availability_history"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    car_id = Column(UUID(as_uuid=True), ForeignKey("cars.id"), nullable=False)
+    year = Column(Integer, nullable=False)
+    month = Column(Integer, nullable=False)
+    available_minutes = Column(Integer, default=0, nullable=False)
+    
+    created_at = Column(DateTime, default=get_local_time, nullable=False)
+    updated_at = Column(DateTime, default=get_local_time, onupdate=get_local_time, nullable=True)
+
+    car = relationship("Car", backref="availability_history")
