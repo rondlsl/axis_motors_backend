@@ -842,6 +842,19 @@ async def get_trip_detail(
         (rental.distance_fee or 0)
     )
 
+    # Определяем человекочитаемое описание типа тарифа
+    tariff_display = ""
+    if rental.rental_type:
+        tariff_value = rental.rental_type.value if hasattr(rental.rental_type, 'value') else str(rental.rental_type)
+        if tariff_value == "minutes":
+            tariff_display = "Минутный"
+        elif tariff_value == "hours":
+            tariff_display = "Часовой"
+        elif tariff_value == "days":
+            tariff_display = "Суточный"
+        else:
+            tariff_display = tariff_value
+
     result = {
         "rental_id": uuid_to_sid(rental.id),
         "car_name": car.name,
@@ -856,6 +869,8 @@ async def get_trip_detail(
         "total_price_without_fuel": total_price_without_fuel,
         "rental_status": rental.rental_status.value,
         "rental_type": rental.rental_type.value,
+        "tariff": rental.rental_type.value,
+        "tariff_display": tariff_display,
         
         # Price breakdown
         "base_price": rental.base_price or 0,
