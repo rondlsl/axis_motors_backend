@@ -746,12 +746,27 @@ async def get_car_trips_list(
         duration_minutes = 0
         if r.start_time and r.end_time:
             duration_minutes = int((r.end_time - r.start_time).total_seconds() // 60)
+        
+        # Определяем человекочитаемое описание типа тарифа
+        tariff_display = ""
+        if r.rental_type:
+            tariff_value = r.rental_type.value if hasattr(r.rental_type, 'value') else str(r.rental_type)
+            if tariff_value == "minutes":
+                tariff_display = "Минутный"
+            elif tariff_value == "hours":
+                tariff_display = "Часовой"
+            elif tariff_value == "days":
+                tariff_display = "Суточный"
+            else:
+                tariff_display = tariff_value
+        
         items.append({
             "rental_id": uuid_to_sid(r.id),
             "start_date": r.start_time.isoformat() if r.start_time else None,
             "end_date": r.end_time.isoformat() if r.end_time else None,
             "duration_minutes": duration_minutes,
-            "tariff": r.rental_type.value,
+            "tariff": r.rental_type.value if r.rental_type else None,
+            "tariff_display": tariff_display,
             "total_price": r.total_price,
             "renter": {
                 "id": uuid_to_sid(renter.id),
