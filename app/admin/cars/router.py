@@ -922,6 +922,22 @@ async def get_trip_detail(
         },
     }
 
+    # Добавляем информацию о доставке, если она была
+    has_delivery = (
+        rental.delivery_start_time is not None or 
+        rental.delivery_end_time is not None or 
+        rental.delivery_mechanic_id is not None or
+        (rental.delivery_photos_before and len(rental.delivery_photos_before) > 0) or
+        (rental.delivery_photos_after and len(rental.delivery_photos_after) > 0)
+    )
+    
+    if has_delivery:
+        result["reservation_time"] = rental.reservation_time.isoformat() if rental.reservation_time else None
+        result["delivery_start_time"] = rental.delivery_start_time.isoformat() if rental.delivery_start_time else None
+        result["delivery_end_time"] = rental.delivery_end_time.isoformat() if rental.delivery_end_time else None
+        result["delivery_photos_before"] = rental.delivery_photos_before or []
+        result["delivery_photos_after"] = rental.delivery_photos_after or []
+
     return result
 
 
