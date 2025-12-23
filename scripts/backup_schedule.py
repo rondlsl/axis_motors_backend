@@ -102,31 +102,31 @@ class BackupScheduler:
         logger.info("Настройка расписания бэкапов")
         
         # Ежедневный полный бэкап в 02:00
-        # self.scheduler.add_job(
-        #     func=self.create_daily_backup,
-        #     trigger=CronTrigger(hour=2, minute=0),
-        #     id='daily_backup',
-        #     name='Ежедневный полный бэкап',
-        #     replace_existing=True
-        # )
+        self.scheduler.add_job(
+            func=self.create_daily_backup,
+            trigger=CronTrigger(hour=2, minute=0),
+            id='daily_backup',
+            name='Ежедневный полный бэкап',
+            replace_existing=True
+        )
         
         # Еженедельный полный бэкап в воскресенье в 01:00
-        # self.scheduler.add_job(
-        #     func=self.create_weekly_backup,
-        #     trigger=CronTrigger(day_of_week=6, hour=1, minute=0),
-        #     id='weekly_backup',
-        #     name='Еженедельный полный бэкап',
-        #     replace_existing=True
-        # )
+        self.scheduler.add_job(
+            func=self.create_weekly_backup,
+            trigger=CronTrigger(day_of_week=6, hour=1, minute=0),
+            id='weekly_backup',
+            name='Еженедельный полный бэкап',
+            replace_existing=True
+        )
         
         # Ежемесячный полный бэкап 1 числа в 00:00
-        # self.scheduler.add_job(
-        #     func=self.create_monthly_backup,
-        #     trigger=CronTrigger(day=1, hour=0, minute=0),
-        #     id='monthly_backup',
-        #     name='Ежемесячный полный бэкап',
-        #     replace_existing=True
-        # )
+        self.scheduler.add_job(
+            func=self.create_monthly_backup,
+            trigger=CronTrigger(day=1, hour=0, minute=0),
+            id='monthly_backup',
+            name='Ежемесячный полный бэкап',
+            replace_existing=True
+        )
         
         # Инкрементальный бэкап каждый час
         # self.scheduler.add_job(
@@ -138,21 +138,21 @@ class BackupScheduler:
         # )
         
         # Очистка старых бэкапов каждый день в 03:00
-        # self.scheduler.add_job(
-        #     func=self.cleanup_old_backups,
-        #     trigger=CronTrigger(hour=3, minute=0),
-        #     id='cleanup_backups',
-        #     name='Очистка старых бэкапов',
-        #     replace_existing=True
-        # )
+        self.scheduler.add_job(
+            func=self.cleanup_old_backups,
+            trigger=CronTrigger(hour=3, minute=0),
+            id='cleanup_backups',
+            name='Очистка старых бэкапов',
+            replace_existing=True
+        )
         
-        # logger.info("Расписание настроено:")
-        # logger.info("Ежедневный полный бэкап: 02:00")
-        # logger.info("Еженедельный полный бэкап: воскресенье 01:00")
-        # logger.info("Ежемесячный полный бэкап: 1 число 00:00")
+        logger.info("Расписание настроено:")
+        logger.info("Ежедневный полный бэкап: 02:00")
+        logger.info("Еженедельный полный бэкап: воскресенье 01:00")
+        logger.info("Ежемесячный полный бэкап: 1 число 00:00")
         # logger.info("Инкрементальный бэкап: каждый час")
-        # logger.info("Очистка старых бэкапов: 03:00")
-        logger.info("Планировщик бэкапов отключен")
+        logger.info("Очистка старых бэкапов: 03:00")
+        # logger.info("Планировщик бэкапов отключен")
     
     def start(self):
         """Запуск планировщика"""
