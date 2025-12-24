@@ -93,8 +93,3 @@ Thumbs.db
 uploads/
 !uploads/.gitkeep
 
-# Scripts (обычно не нужны в контейнере)
-scripts/
-*.sh
-*.sql
-
