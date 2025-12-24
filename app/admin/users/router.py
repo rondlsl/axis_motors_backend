@@ -25,8 +25,10 @@ from app.admin.users.schemas import (
     UserSearchFiltersSchema, GuarantorInfoSchema, TripSummarySchema,
     TripListItemSchema, TripDetailSchema, OwnerCarListItemSchema,
     UserEditSchema, UserBlockSchema, CompanyBonusSchema, SanctionPenaltySchema,
-    DeleteRentalsRequestSchema
+    UserEditSchema, UserBlockSchema, CompanyBonusSchema, SanctionPenaltySchema,
+    DeleteRentalsRequestSchema, UserPaginatedResponse
 )
+from math import ceil
 from app.owner.router import calculate_owner_earnings
 from app.admin.cars.utils import sort_car_photos
 from app.utils.telegram_logger import log_error_to_telegram
@@ -378,16 +380,19 @@ def _calculate_owner_earnings(user: User, db: Session) -> Dict[str, float]:
     return {"current_month": current_month_earnings, "total": total_earnings}
 
 
-@users_router.get("/list", response_model=List[UserListSchema])
+@users_router.get("/list", response_model=UserPaginatedResponse)
 async def get_users_list(
     role: Optional[str] = Query(None, description="Фильтр по роли"),
     search_query: Optional[str] = Query(None, description="Поиск по имени, фамилии, телефону, ИИН или паспорту"),
     has_active_rental: Optional[bool] = Query(None, description="Фильтр по активной аренде"),
     is_blocked: Optional[bool] = Query(None, description="Фильтр по заблокированным пользователям"),
     mvd_approved: Optional[bool] = Query(None, description="Фильтр по МВД одобрению"),
+    mvd_approved: Optional[bool] = Query(None, description="Фильтр по МВД одобрению"),
+    page: int = Query(1, ge=1, description="Номер страницы"),
+    limit: int = Query(50, ge=1, le=200, description="Количество элементов на странице"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
-):
+) -> UserPaginatedResponse:
     """Получение списка пользователей с фильтрацией и поиском"""
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
@@ -467,7 +472,13 @@ async def get_users_list(
     # Сортировка: сначала с активной арендой, потом без
     result.sort(key=lambda x: x.current_rental_car is None)
     
-    return result
+    return {
+        "items": result[(page - 1) * limit : page * limit],
+        "total": len(result),
+        "page": page,
+        "limit": limit,
+        "pages": ceil(len(result) / limit)
+    }
 
 
 @users_router.get("/map-positions", response_model=List[UserMapPositionSchema])

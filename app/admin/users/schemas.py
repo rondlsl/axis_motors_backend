@@ -99,6 +99,14 @@ class UserListSchema(SidMixin):
     rating: Optional[float] = None 
 
 
+class UserPaginatedResponse(BaseModel):
+    items: List[UserListSchema]
+    total: int
+    page: int
+    limit: int
+    pages: int 
+
+
 class UserMapPositionSchema(SidMixin):
     """Схема для позиций пользователей на карте"""
     id: str
