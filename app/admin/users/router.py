@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import and_, or_, func
+from sqlalchemy.orm import Session, joinedload, aliased
+from sqlalchemy import and_, or_, func, case, desc, distinct, select
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 from decimal import Decimal
