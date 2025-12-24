@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload, aliased
-from sqlalchemy import and_, or_, func, case, desc, distinct, select
+from sqlalchemy import and_, or_, func, case, desc, distinct, select, String
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -49,7 +49,6 @@ async def get_pending_users(
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    # Получаем пользователей с ролью PENDING
     users = db.query(User).filter(User.role == UserRole.PENDING).all()
     
     result = []
@@ -104,7 +103,6 @@ async def approve_or_reject_user(
         user.role = UserRole.CLIENT
         user.documents_verified = True
         
-        # Создаем заявку для одобренного пользователя
         application = Application(
             user_id=user.id,
             status=ApplicationStatus.APPROVED,
@@ -249,7 +247,6 @@ async def get_user_profile(
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
 
-    # Обработка auto_class
     auto_class_list = []
     if user.auto_class:
         if isinstance(user.auto_class, list):
@@ -291,7 +288,6 @@ def _get_mvd_approved_status(user: User, db: Session) -> bool:
     if user.role == UserRole.USER:
         return True
     
-    # Проверяем через Application
     application = db.query(Application).filter(Application.user_id == user.id).first()
     if application and application.mvd_status == ApplicationStatus.APPROVED:
         return True
@@ -301,7 +297,6 @@ def _get_mvd_approved_status(user: User, db: Session) -> bool:
 
 def _get_current_rental_car(user: User, db: Session) -> Optional[Dict[str, Any]]:
     """Получает информацию о текущей аренде пользователя"""
-    # Ищем активную аренду
     active_rental = db.query(RentalHistory).filter(
         and_(
             RentalHistory.user_id == user.id,
@@ -334,7 +329,6 @@ def _calculate_owner_earnings(user: User, db: Session) -> Dict[str, float]:
     if user.role not in [UserRole.USER]:  # Только для одобренных пользователей
         return {"current_month": 0.0, "total": 0.0}
     
-    # Получаем автомобили владельца
     owned_cars = db.query(Car).filter(Car.owner_id == user.id).all()
     if not owned_cars:
         return {"current_month": 0.0, "total": 0.0}
