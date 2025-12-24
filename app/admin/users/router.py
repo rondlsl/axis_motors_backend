@@ -324,7 +324,8 @@ def _get_current_rental_car(user: User, db: Session) -> Optional[Dict[str, Any]]
         "id": uuid_to_sid(car.id),
         "name": car.name,
         "plate_number": car.plate_number,
-        "brand": car.name.split()[0] if car.name else "Unknown"
+        "brand": car.name.split()[0] if car.name else "Unknown",
+        "photos": car.photos
     }
 
 
