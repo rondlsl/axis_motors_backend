@@ -19,10 +19,11 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
     done < "$PROJECT_ROOT/.env"
 fi
 
-DB_HOST="${POSTGRES_HOST:-localhost}"
+DB_HOST="${POSTGRES_HOST:-db}"
 DB_PORT="${POSTGRES_PORT:-5432}"
 DB_NAME="${POSTGRES_DB:-postgres}"
 DB_USER="${POSTGRES_USER:-postgres}"
+DB_PASSWORD="${POSTGRES_PASSWORD}"
 
 if [ -z "$BACKUP_DIR" ]; then
     BACKUP_DIR="$PROJECT_ROOT/backups"
@@ -32,20 +33,38 @@ else
     fi
 fi
 
-DOCKER_CONTAINER=$(docker ps --filter "name=azv_motors_backend_v2-db-1" --format "{{.Names}}" | head -1)
-if [ -z "$DOCKER_CONTAINER" ]; then
-    DOCKER_CONTAINER=$(docker ps --filter "name=db" --filter "ancestor=postgres" --format "{{.Names}}" | head -1)
+USE_DOCKER=true
+if ! command -v docker >/dev/null 2>&1; then
+    USE_DOCKER=false
+    if ! command -v pg_dump >/dev/null 2>&1; then
+        echo "Ошибка: не найден docker и не найден pg_dump"
+        exit 1
+    fi
+    echo "Docker не найден, используется локальный pg_dump (host: $DB_HOST)"
+else
+    DOCKER_CONTAINER=$(docker ps --filter "name=azv_motors_backend_v2-db-1" --format "{{.Names}}" | head -1)
+    if [ -z "$DOCKER_CONTAINER" ]; then
+        DOCKER_CONTAINER=$(docker ps --filter "name=db" --filter "ancestor=postgres" --format "{{.Names}}" | head -1)
+    fi
+    if [ -z "$DOCKER_CONTAINER" ]; then
+        DOCKER_CONTAINER=$(docker ps --filter "ancestor=postgres" --format "{{.Names}}" | head -1)
+    fi
+    if [ -z "$DOCKER_CONTAINER" ]; then
+        echo "Ошибка: Контейнер PostgreSQL не найден"
+        echo "Доступные контейнеры PostgreSQL:"
+        docker ps --filter "ancestor=postgres" --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
+        exit 1
+    fi
+    echo "Используется контейнер: $DOCKER_CONTAINER"
 fi
-if [ -z "$DOCKER_CONTAINER" ]; then
-    DOCKER_CONTAINER=$(docker ps --filter "ancestor=postgres" --format "{{.Names}}" | head -1)
-fi
-if [ -z "$DOCKER_CONTAINER" ]; then
-    echo "Ошибка: Контейнер PostgreSQL не найден"
-    echo "Доступные контейнеры PostgreSQL:"
-    docker ps --filter "ancestor=postgres" --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
-    exit 1
-fi
-echo "Используется контейнер: $DOCKER_CONTAINER"
+
+run_pg_dump() {
+    if [ "$USE_DOCKER" = "true" ]; then
+        docker exec "$DOCKER_CONTAINER" pg_dump -U "$DB_USER" -d "$DB_NAME" "$@"
+    else
+        PGPASSWORD="$DB_PASSWORD" pg_dump -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" "$@"
+    fi
+}
 RETENTION_DAYS=30
 RETENTION_WEEKS=12
 RETENTION_MONTHS=12
@@ -176,7 +195,7 @@ create_full_backup() {
     
     rm -f "$temp_filepath"
     
-    if ! docker exec "$DOCKER_CONTAINER" pg_dump -U "$DB_USER" -d "$DB_NAME" \
+    if ! run_pg_dump \
         --no-password \
         --format=plain \
         --create \
@@ -235,7 +254,7 @@ create_incremental_backup() {
     
     rm -f "$temp_filepath"
     
-    if ! docker exec "$DOCKER_CONTAINER" pg_dump -U "$DB_USER" -d "$DB_NAME" \
+    if ! run_pg_dump \
         --no-password \
         --data-only \
         --inserts \
@@ -280,7 +299,7 @@ create_schema_backup() {
     
     rm -f "$temp_filepath"
     
-    if ! docker exec "$DOCKER_CONTAINER" pg_dump -U "$DB_USER" -d "$DB_NAME" \
+    if ! run_pg_dump \
         --no-password \
         --schema-only \
         --create \
