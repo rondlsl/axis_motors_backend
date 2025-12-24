@@ -47,27 +47,17 @@ async def get_admin_cars_list_data(
                 or getattr(car, 'imei', None)
                 or getattr(car, 'vehicle_imei', None)
             )
-            print(f"[ADMIN CARS LIST] Getting speed for car: {car.name} (plate: {car.plate_number}), IMEI: {vehicle_imei}")
             if not vehicle_imei:
-                print(f"[ADMIN CARS LIST] No IMEI found for car: {car.name}")
                 return None
             
             glonassoft_data = await glonassoft_client.get_vehicle_data(vehicle_imei)
             if glonassoft_data:
                 telemetry = process_glonassoft_data(glonassoft_data, car.name)
-                speed = telemetry.speed if hasattr(telemetry, 'speed') else None
-                print(f"[ADMIN CARS LIST] Speed for {car.name}: {speed} km/h")
-                return speed
-            print(f"[ADMIN CARS LIST] No glonassoft data for car: {car.name}")
+                return telemetry.speed if hasattr(telemetry, 'speed') else None
             return None
-        except Exception as e:
-            print(f"[ADMIN CARS LIST] Error getting speed for {car.name}: {e}")
-            import traceback
-            print(f"[ADMIN CARS LIST] Traceback: {traceback.format_exc()}")
+        except Exception:
             return None
     
-    # Асинхронно получаем скорости для всех машин (аналогично /ws/vehicles/list)
-    print(f"[ADMIN CARS LIST] Getting speeds for {len(filtered_cars)} cars")
     speed_tasks = [get_car_speed(car) for car in filtered_cars]
     speeds = await asyncio.gather(*speed_tasks, return_exceptions=True)
     car_speeds = {}
@@ -75,10 +65,8 @@ async def get_admin_cars_list_data(
         speed = speeds[i]
         if isinstance(speed, Exception) or speed is None:
             car_speeds[car.id] = None
-            print(f"[ADMIN CARS LIST] Final speed for {car.name}: None")
         else:
             car_speeds[car.id] = speed
-            print(f"[ADMIN CARS LIST] Final speed for {car.name}: {speed} km/h")
 
     def _status_display(s: Optional[str]) -> str:
         return {

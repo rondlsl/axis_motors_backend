@@ -31,6 +31,7 @@ from app.utils.telegram_logger import log_error_to_telegram
 from app.websocket.notifications import notify_vehicles_list_update, notify_user_status_update
 from app.utils.time_utils import get_local_time
 from app.owner.availability import update_car_availability_snapshot
+from app.owner.router import calculate_owner_earnings, calculate_fuel_cost, calculate_delivery_cost
 import asyncio
 import uuid
 
@@ -703,13 +704,17 @@ async def get_car_history_summary(
     rentals = q.all()
     total_income = sum(int(r.total_price or 0) for r in rentals)
 
-    raw_owner_income = sum(
-        int((r.base_price or 0) + (r.waiting_fee or 0) + (r.overtime_fee or 0) + (r.distance_fee or 0))
-        for r in rentals
-    )
-    
-    after_50_percent = raw_owner_income * 0.5
-    owner_income = int(after_50_percent * 0.97)
+    owner_income = 0
+    for r in rentals:
+        earnings = calculate_owner_earnings(r, car, current_user)
+        fuel_cost = calculate_fuel_cost(r, car, current_user)
+        delivery_cost = calculate_delivery_cost(r, car, current_user)
+
+        if r.user_id == car.owner_id:
+            owner_income -= (fuel_cost or 0)
+            owner_income -= (delivery_cost or 0)
+        else:
+            owner_income += earnings
 
     now = get_local_time()
     update_car_availability_snapshot(car)
