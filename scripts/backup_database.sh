@@ -207,16 +207,16 @@ create_full_backup() {
         exit 1
     fi
     
-    local dump_exit_code=${PIPESTATUS[0]}
-    local gzip_exit_code=${PIPESTATUS[1]}
+    local dump_exit_code=${PIPESTATUS[0]:-0}
+    local gzip_exit_code=${PIPESTATUS[1]:-0}
     
-    if [ $dump_exit_code -ne 0 ]; then
+    if [ ${dump_exit_code} -ne 0 ]; then
         echo "Ошибка: pg_dump завершился с кодом $dump_exit_code"
         rm -f "$temp_filepath"
         exit 1
     fi
     
-    if [ $gzip_exit_code -ne 0 ]; then
+    if [ ${gzip_exit_code} -ne 0 ]; then
         echo "Ошибка: gzip завершился с кодом $gzip_exit_code"
         rm -f "$temp_filepath"
         exit 1
@@ -228,7 +228,7 @@ create_full_backup() {
         exit 1
     fi
     
-    if [ $dump_exit_code -ne 0 ]; then
+    if [ ${dump_exit_code} -ne 0 ]; then
         echo "Ошибка при создании полного бэкапа (pg_dump exit code: $dump_exit_code)"
         rm -f "$filepath"
         exit 1
@@ -264,10 +264,10 @@ create_incremental_backup() {
         exit 1
     fi
     
-    local dump_exit_code=${PIPESTATUS[0]}
-    local gzip_exit_code=${PIPESTATUS[1]}
+    local dump_exit_code=${PIPESTATUS[0]:-0}
+    local gzip_exit_code=${PIPESTATUS[1]:-0}
     
-    if [ $dump_exit_code -ne 0 ] || [ $gzip_exit_code -ne 0 ]; then
+    if [ ${dump_exit_code} -ne 0 ] || [ ${gzip_exit_code} -ne 0 ]; then
         echo "Ошибка при создании инкрементального бэкапа (pg_dump: $dump_exit_code, gzip: $gzip_exit_code)"
         rm -f "$temp_filepath"
         exit 1
@@ -310,10 +310,10 @@ create_schema_backup() {
         exit 1
     fi
     
-    local dump_exit_code=${PIPESTATUS[0]}
-    local gzip_exit_code=${PIPESTATUS[1]}
+    local dump_exit_code=${PIPESTATUS[0]:-0}
+    local gzip_exit_code=${PIPESTATUS[1]:-0}
     
-    if [ $dump_exit_code -ne 0 ] || [ $gzip_exit_code -ne 0 ]; then
+    if [ ${dump_exit_code} -ne 0 ] || [ ${gzip_exit_code} -ne 0 ]; then
         echo "Ошибка при создании бэкапа схемы (pg_dump: $dump_exit_code, gzip: $gzip_exit_code)"
         rm -f "$temp_filepath"
         exit 1
