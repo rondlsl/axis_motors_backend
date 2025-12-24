@@ -95,6 +95,7 @@ class UserListSchema(SidMixin):
     is_user_agreement: bool = False
     selfie_url: Optional[str] = None
     is_blocked: bool = False
+    carStatus: str = "FREE"
     current_rental_car: Optional[Dict[str, Any]] = None
     rating: Optional[float] = None 
 

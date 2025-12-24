@@ -465,11 +465,46 @@ async def get_users_list(
             "current_rental_car": current_car,
             "rating": float(user.rating) if user.rating else None
         }
+
+        car_status = "FREE"
+        if current_car:
+            active_rental = db.query(RentalHistory).filter(
+                RentalHistory.user_id == user.id,
+                RentalHistory.rental_status.in_([
+                    RentalStatus.IN_USE, 
+                    RentalStatus.DELIVERING, 
+                    RentalStatus.DELIVERING_IN_PROGRESS,
+                    RentalStatus.RESERVED,
+                    RentalStatus.SCHEDULED,
+                    RentalStatus.DELIVERY_RESERVED
+                ])
+            ).first()
+            
+            if active_rental:
+                rs = active_rental.rental_status
+                if rs == RentalStatus.IN_USE:
+                    car_status = "IN_USE"
+                elif rs == RentalStatus.RESERVED:
+                    car_status = "RESERVED"
+                elif rs == RentalStatus.SCHEDULED:
+                    car_status = "SCHEDULED"
+                elif rs in [RentalStatus.DELIVERING, RentalStatus.DELIVERING_IN_PROGRESS]:
+                    car_status = "DELIVERING_IN_PROGRESS"
+                elif rs == RentalStatus.DELIVERY_RESERVED:
+                    car_status = "DELIVERY_RESERVED"
+        
+        if car_status == "FREE":
+            if user.owned_cars:
+                car_status = "OWNER"
+            elif user.role in [UserRole.PENDING, UserRole.PENDINGTOFIRST, UserRole.PENDINGTOSECOND] or user.role.value.startswith("PENDING") or user.role.value.startswith("REJECT"):
+                 if user.role.value.startswith("PENDING"):
+                     car_status = "PENDING"
+        
+        user_data["carStatus"] = car_status
         
         converted_data = convert_uuid_response_to_sid(user_data, ["id"])
         result.append(UserListSchema(**converted_data))
     
-    # Сортировка: сначала с активной арендой, потом без
     result.sort(key=lambda x: x.current_rental_car is None)
     
     return {
