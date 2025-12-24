@@ -382,6 +382,7 @@ async def get_users_list(
     has_active_rental: Optional[bool] = Query(None, description="Фильтр по активной аренде"),
     is_blocked: Optional[bool] = Query(None, description="Фильтр по заблокированным пользователям"),
     mvd_approved: Optional[bool] = Query(None, description="Фильтр по МВД одобрению"),
+    car_status: Optional[str] = Query(None, description="Фильтр по статусу авто"),
 
     page: int = Query(1, ge=1, description="Номер страницы"),
     limit: int = Query(50, ge=1, le=200, description="Количество элементов на странице"),
@@ -419,6 +420,8 @@ async def get_users_list(
         query = query.filter(search_filter)
     
     users = query.all()
+    
+    car_status_param = car_status
     
     result = []
     for user in users:
@@ -496,6 +499,9 @@ async def get_users_list(
                      car_status = "PENDING"
         
         user_data["carStatus"] = car_status
+        
+        if car_status_param is not None and car_status != car_status_param:
+            continue
         
         converted_data = convert_uuid_response_to_sid(user_data, ["id"])
         result.append(UserListSchema(**converted_data))
