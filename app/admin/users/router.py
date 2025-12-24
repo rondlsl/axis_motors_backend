@@ -387,7 +387,7 @@ async def get_users_list(
     has_active_rental: Optional[bool] = Query(None, description="Фильтр по активной аренде"),
     is_blocked: Optional[bool] = Query(None, description="Фильтр по заблокированным пользователям"),
     mvd_approved: Optional[bool] = Query(None, description="Фильтр по МВД одобрению"),
-    mvd_approved: Optional[bool] = Query(None, description="Фильтр по МВД одобрению"),
+
     page: int = Query(1, ge=1, description="Номер страницы"),
     limit: int = Query(50, ge=1, le=200, description="Количество элементов на странице"),
     current_user: User = Depends(get_current_user),
