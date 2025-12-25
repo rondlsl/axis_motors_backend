@@ -1104,6 +1104,47 @@ def get_occupied_cars(
     return [{"plate_number": plate} for (plate,) in rows]
 
 
+@Vehicle_Router.get("/is-owner-trip", summary="Проверить, является ли текущая аренда поездкой владельца")
+def is_owner_trip(
+    plate: str = Query(..., description="Гос. номер автомобиля"),
+    key: str = Query(..., description="Секретный ключ доступа"),
+    db: Session = Depends(get_db)
+):
+    """
+    Проверяет, является ли текущий арендатор владельцем автомобиля.
+    Возвращает {"is_owner_trip": true/false}
+    """
+    if key != RENTED_CARS_ENDPOINT_KEY:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access key")
+    
+    # Найти машину по гос. номеру
+    car = db.query(Car).filter(Car.plate_number == plate).first()
+    if not car:
+        return {"is_owner_trip": False, "reason": "car_not_found"}
+    
+    if not car.owner_id:
+        return {"is_owner_trip": False, "reason": "no_owner"}
+    
+    # Проверяем активную аренду
+    active_rental = db.query(RentalHistory).filter(
+        RentalHistory.car_id == car.id,
+        RentalHistory.rental_status.in_([
+            RentalStatus.RESERVED, 
+            RentalStatus.IN_USE, 
+            RentalStatus.DELIVERING,
+            RentalStatus.DELIVERY_RESERVED,
+            RentalStatus.DELIVERING_IN_PROGRESS
+        ])
+    ).first()
+    
+    if not active_rental:
+        return {"is_owner_trip": False, "reason": "no_active_rental"}
+    
+    is_owner = active_rental.user_id == car.owner_id
+    
+    return {"is_owner_trip": is_owner}
+
+
 @Vehicle_Router.get("/excluded-from-alerts", summary="Список машин, исключённых из уведомлений")
 def get_excluded_from_alerts_cars(
     key: str = Query(..., description="Секретный ключ доступа"),
