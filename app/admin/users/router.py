@@ -30,7 +30,7 @@ from app.admin.users.schemas import (
     TripListItemSchema, TripDetailSchema, OwnerCarListItemSchema,
     UserEditSchema, UserBlockSchema, CompanyBonusSchema, SanctionPenaltySchema,
     DeleteRentalsRequestSchema, UserPaginatedResponse,
-    WalletTransactionPaginationSchema, RentalHistoryUpdateSchema, RentalCreateSchema,
+    WalletTransactionSchema, WalletTransactionPaginationSchema, RentalHistoryUpdateSchema, RentalCreateSchema,
     BalanceTopUpSchema, AutoClassUpdateSchema
 )
 from math import ceil
