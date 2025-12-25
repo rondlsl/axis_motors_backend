@@ -33,9 +33,11 @@ OwnerRouter = APIRouter(
     prefix="/my-auto"
 )
 
+from app.rent.utils.calculate_price import FUEL_PRICE_PER_LITER, ELECTRIC_FUEL_PRICE_PER_LITER
+
 OFFSET_HOURS = 5
 FUEL_PRICE_PER_LITER = 450
-ELECTRIC_FUEL_PRICE_PER_LITER = 200
+ELECTRIC_FUEL_PRICE_PER_LITER = 100
 
 
 def apply_offset(dt: datetime) -> str | None:
