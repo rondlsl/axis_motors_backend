@@ -59,8 +59,13 @@ async def generate_user_token(
         raise HTTPException(status_code=403, detail="Доступ только для админа")
     
     from app.auth.security.tokens import create_access_token, create_refresh_token
+    import uuid as uuid_module
     
-    user_uuid = safe_sid_to_uuid(user_id)
+    try:
+        user_uuid = uuid_module.UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Неверный формат UUID")
+    
     user = db.query(User).filter(User.id == user_uuid).first()
     
     if not user:
