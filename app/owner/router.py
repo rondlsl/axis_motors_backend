@@ -492,7 +492,10 @@ def get_trips_by_month(
 
         # Формируем ответ для поездок
         trips_response = []
-        month_total_earnings = 0
+        
+        # Переменные для агрегации за месяц
+        month_base_earnings = 0.0
+        month_delivery_costs = 0.0
 
         for trip in trips:
             duration_minutes = 0
@@ -502,29 +505,27 @@ def get_trips_by_month(
 
             fuel_cost = calculate_fuel_cost(trip, car, current_user)
             delivery_cost = calculate_delivery_cost(trip, car, current_user)
-            earnings = calculate_owner_earnings(trip, car, current_user)
             
-            # Агрегация заработка за месяц:
-            # - для поездок владельца вычитаем его расходы (топливо и доставку)
-            # - для клиентов добавляем доход владельца
+            components = calculate_owner_earnings(trip, car, current_user, return_components=True)
+            earnings_for_trip = 0 
+            
+            earnings = calculate_owner_earnings(trip, car, current_user) 
+            
             if trip.user_id == car.owner_id:
-                month_total_earnings -= (fuel_cost or 0)
-                month_total_earnings -= (delivery_cost or 0)
+                month_delivery_costs += (fuel_cost or 0) + (delivery_cost or 0)
             else:
-                month_total_earnings += earnings
+                month_base_earnings += components["base_earnings"]
 
-            # Создаем базовый словарь для TripResponse
             trip_data = {
                 "id": uuid_to_sid(trip.id),
                 "duration_minutes": duration_minutes,
-                "earnings": earnings,
+                "earnings": earnings, 
                 "rental_type": trip.rental_type.value,
                 "start_time": apply_offset(trip.start_time),
                 "end_time": apply_offset(trip.end_time),
                 "user_id": uuid_to_sid(trip.user_id)
             }
             
-            # Добавляем fuel_cost и delivery_cost только если это поездка владельца
             if trip.user_id == car.owner_id:
                 trip_data["fuel_cost"] = fuel_cost
                 trip_data["delivery_cost"] = delivery_cost
@@ -532,8 +533,9 @@ def get_trips_by_month(
             trip_data["rating"] = trip.rating
             
             trips_response.append(TripResponse(**trip_data))
+            
+        month_total_earnings = int(month_base_earnings * 0.5 * 0.97) - int(month_delivery_costs)
 
-        # Получаем все доступные месяцы с заработком, исключая поездки механиков
         available_months_query = (
             db.query(
                 extract('year', RentalHistory.end_time).label('year'),
@@ -593,10 +595,20 @@ def get_trips_by_month(
                 .all()
             )
             
-            # Пересчитываем заработок с учетом топлива
-            corrected_total_earnings = 0
+            # Пересчитываем заработок с учетом топлива (агрегированно)
+            agg_base = 0.0
+            agg_deductions = 0.0
+            
             for trip in month_trips:
-                corrected_total_earnings += calculate_owner_earnings(trip, car, current_user)
+                if trip.user_id == car.owner_id:
+                    f_cost = calculate_fuel_cost(trip, car, current_user)
+                    d_cost = calculate_delivery_cost(trip, car, current_user)
+                    agg_deductions += (f_cost or 0) + (d_cost or 0)
+                else:
+                    comps = calculate_owner_earnings(trip, car, current_user, return_components=True)
+                    agg_base += comps["base_earnings"]
+            
+            corrected_total_earnings = int(agg_base * 0.5 * 0.97) - int(agg_deductions)
             
             # Создаем объект MonthEarnings
             month_earnings = MonthEarnings(

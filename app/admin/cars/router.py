@@ -704,17 +704,19 @@ async def get_car_history_summary(
     rentals = q.all()
     total_income = sum(int(r.total_price or 0) for r in rentals)
 
-    owner_income = 0
+    total_base_earnings = 0.0
+    total_deductions = 0.0
+    
     for r in rentals:
-        earnings = calculate_owner_earnings(r, car, current_user)
-        fuel_cost = calculate_fuel_cost(r, car, current_user)
-        delivery_cost = calculate_delivery_cost(r, car, current_user)
-
         if r.user_id == car.owner_id:
-            owner_income -= (fuel_cost or 0)
-            owner_income -= (delivery_cost or 0)
+            fuel_cost = calculate_fuel_cost(r, car, current_user)
+            delivery_cost = calculate_delivery_cost(r, car, current_user)
+            total_deductions += (fuel_cost or 0) + (delivery_cost or 0)
         else:
-            owner_income += earnings
+            components = calculate_owner_earnings(r, car, current_user, return_components=True)
+            total_base_earnings += components["base_earnings"]
+
+    owner_income = int(total_base_earnings * 0.5 * 0.97) - int(total_deductions)
 
     now = get_local_time()
     update_car_availability_snapshot(car)
