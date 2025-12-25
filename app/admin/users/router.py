@@ -45,6 +45,43 @@ import asyncio
 users_router = APIRouter(tags=["Admin Users"])
 
 
+@users_router.post("/generate-token")
+async def generate_user_token(
+    user_id: str = Form(..., description="UUID пользователя"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Получить access token для указанного пользователя.
+    Только для ADMIN.
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Доступ только для админа")
+    
+    from app.auth.security.tokens import create_access_token, create_refresh_token
+    
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    access_token = create_access_token(data={"sub": user.phone_number})
+    refresh_token = create_refresh_token(data={"sub": user.phone_number})
+    
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "user": {
+            "id": uuid_to_sid(user.id),
+            "phone_number": user.phone_number,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "role": user.role.value if user.role else None
+        }
+    }
+
 @users_router.get("/pending", response_model=List[UserProfileSchema])
 async def get_pending_users(
     current_user: User = Depends(get_current_user),
@@ -1006,7 +1043,7 @@ async def download_user_contract(
 ):
     """
     Скачивание подписанного договора с данными пользователя.
-    Возвращает файл договора в base64 и информацию о подписанте.
+    Генерирует HTML договор с заполненными данными пользователя и аренды.
     """
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
@@ -1030,29 +1067,119 @@ async def download_user_contract(
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
-    if not os.path.exists(contract_file.file_path):
-        raise HTTPException(status_code=404, detail="Физический файл договора не найден")
-    
-    with open(contract_file.file_path, "rb") as f:
-        file_content = f.read()
-    
-    file_base64 = base64.b64encode(file_content).decode()
-    
-    file_ext = os.path.splitext(contract_file.file_path)[1].lower()
-    mime_types = {
-        ".pdf": "application/pdf",
-        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        ".doc": "application/msword",
-        ".html": "text/html"
+    # Маппинг типов контрактов на файлы шаблонов
+    CONTRACT_FILES = {
+        "rental_main_contract": "rental_main_contract.html",
+        "appendix_7_1": "acceptance_certificate.html",
+        "appendix_7_2": "return_certificate.html",
+        "main_contract": "main_contract.html",
+        "user_agreement": "user_agreement.html",
+        "consent_to_data_processing": "consent_to_the_processing_of_personaldata.html",
+        "main_contract_for_guarantee": "main_contract_for_guarantee.html",
+        "guarantor_contract": "main_contract_for_guarantee.html",
+        "guarantor_main_contract": "main_contract_for_guarantee.html",
     }
-    mime_type = mime_types.get(file_ext, "application/octet-stream")
+    
+    contract_type_value = contract_file.contract_type.value if contract_file.contract_type else None
+    template_filename = CONTRACT_FILES.get(contract_type_value)
+    
+    if not template_filename:
+        raise HTTPException(status_code=404, detail=f"Шаблон для типа договора '{contract_type_value}' не найден")
+    
+    template_path = os.path.join("uploads/docs", template_filename)
+    
+    if not os.path.exists(template_path):
+        raise HTTPException(status_code=404, detail="Файл шаблона договора не найден")
+    
+    with open(template_path, "r", encoding="utf-8") as f:
+        html = f.read()
+    
+    # Получаем данные пользователя
+    full_name = f"{user.first_name or ''} {user.last_name or ''}".strip() or user.phone_number
+    login = user.phone_number
+    client_id = str(user.id)
+    digital_signature = signature.digital_signature or user.digital_signature
+    
+    # Получаем данные аренды и авто если есть
+    car_name = None
+    plate_number = None
+    car_uuid = None
+    car_year = None
+    body_type = None
+    vin = None
+    color = None
+    rental_id_str = None
+    
+    if signature.rental_id:
+        rental = db.query(RentalHistory).filter(RentalHistory.id == signature.rental_id).first()
+        if rental:
+            rental_id_str = str(rental.id)
+            car = db.query(Car).filter(Car.id == rental.car_id).first()
+            if car:
+                car_name = car.name
+                plate_number = car.plate_number
+                car_uuid = str(car.id)
+                car_year = str(car.year) if car.year else None
+                body_type = car.body_type.value if car.body_type else None
+                vin = car.vin
+                color = car.color
+    
+    # Функция форматирования
+    def format_data(value, fallback="не указано"):
+        if value is None or value == "":
+            return fallback
+        return str(value)
+    
+    def translate_body_type(bt):
+        if not bt:
+            return "не указан"
+        body_type_map = {
+            "SEDAN": "Седан", "SUV": "Внедорожник", "CROSSOVER": "Кроссовер",
+            "COUPE": "Купе", "HATCHBACK": "Хэтчбек", "CONVERTIBLE": "Кабриолет",
+            "WAGON": "Универсал", "MINIBUS": "Микроавтобус", "ELECTRIC": "Электромобиль",
+        }
+        return body_type_map.get(bt.upper(), bt)
+    
+    from datetime import datetime
+    current_date = datetime.now().strftime("%d.%m.%Y")
+    
+    # Заменяем плейсхолдеры
+    html = html.replace("${full_name}", format_data(full_name, "ФИО не указано"))
+    html = html.replace("${login}", format_data(login, "логин не указан"))
+    html = html.replace("${client_id}", format_data(client_id, "ID не указан"))
+    html = html.replace("${client_uuid}", format_data(client_id, "ID не указан"))
+    html = html.replace("${digital_signature}", format_data(digital_signature, "подпись не указана"))
+    html = html.replace("${rental_id}", format_data(rental_id_str, "ID аренды не указан"))
+    html = html.replace("${rent_uuid}", format_data(rental_id_str, "ID аренды не указан"))
+    html = html.replace("${rent_id}", format_data(rental_id_str, "ID аренды не указан"))
+    html = html.replace("${car_name}", format_data(car_name, "не указано"))
+    html = html.replace("${plate_number}", format_data(plate_number, "не указан"))
+    html = html.replace("${car_uuid}", format_data(car_uuid, "не указан"))
+    html = html.replace("${car_year}", format_data(car_year, "выпуска: не указан"))
+    html = html.replace("${body_type}", translate_body_type(body_type))
+    html = html.replace("${vin}", format_data(vin, "VIN не указан"))
+    html = html.replace("${color}", format_data(color, "Цвет: не указан"))
+    html = html.replace("${date}", current_date)
+    html = html.replace("{date}", current_date)
+    
+    # Дополнительные плейсхолдеры из шаблонов
+    html = html.replace("{___car_name_____}", format_data(car_name, "не указано"))
+    html = html.replace("{____car_plate_number______}", format_data(plate_number, "не указан"))
+    html = html.replace("{_______car_id________}", format_data(car_uuid, "не указан"))
+    html = html.replace("{_____car_year___________}", format_data(car_year, "выпуска: не указан"))
+    html = html.replace("{______car_body_type_____________}", translate_body_type(body_type))
+    html = html.replace("{______car_vin_________}", format_data(vin, "VIN не указан"))
+    html = html.replace("{________car_color_________}", format_data(color, "Цвет: не указан"))
+    
+    # Возвращаем HTML как файл
+    filename = f"{contract_type_value or 'contract'}_{signature_id}.html"
     
     return {
         "success": True,
         "signature_id": uuid_to_sid(signature.id),
-        "contract_type": contract_file.contract_type.value if contract_file.contract_type else None,
-        "file_name": contract_file.file_name,
-        "file_content": f"data:{mime_type};base64,{file_base64}",
+        "contract_type": contract_type_value,
+        "file_name": filename,
+        "html_content": html,
         "signed_at": signature.signed_at.isoformat() if signature.signed_at else None,
         "user": {
             "id": uuid_to_sid(user.id),
@@ -1066,6 +1193,220 @@ async def download_user_contract(
         "rental_id": uuid_to_sid(signature.rental_id) if signature.rental_id else None
     }
 
+
+@users_router.get("/contracts/generate")
+async def generate_contract_by_type(
+    contract_type: str = Query(..., description="Тип договора: rental_main_contract, appendix_7_1, appendix_7_2, main_contract, user_agreement, consent_to_data_processing, main_contract_for_guarantee"),
+    user_id: Optional[str] = Query(None, description="ID пользователя (для обычных договоров)"),
+    rental_id: Optional[str] = Query(None, description="ID аренды (для rental_main_contract, appendix_7_1, appendix_7_2)"),
+    guarantor_relationship_id: Optional[str] = Query(None, description="ID связи гаранта (для main_contract_for_guarantee)"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Генерация договора по типу с данными.
+    
+    Для rental_main_contract, appendix_7_1, appendix_7_2: передать user_id и rental_id
+    Для main_contract, user_agreement, consent_to_data_processing: передать user_id
+    Для main_contract_for_guarantee: передать guarantor_relationship_id
+    
+    Возвращает HTML файл для скачивания.
+    """
+    from fastapi.responses import Response
+    from app.models.guarantor_model import Guarantor
+    
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    CONTRACT_FILES = {
+        "rental_main_contract": "rental_main_contract.html",
+        "appendix_7_1": "acceptance_certificate.html",
+        "appendix_7_2": "return_certificate.html",
+        "main_contract": "main_contract.html",
+        "user_agreement": "user_agreement.html",
+        "consent_to_data_processing": "consent_to_the_processing_of_personaldata.html",
+        "main_contract_for_guarantee": "main_contract_for_guarantee.html",
+    }
+    
+    # Договоры, требующие rental_id
+    RENTAL_CONTRACTS = ["rental_main_contract", "appendix_7_1", "appendix_7_2"]
+    # Договоры гаранта
+    GUARANTOR_CONTRACTS = ["main_contract_for_guarantee"]
+    
+    template_filename = CONTRACT_FILES.get(contract_type)
+    if not template_filename:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Неизвестный тип договора: {contract_type}. Доступные типы: {', '.join(CONTRACT_FILES.keys())}"
+        )
+    
+    template_path = os.path.join("uploads/docs", template_filename)
+    
+    if not os.path.exists(template_path):
+        raise HTTPException(status_code=404, detail="Файл шаблона договора не найден")
+    
+    def format_data(value, fallback="не указано"):
+        if value is None or value == "":
+            return fallback
+        return str(value)
+    
+    def translate_body_type(bt):
+        if not bt:
+            return "не указан"
+        body_type_map = {
+            "SEDAN": "Седан", "SUV": "Внедорожник", "CROSSOVER": "Кроссовер",
+            "COUPE": "Купе", "HATCHBACK": "Хэтчбек", "CONVERTIBLE": "Кабриолет",
+            "WAGON": "Универсал", "MINIBUS": "Микроавтобус", "ELECTRIC": "Электромобиль",
+        }
+        return body_type_map.get(bt.upper(), bt)
+    
+    from datetime import datetime as dt_module
+    current_date = dt_module.now().strftime("%d.%m.%Y")
+    
+    with open(template_path, "r", encoding="utf-8") as f:
+        html = f.read()
+    
+    full_name = None
+    login = None
+    client_id = None
+    digital_signature = None
+    car_name = None
+    plate_number = None
+    car_uuid = None
+    car_year = None
+    body_type = None
+    vin = None
+    color = None
+    rental_id_str = None
+    
+    guarantor_fullname = None
+    guarantor_iin = None
+    guarantor_phone = None
+    guarantor_email = None
+    guarantor_id_str = None
+    client_fullname = None
+    client_iin = None
+    client_phone = None
+    client_email = None
+    guarantee_id = None
+    
+    if contract_type in GUARANTOR_CONTRACTS:
+        if not guarantor_relationship_id:
+            raise HTTPException(status_code=400, detail="Для договора гаранта необходимо передать guarantor_relationship_id")
+        
+        guarantor_rel_uuid = safe_sid_to_uuid(guarantor_relationship_id)
+        guarantor_rel = db.query(Guarantor).filter(Guarantor.id == guarantor_rel_uuid).first()
+        if not guarantor_rel:
+            raise HTTPException(status_code=404, detail="Связь гаранта не найдена")
+        
+        guarantor_user = db.query(User).filter(User.id == guarantor_rel.guarantor_id).first()
+        if guarantor_user:
+            guarantor_fullname = f"{guarantor_user.first_name or ''} {guarantor_user.last_name or ''}".strip()
+            guarantor_iin = guarantor_user.iin
+            guarantor_phone = guarantor_user.phone_number
+            guarantor_email = guarantor_user.email
+            guarantor_id_str = str(guarantor_user.id)
+            digital_signature = guarantor_user.digital_signature
+            full_name = guarantor_fullname
+            login = guarantor_phone
+        
+        client_user = db.query(User).filter(User.id == guarantor_rel.client_id).first()
+        if client_user:
+            client_fullname = f"{client_user.first_name or ''} {client_user.last_name or ''}".strip()
+            client_iin = client_user.iin
+            client_phone = client_user.phone_number
+            client_email = client_user.email
+            client_id = str(client_user.id)
+        
+        guarantee_id = str(guarantor_rel.id)
+        
+    else:
+        if not user_id:
+            raise HTTPException(status_code=400, detail="Для данного типа договора необходимо передать user_id")
+        
+        user_uuid = safe_sid_to_uuid(user_id)
+        user = db.query(User).filter(User.id == user_uuid).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="Пользователь не найден")
+        
+        full_name = f"{user.first_name or ''} {user.last_name or ''}".strip() or user.phone_number
+        login = user.phone_number
+        client_id = str(user.id)
+        digital_signature = user.digital_signature
+        
+        if contract_type in RENTAL_CONTRACTS:
+            if not rental_id:
+                raise HTTPException(status_code=400, detail="Для договора аренды необходимо передать rental_id")
+            
+            rental_uuid = safe_sid_to_uuid(rental_id)
+            rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+            if not rental:
+                raise HTTPException(status_code=404, detail="Аренда не найдена")
+            
+            rental_id_str = str(rental.id)
+            car = db.query(Car).filter(Car.id == rental.car_id).first()
+            if car:
+                car_name = car.name
+                plate_number = car.plate_number
+                car_uuid = str(car.id)
+                car_year = str(car.year) if car.year else None
+                body_type = car.body_type.value if car.body_type else None
+                vin = car.vin
+                color = car.color
+    
+    html = html.replace("${full_name}", format_data(full_name, "ФИО не указано"))
+    html = html.replace("${login}", format_data(login, "логин не указан"))
+    html = html.replace("${client_id}", format_data(client_id, "ID не указан"))
+    html = html.replace("${client_uuid}", format_data(client_id, "ID не указан"))
+    html = html.replace("${digital_signature}", format_data(digital_signature, "подпись не указана"))
+    html = html.replace("${rental_id}", format_data(rental_id_str, "ID аренды не указан"))
+    html = html.replace("${rent_uuid}", format_data(rental_id_str, "ID аренды не указан"))
+    html = html.replace("${rent_id}", format_data(rental_id_str, "ID аренды не указан"))
+    html = html.replace("${car_name}", format_data(car_name, "не указано"))
+    html = html.replace("${plate_number}", format_data(plate_number, "не указан"))
+    html = html.replace("${car_uuid}", format_data(car_uuid, "не указан"))
+    html = html.replace("${car_year}", format_data(car_year, "выпуска: не указан"))
+    html = html.replace("${body_type}", translate_body_type(body_type))
+    html = html.replace("${vin}", format_data(vin, "VIN не указан"))
+    html = html.replace("${color}", format_data(color, "Цвет: не указан"))
+    html = html.replace("${date}", current_date)
+    html = html.replace("{date}", current_date)
+    
+    html = html.replace("{___car_name_____}", format_data(car_name, "не указано"))
+    html = html.replace("{____car_plate_number______}", format_data(plate_number, "не указан"))
+    html = html.replace("{_______car_id________}", format_data(car_uuid, "не указан"))
+    html = html.replace("{_____car_year___________}", format_data(car_year, "выпуска: не указан"))
+    html = html.replace("{______car_body_type_____________}", translate_body_type(body_type))
+    html = html.replace("{______car_vin_________}", format_data(vin, "VIN не указан"))
+    html = html.replace("{________car_color_________}", format_data(color, "Цвет: не указан"))
+    
+    html = html.replace("{_____guarantor_fullname_______}", format_data(guarantor_fullname))
+    html = html.replace("{____guarantor_iin________}", format_data(guarantor_iin))
+    html = html.replace("{_____guarantor_phone_______}", format_data(guarantor_phone))
+    html = html.replace("{____guarantor_phone____}", format_data(guarantor_phone))
+    html = html.replace("{__ guarantor_email__}", format_data(guarantor_email))
+    html = html.replace("{___guarantor_id____}", format_data(guarantor_id_str))
+    html = html.replace("${guarantor_id}", format_data(guarantor_id_str))
+    html = html.replace("${guarantor_phone}", format_data(guarantor_phone))
+    
+    html = html.replace("{_____client_fullname_______}", format_data(client_fullname))
+    html = html.replace("{___client_iin____}", format_data(client_iin))
+    html = html.replace("{___client_phone______}", format_data(client_phone))
+    html = html.replace("{____client_email______}", format_data(client_email))
+    html = html.replace("{__client_id___}", format_data(client_id))
+    html = html.replace("${guarantee_id}", format_data(guarantee_id))
+    html = html.replace("${renter}", format_data(client_fullname))
+    
+    filename = f"{contract_type}.html"
+    
+    return Response(
+        content=html,
+        media_type="text/html",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Cache-Control": "no-cache, no-store, must-revalidate"
+        }
+    )
 
 @users_router.get("/contracts")
 async def get_all_user_signatures(
