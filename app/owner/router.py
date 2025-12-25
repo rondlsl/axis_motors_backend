@@ -111,8 +111,8 @@ def calculate_owner_earnings(rental: RentalHistory, car: Car, current_user: User
     Если поездка была совершена владельцем, то заработок = 0 (владелец не зарабатывает на своих поездках).
     Для поездок клиентов владелец получает 50% только от базовых услуг (без доставки, открытия дверей и бензина).
     """
-    # Если поездка была совершена владельцем, заработок = 0
-    if rental.user_id == car.owner_id:
+    # Если поездка была совершена владельцем или бесплатная, заработок = 0
+    if rental.user_id == car.owner_id or not rental.total_price or rental.total_price <= 0:
         if return_components:
             return {"base_earnings": 0.0, "delivery_cost": 0.0}
         return 0
