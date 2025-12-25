@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Form
 from sqlalchemy.orm import Session, joinedload, aliased
 from sqlalchemy import and_, or_, func, case, desc, distinct, select, String
 from typing import List, Optional, Dict, Any
@@ -714,14 +714,45 @@ async def get_user_transactions(
         "limit": limit,
         "pages": ceil(total_count / limit)
     }
-@users_router.patch("/trips/{trip_id}", response_model=TripDetailSchema)
+@users_router.patch("/trips/{trip_id}", response_model=TripDetailSchema, summary="Редактирование данных поездки (Form Data)")
 async def update_trip_details(
     trip_id: str,
-    update_data: RentalHistoryUpdateSchema,
+    car_id: Optional[str] = Form(None),
+    user_id: Optional[str] = Form(None),
+    delivery_mechanic_id: Optional[str] = Form(None),
+    mechanic_inspector_id: Optional[str] = Form(None),
+    rental_type: Optional[RentalType] = Form(None),
+    rental_status: Optional[str] = Form(None),
+    start_time: Optional[datetime] = Form(None),
+    end_time: Optional[datetime] = Form(None),
+    price_per_minute: Optional[float] = Form(None),
+    price_per_hour: Optional[float] = Form(None),
+    price_per_day: Optional[float] = Form(None),
+    total_price: Optional[float] = Form(None),
+    photos_before: Optional[List[str]] = Form(None),
+    photos_after: Optional[List[str]] = Form(None),
+    mechanic_photos_before: Optional[List[str]] = Form(None),
+    mechanic_photos_after: Optional[List[str]] = Form(None),
+    client_comment: Optional[str] = Form(None),
+    mechanic_comment: Optional[str] = Form(None),
+    client_rating: Optional[int] = Form(None),
+    mechanic_rating: Optional[int] = Form(None),
+    start_latitude: Optional[float] = Form(None),
+    start_longitude: Optional[float] = Form(None),
+    end_latitude: Optional[float] = Form(None),
+    end_longitude: Optional[float] = Form(None),
+    fuel_level_start: Optional[float] = Form(None),
+    fuel_level_end: Optional[float] = Form(None),
+    mileage_start: Optional[float] = Form(None),
+    mileage_end: Optional[float] = Form(None),
+    
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Редактирование данных поездки"""
+    """
+    Редактирование данных поездки с использованием multipart/form-data.
+    Удобно для отправки списков файлов/строк.
+    """
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
         
@@ -731,7 +762,39 @@ async def update_trip_details(
     if not rental:
         raise HTTPException(status_code=404, detail="Поездка не найдена")
     
-    update_dict = update_data.dict(exclude_unset=True)
+    # Собираем данные в словарь, исключая None
+    update_data = {
+        "car_id": car_id,
+        "user_id": user_id,
+        "delivery_mechanic_id": delivery_mechanic_id,
+        "mechanic_inspector_id": mechanic_inspector_id,
+        "rental_type": rental_type,
+        "rental_status": rental_status,
+        "start_time": start_time,
+        "end_time": end_time,
+        "price_per_minute": price_per_minute,
+        "price_per_hour": price_per_hour,
+        "price_per_day": price_per_day,
+        "total_price": total_price,
+        "photos_before": photos_before, 
+        "photos_after": photos_after,
+        "mechanic_photos_before": mechanic_photos_before,
+        "mechanic_photos_after": mechanic_photos_after,
+        "client_comment": client_comment,
+        "mechanic_comment": mechanic_comment,
+        "client_rating": client_rating,
+        "mechanic_rating": mechanic_rating,
+        "start_latitude": start_latitude,
+        "start_longitude": start_longitude,
+        "end_latitude": end_latitude,
+        "end_longitude": end_longitude,
+        "fuel_level_start": fuel_level_start,
+        "fuel_level_end": fuel_level_end,
+        "mileage_start": mileage_start,
+        "mileage_end": mileage_end,
+    }
+    
+    update_dict = {k: v for k, v in update_data.items() if v is not None}
     
     if "rental_status" in update_dict and update_dict["rental_status"]:
         try:
@@ -739,6 +802,15 @@ async def update_trip_details(
         except ValueError:
             raise HTTPException(status_code=400, detail="Неверный статус аренды")
             
+    if "car_id" in update_dict and update_dict["car_id"]:
+        update_dict["car_id"] = safe_sid_to_uuid(update_dict["car_id"])
+    if "user_id" in update_dict and update_dict["user_id"]:
+         update_dict["user_id"] = safe_sid_to_uuid(update_dict["user_id"])
+    if "delivery_mechanic_id" in update_dict and update_dict["delivery_mechanic_id"]:
+        update_dict["delivery_mechanic_id"] = safe_sid_to_uuid(update_dict["delivery_mechanic_id"])
+    if "mechanic_inspector_id" in update_dict and update_dict["mechanic_inspector_id"]:
+        update_dict["mechanic_inspector_id"] = safe_sid_to_uuid(update_dict["mechanic_inspector_id"])
+
     for key, value in update_dict.items():
         setattr(rental, key, value)
         
