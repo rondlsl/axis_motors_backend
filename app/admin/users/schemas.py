@@ -3,6 +3,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 import uuid
 from app.models.user_model import UserRole
+from app.models.history_model import RentalType
 from app.schemas.base import SidMixin
 
 
@@ -35,6 +36,7 @@ class UserProfileSchema(SidMixin):
 class UserCardSchema(SidMixin):
     """Полная схема карточки пользователя для админ-панели"""
     id: str
+    user_uuid: str
     phone_number: str
     email: Optional[str] = None
     first_name: Optional[str] = None
@@ -247,3 +249,109 @@ class SanctionPenaltySchema(BaseModel):
 class DeleteRentalsRequestSchema(BaseModel):
     """Схема для запроса удаления аренд"""
     rental_ids: List[str] = Field(..., description="Список ID аренд для удаления")
+
+
+class WalletTransactionSchema(SidMixin):
+    """Схема транзакции кошелька"""
+    id: str
+    amount: float
+    transaction_type: str
+    description: Optional[str] = None
+    balance_before: float
+    balance_after: float
+    tracking_id: Optional[str] = None
+    created_at: datetime
+    related_rental_id: Optional[str] = None
+
+
+class WalletTransactionPaginationSchema(BaseModel):
+    items: List[WalletTransactionSchema]
+    total: int
+    page: int
+    limit: int
+    pages: int
+
+
+class RentalHistoryUpdateSchema(BaseModel):
+    """Схема для обновления данных поездки"""
+    car_id: Optional[str] = None
+    user_id: Optional[str] = None
+    rental_type: Optional[RentalType] = None
+    rental_status: Optional[str] = None
+    
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    
+    price_per_minute: Optional[float] = None
+    price_per_hour: Optional[float] = None
+    price_per_day: Optional[float] = None
+    total_price: Optional[float] = None
+    
+    # Mechanic / Delivery fields
+    delivery_mechanic_id: Optional[str] = None
+    mechanic_inspector_id: Optional[str] = None
+    
+    # Photos
+    photos_before: Optional[List[str]] = None
+    photos_after: Optional[List[str]] = None
+    mechanic_photos_before: Optional[List[str]] = None
+    mechanic_photos_after: Optional[List[str]] = None
+    
+    # Fuel & Mileage
+    fuel_before: Optional[float] = None
+    fuel_after: Optional[float] = Field(None, alias="end_fuel_level")
+    mileage_before: Optional[int] = None
+    mileage_after: Optional[int] = Field(None, alias="end_mileage")
+    
+    # Coords
+    start_latitude: Optional[float] = None
+    start_longitude: Optional[float] = None
+    end_latitude: Optional[float] = None
+    end_longitude: Optional[float] = None
+    
+    # User / Mechanic interaction
+    client_comment: Optional[str] = None
+    mechanic_comment: Optional[str] = None
+    client_rating: Optional[int] = None
+    mechanic_rating: Optional[str] = None
+    
+    class Config:
+        orm_mode = True
+        use_enum_values = True
+        allow_population_by_field_name = True
+
+
+class RentalCreateSchema(BaseModel):
+    """Схема для создания новой аренды через админ-панель"""
+    user_id: str = Field(..., description="SID пользователя")
+    car_id: str = Field(..., description="SID автомобиля")
+    rental_type: RentalType = Field(..., description="Тип аренды (minutes/hours/days)")
+    rental_status: Optional[str] = Field("completed", description="Статус аренды")
+    
+    start_time: datetime = Field(..., description="Время начала аренды")
+    end_time: Optional[datetime] = Field(None, description="Время окончания аренды")
+    
+    start_latitude: float = Field(0.0, description="Широта начала")
+    start_longitude: float = Field(0.0, description="Долгота начала")
+    end_latitude: Optional[float] = Field(None, description="Широта окончания")
+    end_longitude: Optional[float] = Field(None, description="Долгота окончания")
+    
+    total_price: Optional[float] = Field(None, description="Итоговая стоимость")
+    mileage_before: Optional[int] = Field(None, description="Пробег до")
+    mileage_after: Optional[int] = Field(None, description="Пробег после")
+    fuel_before: Optional[float] = Field(None, description="Уровень топлива до")
+    fuel_after: Optional[float] = Field(None, description="Уровень топлива после")
+    
+    class Config:
+        use_enum_values = True
+
+
+class BalanceTopUpSchema(BaseModel):
+    """Схема для пополнения баланса пользователя"""
+    amount: float = Field(..., gt=0, description="Сумма пополнения (должна быть положительной)")
+    description: Optional[str] = Field(None, description="Описание/причина пополнения")
+
+
+class AutoClassUpdateSchema(BaseModel):
+    """Схема для изменения уровня доступа к автомобилям"""
+    auto_class: List[str] = Field(..., description="Список доступных классов авто (A, B, C)")

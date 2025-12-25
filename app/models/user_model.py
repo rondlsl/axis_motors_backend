@@ -71,6 +71,7 @@ class User(Base):
     is_consent_to_data_processing = Column(Boolean, default=False, nullable=False, server_default="false")  # Согласие на обработку персональных данных
     is_contract_read = Column(Boolean, default=False, nullable=False, server_default="false")  # Подтверждение прочтения договора
     is_user_agreement = Column(Boolean, default=False, nullable=False, server_default="false")  # Пользовательское соглашение
+    can_exit_zone = Column(Boolean, default=False, nullable=False, server_default="false")  # Разрешение на выезд за зону
     
     # Дополнительные поля для админ-панели
     created_at = Column(DateTime, nullable=False, default=get_local_time)

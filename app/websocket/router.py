@@ -13,7 +13,7 @@ from app.models.user_model import User, UserRole
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
 from app.models.car_model import Car
 from app.models.history_model import RentalHistory, RentalStatus
-from app.websocket.admin_handlers import get_admin_cars_list_data
+from app.websocket.admin_handlers import get_admin_cars_list_data, get_admin_users_list_data
 from app.gps_api.utils.glonassoft_client import glonassoft_client
 from app.gps_api.utils.telemetry_processor import process_glonassoft_data
 from app.utils.time_utils import get_local_time
@@ -524,6 +524,106 @@ async def websocket_admin_cars_list(
         if user:
             await connection_manager.disconnect(
                 connection_type="admin_cars_list",
+                subscription_key="all",
+                user_id=str(user.id)
+            )
+        db.close()
+
+
+@websocket_router.websocket("/ws/admin/users/list")
+async def websocket_admin_users_list(
+    websocket: WebSocket,
+    token: Optional[str] = Query(None),
+    role: Optional[str] = Query(None),
+    search_query: Optional[str] = Query(None),
+    has_active_rental: Optional[bool] = Query(None),
+    is_blocked: Optional[bool] = Query(None),
+    car_status: Optional[str] = Query(None)
+):
+    """WebSocket эндпоинт для real-time списка пользователей с координатами (для админки)."""
+    user = None
+    db = SessionLocal()
+    
+    try:
+        user = await authenticate_websocket(websocket, token, db)
+        if not user:
+            return
+        
+        if user.role != UserRole.ADMIN:
+            await websocket.close(code=1008, reason="Admin access required")
+            return
+        
+        user_id_str = str(user.id)
+        
+        await connection_manager.connect(
+            websocket=websocket,
+            connection_type="admin_users_list",
+            subscription_key="all",
+            user_id=user_id_str,
+            user_metadata={"phone": user.phone_number, "role": user.role.value}
+        )
+        
+        async def receive_messages():
+            while True:
+                try:
+                    message = await websocket.receive_text()
+                    data = json.loads(message)
+                    if data.get("type") == "ping":
+                        await websocket.send_json({"type": "pong"})
+                except WebSocketDisconnect:
+                    break
+                except Exception:
+                    pass
+        
+        receive_task = asyncio.create_task(receive_messages())
+        
+        try:
+            while True:
+                try:
+                    db.expire_all()
+                    
+                    users_data = await get_admin_users_list_data(
+                        db=db,
+                        role=role,
+                        search_query=search_query,
+                        has_active_rental=has_active_rental,
+                        is_blocked=is_blocked,
+                        car_status_filter=car_status
+                    )
+                    
+                    await websocket.send_json({
+                        "type": "users_list",
+                        "data": users_data,
+                        "timestamp": get_local_time().isoformat()
+                    })
+                    
+                    await asyncio.sleep(2)
+                    
+                except WebSocketDisconnect:
+                    break
+                except Exception as e:
+                    logger.error(f"Error in admin users list loop: {e}")
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "Error fetching users data",
+                        "timestamp": get_local_time().isoformat()
+                    })
+                    await asyncio.sleep(2)
+        finally:
+            receive_task.cancel()
+            try:
+                await receive_task
+            except asyncio.CancelledError:
+                pass
+    
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected: user={user.id if user else 'unknown'}")
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+    finally:
+        if user:
+            await connection_manager.disconnect(
+                connection_type="admin_users_list",
                 subscription_key="all",
                 user_id=str(user.id)
             )

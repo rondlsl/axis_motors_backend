@@ -154,3 +154,155 @@ async def get_admin_cars_list_data(
         "total_count": total_count,
         "filtered_count": len(items),
     }
+
+
+async def get_admin_users_list_data(
+    db: Session,
+    role: Optional[str] = None,
+    search_query: Optional[str] = None,
+    has_active_rental: Optional[bool] = None,
+    is_blocked: Optional[bool] = None,
+    car_status_filter: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Get admin users list data with coordinates, mirroring GET /admin/users/list
+    """
+    from app.models.user_model import UserRole
+    from app.models.history_model import RentalHistory, RentalStatus
+    from sqlalchemy import func
+    
+    query = db.query(User)
+    
+    if role:
+        try:
+            role_enum = UserRole(role)
+            query = query.filter(User.role == role_enum)
+        except ValueError:
+            pass
+    
+    if is_blocked is not None:
+        query = query.filter(User.is_active == (not is_blocked))
+    
+    if search_query:
+        search_query = search_query.strip()
+        if search_query:
+            search_filter = or_(
+                func.lower(User.first_name).contains(search_query.lower()),
+                func.lower(User.last_name).contains(search_query.lower()),
+                User.phone_number.contains(search_query),
+                User.iin.contains(search_query),
+                User.passport_number.contains(search_query)
+            )
+            query = query.filter(search_filter)
+    
+    users = query.all()
+    
+    def _get_current_rental_car(user: User) -> Optional[Dict[str, Any]]:
+        active_rental = db.query(RentalHistory).filter(
+            RentalHistory.user_id == user.id,
+            RentalHistory.rental_status.in_([
+                RentalStatus.IN_USE, 
+                RentalStatus.DELIVERING, 
+                RentalStatus.DELIVERING_IN_PROGRESS,
+                RentalStatus.RESERVED,
+                RentalStatus.SCHEDULED,
+                RentalStatus.DELIVERY_RESERVED
+            ])
+        ).first()
+        
+        if not active_rental or not active_rental.car:
+            return None
+        
+        car = active_rental.car
+        return {
+            "id": uuid_to_sid(car.id),
+            "name": car.name,
+            "plate_number": car.plate_number,
+            "photos": car.photos,
+            "latitude": car.latitude,
+            "longitude": car.longitude,
+            "fuel_level": car.fuel_level
+        }
+    
+    result = []
+    for user in users:
+        current_car = _get_current_rental_car(user)
+        has_active = current_car is not None
+        
+        if has_active_rental is not None and has_active != has_active_rental:
+            continue
+        
+        # Обработка auto_class
+        auto_class_list = []
+        if user.auto_class:
+            if isinstance(user.auto_class, list):
+                auto_class_list = user.auto_class
+            elif isinstance(user.auto_class, str):
+                raw = user.auto_class.strip()
+                if raw.startswith("{") and raw.endswith("}"):
+                    raw = raw[1:-1]
+                auto_class_list = [p.strip() for p in raw.split(",") if p.strip()]
+        
+        # Определяем carStatus
+        car_status = "FREE"
+        if current_car:
+            active_rental = db.query(RentalHistory).filter(
+                RentalHistory.user_id == user.id,
+                RentalHistory.rental_status.in_([
+                    RentalStatus.IN_USE, 
+                    RentalStatus.DELIVERING, 
+                    RentalStatus.DELIVERING_IN_PROGRESS,
+                    RentalStatus.RESERVED,
+                    RentalStatus.SCHEDULED,
+                    RentalStatus.DELIVERY_RESERVED
+                ])
+            ).first()
+            
+            if active_rental:
+                rs = active_rental.rental_status
+                if rs == RentalStatus.IN_USE:
+                    car_status = "IN_USE"
+                elif rs == RentalStatus.RESERVED:
+                    car_status = "RESERVED"
+                elif rs == RentalStatus.SCHEDULED:
+                    car_status = "SCHEDULED"
+                elif rs in [RentalStatus.DELIVERING, RentalStatus.DELIVERING_IN_PROGRESS]:
+                    car_status = "DELIVERING_IN_PROGRESS"
+                elif rs == RentalStatus.DELIVERY_RESERVED:
+                    car_status = "DELIVERY_RESERVED"
+        
+        if car_status == "FREE":
+            if user.owned_cars:
+                car_status = "OWNER"
+            elif user.role in [UserRole.PENDING, UserRole.PENDINGTOFIRST, UserRole.PENDINGTOSECOND] or user.role.value.startswith("PENDING") or user.role.value.startswith("REJECT"):
+                if user.role.value.startswith("PENDING"):
+                    car_status = "PENDING"
+        
+        if car_status_filter is not None and car_status != car_status_filter:
+            continue
+        
+        user_data = {
+            "id": uuid_to_sid(user.id),
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "middle_name": user.middle_name,
+            "phone_number": user.phone_number,
+            "iin": user.iin,
+            "passport_number": user.passport_number,
+            "role": user.role.value,
+            "auto_class": auto_class_list,
+            "selfie_url": user.selfie_url,
+            "is_blocked": not user.is_active,
+            "current_rental_car": current_car,
+            "rating": float(user.rating) if user.rating else None,
+            "carStatus": car_status
+        }
+        
+        result.append(user_data)
+    
+    result.sort(key=lambda x: x["current_rental_car"] is None)
+    
+    return {
+        "users": result,
+        "total_count": len(result)
+    }

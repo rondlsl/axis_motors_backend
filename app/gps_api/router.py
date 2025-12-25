@@ -1058,6 +1058,39 @@ def get_rented_cars(
     return [RentedCar(id=uuid_to_sid(car_id), name=name, plate_number=plate) for car_id, name, plate in all_rows.values()]
 
 
+@Vehicle_Router.get("/renter-by-plate", summary="Получить user_id арендатора по номеру машины")
+def get_renter_by_plate(
+    plate_number: str = Query(..., description="Гос номер автомобиля"),
+    db: Session = Depends(get_db)
+):
+    """
+    Возвращает user_id арендатора по номеру машины.
+    Используется cars сервисом для проверки разрешения на выезд за зону.
+    """
+    car = db.query(Car).filter(Car.plate_number == plate_number).first()
+    if not car:
+        return {"user_id": None}
+    
+    if car.current_renter_id:
+        return {"user_id": uuid_to_sid(car.current_renter_id)}
+    
+    statuses = [
+        RentalStatus.IN_USE,
+        RentalStatus.DELIVERING,
+        RentalStatus.DELIVERING_IN_PROGRESS
+    ]
+    
+    active_rental = db.query(RentalHistory).filter(
+        RentalHistory.car_id == car.id,
+        RentalHistory.rental_status.in_(statuses)
+    ).first()
+    
+    if active_rental:
+        return {"user_id": uuid_to_sid(active_rental.user_id)}
+    
+    return {"user_id": None}
+
+
 @Vehicle_Router.get("/occupied", summary="Список машин в статусе OCCUPIED")
 def get_occupied_cars(
     key: str = Query(..., description="Секретный ключ доступа"),

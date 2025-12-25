@@ -330,6 +330,7 @@ def create_users_table():
         sa.Column('is_consent_to_data_processing', sa.Boolean(), nullable=False, server_default='false'),
         sa.Column('is_contract_read', sa.Boolean(), nullable=False, server_default='false'),
         sa.Column('is_user_agreement', sa.Boolean(), nullable=False, server_default='false'),
+        sa.Column('can_exit_zone', sa.Boolean(), nullable=False, server_default='false'),
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.Column('last_activity_at', sa.DateTime(), nullable=True),
         sa.Column('upload_document_at', sa.DateTime(), nullable=True),

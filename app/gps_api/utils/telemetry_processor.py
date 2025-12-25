@@ -169,7 +169,7 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
         if fuel_value and fuel_value.lower() not in ["данных нет", "нет данных"]:
             fuel_str = fuel_value.replace(" л", "").replace("л", "").strip()
             parsed_fuel = parse_numeric(fuel_str)
-            if 0 < parsed_fuel <= 150:
+            if 0 < parsed_fuel <= 100:
                 fuel_level = parsed_fuel
         
         if fuel_level is None:
@@ -177,7 +177,7 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
             if raw_param70 and raw_param70.lower() not in ["данных нет", "нет данных"]:
                 try:
                     parsed_value = parse_numeric(raw_param70)
-                    if 0 < parsed_value <= 150:
+                    if 0 < parsed_value <= 100:
                         fuel_level = parsed_value
                 except Exception:
                     pass

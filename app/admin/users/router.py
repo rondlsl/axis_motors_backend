@@ -5,6 +5,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 from decimal import Decimal
 import uuid
+from app.models.notification_model import Notification
 
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
 from app.utils.sid_converter import convert_uuid_response_to_sid
@@ -18,15 +19,18 @@ from app.models.car_model import Car
 from app.models.guarantor_model import GuarantorRequest
 from app.models.wallet_transaction_model import WalletTransaction, WalletTransactionType
 from app.models.rental_actions_model import RentalAction
-from app.models.contract_model import UserContractSignature
+from app.models.contract_model import UserContractSignature, ContractFile
+import base64
+import os
 from app.admin.users.schemas import (
     UserProfileSchema, UserRoleUpdateSchema, UserCardSchema, 
     UserListSchema, UserMapPositionSchema, UserCommentUpdateSchema,
     UserSearchFiltersSchema, GuarantorInfoSchema, TripSummarySchema,
     TripListItemSchema, TripDetailSchema, OwnerCarListItemSchema,
     UserEditSchema, UserBlockSchema, CompanyBonusSchema, SanctionPenaltySchema,
-    UserEditSchema, UserBlockSchema, CompanyBonusSchema, SanctionPenaltySchema,
-    DeleteRentalsRequestSchema, UserPaginatedResponse
+    DeleteRentalsRequestSchema, UserPaginatedResponse,
+    WalletTransactionPaginationSchema, RentalHistoryUpdateSchema, RentalCreateSchema,
+    BalanceTopUpSchema, AutoClassUpdateSchema
 )
 from math import ceil
 from app.owner.router import calculate_owner_earnings
@@ -621,6 +625,7 @@ async def get_user_card(
     
     user_data = {
         "id": uuid_to_sid(user.id),
+        "user_uuid": str(user.id),
         "digital_signature": user.digital_signature,
         "phone_number": user.phone_number,
         "email": user.email,
@@ -663,6 +668,503 @@ async def get_user_card(
     return UserCardSchema(**converted_data)
 
 
+@users_router.get("/{user_id}/transactions", response_model=WalletTransactionPaginationSchema)
+async def get_user_transactions(
+    user_id: str,
+    page: int = Query(1, ge=1, description="Номер страницы"),
+    limit: int = Query(20, ge=1, le=100, description="Количество элементов на странице"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Получение истории транзакций пользователя"""
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.FINANCIER]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+        
+    query = db.query(WalletTransaction).filter(WalletTransaction.user_id == user.id)
+    
+    query = query.order_by(desc(WalletTransaction.created_at))
+    
+    total_count = query.count()
+    transactions = query.offset((page - 1) * limit).limit(limit).all()
+    
+    items = []
+    for tx in transactions:
+        tx_data = {
+            "id": uuid_to_sid(tx.id),
+            "amount": float(tx.amount),
+            "transaction_type": tx.transaction_type.value if hasattr(tx.transaction_type, "value") else str(tx.transaction_type),
+            "description": tx.description,
+            "balance_before": float(tx.balance_before),
+            "balance_after": float(tx.balance_after),
+            "tracking_id": tx.tracking_id,
+            "created_at": tx.created_at,
+            "related_rental_id": uuid_to_sid(tx.related_rental_id) if tx.related_rental_id else None
+        }
+        items.append(WalletTransactionSchema(**tx_data))
+        
+    return {
+        "items": items,
+        "total": total_count,
+        "page": page,
+        "limit": limit,
+        "pages": ceil(total_count / limit)
+    }
+@users_router.patch("/trips/{trip_id}", response_model=TripDetailSchema)
+async def update_trip_details(
+    trip_id: str,
+    update_data: RentalHistoryUpdateSchema,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Редактирование данных поездки"""
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+        
+    rental_uuid = safe_sid_to_uuid(trip_id)
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+    
+    if not rental:
+        raise HTTPException(status_code=404, detail="Поездка не найдена")
+    
+    update_dict = update_data.dict(exclude_unset=True)
+    
+    if "rental_status" in update_dict and update_dict["rental_status"]:
+        try:
+            update_dict["rental_status"] = RentalStatus(update_dict["rental_status"])
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Неверный статус аренды")
+            
+    for key, value in update_dict.items():
+        setattr(rental, key, value)
+        
+    db.commit()
+    db.refresh(rental)
+    
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    car_name = car.name if car else "Unknown"
+    car_plate = car.plate_number if car else "Unknown"
+    
+    return TripDetailSchema(
+        id=uuid_to_sid(rental.id),
+        rental_type=rental.rental_type,
+        start_date=rental.start_time,
+        end_date=rental.end_time,
+        duration_minutes=int((rental.end_time - rental.start_time).total_seconds() / 60) if rental.end_time and rental.start_time else 0,
+        total_price=float(rental.total_price) if rental.total_price else 0.0,
+        car_id=uuid_to_sid(rental.car_id),
+        car_name=car_name,
+        car_plate_number=car_plate,
+        photos_before=rental.photos_before or [],
+        photos_after=rental.photos_after or [],
+        mechanic_photos_before=rental.mechanic_photos_before or [],
+        mechanic_photos_after=rental.mechanic_photos_after or [],
+        client_comment=rental.client_comment,
+        mechanic_comment=rental.mechanic_comment,
+        client_rating=rental.client_rating,
+        mechanic_rating=rental.mechanic_rating,
+        rating=float(rental.rating) if rental.rating else None,
+        start_latitude=rental.start_latitude,
+        start_longitude=rental.start_longitude,
+        end_latitude=rental.end_latitude,
+        end_longitude=rental.end_longitude
+    )
+
+@users_router.post("/trips/delete")
+async def delete_rentals_bulk(
+    payload: DeleteRentalsRequestSchema,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Массовое удаление поездок (RentalHistory) по списку ID.
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+
+    deleted_count = 0
+    errors = []
+
+    for sid in payload.rental_ids:
+        try:
+            rental_uuid = safe_sid_to_uuid(sid)
+            rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+            
+            if rental:
+                db.query(RentalReview).filter(RentalReview.rental_id == rental_uuid).delete()
+                
+                db.delete(rental)
+                deleted_count += 1
+            else:
+                errors.append(f"Rental {sid} not found")
+        except Exception as e:
+            errors.append(f"Error deleting {sid}: {str(e)}")
+
+    db.commit()
+
+    return {
+        "success": True, 
+        "deleted_count": deleted_count,
+        "errors": errors
+    }
+
+
+@users_router.post("/trips")
+async def create_rental(
+    payload: RentalCreateSchema,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Создание новой аренды через админ-панель.
+    Позволяет привязать аренду к пользователю и машине.
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    user_uuid = safe_sid_to_uuid(payload.user_id)
+    car_id = safe_sid_to_uuid(payload.car_id)
+    
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    car = db.query(Car).filter(Car.id == car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    rental_status = RentalStatus.COMPLETED
+    if payload.rental_status:
+        status_map = {s.value: s for s in RentalStatus}
+        rental_status = status_map.get(payload.rental_status.lower(), RentalStatus.COMPLETED)
+    
+    new_rental = RentalHistory(
+        user_id=user_uuid,
+        car_id=car_id,
+        rental_type=payload.rental_type,
+        rental_status=rental_status,
+        start_time=payload.start_time,
+        end_time=payload.end_time,
+        start_latitude=payload.start_latitude,
+        start_longitude=payload.start_longitude,
+        end_latitude=payload.end_latitude,
+        end_longitude=payload.end_longitude,
+        total_price=int(payload.total_price) if payload.total_price else None,
+        mileage_before=payload.mileage_before,
+        mileage_after=payload.mileage_after,
+        fuel_before=payload.fuel_before,
+        fuel_after=payload.fuel_after
+    )
+    
+    db.add(new_rental)
+    db.commit()
+    db.refresh(new_rental)
+    
+    return {
+        "success": True,
+        "rental_id": uuid_to_sid(new_rental.id),
+        "user_id": uuid_to_sid(new_rental.user_id),
+        "car_id": uuid_to_sid(new_rental.car_id),
+        "rental_type": new_rental.rental_type.value if new_rental.rental_type else None,
+        "rental_status": new_rental.rental_status.value if new_rental.rental_status else None,
+        "start_time": new_rental.start_time.isoformat() if new_rental.start_time else None,
+        "end_time": new_rental.end_time.isoformat() if new_rental.end_time else None,
+        "total_price": new_rental.total_price
+    }
+
+
+@users_router.get("/contracts/{signature_id}/download")
+async def download_user_contract(
+    signature_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Скачивание подписанного договора с данными пользователя.
+    Возвращает файл договора в base64 и информацию о подписанте.
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    signature_uuid = safe_sid_to_uuid(signature_id)
+    signature = db.query(UserContractSignature).filter(
+        UserContractSignature.id == signature_uuid
+    ).first()
+    
+    if not signature:
+        raise HTTPException(status_code=404, detail="Подпись договора не найдена")
+    
+    contract_file = db.query(ContractFile).filter(
+        ContractFile.id == signature.contract_file_id
+    ).first()
+    
+    if not contract_file:
+        raise HTTPException(status_code=404, detail="Файл договора не найден")
+    
+    user = db.query(User).filter(User.id == signature.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    if not os.path.exists(contract_file.file_path):
+        raise HTTPException(status_code=404, detail="Физический файл договора не найден")
+    
+    with open(contract_file.file_path, "rb") as f:
+        file_content = f.read()
+    
+    file_base64 = base64.b64encode(file_content).decode()
+    
+    file_ext = os.path.splitext(contract_file.file_path)[1].lower()
+    mime_types = {
+        ".pdf": "application/pdf",
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".doc": "application/msword",
+        ".html": "text/html"
+    }
+    mime_type = mime_types.get(file_ext, "application/octet-stream")
+    
+    return {
+        "success": True,
+        "signature_id": uuid_to_sid(signature.id),
+        "contract_type": contract_file.contract_type.value if contract_file.contract_type else None,
+        "file_name": contract_file.file_name,
+        "file_content": f"data:{mime_type};base64,{file_base64}",
+        "signed_at": signature.signed_at.isoformat() if signature.signed_at else None,
+        "user": {
+            "id": uuid_to_sid(user.id),
+            "phone_number": user.phone_number,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "middle_name": user.middle_name,
+            "iin": user.iin,
+            "digital_signature": signature.digital_signature
+        },
+        "rental_id": uuid_to_sid(signature.rental_id) if signature.rental_id else None
+    }
+
+
+@users_router.get("/contracts")
+async def get_all_user_signatures(
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Получение списка всех подписанных договоров.
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    total = db.query(UserContractSignature).count()
+    skip = (page - 1) * limit
+    
+    signatures = db.query(UserContractSignature).order_by(
+        UserContractSignature.signed_at.desc()
+    ).offset(skip).limit(limit).all()
+    
+    items = []
+    for sig in signatures:
+        user = db.query(User).filter(User.id == sig.user_id).first()
+        contract = db.query(ContractFile).filter(ContractFile.id == sig.contract_file_id).first()
+        
+        items.append({
+            "signature_id": uuid_to_sid(sig.id),
+            "contract_type": contract.contract_type.value if contract and contract.contract_type else None,
+            "signed_at": sig.signed_at.isoformat() if sig.signed_at else None,
+            "user_id": uuid_to_sid(sig.user_id),
+            "user_name": f"{user.last_name or ''} {user.first_name or ''}".strip() if user else None,
+            "user_phone": user.phone_number if user else None,
+            "rental_id": uuid_to_sid(sig.rental_id) if sig.rental_id else None
+        })
+    
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": ceil(total / limit) if limit > 0 else 0
+    }
+
+
+@users_router.post("/{user_id}/balance/topup")
+async def topup_user_balance(
+    user_id: str,
+    payload: BalanceTopUpSchema,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Пополнение баланса пользователя администратором.
+    
+    1. Создаёт транзакцию в таблице wallet_transactions
+    2. Обновляет баланс пользователя
+    3. Отправляет push-уведомление пользователю
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    balance_before = float(user.wallet_balance or 0)
+    balance_after = balance_before + payload.amount
+    
+    transaction = WalletTransaction(
+        user_id=user_uuid,
+        amount=payload.amount,
+        transaction_type=WalletTransactionType.DEPOSIT,
+        description=payload.description or f"Пополнение баланса администратором ({current_user.phone_number})",
+        balance_before=balance_before,
+        balance_after=balance_after
+    )
+    db.add(transaction)
+    
+    user.wallet_balance = balance_after
+    
+    db.commit()
+    db.refresh(transaction)
+    
+    notification_message = f"Ваш баланс пополнен на {payload.amount:.0f} ₸. Новый баланс: {balance_after:.0f} ₸"
+    if payload.description:
+        notification_message += f"\nПричина: {payload.description}"
+    
+    try:
+        await send_push_to_user_by_id(
+            user_id=user_uuid,
+            db=db,
+            title="Пополнение баланса",
+            body=notification_message
+        )
+    except Exception as e:
+        pass
+    
+    notification = Notification(
+        user_id=user_uuid,
+        title="Пополнение баланса",
+        body=notification_message
+    )
+    db.add(notification)
+    db.commit()
+    
+    return {
+        "success": True,
+        "transaction_id": uuid_to_sid(transaction.id),
+        "user_id": uuid_to_sid(user_uuid),
+        "amount": payload.amount,
+        "balance_before": balance_before,
+        "balance_after": balance_after,
+        "description": payload.description
+    }
+
+
+
+@users_router.patch("/{user_id}/auto_class")
+async def update_user_auto_class(
+    user_id: str,
+    payload: AutoClassUpdateSchema,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Изменение уровня доступа пользователя к автомобилям.
+    При повышении уровня — отправляется уведомление.
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    old_classes = set(user.auto_class or [])
+    new_classes = set(payload.auto_class)
+    
+    user.auto_class = payload.auto_class
+    db.commit()
+    
+    class_names = {"A": "A", "B": "B", "C": "C"}
+    new_text = ", ".join([class_names.get(c, c) for c in sorted(new_classes)]) if new_classes else "—"
+    notification_message = f"Ваш уровень доступа к автомобилям изменён. Доступные классы: {new_text}"
+    
+    try:
+        await send_push_to_user_by_id(
+            user_id=user_uuid,
+            db=db,
+            title="Изменение уровня доступа",
+            body=notification_message
+        )
+    except Exception:
+        pass
+    
+    notification = Notification(
+        user_id=user_uuid,
+        title="Изменение уровня доступа",
+        body=notification_message
+    )
+    db.add(notification)
+    db.commit()
+    
+    return {
+        "success": True,
+        "user_id": uuid_to_sid(user_uuid),
+        "auto_class": payload.auto_class
+    }
+
+
+@users_router.patch("/{user_id}/zone-exit-permission")
+async def update_user_zone_exit_permission(
+    user_id: str,
+    can_exit_zone: bool,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Изменение разрешения на выезд за зону для пользователя"""
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    user_uuid = safe_sid_to_uuid(user_id)
+    if not user_uuid:
+        raise HTTPException(status_code=400, detail="Неверный ID пользователя")
+    
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    user.can_exit_zone = can_exit_zone
+    db.commit()
+    
+    return {
+        "success": True,
+        "user_id": uuid_to_sid(user_uuid),
+        "can_exit_zone": can_exit_zone
+    }
+
+
+# API endpoint для проверки разрешения выезда за зону (для cars сервиса)
+@users_router.get("/{user_id}/zone-exit-permission")
+async def get_user_zone_exit_permission(
+    user_id: str,
+    db: Session = Depends(get_db)
+):
+    """Получение разрешения на выезд за зону для пользователя (для внутреннего использования)"""
+    user_uuid = safe_sid_to_uuid(user_id)
+    if not user_uuid:
+        return {"can_exit_zone": False}
+    
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        return {"can_exit_zone": False}
+    
+    return {"can_exit_zone": user.can_exit_zone}
+
+
 @users_router.patch("/{user_id}/comment")
 async def update_user_comment(
     user_id: str,
@@ -679,7 +1181,6 @@ async def update_user_comment(
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
-    # Обновляем комментарий
     user.admin_comment = comment_data.admin_comment
     db.commit()
     
@@ -701,7 +1202,6 @@ async def get_users_he_is_guarantor_for(
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
-    # Получаем клиентов, для которых этот пользователь является гарантом
     from app.models.guarantor_model import Guarantor
     guarantor_relations = db.query(Guarantor).filter(
         and_(
@@ -1011,17 +1511,13 @@ async def edit_user(
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
-    # Обновляем класс допуска
     if edit_data.auto_class is not None:
         user.auto_class = edit_data.auto_class
     
-    # Обновляем роль
     if edit_data.role is not None:
         old_role = user.role
         user.role = edit_data.role
         
-        # Если роль изменилась на отклоненную (REJECTFIRST, REJECTSECOND, REJECTFIRSTDOC, REJECTFIRSTCERT)
-        # и пользователь был гарантом, отменяем все его заявки
         if (edit_data.role in [UserRole.REJECTFIRST, UserRole.REJECTSECOND, UserRole.REJECTFIRSTDOC, UserRole.REJECTFIRSTCERT] 
             and old_role != edit_data.role):
             from app.guarantor.router import cancel_guarantor_requests_on_rejection
