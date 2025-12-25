@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Form
+from fastapi import APIRouter, Depends, HTTPException, Query, Form, File, UploadFile
 from sqlalchemy.orm import Session, joinedload, aliased
 from sqlalchemy import and_, or_, func, case, desc, distinct, select, String
 from typing import List, Optional, Dict, Any
@@ -12,6 +12,7 @@ from app.utils.sid_converter import convert_uuid_response_to_sid
 
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
+from app.auth.dependencies.save_documents import save_file, validate_photos
 from app.models.user_model import User, UserRole
 from app.models.application_model import Application, ApplicationStatus
 from app.models.history_model import RentalHistory, RentalStatus, RentalReview, RentalType
@@ -721,26 +722,33 @@ async def update_trip_details(
     user_id: Optional[str] = Form(None),
     delivery_mechanic_id: Optional[str] = Form(None),
     mechanic_inspector_id: Optional[str] = Form(None),
+    
     rental_type: Optional[RentalType] = Form(None),
     rental_status: Optional[str] = Form(None),
+    
     start_time: Optional[datetime] = Form(None),
     end_time: Optional[datetime] = Form(None),
+    
     price_per_minute: Optional[float] = Form(None),
     price_per_hour: Optional[float] = Form(None),
     price_per_day: Optional[float] = Form(None),
     total_price: Optional[float] = Form(None),
-    photos_before: Optional[List[str]] = Form(None),
-    photos_after: Optional[List[str]] = Form(None),
-    mechanic_photos_before: Optional[List[str]] = Form(None),
-    mechanic_photos_after: Optional[List[str]] = Form(None),
+    
+    photos_before: List[UploadFile] = File(None),
+    photos_after: List[UploadFile] = File(None),
+    mechanic_photos_before: List[UploadFile] = File(None),
+    mechanic_photos_after: List[UploadFile] = File(None),
+    
     client_comment: Optional[str] = Form(None),
     mechanic_comment: Optional[str] = Form(None),
     client_rating: Optional[int] = Form(None),
     mechanic_rating: Optional[int] = Form(None),
+    
     start_latitude: Optional[float] = Form(None),
     start_longitude: Optional[float] = Form(None),
     end_latitude: Optional[float] = Form(None),
     end_longitude: Optional[float] = Form(None),
+    
     fuel_level_start: Optional[float] = Form(None),
     fuel_level_end: Optional[float] = Form(None),
     mileage_start: Optional[float] = Form(None),
@@ -751,7 +759,9 @@ async def update_trip_details(
 ):
     """
     Редактирование данных поездки с использованием multipart/form-data.
-    Удобно для отправки списков файлов/строк.
+    
+    Поддерживает загрузку файлов.
+    Загруженные файлы сохраняются и добавляются к списку фото.
     """
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
@@ -761,8 +771,40 @@ async def update_trip_details(
     
     if not rental:
         raise HTTPException(status_code=404, detail="Поездка не найдена")
+
+    async def process_photos_upload(
+        new_files: Optional[List[UploadFile]], 
+        db_urls: List[str],
+        save_folder: str
+    ) -> List[str]:
+        final_urls = list(db_urls or [])
+             
+        if new_files:
+            for file in new_files:
+                if file.content_type not in ["image/jpeg", "image/png"]:
+                    continue 
+                
+                try:
+                    file_url = await save_file(file, rental.id, f"uploads/rents/{rental.id}/{save_folder}")
+                    final_urls.append(file_url)
+                except Exception as e:
+                    print(f"Error saving file {file.filename}: {e}")
+                    pass
+                
+        return final_urls
     
-    # Собираем данные в словарь, исключая None
+    if photos_before:
+        rental.photos_before = await process_photos_upload(photos_before, rental.photos_before, "before/admin_upload")
+        
+    if photos_after:
+        rental.photos_after = await process_photos_upload(photos_after, rental.photos_after, "after/admin_upload")
+        
+    if mechanic_photos_before:
+        rental.mechanic_photos_before = await process_photos_upload(mechanic_photos_before, rental.mechanic_photos_before, "before/mechanic_upload")
+
+    if mechanic_photos_after:
+        rental.mechanic_photos_after = await process_photos_upload(mechanic_photos_after, rental.mechanic_photos_after, "after/mechanic_upload")
+   
     update_data = {
         "car_id": car_id,
         "user_id": user_id,
@@ -776,10 +818,7 @@ async def update_trip_details(
         "price_per_hour": price_per_hour,
         "price_per_day": price_per_day,
         "total_price": total_price,
-        "photos_before": photos_before, 
-        "photos_after": photos_after,
-        "mechanic_photos_before": mechanic_photos_before,
-        "mechanic_photos_after": mechanic_photos_after,
+        
         "client_comment": client_comment,
         "mechanic_comment": mechanic_comment,
         "client_rating": client_rating,
