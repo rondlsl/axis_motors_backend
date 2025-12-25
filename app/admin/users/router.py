@@ -354,12 +354,17 @@ def _calculate_owner_earnings(user: User, db: Session) -> Dict[str, float]:
         )
     ).all()
     
-    current_month_earnings = 0.0
+    current_month_base = 0.0
+    current_month_delivery = 0.0
+    
     for rental in current_month_rentals:
         car = next((c for c in owned_cars if c.id == rental.car_id), None)
         if car:
-            earnings = calculate_owner_earnings(rental, car, user)
-            current_month_earnings += earnings
+            components = calculate_owner_earnings(rental, car, user, return_components=True)
+            current_month_base += components["base_earnings"]
+            current_month_delivery += components["delivery_cost"]
+            
+    current_month_earnings = int(current_month_base * 0.5 * 0.97) - int(current_month_delivery)
     
     # Общий заработок
     total_rentals = db.query(RentalHistory).filter(
@@ -370,12 +375,17 @@ def _calculate_owner_earnings(user: User, db: Session) -> Dict[str, float]:
         )
     ).all()
     
-    total_earnings = 0.0
+    total_base = 0.0
+    total_delivery = 0.0
+    
     for rental in total_rentals:
         car = next((c for c in owned_cars if c.id == rental.car_id), None)
         if car:
-            earnings = calculate_owner_earnings(rental, car, user)
-            total_earnings += earnings
+            components = calculate_owner_earnings(rental, car, user, return_components=True)
+            total_base += components["base_earnings"]
+            total_delivery += components["delivery_cost"]
+
+    total_earnings = int(total_base * 0.5 * 0.97) - int(total_delivery)
     
     return {"current_month": current_month_earnings, "total": total_earnings}
 

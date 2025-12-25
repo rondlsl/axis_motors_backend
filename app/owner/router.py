@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract, and_, or_
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 import math
 
 from app.auth.dependencies.get_current_user import get_current_user
@@ -105,7 +105,7 @@ def calculate_delivery_cost(rental: RentalHistory, car: Car, current_user: User)
     return 0
 
 
-def calculate_owner_earnings(rental: RentalHistory, car: Car, current_user: User) -> int:
+def calculate_owner_earnings(rental: RentalHistory, car: Car, current_user: User, return_components: bool = False) -> Union[int, Dict[str, float]]:
     """
     Рассчитывает заработок владельца с поездки.
     Если поездка была совершена владельцем, то заработок = 0 (владелец не зарабатывает на своих поездках).
@@ -113,11 +113,19 @@ def calculate_owner_earnings(rental: RentalHistory, car: Car, current_user: User
     """
     # Если поездка была совершена владельцем, заработок = 0
     if rental.user_id == car.owner_id:
+        if return_components:
+            return {"base_earnings": 0.0, "delivery_cost": 0.0}
         return 0
     
     # Владелец получает 50% только от базовых услуг (без delivery_fee, open_fee, distance_fee)
     # distance_fee - это расходы на топливо, которые не идут в заработок владельца
     base_earnings = (rental.base_price or 0) + (rental.overtime_fee or 0) + (rental.waiting_fee or 0)
+    
+    # Отнимаем стоимость доставки, если владелец сам вызвал доставку
+    delivery_cost = calculate_delivery_cost(rental, car, current_user)
+    
+    if return_components:
+        return {"base_earnings": float(base_earnings), "delivery_cost": float(delivery_cost)}
     
     # Исключаем доходы от сервисов платформы:
     # - delivery_fee - сервис доставки платформы
@@ -125,9 +133,6 @@ def calculate_owner_earnings(rental: RentalHistory, car: Car, current_user: User
     # - distance_fee (fuel_fee) - расходы на топливо клиента
     
     owner_earnings = int(base_earnings * 0.5 * 0.97)
-    
-    # Отнимаем стоимость доставки, если владелец сам вызвал доставку
-    delivery_cost = calculate_delivery_cost(rental, car, current_user)
     
     return owner_earnings - delivery_cost
 
