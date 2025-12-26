@@ -450,10 +450,45 @@ async def get_users_list(
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    # Базовый запрос
-    query = db.query(User)
+    from sqlalchemy.orm import aliased
+    from sqlalchemy import literal_column
     
-    # Фильтр по роли
+    active_statuses = [
+        RentalStatus.IN_USE, 
+        RentalStatus.DELIVERING, 
+        RentalStatus.DELIVERING_IN_PROGRESS,
+        RentalStatus.RESERVED,
+        RentalStatus.SCHEDULED,
+        RentalStatus.DELIVERY_RESERVED
+    ]
+    
+    active_rental_subq = (
+        db.query(
+            RentalHistory.user_id,
+            RentalHistory.rental_status,
+            RentalHistory.car_id
+        )
+        .filter(RentalHistory.rental_status.in_(active_statuses))
+        .subquery()
+    )
+    
+    query = (
+        db.query(
+            User,
+            active_rental_subq.c.rental_status,
+            active_rental_subq.c.car_id,
+            Car.id.label("car_id_real"),
+            Car.name.label("car_name"),
+            Car.plate_number.label("car_plate"),
+            Car.photos.label("car_photos"),
+            Car.latitude.label("car_lat"),
+            Car.longitude.label("car_lon"),
+            Car.fuel_level.label("car_fuel")
+        )
+        .outerjoin(active_rental_subq, User.id == active_rental_subq.c.user_id)
+        .outerjoin(Car, Car.id == active_rental_subq.c.car_id)
+    )
+    
     if role:
         try:
             role_enum = UserRole(role)
@@ -461,11 +496,9 @@ async def get_users_list(
         except ValueError:
             raise HTTPException(status_code=400, detail="Неверная роль")
     
-    # Фильтр по заблокированным
     if is_blocked is not None:
         query = query.filter(User.is_active == (not is_blocked))
     
-    # Поиск
     if search_query:
         search_filter = or_(
             func.lower(User.first_name).contains(search_query.lower()),
@@ -476,23 +509,78 @@ async def get_users_list(
         )
         query = query.filter(search_filter)
     
-    users = query.all()
+    if has_active_rental is True:
+        query = query.filter(active_rental_subq.c.user_id.isnot(None))
+    elif has_active_rental is False:
+        query = query.filter(active_rental_subq.c.user_id.is_(None))
     
-    car_status_param = car_status
+    count_query = db.query(func.count(func.distinct(User.id)))
+    
+    if role:
+        try:
+            role_enum = UserRole(role)
+            count_query = count_query.filter(User.role == role_enum)
+        except ValueError:
+            pass
+    if is_blocked is not None:
+        count_query = count_query.filter(User.is_active == (not is_blocked))
+    if search_query:
+        count_query = count_query.filter(search_filter)
+    
+    total_count = count_query.scalar() or 0
+    
+    query = query.order_by(
+        case(
+            (active_rental_subq.c.user_id.isnot(None), 0),
+            else_=1
+        ),
+        User.id
+    )
+    
+    query = query.offset((page - 1) * limit).limit(limit)
+    
+    rows = query.all()
     
     result = []
-    for user in users:
-        # Проверяем МВД одобрение
-        user_mvd_approved = _get_mvd_approved_status(user, db)
-        if mvd_approved is not None and user_mvd_approved != mvd_approved:
-            continue
+    seen_user_ids = set()
+    
+    for row in rows:
+        user = row[0]
+        rental_status = row[1]
+        car_id = row[2]
+        car_name = row[4]
+        car_plate = row[5]
+        car_photos = row[6]
+        car_lat = row[7]
+        car_lon = row[8]
+        car_fuel = row[9]
         
-        # Получаем текущую аренду
-        current_car = _get_current_rental_car(user, db)
-        has_active = current_car is not None
-        
-        if has_active_rental is not None and has_active != has_active_rental:
+        if user.id in seen_user_ids:
             continue
+        seen_user_ids.add(user.id)
+        
+        # Определяем MVD статус (быстро, без запроса для USER роли)
+        if mvd_approved is not None:
+            if user.role == UserRole.USER:
+                user_mvd_approved = True
+            else:
+                # Только если нужна фильтрация, делаем запрос
+                application = db.query(Application).filter(Application.user_id == user.id).first()
+                user_mvd_approved = application and application.mvd_status == ApplicationStatus.APPROVED
+            
+            if user_mvd_approved != mvd_approved:
+                continue
+        
+        # Получаем текущую машину
+        current_car = None
+        if car_id and car_name:
+            current_car = {
+                "id": uuid_to_sid(car_id),
+                "name": car_name,
+                "plate_number": car_plate,
+                "brand": car_name.split()[0] if car_name else "Unknown",
+                "photos": car_photos
+            }
         
         # Обработка auto_class
         auto_class_list = []
@@ -504,6 +592,31 @@ async def get_users_list(
                 if raw.startswith("{") and raw.endswith("}"):
                     raw = raw[1:-1]
                 auto_class_list = [part.strip() for part in raw.split(",") if part.strip()]
+        
+        # Определяем carStatus
+        car_status_value = "FREE"
+        if rental_status:
+            if rental_status == RentalStatus.IN_USE:
+                car_status_value = "IN_USE"
+            elif rental_status == RentalStatus.RESERVED:
+                car_status_value = "RESERVED"
+            elif rental_status == RentalStatus.SCHEDULED:
+                car_status_value = "SCHEDULED"
+            elif rental_status in [RentalStatus.DELIVERING, RentalStatus.DELIVERING_IN_PROGRESS]:
+                car_status_value = "DELIVERING_IN_PROGRESS"
+            elif rental_status == RentalStatus.DELIVERY_RESERVED:
+                car_status_value = "DELIVERY_RESERVED"
+        
+        if car_status_value == "FREE":
+            if user.owned_cars:
+                car_status_value = "OWNER"
+            elif user.role in [UserRole.PENDING, UserRole.PENDINGTOFIRST, UserRole.PENDINGTOSECOND] or user.role.value.startswith("PENDING") or user.role.value.startswith("REJECT"):
+                if user.role.value.startswith("PENDING"):
+                    car_status_value = "PENDING"
+        
+        # Фильтр по car_status
+        if car_status is not None and car_status_value != car_status:
+            continue
         
         user_data = {
             "id": uuid_to_sid(user.id),
@@ -518,60 +631,21 @@ async def get_users_list(
             "selfie_url": user.selfie_url,
             "is_blocked": not user.is_active,
             "current_rental_car": current_car,
-            "rating": float(user.rating) if user.rating else None
+            "rating": float(user.rating) if user.rating else None,
+            "carStatus": car_status_value
         }
-
-        car_status = "FREE"
-        if current_car:
-            active_rental = db.query(RentalHistory).filter(
-                RentalHistory.user_id == user.id,
-                RentalHistory.rental_status.in_([
-                    RentalStatus.IN_USE, 
-                    RentalStatus.DELIVERING, 
-                    RentalStatus.DELIVERING_IN_PROGRESS,
-                    RentalStatus.RESERVED,
-                    RentalStatus.SCHEDULED,
-                    RentalStatus.DELIVERY_RESERVED
-                ])
-            ).first()
-            
-            if active_rental:
-                rs = active_rental.rental_status
-                if rs == RentalStatus.IN_USE:
-                    car_status = "IN_USE"
-                elif rs == RentalStatus.RESERVED:
-                    car_status = "RESERVED"
-                elif rs == RentalStatus.SCHEDULED:
-                    car_status = "SCHEDULED"
-                elif rs in [RentalStatus.DELIVERING, RentalStatus.DELIVERING_IN_PROGRESS]:
-                    car_status = "DELIVERING_IN_PROGRESS"
-                elif rs == RentalStatus.DELIVERY_RESERVED:
-                    car_status = "DELIVERY_RESERVED"
-        
-        if car_status == "FREE":
-            if user.owned_cars:
-                car_status = "OWNER"
-            elif user.role in [UserRole.PENDING, UserRole.PENDINGTOFIRST, UserRole.PENDINGTOSECOND] or user.role.value.startswith("PENDING") or user.role.value.startswith("REJECT"):
-                 if user.role.value.startswith("PENDING"):
-                     car_status = "PENDING"
-        
-        user_data["carStatus"] = car_status
-        
-        if car_status_param is not None and car_status != car_status_param:
-            continue
         
         converted_data = convert_uuid_response_to_sid(user_data, ["id"])
         result.append(UserListSchema(**converted_data))
     
-    result.sort(key=lambda x: x.current_rental_car is None)
-    
     return {
-        "items": result[(page - 1) * limit : page * limit],
-        "total": len(result),
+        "items": result,
+        "total": total_count,
         "page": page,
         "limit": limit,
-        "pages": ceil(len(result) / limit)
+        "pages": ceil(total_count / limit) if limit > 0 else 0
     }
+
 
 
 @users_router.get("/map-positions", response_model=List[UserMapPositionSchema])
