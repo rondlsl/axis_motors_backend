@@ -899,6 +899,84 @@ async def delete_user_transaction(
         "new_balance": new_balance
     }
 
+
+@users_router.patch("/{user_id}/transactions/{transaction_id}")
+async def edit_user_transaction(
+    user_id: str,
+    transaction_id: str,
+    amount: Optional[float] = Form(None, description="Новая сумма транзакции"),
+    description: Optional[str] = Form(None, description="Новое описание"),
+    adjust_balance: bool = Form(False, description="Если true - корректирует баланс на разницу"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Редактирование транзакции пользователя (только для ADMIN).
+    
+    - amount: новая сумма (если указана)
+    - description: новое описание (если указано)
+    - adjust_balance: если true, корректирует баланс пользователя на разницу
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Недостаточно прав. Только ADMIN может редактировать транзакции.")
+    
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    tx_uuid = safe_sid_to_uuid(transaction_id)
+    transaction = db.query(WalletTransaction).filter(
+        WalletTransaction.id == tx_uuid,
+        WalletTransaction.user_id == user_uuid
+    ).first()
+    
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Транзакция не найдена")
+    
+    old_amount = float(transaction.amount)
+    old_description = transaction.description
+    balance_adjusted = False
+    old_balance = float(user.wallet_balance or 0)
+    new_balance = old_balance
+    
+    if amount is not None:
+        new_amount = amount
+        amount_diff = new_amount - old_amount
+        
+        if adjust_balance and amount_diff != 0:
+            new_balance = old_balance + amount_diff
+            user.wallet_balance = new_balance
+            balance_adjusted = True
+        
+        transaction.amount = new_amount
+        if transaction.balance_after is not None:
+            transaction.balance_after = float(transaction.balance_after) + amount_diff
+    
+    if description is not None:
+        transaction.description = description
+    
+    db.commit()
+    db.refresh(transaction)
+    
+    return {
+        "success": True,
+        "message": "Транзакция обновлена" + (" и баланс скорректирован" if balance_adjusted else ""),
+        "transaction": {
+            "id": uuid_to_sid(transaction.id),
+            "old_amount": old_amount,
+            "new_amount": float(transaction.amount),
+            "old_description": old_description,
+            "new_description": transaction.description,
+            "balance_before": float(transaction.balance_before) if transaction.balance_before else None,
+            "balance_after": float(transaction.balance_after) if transaction.balance_after else None
+        },
+        "balance_adjusted": balance_adjusted,
+        "old_user_balance": old_balance,
+        "new_user_balance": new_balance
+    }
+
+
 @users_router.patch("/trips/{trip_id}", response_model=TripDetailSchema, summary="Редактирование данных поездки (Form Data)")
 
 async def update_trip_details(
@@ -1739,7 +1817,56 @@ async def deduct_user_balance(
     }
 
 
+@users_router.put("/{user_id}/balance")
+async def set_user_balance(
+    user_id: str,
+    new_balance: float = Form(..., description="Новый баланс кошелька"),
+    description: Optional[str] = Form(None, description="Причина изменения"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Установка нового баланса кошелька пользователя (только для ADMIN).
+    
+    Создаёт транзакцию корректировки с разницей между старым и новым балансом.
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Недостаточно прав. Только ADMIN может изменять баланс.")
+    
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    old_balance = float(user.wallet_balance or 0)
+    diff = new_balance - old_balance
+    
+    if diff != 0:
+        transaction = WalletTransaction(
+            user_id=user_uuid,
+            amount=diff,
+            transaction_type=WalletTransactionType.MANUAL_ADJUSTMENT,
+            description=description or f"Корректировка баланса администратором ({current_user.phone_number})",
+            balance_before=old_balance,
+            balance_after=new_balance
+        )
+        db.add(transaction)
+    
+    user.wallet_balance = new_balance
+    db.commit()
+    
+    return {
+        "success": True,
+        "user_id": uuid_to_sid(user_uuid),
+        "old_balance": old_balance,
+        "new_balance": new_balance,
+        "difference": diff,
+        "description": description
+    }
+
+
 @users_router.patch("/{user_id}/auto_class")
+
 
 async def update_user_auto_class(
     user_id: str,

@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from math import ceil, floor
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
@@ -676,12 +677,18 @@ async def get_car_availability_timer(
 @cars_router.get("/{car_id}/history/summary")
 async def get_car_history_summary(
     car_id: str,
-    month: Optional[int] = None,
-    year: Optional[int] = None,
+    page: int = Query(1, ge=1, description="Номер страницы"),
+    limit: int = Query(12, ge=1, le=60, description="Количество месяцев на странице"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Сводная статистика по автомобилю"""
+    """
+    Агрегированные данные по месяцам для автомобиля.
+    Возвращает информацию по всем месяцам, в которых были поездки.
+    """
+    from calendar import monthrange
+    from collections import defaultdict
+    
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
@@ -689,95 +696,129 @@ async def get_car_history_summary(
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
-    date_filter = []
-    if month and year:
-        from calendar import monthrange
-        start_dt = datetime(year, month, 1)
-        end_dt = datetime(year, month, monthrange(year, month)[1], 23, 59, 59)
-        date_filter = [RentalHistory.end_time >= start_dt, RentalHistory.end_time <= end_dt]
-
-    q = db.query(RentalHistory).filter(
+    # Получаем все завершенные поездки для машины
+    rentals = db.query(RentalHistory).filter(
         RentalHistory.car_id == car.id,
         RentalHistory.rental_status == RentalStatus.COMPLETED,
-        *date_filter
-    )
-    rentals = q.all()
-    total_income = sum(int(r.total_price or 0) for r in rentals)
-
-    total_base_earnings = 0.0
-    total_deductions = 0.0
+        RentalHistory.end_time.isnot(None)
+    ).all()
+    
+    # Группируем поездки по месяцам
+    monthly_data = defaultdict(lambda: {
+        "total_income": 0,
+        "base_earnings": 0.0,
+        "deductions": 0.0,
+        "trips_count": 0
+    })
     
     for r in rentals:
+        if not r.end_time:
+            continue
+        month_key = (r.end_time.year, r.end_time.month)
+        monthly_data[month_key]["trips_count"] += 1
+        monthly_data[month_key]["total_income"] += int(r.total_price or 0)
+        
         if r.user_id == car.owner_id:
             fuel_cost = calculate_fuel_cost(r, car, current_user)
             delivery_cost = calculate_delivery_cost(r, car, current_user)
-            total_deductions += (fuel_cost or 0) + (delivery_cost or 0)
+            monthly_data[month_key]["deductions"] += (fuel_cost or 0) + (delivery_cost or 0)
         else:
             components = calculate_owner_earnings(r, car, current_user, return_components=True)
-            total_base_earnings += components["base_earnings"]
-
-    owner_income = int(total_base_earnings * 0.5 * 0.97) - int(total_deductions)
-
+            monthly_data[month_key]["base_earnings"] += components["base_earnings"]
+    
+    from app.models.car_model import CarAvailabilityHistory
+    availability_history = db.query(CarAvailabilityHistory).filter(
+        CarAvailabilityHistory.car_id == car.id
+    ).all()
+    
+    availability_by_month = {}
+    for ah in availability_history:
+        availability_by_month[(ah.year, ah.month)] = ah.available_minutes
+    
     now = get_local_time()
+    current_month_key = (now.year, now.month)
+    
     update_car_availability_snapshot(car)
     db.flush()
-    available_minutes = car.available_minutes or 0
+    availability_by_month[current_month_key] = car.available_minutes or 0
+    
+    sorted_months = sorted(monthly_data.keys(), reverse=True)
+    total_months = len(sorted_months)
+    paginated_months = sorted_months[(page - 1) * limit : page * limit]
+    
+    months_result = []
+    for year, month in paginated_months:
+        data = monthly_data[(year, month)]
+        owner_income = int(data["base_earnings"] * 0.5 * 0.97) - int(data["deductions"])
+        
+        months_result.append({
+            "year": year,
+            "month": month,
+            "available_minutes": availability_by_month.get((year, month), 0),
+            "total_income": data["total_income"],
+            "owner_income": owner_income,
+            "trips_count": data["trips_count"],
+            "is_current_month": (year, month) == current_month_key
+        })
 
-    last_completed = (
-        db.query(RentalHistory)
-        .filter(RentalHistory.car_id == car.id, RentalHistory.rental_status == RentalStatus.COMPLETED, RentalHistory.end_time.isnot(None))
-        .order_by(RentalHistory.end_time.desc())
-        .first()
-    )
-    period_from_dt = last_completed.end_time if last_completed and last_completed.end_time else now
-    is_free_like = car.status in [CarStatus.FREE.value, CarStatus.PENDING.value, CarStatus.SERVICE.value]
-    total_available_seconds = int((now - period_from_dt).total_seconds()) if is_free_like and now > period_from_dt else 0
 
     return {
         "car_id": uuid_to_sid(car.id),
         "car_name": car.name,
         "plate_number": car.plate_number,
-        "total_income": total_income,
-        "owner_income": owner_income,
-        "available_minutes": available_minutes,
-        "month": month,
-        "year": year,
+        "current_month": {
+            "year": now.year,
+            "month": now.month
+        },
+        "months": months_result,
+        "total": total_months,
+        "page": page,
+        "limit": limit,
+        "pages": ceil(total_months / limit) if limit > 0 else 0
     }
+
 
 
 @cars_router.get("/{car_id}/history/trips")
 async def get_car_trips_list(
     car_id: str,
-    month: Optional[int] = None,
-    year: Optional[int] = None,
+    month: int = Query(..., ge=1, le=12, description="Месяц (1-12)"),
+    year: int = Query(..., description="Год"),
+
+    page: int = Query(1, ge=1, description="Номер страницы"),
+    limit: int = Query(50, ge=1, le=200, description="Количество элементов на странице"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Список поездок автомобиля"""
+    """Список поездок автомобиля за выбранный месяц с пагинацией"""
+    from calendar import monthrange
+    
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     car = get_car_by_id(db, car_id)
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
-    date_filter = []
-    if month and year:
-        from calendar import monthrange
-        start_dt = datetime(year, month, 1)
-        end_dt = datetime(year, month, monthrange(year, month)[1], 23, 59, 59)
-        date_filter = [RentalHistory.end_time >= start_dt, RentalHistory.end_time <= end_dt]
+    start_dt = datetime(year, month, 1)
+    end_dt = datetime(year, month, monthrange(year, month)[1], 23, 59, 59)
 
-    rentals = (
+
+    base_query = (
         db.query(RentalHistory, User)
         .join(User, User.id == RentalHistory.user_id)
         .filter(
             RentalHistory.car_id == car.id,
             RentalHistory.rental_status == RentalStatus.COMPLETED,
-            *date_filter
+            RentalHistory.end_time >= start_dt,
+            RentalHistory.end_time <= end_dt
         )
         .order_by(RentalHistory.end_time.desc())
-        .all()
     )
+    
+
+    total = base_query.count()
+    
+    rentals = base_query.offset((page - 1) * limit).limit(limit).all()
 
     items = []
     for r, renter in rentals:
@@ -785,7 +826,6 @@ async def get_car_trips_list(
         if r.start_time and r.end_time:
             duration_minutes = int((r.end_time - r.start_time).total_seconds() // 60)
         
-        # Определяем человекочитаемое описание типа тарифа
         tariff_display = ""
         if r.rental_type:
             tariff_value = r.rental_type.value if hasattr(r.rental_type, 'value') else str(r.rental_type)
@@ -815,7 +855,15 @@ async def get_car_trips_list(
             }
         })
 
-    return {"trips": items}
+
+    return {
+        "trips": items,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": ceil(total / limit) if limit > 0 else 0
+    }
+
 
 
 @cars_router.get("/{car_id}/history/trips/{rental_id}")
@@ -860,7 +908,7 @@ async def get_trip_detail(
         route_data = None
 
     # Calculate fuel fee (same logic as user endpoint)
-    from math import ceil, floor
+
     from app.rent.utils.calculate_price import FUEL_PRICE_PER_LITER, ELECTRIC_FUEL_PRICE_PER_LITER
     
     fuel_fee = 0
