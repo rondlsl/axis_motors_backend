@@ -31,9 +31,11 @@ class WalletTransactionType(enum.Enum):
 
     # Дополнительно
     MANUAL_ADJUSTMENT = "manual_adjustment"  # ручная корректировка админом
+    ADMIN_DEDUCTION = "admin_deduction"      # списание средств админом
     DAMAGE_PENALTY = "damage_penalty"        # штраф за повреждения
     FINE_PENALTY = "fine_penalty"            # штрафы ГАИ/штрафы регуляторов
     SANCTION_PENALTY = "sanction_penalty"    # санкционный штраф
+
     
     # Владелец
     OWNER_WAITING_FEE_SHARE = "owner_waiting_fee_share"  # 50% от платного ожидания владельцу при отмене

@@ -559,19 +559,16 @@ async def get_users_list(
             continue
         seen_user_ids.add(user.id)
         
-        # Определяем MVD статус (быстро, без запроса для USER роли)
         if mvd_approved is not None:
             if user.role == UserRole.USER:
                 user_mvd_approved = True
             else:
-                # Только если нужна фильтрация, делаем запрос
                 application = db.query(Application).filter(Application.user_id == user.id).first()
                 user_mvd_approved = application and application.mvd_status == ApplicationStatus.APPROVED
             
             if user_mvd_approved != mvd_approved:
                 continue
         
-        # Получаем текущую машину
         current_car = None
         if car_id and car_name:
             current_car = {
@@ -582,7 +579,6 @@ async def get_users_list(
                 "photos": car_photos
             }
         
-        # Обработка auto_class
         auto_class_list = []
         if user.auto_class:
             if isinstance(user.auto_class, list):
@@ -593,7 +589,6 @@ async def get_users_list(
                     raw = raw[1:-1]
                 auto_class_list = [part.strip() for part in raw.split(",") if part.strip()]
         
-        # Определяем carStatus
         car_status_value = "FREE"
         if rental_status:
             if rental_status == RentalStatus.IN_USE:
@@ -614,7 +609,6 @@ async def get_users_list(
                 if user.role.value.startswith("PENDING"):
                     car_status_value = "PENDING"
         
-        # Фильтр по car_status
         if car_status is not None and car_status_value != car_status:
             continue
         
@@ -839,9 +833,74 @@ async def get_user_transactions(
         "total": total_count,
         "page": page,
         "limit": limit,
-        "pages": ceil(total_count / limit)
+        "pages": ceil(total_count / limit),
+        "wallet_balance": float(user.wallet_balance) if user.wallet_balance else 0.0
     }
+
+
+@users_router.delete("/{user_id}/transactions/{transaction_id}")
+async def delete_user_transaction(
+    user_id: str,
+    transaction_id: str,
+    adjust_balance: bool = Query(False, description="Если true - откатывает влияние транзакции на баланс"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Удаление транзакции пользователя (только для ADMIN).
+    
+    - adjust_balance=false: только удаляет запись транзакции
+    - adjust_balance=true: удаляет транзакцию И откатывает её влияние на баланс
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Недостаточно прав. Только ADMIN может удалять транзакции.")
+    
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    tx_uuid = safe_sid_to_uuid(transaction_id)
+    transaction = db.query(WalletTransaction).filter(
+        WalletTransaction.id == tx_uuid,
+        WalletTransaction.user_id == user_uuid
+    ).first()
+    
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Транзакция не найдена")
+    
+    tx_data = {
+        "id": uuid_to_sid(transaction.id),
+        "amount": float(transaction.amount),
+        "transaction_type": transaction.transaction_type.value if hasattr(transaction.transaction_type, "value") else str(transaction.transaction_type),
+        "description": transaction.description,
+        "balance_before": float(transaction.balance_before),
+        "balance_after": float(transaction.balance_after)
+    }
+    
+    balance_adjusted = False
+    old_balance = float(user.wallet_balance or 0)
+    new_balance = old_balance
+    
+    if adjust_balance:
+        new_balance = old_balance - float(transaction.amount)
+        user.wallet_balance = new_balance
+        balance_adjusted = True
+    
+    db.delete(transaction)
+    db.commit()
+    
+    return {
+        "success": True,
+        "message": "Транзакция удалена" + (" и баланс скорректирован" if balance_adjusted else ""),
+        "deleted_transaction": tx_data,
+        "balance_adjusted": balance_adjusted,
+        "old_balance": old_balance,
+        "new_balance": new_balance
+    }
+
 @users_router.patch("/trips/{trip_id}", response_model=TripDetailSchema, summary="Редактирование данных поездки (Form Data)")
+
 async def update_trip_details(
     trip_id: str,
     car_id: Optional[str] = Form(None),
@@ -1604,8 +1663,84 @@ async def topup_user_balance(
     }
 
 
+@users_router.post("/{user_id}/balance/deduct")
+async def deduct_user_balance(
+    user_id: str,
+    payload: BalanceTopUpSchema,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Списание средств со счёта пользователя администратором.
+    
+    1. Создаёт транзакцию в таблице wallet_transactions
+    2. Обновляет баланс пользователя
+    3. Отправляет push-уведомление пользователю
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    if payload.amount <= 0:
+        raise HTTPException(status_code=400, detail="Сумма списания должна быть положительной")
+    
+    balance_before = float(user.wallet_balance or 0)
+    balance_after = balance_before - payload.amount
+    
+    transaction = WalletTransaction(
+        user_id=user_uuid,
+        amount=-payload.amount,
+        transaction_type=WalletTransactionType.ADMIN_DEDUCTION,
+        description=payload.description or f"Списание средств администратором ({current_user.phone_number})",
+        balance_before=balance_before,
+        balance_after=balance_after
+    )
+    db.add(transaction)
+    
+    user.wallet_balance = balance_after
+    
+    db.commit()
+    db.refresh(transaction)
+    
+    notification_message = f"С вашего баланса списано {payload.amount:.0f} ₸. Новый баланс: {balance_after:.0f} ₸"
+    if payload.description:
+        notification_message += f"\nПричина: {payload.description}"
+    
+    try:
+        await send_push_to_user_by_id(
+            user_id=user_uuid,
+            db=db,
+            title="Списание средств",
+            body=notification_message
+        )
+    except Exception as e:
+        pass
+    
+    notification = Notification(
+        user_id=user_uuid,
+        title="Списание средств",
+        body=notification_message
+    )
+    db.add(notification)
+    db.commit()
+    
+    return {
+        "success": True,
+        "transaction_id": uuid_to_sid(transaction.id),
+        "user_id": uuid_to_sid(user_uuid),
+        "amount": -payload.amount,
+        "balance_before": balance_before,
+        "balance_after": balance_after,
+        "description": payload.description
+    }
+
 
 @users_router.patch("/{user_id}/auto_class")
+
 async def update_user_auto_class(
     user_id: str,
     payload: AutoClassUpdateSchema,
