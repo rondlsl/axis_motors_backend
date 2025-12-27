@@ -105,3 +105,98 @@ def update_cars_availability_job() -> None:
         db.rollback()
     finally:
         db.close()
+
+
+CAR_AVAILABILITY_START = {
+    "890AVB09": datetime(2025, 11, 1),
+    "888DON07": datetime(2025, 12, 1),
+    "455BNI02": datetime(2025, 12, 1),
+    "959AWM02": datetime(2025, 11, 1),
+    "666AZV02": datetime(2025, 9, 1),
+}
+
+
+def backfill_availability_history() -> None:
+    """
+    Запускается при старте приложения.
+    Заполняет car_availability_history за прошлые месяцы, если данных ещё нет.
+    Считает доступные минуты = минуты_в_месяце - аренда_клиентами (не владельцем).
+    """
+    from calendar import monthrange
+    from app.models.history_model import RentalHistory, RentalStatus
+    
+    db: Session = SessionLocal()
+    try:
+        now = get_local_time()
+        logger.info("Backfill availability history: начало проверки...")
+        
+        for plate_number, start_date in CAR_AVAILABILITY_START.items():
+            car = db.query(Car).filter(Car.plate_number == plate_number).first()
+            if not car:
+                continue
+            
+            current = start_date
+            while current < now:
+                year, month = current.year, current.month
+                
+                if year == now.year and month == now.month:
+                    if month == 12:
+                        current = datetime(year + 1, 1, 1)
+                    else:
+                        current = datetime(year, month + 1, 1)
+                    continue
+                
+                existing = db.query(CarAvailabilityHistory).filter(
+                    CarAvailabilityHistory.car_id == car.id,
+                    CarAvailabilityHistory.year == year,
+                    CarAvailabilityHistory.month == month
+                ).first()
+                
+                if not existing:
+                    days = monthrange(year, month)[1]
+                    month_total_minutes = days * 24 * 60
+                    
+                    start_dt = datetime(year, month, 1)
+                    end_dt = datetime(year, month, days, 23, 59, 59)
+                    
+                    rentals = db.query(RentalHistory).filter(
+                        RentalHistory.car_id == car.id,
+                        RentalHistory.rental_status == RentalStatus.COMPLETED,
+                        RentalHistory.user_id != car.owner_id,
+                        RentalHistory.start_time.isnot(None),
+                        RentalHistory.end_time.isnot(None),
+                        RentalHistory.end_time >= start_dt,
+                        RentalHistory.start_time <= end_dt
+                    ).all()
+                    
+                    client_rental_minutes = 0
+                    for r in rentals:
+                        rental_start = max(r.start_time, start_dt)
+                        rental_end = min(r.end_time, end_dt)
+                        if rental_end > rental_start:
+                            client_rental_minutes += int((rental_end - rental_start).total_seconds() / 60)
+                    
+                    available_minutes = max(0, month_total_minutes - client_rental_minutes)
+                    
+                    history = CarAvailabilityHistory(
+                        car_id=car.id,
+                        year=year,
+                        month=month,
+                        available_minutes=available_minutes
+                    )
+                    db.add(history)
+                    logger.info(f"Backfill: {plate_number} {month:02d}/{year} = {available_minutes} мин")
+                
+                if month == 12:
+                    current = datetime(year + 1, 1, 1)
+                else:
+                    current = datetime(year, month + 1, 1)
+        
+        db.commit()
+        logger.info("Backfill availability history: завершено")
+        
+    except Exception as exc:
+        logger.error(f"Ошибка backfill availability history: {exc}")
+        db.rollback()
+    finally:
+        db.close()

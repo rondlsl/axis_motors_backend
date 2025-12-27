@@ -35,7 +35,6 @@ logging.basicConfig(
     ]
 )
 
-# Уменьшаем шум от APScheduler: показываем только ошибки
 logging.getLogger("apscheduler").setLevel(logging.ERROR)
 logging.getLogger("apscheduler.executors.default").setLevel(logging.ERROR)
 from app.gps_api.router import Vehicle_Router
@@ -48,7 +47,7 @@ from app.rent.utils.billing import billing_job
 from app.push.router import router as PushRouter
 from app.mechanic_delivery.router import MechanicDeliveryRouter
 from app.owner.router import OwnerRouter
-from app.owner.availability import update_cars_availability_job
+from app.owner.availability import update_cars_availability_job, backfill_availability_history
 from app.guarantor.router import guarantor_router
 from app.admin.router import admin_router
 from app.financier.router import FinancierRouter
@@ -263,6 +262,12 @@ def init_app(app: FastAPI):
             db.close()
 
         try:
+            backfill_availability_history()
+        except Exception as e:
+            logger.error(f"Ошибка backfill availability history: {e}")
+
+        try:
+
             scheduler.add_job(
                 check_vehicle_conditions,
                 "interval",
