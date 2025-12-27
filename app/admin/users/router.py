@@ -472,6 +472,13 @@ async def get_users_list(
         .subquery()
     )
     
+    owner_ids_subq = (
+        db.query(Car.owner_id)
+        .filter(Car.owner_id.isnot(None))
+        .distinct()
+        .subquery()
+    )
+    
     query = (
         db.query(
             User,
@@ -483,10 +490,15 @@ async def get_users_list(
             Car.photos.label("car_photos"),
             Car.latitude.label("car_lat"),
             Car.longitude.label("car_lon"),
-            Car.fuel_level.label("car_fuel")
+            Car.fuel_level.label("car_fuel"),
+            case(
+                (owner_ids_subq.c.owner_id.isnot(None), True),
+                else_=False
+            ).label("is_owner")
         )
         .outerjoin(active_rental_subq, User.id == active_rental_subq.c.user_id)
         .outerjoin(Car, Car.id == active_rental_subq.c.car_id)
+        .outerjoin(owner_ids_subq, User.id == owner_ids_subq.c.owner_id)
     )
     
     if role:
@@ -554,6 +566,7 @@ async def get_users_list(
         car_lat = row[7]
         car_lon = row[8]
         car_fuel = row[9]
+        is_owner = row[10] 
         
         if user.id in seen_user_ids:
             continue
@@ -603,7 +616,8 @@ async def get_users_list(
                 car_status_value = "DELIVERY_RESERVED"
         
         if car_status_value == "FREE":
-            if user.owned_cars:
+            # Используем is_owner вместо user.owned_cars (избегаем N+1)
+            if is_owner:
                 car_status_value = "OWNER"
             elif user.role in [UserRole.PENDING, UserRole.PENDINGTOFIRST, UserRole.PENDINGTOSECOND] or user.role.value.startswith("PENDING") or user.role.value.startswith("REJECT"):
                 if user.role.value.startswith("PENDING"):
