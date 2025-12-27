@@ -1032,7 +1032,7 @@ async def reserve_car(
             user=current_user,
             amount=-rebooking_fee,
             ttype=WalletTransactionType.RESERVATION_REBOOKING_FEE,
-            description=f"Списание за повторное бронирование того же автомобиля (аренда ID: {rental.id})",
+            description=f"Списание за повторное бронирование того же автомобиля",
             related_rental=rental
         )
 
