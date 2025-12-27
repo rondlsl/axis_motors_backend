@@ -119,8 +119,8 @@ CAR_AVAILABILITY_START = {
 def backfill_availability_history() -> None:
     """
     Запускается при старте приложения.
-    Заполняет car_availability_history за прошлые месяцы, если данных ещё нет.
-    Считает доступные минуты = минуты_в_месяце - аренда_клиентами (не владельцем).
+    1. Заполняет car_availability_history за прошлые месяцы, если данных ещё нет.
+    2. Пересчитывает available_minutes в таблице cars для текущего месяца.
     """
     from calendar import monthrange
     from app.models.history_model import RentalHistory, RentalStatus
@@ -139,7 +139,36 @@ def backfill_availability_history() -> None:
             while current < now:
                 year, month = current.year, current.month
                 
-                if year == now.year and month == now.month:
+                is_current_month = (year == now.year and month == now.month)
+                
+                if is_current_month:
+                    days = monthrange(year, month)[1]
+                    month_start = datetime(year, month, 1)
+                    
+                    rentals = db.query(RentalHistory).filter(
+                        RentalHistory.car_id == car.id,
+                        RentalHistory.rental_status == RentalStatus.COMPLETED,
+                        RentalHistory.user_id != car.owner_id,
+                        RentalHistory.start_time.isnot(None),
+                        RentalHistory.end_time.isnot(None),
+                        RentalHistory.end_time >= month_start,
+                        RentalHistory.start_time <= now
+                    ).all()
+                    
+                    client_rental_minutes = 0
+                    for r in rentals:
+                        rental_start = max(r.start_time, month_start)
+                        rental_end = min(r.end_time, now)
+                        if rental_end > rental_start:
+                            client_rental_minutes += int((rental_end - rental_start).total_seconds() / 60)
+                    
+                    minutes_since_month_start = int((now - month_start).total_seconds() / 60)
+                    available_minutes = max(0, minutes_since_month_start - client_rental_minutes)
+                    
+                    car.available_minutes = available_minutes
+                    car.availability_updated_at = now
+                    logger.info(f"Backfill CURRENT: {plate_number} = {available_minutes} мин")
+                    
                     if month == 12:
                         current = datetime(year + 1, 1, 1)
                     else:
