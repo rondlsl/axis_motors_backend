@@ -14,11 +14,10 @@ def get_global_push_notification_semaphore() -> asyncio.Semaphore:
     """
     Возвращает глобальный семафор для ограничения параллелизма push-уведомлений.
     Все задачи (billing_job, marketing_notifications, и т.д.) должны использовать этот семафор.
-    Уменьшено до 15 для более безопасной работы с пулом БД.
     """
     global _global_push_notification_semaphore
     if _global_push_notification_semaphore is None:
-        _global_push_notification_semaphore = asyncio.Semaphore(15)  # Уменьшено для предотвращения переполнения пула
+        _global_push_notification_semaphore = asyncio.Semaphore(5)  # Уменьшено с 15 для предотвращения переполнения пула
     return _global_push_notification_semaphore
 
 
@@ -53,7 +52,6 @@ def get_user_push_tokens(db_session: Session, user_id: uuid.UUID) -> List[str]:
         if user and user.fcm_token:
             tokens = [user.fcm_token]
 
-    # Убираем дубликаты, сохраняя порядок
     seen = set()
     unique_tokens = []
     for token in tokens:

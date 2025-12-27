@@ -1,26 +1,35 @@
 """
 Маркетинговые уведомления через scheduled tasks
+
+- Запрашиваются только user_id, не полные объекты
+- Фильтруются пользователи с push токенами
+- Уменьшен BATCH_SIZE и увеличен BATCH_DELAY
+- Запуск в background для неблокирующей работы
 """
 import asyncio
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, extract
 from typing import List
+import logging
 
 from app.dependencies.database.database import SessionLocal
 from app.models.user_model import User
 from app.models.car_model import Car
+from app.models.user_device_model import UserDevice
 
 from app.push.utils import send_localized_notification_to_user_async, get_global_push_notification_semaphore
 from app.utils.time_utils import get_local_time
 
-BATCH_SIZE = 20  # Меньший размер батча для более плавной отправки
-BATCH_DELAY = 3.0  # Увеличена задержка между батчами
+logger = logging.getLogger(__name__)
+
+BATCH_SIZE = 10  # Уменьшено с 20 для снижения нагрузки на БД
+BATCH_DELAY = 5.0  # Увеличено с 3.0 для более плавной обработки
 MAX_RETRIES = 3  # Количество попыток при ошибках БД
 RETRY_DELAY = 1.0  # Задержка перед повтором (секунды)  
 
 
-# Государственные праздники (месяц, день)
+# Государственные праздники Казахстана (месяц, день)
 KZ_HOLIDAYS = [
     (1, 1),   # Новый год
     (1, 2),   # Новый год (второй день)
@@ -32,10 +41,9 @@ KZ_HOLIDAYS = [
     (5, 1),   # День единства народа Казахстана
     (5, 7),   # День защитника Отечества
     (5, 9),   # День Победы
-    (6, 6),   # День столицы
-    (7, 6),   # День столицы (второй день)
+    (7, 6),   # День столицы
     (8, 30),  # День Конституции
-    (12, 1),  # День Первого Президента
+    (10, 25), # День Республики
     (12, 16), # День Независимости
     (12, 17), # День Независимости (второй день)
 ]
@@ -95,30 +103,52 @@ async def check_birthdays():
         today_month = today.month
         today_day = today.day
         
-        # Находим пользователей с днем рождения сегодня
-        users = db.query(User).filter(
-            extract('month', User.birth_date) == today_month,
-            extract('day', User.birth_date) == today_day,
-            User.is_active.is_(True)
-        ).all()
+        user_ids_result = (
+            db.query(User.id)
+            .outerjoin(UserDevice, User.id == UserDevice.user_id)
+            .filter(
+                extract('month', User.birth_date) == today_month,
+                extract('day', User.birth_date) == today_day,
+                User.is_active.is_(True),
+                or_(
+                    User.fcm_token.isnot(None),
+                    and_(
+                        UserDevice.fcm_token.isnot(None),
+                        UserDevice.is_active.is_(True),
+                        UserDevice.revoked_at.is_(None)
+                    )
+                )
+            )
+            .distinct()
+            .all()
+        )
         
-        if not users:
+        if not user_ids_result:
             return
         
-        user_ids = [user.id for user in users]
+        user_ids = [uid[0] for uid in user_ids_result]
+        logger.info(f"Дни рождения: {len(user_ids)} пользователей с push токенами")
+        
+        db.close()
+        db = None
+        
         sent_count = await send_notifications_in_batches(user_ids, "birthday")
         
         if sent_count > 0:
-            print(f"Отправлено {sent_count} уведомлений о днях рождения")
+            logger.info(f"Отправлено {sent_count} уведомлений о днях рождения")
         
     except Exception as e:
-        print(f"Ошибка при проверке дней рождения: {e}")
+        logger.error(f"Ошибка при проверке дней рождения: {e}")
     finally:
-        db.close()
+        if db:
+            db.close()
 
 
 async def check_holidays():
-    """Проверка государственных праздников и отправка массовых уведомлений"""
+    """
+    Проверка государственных праздников и отправка массовых уведомлений.
+    ОПТИМИЗИРОВАНО: Запрашиваются только user_id пользователей с push токенами.
+    """
     db = SessionLocal()
     try:
         today = get_local_time()
@@ -131,22 +161,37 @@ async def check_holidays():
         if not is_holiday:
             return
         
-        # Находим всех активных пользователей
-        users = db.query(User).filter(
-            User.is_active.is_(True)
-        ).all()
+        user_ids_result = (
+            db.query(User.id)
+            .outerjoin(UserDevice, User.id == UserDevice.user_id)
+            .filter(
+                User.is_active.is_(True),
+                or_(
+                    User.fcm_token.isnot(None),
+                    and_(
+                        UserDevice.fcm_token.isnot(None),
+                        UserDevice.is_active.is_(True),
+                        UserDevice.revoked_at.is_(None)
+                    )
+                )
+            )
+            .distinct()
+            .all()
+        )
         
-        if not users:
+        if not user_ids_result:
             return
         
-        user_ids = [user.id for user in users]
+        user_ids = [uid[0] for uid in user_ids_result]
+        logger.info(f"Праздничные уведомления: {len(user_ids)} пользователей с push токенами")
+        
         sent_count = await send_notifications_in_batches(user_ids, "holiday_greeting")
         
         if sent_count > 0:
-            print(f"Отправлено {sent_count} праздничных уведомлений")
+            logger.info(f"Отправлено {sent_count} праздничных уведомлений")
         
     except Exception as e:
-        print(f"Ошибка при проверке праздников: {e}")
+        logger.error(f"Ошибка при проверке праздников: {e}")
     finally:
         db.close()
 
@@ -155,8 +200,10 @@ async def check_weekend_promotions():
     """
     Проверка пятницы вечером и понедельника утром для промо-уведомлений.
     Использует get_local_time() для проверки алматинского времени (GMT+5).
-    Cron jobs настроены на запуск в нужное время, но проверка внутри функции
-    гарантирует правильность даже при рассинхронизации.
+    
+    - Запрашиваются только user_id, не полные объекты
+    - Фильтруются пользователи с push токенами
+    - Запуск в background для неблокирующей работы
     """
     db = SessionLocal()
     try:
@@ -164,40 +211,57 @@ async def check_weekend_promotions():
         weekday = now.weekday()  # 0 = понедельник, 4 = пятница
         hour = now.hour
         
+        notification_key = None
+        
         # Пятница 19:00
         if weekday == 4 and hour == 19:
-            users = db.query(User).filter(
-                User.is_active.is_(True)
-            ).all()
-            
-            if not users:
-                return
-            
-            user_ids = [user.id for user in users]
-            sent_count = await send_notifications_in_batches(user_ids, "friday_evening")
-            
-            if sent_count > 0:
-                print(f"Отправлено {sent_count} уведомлений 'Пятница вечер'")
-        
+            notification_key = "friday_evening"
         # Понедельник 8:00
         elif weekday == 0 and hour == 8:
-            users = db.query(User).filter(
-                User.is_active.is_(True)
-            ).all()
-            
-            if not users:
-                return
-            
-            user_ids = [user.id for user in users]
-            sent_count = await send_notifications_in_batches(user_ids, "monday_morning")
-            
-            if sent_count > 0:
-                print(f"Отправлено {sent_count} уведомлений 'Понедельник утро'")
+            notification_key = "monday_morning"
+        
+        if not notification_key:
+            return
+        
+        user_ids_result = (
+            db.query(User.id)
+            .outerjoin(UserDevice, User.id == UserDevice.user_id)
+            .filter(
+                User.is_active.is_(True),
+                or_(
+                    User.fcm_token.isnot(None),
+                    and_(
+                        UserDevice.fcm_token.isnot(None),
+                        UserDevice.is_active.is_(True),
+                        UserDevice.revoked_at.is_(None)
+                    )
+                )
+            )
+            .distinct()
+            .all()
+        )
+        
+        if not user_ids_result:
+            logger.info(f"Нет пользователей с push токенами для {notification_key}")
+            return
+        
+        user_ids = [uid[0] for uid in user_ids_result]
+        logger.info(f"{notification_key}: {len(user_ids)} пользователей с push токенами")
+        
+        # Закрываем сессию БД ДО отправки уведомлений
+        db.close()
+        db = None
+        
+        sent_count = await send_notifications_in_batches(user_ids, notification_key)
+        
+        if sent_count > 0:
+            logger.info(f"Отправлено {sent_count} уведомлений '{notification_key}'")
         
     except Exception as e:
-        print(f"Ошибка при проверке промо-уведомлений: {e}")
+        logger.error(f"Ошибка при проверке промо-уведомлений: {e}")
     finally:
-        db.close()
+        if db:
+            db.close()
 
 
 async def check_new_cars():
@@ -205,31 +269,52 @@ async def check_new_cars():
     db = SessionLocal()
     try:
         cutoff = get_local_time() - timedelta(hours=1)
-        new_cars = (
-            db.query(Car)
+        
+        new_cars_exist = (
+            db.query(Car.id)
             .filter(
                 Car.created_at != None,
                 Car.created_at >= cutoff
             )
+            .first()
+        )
+
+        if not new_cars_exist:
+            return
+
+        user_ids_result = (
+            db.query(User.id)
+            .outerjoin(UserDevice, User.id == UserDevice.user_id)
+            .filter(
+                User.is_active.is_(True),
+                or_(
+                    User.fcm_token.isnot(None),
+                    and_(
+                        UserDevice.fcm_token.isnot(None),
+                        UserDevice.is_active.is_(True),
+                        UserDevice.revoked_at.is_(None)
+                    )
+                )
+            )
+            .distinct()
             .all()
         )
 
-        if not new_cars:
+        if not user_ids_result:
             return
 
-        users = db.query(User).filter(
-            User.is_active.is_(True)
-        ).all()
-
-        if not users:
-            return
-
-        user_ids = [user.id for user in users]
+        user_ids = [uid[0] for uid in user_ids_result]
+        logger.info(f"Новые автомобили: {len(user_ids)} пользователей с push токенами")
+        
+        db.close()
+        db = None
+        
         sent_count = await send_notifications_in_batches(user_ids, "new_car_available")
 
         if sent_count > 0:
-            print(f"Отправлено {sent_count} уведомлений о новых автомобилях")
+            logger.info(f"Отправлено {sent_count} уведомлений о новых автомобилях")
     except Exception as e:
-        print(f"Ошибка при проверке новых автомобилей: {e}")
+        logger.error(f"Ошибка при проверке новых автомобилей: {e}")
     finally:
-        db.close()
+        if db:
+            db.close()
