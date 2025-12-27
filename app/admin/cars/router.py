@@ -968,6 +968,7 @@ async def get_trip_detail(
         "distance_fee": rental.distance_fee or 0,
         "with_driver": rental.with_driver,
         "driver_fee": rental.driver_fee or 0,
+        "rebooking_fee": rental.rebooking_fee or 0,
         
         # Fuel levels
         "fuel_before": rental.fuel_before,

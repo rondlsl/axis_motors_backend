@@ -406,7 +406,8 @@ def get_trip_history(
             "delivery_mechanic_comment": review.delivery_mechanic_comment if review else None,
             "rating": rental.rating,
             "with_driver": rental.with_driver,
-            "driver_fee": rental.driver_fee or 0
+            "driver_fee": rental.driver_fee or 0,
+            "rebooking_fee": rental.rebooking_fee or 0
         })
 
     return {"trip_history": result}
@@ -481,6 +482,7 @@ async def get_trip_history_detail(
         "rating": rental.rating,
         "with_driver": rental.with_driver,
         "driver_fee": rental.driver_fee or 0,
+        "rebooking_fee": rental.rebooking_fee or 0,
     }
 
     if car:
@@ -1017,7 +1019,8 @@ async def reserve_car(
         distance_fee=0,
         total_price=base,
         reservation_time=get_local_time(),
-        with_driver=with_driver
+        with_driver=with_driver,
+        rebooking_fee=rebooking_fee 
     )
     db.add(rental)
     db.commit()

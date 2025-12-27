@@ -530,7 +530,8 @@ def create_rental_history_table():
         sa.Column('mechanic_inspection_end_longitude', sa.Float(), nullable=True),
         sa.Column('rating', sa.Float(), nullable=True),
         sa.Column('with_driver', sa.Boolean(), nullable=False, server_default='false'),
-        sa.Column('driver_fee', sa.Integer(), nullable=True, server_default='0')
+        sa.Column('driver_fee', sa.Integer(), nullable=True, server_default='0'),
+        sa.Column('rebooking_fee', sa.Integer(), nullable=True, server_default='0')
     )
 
 

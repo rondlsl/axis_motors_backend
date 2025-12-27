@@ -180,6 +180,7 @@ def calculate_rental_cost_breakdown(
             "delivery_fee": 0,
             "minute_cost_reserve": 0,
             "driver_fee": 0,
+            "rebooking_fee": 0,
             "total_minimum_balance": 0,
             "breakdown": {
                 "base_price": 0,
@@ -187,7 +188,8 @@ def calculate_rental_cost_breakdown(
                 "fuel_cost": 0,
                 "delivery_fee": 0,
                 "minute_cost_reserve": 0,
-                "driver_fee": 0
+                "driver_fee": 0,
+                "rebooking_fee": 0
             }
         }
     
@@ -251,6 +253,7 @@ def calculate_rental_cost_breakdown(
         "delivery_fee": int(delivery_fee),
         "minute_cost_reserve": int(minute_cost_reserve),
         "driver_fee": int(driver_fee),
+        "rebooking_fee": 0,
         "total_minimum_balance": total_minimum_balance,
         "breakdown": {
             "base_price": int(base_price),
@@ -258,6 +261,7 @@ def calculate_rental_cost_breakdown(
             "fuel_cost": int(fuel_cost),
             "delivery_fee": int(delivery_fee),
             "minute_cost_reserve": int(minute_cost_reserve),
-            "driver_fee": int(driver_fee)
+            "driver_fee": int(driver_fee),
+            "rebooking_fee": 0
         }
     }

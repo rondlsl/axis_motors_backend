@@ -115,7 +115,10 @@ class RentalHistory(Base):
     
     # Поля для аренды с водителем
     with_driver = Column(Boolean, default=False, server_default="false", nullable=False)  
-    driver_fee = Column(Integer, nullable=True, default=0, server_default="0")  
+    driver_fee = Column(Integer, nullable=True, default=0, server_default="0")
+    
+    # Комиссия за повторное бронирование того же авто
+    rebooking_fee = Column(Integer, nullable=True, default=0, server_default="0")  
 
     # Явно задаём связь для механика доставки:
     delivery_mechanic = relationship("User", foreign_keys=[delivery_mechanic_id])

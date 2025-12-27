@@ -81,6 +81,7 @@ class RentalCostBreakdown(BaseModel):
     delivery_fee: int = Field(..., description="Стоимость доставки")
     minute_cost_reserve: int = Field(..., description="Резерв на поминутную оплату")
     driver_fee: int = Field(0, description="Стоимость водителя")
+    rebooking_fee: int = Field(0, description="Комиссия за повторное бронирование")
 
 
 class RentalCalculatorResponse(BaseModel):
