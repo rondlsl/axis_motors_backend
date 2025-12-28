@@ -167,7 +167,7 @@ async def get_vehicle_info(
         if current_user.role == UserRole.MECHANIC:
             query = db.query(Car)
             if current_user.phone_number not in ["71011111111", "71234567890", "77057726400", "71234567876", "77766639210"]:
-                query = query.filter(Car.plate_number != "666AZV02")
+                query = query.filter(Car.plate_number.notin_(["666AZV02", "195BGY02"]))
         else:
             active_rental = db.query(RentalHistory).filter(
                 RentalHistory.user_id == current_user.id,
@@ -180,7 +180,7 @@ async def get_vehicle_info(
                 query = db.query(Car)
                 
                 if current_user.phone_number not in ["71011111111", "71234567890", "77057726400", "71234567876", "77766639210"]:
-                    query = query.filter(Car.plate_number != "666AZV02")
+                    query = query.filter(Car.plate_number.notin_(["666AZV02", "195BGY02"]))
 
         if current_user.role == UserRole.USER and bool(current_user.documents_verified):
             available_classes = get_user_available_auto_classes(current_user, db)
@@ -411,7 +411,7 @@ def search_vehicles(
                 )
             )
             if current_user.phone_number not in ["71011111111", "71234567890", "77057726400", "71234567876", "77766639210"]:
-                mechanic_query = mechanic_query.filter(Car.plate_number != "666AZV02")
+                mechanic_query = mechanic_query.filter(Car.plate_number.notin_(["666AZV02", "195BGY02"]))
             cars = mechanic_query.all()
         else:
             # Обычные пользователи ищут только среди машины, которую они забронировали или арендуют
@@ -441,7 +441,7 @@ def search_vehicles(
                 )
                 
                 if current_user.phone_number not in ["71011111111", "71234567890", "77057726400", "71234567876", "77766639210"]:
-                    search_query = search_query.filter(Car.plate_number != "666AZV02")
+                    search_query = search_query.filter(Car.plate_number.notin_(["666AZV02", "195BGY02"]))
                 
                 cars = search_query.all()
 
