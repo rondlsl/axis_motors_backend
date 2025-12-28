@@ -1275,7 +1275,7 @@ async def reserve_delivery(
             except Exception as e:
                 logger.error(f"Ошибка отправки Telegram уведомления о доставке (chat {chat_id}): {e}")
 
-        chat_ids = [965048905, 5941825713, 860991388, 1594112444, 808277096]
+        chat_ids = [965048905, 5941825713, 860991388, 1594112444, 808277096, 7656716395]
         if TELEGRAM_BOT_TOKEN:
             for chat_id in chat_ids:
                 asyncio.create_task(_send_delivery_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN))
@@ -1943,7 +1943,7 @@ async def start_rental(
                 print(f"Ошибка отправки Telegram уведомления в {chat_id}: {e}")
         
         # Список чатов для уведомлений
-        chat_ids = [965048905, 5941825713, 860991388, 1594112444, 808277096]
+        chat_ids = [965048905, 5941825713, 860991388, 1594112444, 808277096, 7656716395]
         
         if TELEGRAM_BOT_TOKEN:
             for chat_id in chat_ids:
