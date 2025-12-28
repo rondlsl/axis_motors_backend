@@ -113,6 +113,7 @@ CAR_AVAILABILITY_START = {
     "455BNI02": datetime(2025, 12, 1),
     "959AWM02": datetime(2025, 11, 1),
     "666AZV02": datetime(2025, 9, 1),
+    "195BGY02": datetime(2025, 12, 28),  
 }
 
 

@@ -88,6 +88,7 @@ def get_vehicle_id_by_imei(imei: str) -> int:
         "860803068146253": 800339176,  # Hyundai Tucson
         "860803068155890": 800298270,  # Mercedes G63
         "860803068155916": 800370225,  # BYD Han EV
+        "860803068139613": 800406786,  # Maserati Ghibli
     }
     vehicle_id = imei_to_vehicle_id.get(imei)
     if vehicle_id is None:
@@ -133,6 +134,14 @@ def get_commands_by_imei(imei: str) -> dict:
         "860803068155916": {  # BYD Han EV - vehicle_id 800370225
             "open": "OUTPUT1 1|OUTPUT3 0|OUTPUT2 1|OUTPUT3 0|OUTPUT3 0|OUTPUT3 0OUTPUT2 0|OUTPUT1 0",
             "close": "OUTPUT1 1|OUTPUT2 0|OUTPUT3 1|OUTPUT2 0|OUTPUT2 0|OUTPUT2 0OUTPUT3 0|OUTPUT1 0",
+            "give_key": "OUTPUT1 1",
+            "take_key": "OUTPUT1 0",
+            "lock_engine": "OUTPUT0 1",
+            "unlock_engine": "OUTPUT0 0"
+        },
+        "860803068139613": {  # Maserati Ghibli - vehicle_id 800406786
+            "open": "OUTPUT1 1|OUTPUT3 0|OUTPUT3 0|OUTPUT3 0|OUTPUT2 1|OUTPUT3 0|OUTPUT3 0|OUTPUT3 0|OUTPUT2 0|OUTPUT1 0",
+            "close": "OUTPUT1 1|OUTPUT2 0|OUTPUT2 0|OUTPUT2 0|OUTPUT3 1|OUTPUT2 0|OUTPUT2 0|OUTPUT2 0|OUTPUT3 0|OUTPUT1 0",
             "give_key": "OUTPUT1 1",
             "take_key": "OUTPUT1 0",
             "lock_engine": "OUTPUT0 1",
