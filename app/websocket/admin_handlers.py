@@ -165,9 +165,10 @@ async def get_admin_users_list_data(
     car_status_filter: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Get admin users list data with coordinates, mirroring GET /admin/users/list (оптимизировано)
+    Get admin users list data with coordinates from user_devices.
     """
     from app.models.user_model import UserRole
+    from app.models.user_device_model import UserDevice
     from app.models.history_model import RentalHistory, RentalStatus
     from sqlalchemy import func, case
     
@@ -184,7 +185,6 @@ async def get_admin_users_list_data(
         db.query(
             RentalHistory.user_id,
             RentalHistory.rental_status,
-            RentalHistory.car_id
         )
         .filter(RentalHistory.rental_status.in_(active_statuses))
         .subquery()
@@ -200,23 +200,23 @@ async def get_admin_users_list_data(
     query = (
         db.query(
             User,
+            UserDevice.last_lat,
+            UserDevice.last_lng,
             active_rental_subq.c.rental_status,
-            active_rental_subq.c.car_id,
-            Car.id.label("car_id_real"),
-            Car.name.label("car_name"),
-            Car.plate_number.label("car_plate"),
-            Car.photos.label("car_photos"),
-            Car.latitude.label("car_lat"),
-            Car.longitude.label("car_lon"),
-            Car.fuel_level.label("car_fuel"),
             case(
                 (owner_ids_subq.c.owner_id.isnot(None), True),
                 else_=False
             ).label("is_owner")
         )
+        .join(UserDevice, UserDevice.user_id == User.id)
         .outerjoin(active_rental_subq, User.id == active_rental_subq.c.user_id)
-        .outerjoin(Car, Car.id == active_rental_subq.c.car_id)
         .outerjoin(owner_ids_subq, User.id == owner_ids_subq.c.owner_id)
+        .filter(
+            UserDevice.is_active == True,
+            UserDevice.revoked_at.is_(None),
+            UserDevice.last_lat.isnot(None),
+            UserDevice.last_lng.isnot(None)
+        )
     )
     
     if role:
@@ -235,9 +235,7 @@ async def get_admin_users_list_data(
             search_filter = or_(
                 func.lower(User.first_name).contains(search_query.lower()),
                 func.lower(User.last_name).contains(search_query.lower()),
-                User.phone_number.contains(search_query),
-                User.iin.contains(search_query),
-                User.passport_number.contains(search_query)
+                User.phone_number.contains(search_query)
             )
             query = query.filter(search_filter)
     
@@ -251,7 +249,7 @@ async def get_admin_users_list_data(
             (active_rental_subq.c.user_id.isnot(None), 0),
             else_=1
         ),
-        User.id
+        UserDevice.last_active_at.desc()
     )
     
     rows = query.all()
@@ -261,43 +259,14 @@ async def get_admin_users_list_data(
     
     for row in rows:
         user = row[0]
-        rental_status = row[1]
-        car_id = row[2]
-        car_name = row[4]
-        car_plate = row[5]
-        car_photos = row[6]
-        car_lat = row[7]
-        car_lon = row[8]
-        car_fuel = row[9]
-        is_owner = row[10] 
+        last_lat = row[1]
+        last_lng = row[2]
+        rental_status = row[3]
+        is_owner = row[4]
         
         if user.id in seen_user_ids:
             continue
         seen_user_ids.add(user.id)
-        
-        current_car = None
-        if car_id and car_name:
-            current_car = {
-                "id": uuid_to_sid(car_id),
-                "name": car_name,
-                "plate_number": car_plate,
-                "photos": car_photos,
-                "latitude": car_lat,
-                "longitude": car_lon,
-                "fuel_level": car_fuel
-            }
-        
-        has_active = current_car is not None
-        
-        auto_class_list = []
-        if user.auto_class:
-            if isinstance(user.auto_class, list):
-                auto_class_list = user.auto_class
-            elif isinstance(user.auto_class, str):
-                raw = user.auto_class.strip()
-                if raw.startswith("{") and raw.endswith("}"):
-                    raw = raw[1:-1]
-                auto_class_list = [p.strip() for p in raw.split(",") if p.strip()]
         
         car_status = "FREE"
         if rental_status:
@@ -313,12 +282,10 @@ async def get_admin_users_list_data(
                 car_status = "DELIVERY_RESERVED"
         
         if car_status == "FREE":
-            # Используем is_owner вместо user.owned_cars (избегаем N+1)
             if is_owner:
                 car_status = "OWNER"
-            elif user.role in [UserRole.PENDING, UserRole.PENDINGTOFIRST, UserRole.PENDINGTOSECOND] or user.role.value.startswith("PENDING") or user.role.value.startswith("REJECT"):
-                if user.role.value.startswith("PENDING"):
-                    car_status = "PENDING"
+            elif user.role and user.role.value.startswith("PENDING"):
+                car_status = "PENDING"
         
         if car_status_filter is not None and car_status != car_status_filter:
             continue
@@ -329,14 +296,11 @@ async def get_admin_users_list_data(
             "last_name": user.last_name,
             "middle_name": user.middle_name,
             "phone_number": user.phone_number,
-            "iin": user.iin,
-            "passport_number": user.passport_number,
-            "role": user.role.value,
-            "auto_class": auto_class_list,
-            "selfie_url": user.selfie_url,
+            "role": user.role.value if user.role else None,
+            "latitude": last_lat,
+            "longitude": last_lng,
             "is_blocked": not user.is_active,
-            "current_rental_car": current_car,
-            "rating": float(user.rating) if user.rating else None,
+            "selfie_url": user.selfie_url,
             "carStatus": car_status
         }
         
