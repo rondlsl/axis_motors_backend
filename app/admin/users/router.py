@@ -1728,8 +1728,8 @@ async def topup_user_balance(
     
     try:
         await send_push_to_user_by_id(
+            db_session=db,
             user_id=user_uuid,
-            db=db,
             title="Пополнение баланса",
             body=notification_message
         )
@@ -1804,8 +1804,8 @@ async def deduct_user_balance(
     
     try:
         await send_push_to_user_by_id(
+            db_session=db,
             user_id=user_uuid,
-            db=db,
             title="Списание средств",
             body=notification_message
         )
