@@ -123,7 +123,7 @@ def get_commands_by_imei(imei: str) -> dict:
             "unlock_engine": "OUTPUT0 0"
         },
         "860803068155890": {  # Mercedes G63 - vehicle_id 800298270
-            "open": "chat OPEN",
+            "open": "chat OPEN|OUTPUT1 1|OUTPUT3 1|OUTPUT2 0|OUTPUT2 0|OUTPUT2 0|OUTPUT2 0|OUTPUT3 0|OUTPUT1 0",
             "close": "chat CLOSE",
             "give_key": "OUTPUT1 1",
             "take_key": "OUTPUT1 0",
