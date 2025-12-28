@@ -270,6 +270,7 @@ class WalletTransactionPaginationSchema(BaseModel):
     page: int
     limit: int
     pages: int
+    wallet_balance: float
 
 
 class RentalHistoryUpdateSchema(BaseModel):
