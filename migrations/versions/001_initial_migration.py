@@ -675,9 +675,7 @@ def create_wallet_transactions_table():
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now())
     )
     
-    # Create index for tracking_id
-    op.create_index('idx_wallet_transactions_tracking_id', 'wallet_transactions', ['tracking_id'])
-
+    op.create_index('idx_wallet_transactions_tracking_id', 'wallet_transactions', ['tracking_id'], unique=True, postgresql_where=sa.text('tracking_id IS NOT NULL'))
 
 def create_support_chats_table():
     """Create support_chats table"""
