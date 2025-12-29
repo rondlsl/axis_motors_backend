@@ -45,6 +45,45 @@ import asyncio
 users_router = APIRouter(tags=["Admin Users"])
 
 
+def recalculate_transactions_after(
+    db: Session,
+    user_id: uuid.UUID,
+    after_time: datetime,
+    base_balance: float
+) -> float:
+    """
+    Пересчитывает balance_before и balance_after для всех транзакций пользователя
+    после указанного времени. Возвращает итоговый баланс.
+    
+    Args:
+        db: Сессия БД
+        user_id: UUID пользователя
+        after_time: Время, после которого пересчитывать транзакции
+        base_balance: Начальный баланс (balance_after удаленной/измененной транзакции или balance_before)
+    
+    Returns:
+        float: Итоговый баланс после пересчёта
+    """
+    subsequent_transactions = (
+        db.query(WalletTransaction)
+        .filter(
+            WalletTransaction.user_id == user_id,
+            WalletTransaction.created_at > after_time
+        )
+        .order_by(WalletTransaction.created_at.asc())
+        .all()
+    )
+    
+    running_balance = base_balance
+    
+    for tx in subsequent_transactions:
+        tx.balance_before = running_balance
+        tx.balance_after = running_balance + float(tx.amount)
+        running_balance = tx.balance_after
+    
+    return running_balance
+
+
 @users_router.post("/generate-token")
 async def generate_user_token(
     user_id: str = Form(..., description="UUID пользователя"),
@@ -856,7 +895,7 @@ async def get_user_transactions(
 async def delete_user_transaction(
     user_id: str,
     transaction_id: str,
-    adjust_balance: bool = Query(False, description="Если true - откатывает влияние транзакции на баланс"),
+    adjust_balance: bool = Query(False, description="Если true - откатывает влияние транзакции на баланс и пересчитывает последующие"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -864,7 +903,8 @@ async def delete_user_transaction(
     Удаление транзакции пользователя (только для ADMIN).
     
     - adjust_balance=false: только удаляет запись транзакции
-    - adjust_balance=true: удаляет транзакцию И откатывает её влияние на баланс
+    - adjust_balance=true: удаляет транзакцию, пересчитывает balance_before/balance_after 
+      для всех последующих транзакций и обновляет баланс пользователя
     """
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Недостаточно прав. Только ADMIN может удалять транзакции.")
@@ -888,27 +928,46 @@ async def delete_user_transaction(
         "amount": float(transaction.amount),
         "transaction_type": transaction.transaction_type.value if hasattr(transaction.transaction_type, "value") else str(transaction.transaction_type),
         "description": transaction.description,
-        "balance_before": float(transaction.balance_before),
-        "balance_after": float(transaction.balance_after)
+        "balance_before": float(transaction.balance_before) if transaction.balance_before else 0,
+        "balance_after": float(transaction.balance_after) if transaction.balance_after else 0
     }
     
-    balance_adjusted = False
     old_balance = float(user.wallet_balance or 0)
     new_balance = old_balance
+    recalculated_count = 0
     
     if adjust_balance:
-        new_balance = old_balance - float(transaction.amount)
+        tx_created_at = transaction.created_at
+        tx_balance_before = float(transaction.balance_before) if transaction.balance_before else 0
+        
+        db.delete(transaction)
+        db.flush()
+        
+        new_balance = recalculate_transactions_after(
+            db=db,
+            user_id=user_uuid,
+            after_time=tx_created_at,
+            base_balance=tx_balance_before
+        )
+        
+        subsequent_count = db.query(WalletTransaction).filter(
+            WalletTransaction.user_id == user_uuid,
+            WalletTransaction.created_at > tx_created_at
+        ).count()
+        recalculated_count = subsequent_count
+        
         user.wallet_balance = new_balance
-        balance_adjusted = True
+    else:
+        db.delete(transaction)
     
-    db.delete(transaction)
     db.commit()
     
     return {
         "success": True,
-        "message": "Транзакция удалена" + (" и баланс скорректирован" if balance_adjusted else ""),
+        "message": "Транзакция удалена" + (f" и пересчитано {recalculated_count} последующих транзакций" if adjust_balance else ""),
         "deleted_transaction": tx_data,
-        "balance_adjusted": balance_adjusted,
+        "balance_adjusted": adjust_balance,
+        "recalculated_transactions_count": recalculated_count,
         "old_balance": old_balance,
         "new_balance": new_balance
     }
@@ -920,7 +979,7 @@ async def edit_user_transaction(
     transaction_id: str,
     amount: Optional[float] = Form(None, description="Новая сумма транзакции"),
     description: Optional[str] = Form(None, description="Новое описание"),
-    adjust_balance: bool = Form(False, description="Если true - корректирует баланс на разницу"),
+    adjust_balance: bool = Form(False, description="Если true - пересчитывает все последующие транзакции"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -929,7 +988,7 @@ async def edit_user_transaction(
     
     - amount: новая сумма (если указана)
     - description: новое описание (если указано)
-    - adjust_balance: если true, корректирует баланс пользователя на разницу
+    - adjust_balance: если true, пересчитывает balance_before/balance_after для всех последующих транзакций
     """
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Недостаточно прав. Только ADMIN может редактировать транзакции.")
@@ -950,32 +1009,48 @@ async def edit_user_transaction(
     
     old_amount = float(transaction.amount)
     old_description = transaction.description
-    balance_adjusted = False
     old_balance = float(user.wallet_balance or 0)
     new_balance = old_balance
+    recalculated_count = 0
+    
+    if description is not None:
+        transaction.description = description
     
     if amount is not None:
         new_amount = amount
         amount_diff = new_amount - old_amount
         
-        if adjust_balance and amount_diff != 0:
-            new_balance = old_balance + amount_diff
-            user.wallet_balance = new_balance
-            balance_adjusted = True
-        
         transaction.amount = new_amount
-        if transaction.balance_after is not None:
-            transaction.balance_after = float(transaction.balance_after) + amount_diff
-    
-    if description is not None:
-        transaction.description = description
+        
+        tx_balance_before = float(transaction.balance_before) if transaction.balance_before else 0
+        transaction.balance_after = tx_balance_before + new_amount
+        
+        if adjust_balance and amount_diff != 0:
+            tx_created_at = transaction.created_at
+            
+            db.flush()
+            
+            new_balance = recalculate_transactions_after(
+                db=db,
+                user_id=user_uuid,
+                after_time=tx_created_at,
+                base_balance=float(transaction.balance_after)
+            )
+            
+            subsequent_count = db.query(WalletTransaction).filter(
+                WalletTransaction.user_id == user_uuid,
+                WalletTransaction.created_at > tx_created_at
+            ).count()
+            recalculated_count = subsequent_count
+            
+            user.wallet_balance = new_balance
     
     db.commit()
     db.refresh(transaction)
     
     return {
         "success": True,
-        "message": "Транзакция обновлена" + (" и баланс скорректирован" if balance_adjusted else ""),
+        "message": "Транзакция обновлена" + (f" и пересчитано {recalculated_count} последующих транзакций" if recalculated_count > 0 else ""),
         "transaction": {
             "id": uuid_to_sid(transaction.id),
             "old_amount": old_amount,
@@ -985,7 +1060,8 @@ async def edit_user_transaction(
             "balance_before": float(transaction.balance_before) if transaction.balance_before else None,
             "balance_after": float(transaction.balance_after) if transaction.balance_after else None
         },
-        "balance_adjusted": balance_adjusted,
+        "balance_adjusted": adjust_balance and recalculated_count > 0,
+        "recalculated_transactions_count": recalculated_count,
         "old_user_balance": old_balance,
         "new_user_balance": new_balance
     }
