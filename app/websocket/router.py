@@ -1,9 +1,10 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from fastapi.encoders import jsonable_encoder
-from typing import Optional
+from typing import Optional, Dict, Any
 import logging
 import asyncio
 import json
+import httpx
 
 from app.dependencies.database.database import SessionLocal
 from app.websocket.manager import connection_manager
@@ -14,11 +15,27 @@ from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
 from app.models.car_model import Car
 from app.models.history_model import RentalHistory, RentalStatus
 from app.websocket.admin_handlers import get_admin_cars_list_data, get_admin_users_list_data
-from app.gps_api.utils.glonassoft_client import glonassoft_client
-from app.gps_api.utils.telemetry_processor import process_glonassoft_data
 from app.utils.time_utils import get_local_time
 
+INTERNAL_VEHICLES_API = "http://195.93.152.69:8667/vehicles"
+
 logger = logging.getLogger(__name__)
+
+
+async def get_telemetry_from_internal_api(vehicle_imei: str) -> Optional[Dict[str, Any]]:
+    """Получить телеметрию автомобиля из внутреннего API кеша"""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(INTERNAL_VEHICLES_API)
+            if response.status_code == 200:
+                vehicles = response.json()
+                for v in vehicles:
+                    if v.get("vehicle_imei") == vehicle_imei:
+                        return v
+    except Exception:
+        pass
+    return None
+
 
 websocket_router = APIRouter()
 
@@ -111,13 +128,24 @@ async def websocket_vehicle_telemetry(
                     }
         
         try:
-            glonassoft_data = await glonassoft_client.get_vehicle_data(vehicle_imei)
-            if glonassoft_data:
-                telemetry = process_glonassoft_data(glonassoft_data, car.name)
-                telemetry_payload = jsonable_encoder(telemetry)
-                # Добавляем информацию об арендаторе
-                telemetry_payload["current_renter"] = current_renter_info
-                telemetry_payload["current_rental"] = current_rental_info
+            telemetry_data = await get_telemetry_from_internal_api(vehicle_imei)
+            if telemetry_data:
+                telemetry_payload = {
+                    "name": telemetry_data.get("name"),
+                    "speed": telemetry_data.get("speed"),
+                    "latitude": telemetry_data.get("latitude"),
+                    "longitude": telemetry_data.get("longitude"),
+                    "is_engine_on": telemetry_data.get("is_engine_on"),
+                    "fuel_level": telemetry_data.get("fuel_level"),
+                    "mileage": telemetry_data.get("mileage"),
+                    "rpm": telemetry_data.get("rpm"),
+                    "course": telemetry_data.get("course"),
+                    "central_locks_locked": telemetry_data.get("central_locks_locked"),
+                    "is_handbrake_on": telemetry_data.get("is_handbrake_on"),
+                    "is_trunk_open": telemetry_data.get("is_trunk_open"),
+                    "current_renter": current_renter_info,
+                    "current_rental": current_rental_info
+                }
                 await websocket.send_json({
                     "type": "telemetry",
                     "data": telemetry_payload,
@@ -151,11 +179,23 @@ async def websocket_vehicle_telemetry(
                     db.expire_all()
                     db.refresh(car)
                     
-                    glonassoft_data = await glonassoft_client.get_vehicle_data(vehicle_imei)
+                    telemetry_data = await get_telemetry_from_internal_api(vehicle_imei)
                     
-                    if glonassoft_data:
-                        telemetry = process_glonassoft_data(glonassoft_data, car.name)
-                        telemetry_payload = jsonable_encoder(telemetry)
+                    if telemetry_data:
+                        telemetry_payload = {
+                            "name": telemetry_data.get("name"),
+                            "speed": telemetry_data.get("speed"),
+                            "latitude": telemetry_data.get("latitude"),
+                            "longitude": telemetry_data.get("longitude"),
+                            "is_engine_on": telemetry_data.get("is_engine_on"),
+                            "fuel_level": telemetry_data.get("fuel_level"),
+                            "mileage": telemetry_data.get("mileage"),
+                            "rpm": telemetry_data.get("rpm"),
+                            "course": telemetry_data.get("course"),
+                            "central_locks_locked": telemetry_data.get("central_locks_locked"),
+                            "is_handbrake_on": telemetry_data.get("is_handbrake_on"),
+                            "is_trunk_open": telemetry_data.get("is_trunk_open"),
+                        }
                         if car.current_renter_id:
                             current_renter = db.query(User).filter(User.id == car.current_renter_id).first()
                             if current_renter:

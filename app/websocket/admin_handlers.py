@@ -2,6 +2,7 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 import asyncio
+import httpx
 
 from app.models.car_model import Car, CarStatus
 from app.models.user_model import User
@@ -13,8 +14,6 @@ from app.admin.cars.schemas import (
     OwnerSchema, 
     CurrentRenterSchema
 )
-from app.gps_api.utils.glonassoft_client import glonassoft_client
-from app.gps_api.utils.telemetry_processor import process_glonassoft_data
 
 async def get_admin_cars_list_data(
     db: Session, 
@@ -38,35 +37,23 @@ async def get_admin_cars_list_data(
     total_count = db.query(Car).count()
     filtered_cars = query.all()
     
-    # Получаем скорости для всех машин из телеметрии
-    async def get_car_speed(car: Car) -> Optional[float]:
-        """Получить скорость машины из телеметрии"""
-        try:
-            vehicle_imei = (
-                getattr(car, 'gps_imei', None)
-                or getattr(car, 'imei', None)
-                or getattr(car, 'vehicle_imei', None)
-            )
-            if not vehicle_imei:
-                return None
-            
-            glonassoft_data = await glonassoft_client.get_vehicle_data(vehicle_imei)
-            if glonassoft_data:
-                telemetry = process_glonassoft_data(glonassoft_data, car.name)
-                return telemetry.speed if hasattr(telemetry, 'speed') else None
-            return None
-        except Exception:
-            return None
-    
-    speed_tasks = [get_car_speed(car) for car in filtered_cars]
-    speeds = await asyncio.gather(*speed_tasks, return_exceptions=True)
+    # Получаем скорости всех машин одним запросом к внутреннему API
     car_speeds = {}
-    for i, car in enumerate(filtered_cars):
-        speed = speeds[i]
-        if isinstance(speed, Exception) or speed is None:
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get("http://195.93.152.69:8667/vehicles")
+            if response.status_code == 200:
+                vehicles_cache = response.json()
+                imei_to_speed = {v.get("vehicle_imei"): v.get("speed") for v in vehicles_cache}
+                for car in filtered_cars:
+                    if car.gps_imei and car.gps_imei in imei_to_speed:
+                        car_speeds[car.id] = imei_to_speed[car.gps_imei]
+                    else:
+                        car_speeds[car.id] = None
+    except Exception:
+        for car in filtered_cars:
             car_speeds[car.id] = None
-        else:
-            car_speeds[car.id] = speed
+
 
     def _status_display(s: Optional[str]) -> str:
         return {
