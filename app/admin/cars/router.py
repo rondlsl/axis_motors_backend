@@ -26,6 +26,11 @@ from app.admin.cars.schemas import (
 )
 from app.admin.cars.utils import car_to_detail_schema, status_display, _get_drive_type_display, sort_car_photos
 from app.gps_api.utils.route_data import get_gps_route_data
+from app.gps_api.utils.auth_api import get_auth_token
+from app.gps_api.utils.car_data import send_open, send_close, send_give_key, send_take_key, send_lock_engine, send_unlock_engine
+from app.gps_api.utils.glonassoft_client import glonassoft_client
+from app.gps_api.utils.telemetry_processor import process_glonassoft_data
+from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD, logger
 from app.models.support_action_model import SupportAction
 from app.utils.plate_normalizer import normalize_plate_number
 from app.utils.telegram_logger import log_error_to_telegram
@@ -1660,3 +1665,264 @@ async def get_car_rental_history(
         "rental_history": result,
         "total_rentals": len(result)
     }
+
+BASE_URL = "https://regions.glonasssoft.ru"
+
+
+@cars_router.post("/{car_id}/open", summary="Открыть автомобиль")
+async def admin_open_vehicle(
+    car_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Открыть автомобиль (разблокировать двери)"""
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    car = get_car_by_id(db, car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    if not car.gps_imei:
+        raise HTTPException(status_code=400, detail="У автомобиля не настроен GPS IMEI")
+    
+    try:
+        auth_token = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+        if not auth_token:
+            raise HTTPException(status_code=500, detail="Не удалось получить токен авторизации GPS")
+        
+        result = await send_open(car.gps_imei, auth_token)
+        
+        return {
+            "message": "Команда на открытие отправлена",
+            "car_id": uuid_to_sid(car.id),
+            "car_name": car.name,
+            "command_id": result.get("command_id")
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        await log_error_to_telegram(error=e, request=None, user=current_user, additional_context={
+            "action": "admin_open_vehicle", "car_id": car_id, "gps_imei": car.gps_imei
+        })
+        raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
+
+
+@cars_router.post("/{car_id}/close", summary="Закрыть автомобиль")
+async def admin_close_vehicle(
+    car_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Закрыть автомобиль (заблокировать двери)"""
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    car = get_car_by_id(db, car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    if not car.gps_imei:
+        raise HTTPException(status_code=400, detail="У автомобиля не настроен GPS IMEI")
+    
+    try:
+        auth_token = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+        if not auth_token:
+            raise HTTPException(status_code=500, detail="Не удалось получить токен авторизации GPS")
+        
+        result = await send_close(car.gps_imei, auth_token)
+        
+        return {
+            "message": "Команда на закрытие отправлена",
+            "car_id": uuid_to_sid(car.id),
+            "car_name": car.name,
+            "command_id": result.get("command_id")
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        await log_error_to_telegram(error=e, request=None, user=current_user, additional_context={
+            "action": "admin_close_vehicle", "car_id": car_id, "gps_imei": car.gps_imei
+        })
+        raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
+
+
+@cars_router.post("/{car_id}/lock_engine", summary="Заблокировать двигатель")
+async def admin_lock_engine(
+    car_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Заблокировать двигатель автомобиля"""
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    car = get_car_by_id(db, car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    if not car.gps_imei:
+        raise HTTPException(status_code=400, detail="У автомобиля не настроен GPS IMEI")
+    
+    try:
+        auth_token = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+        if not auth_token:
+            raise HTTPException(status_code=500, detail="Не удалось получить токен авторизации GPS")
+        
+        result = await send_lock_engine(car.gps_imei, auth_token)
+        
+        if result.get("skipped"):
+            return {
+                "message": "Блокировка двигателя отключена для этого автомобиля",
+                "car_id": uuid_to_sid(car.id),
+                "car_name": car.name,
+                "skipped": True,
+                "reason": result.get("reason")
+            }
+        
+        return {
+            "message": "Команда на блокировку двигателя отправлена",
+            "car_id": uuid_to_sid(car.id),
+            "car_name": car.name,
+            "command_id": result.get("command_id")
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        await log_error_to_telegram(error=e, request=None, user=current_user, additional_context={
+            "action": "admin_lock_engine", "car_id": car_id, "gps_imei": car.gps_imei
+        })
+        raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
+
+
+@cars_router.post("/{car_id}/unlock_engine", summary="Разблокировать двигатель")
+async def admin_unlock_engine(
+    car_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Разблокировать двигатель автомобиля"""
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    car = get_car_by_id(db, car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    if not car.gps_imei:
+        raise HTTPException(status_code=400, detail="У автомобиля не настроен GPS IMEI")
+    
+    try:
+        auth_token = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+        if not auth_token:
+            raise HTTPException(status_code=500, detail="Не удалось получить токен авторизации GPS")
+        
+        result = await send_unlock_engine(car.gps_imei, auth_token)
+        
+        return {
+            "message": "Команда на разблокировку двигателя отправлена",
+            "car_id": uuid_to_sid(car.id),
+            "car_name": car.name,
+            "command_id": result.get("command_id")
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        await log_error_to_telegram(error=e, request=None, user=current_user, additional_context={
+            "action": "admin_unlock_engine", "car_id": car_id, "gps_imei": car.gps_imei
+        })
+        raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
+
+
+@cars_router.post("/{car_id}/give_key", summary="Выдать ключ")
+async def admin_give_key(
+    car_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Выдать ключ автомобиля"""
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    car = get_car_by_id(db, car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    if not car.gps_imei:
+        raise HTTPException(status_code=400, detail="У автомобиля не настроен GPS IMEI")
+    
+    try:
+        auth_token = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+        if not auth_token:
+            raise HTTPException(status_code=500, detail="Не удалось получить токен авторизации GPS")
+        
+        result = await send_give_key(car.gps_imei, auth_token)
+        
+        return {
+            "message": "Команда на выдачу ключа отправлена",
+            "car_id": uuid_to_sid(car.id),
+            "car_name": car.name,
+            "command_id": result.get("command_id")
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        await log_error_to_telegram(error=e, request=None, user=current_user, additional_context={
+            "action": "admin_give_key", "car_id": car_id, "gps_imei": car.gps_imei
+        })
+        raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
+
+
+@cars_router.post("/{car_id}/take_key", summary="Забрать ключ")
+async def admin_take_key(
+    car_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Забрать ключ автомобиля.
+    Если двигатель включен, сначала заблокирует его, затем заберет ключ.
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    car = get_car_by_id(db, car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    if not car.gps_imei:
+        raise HTTPException(status_code=400, detail="У автомобиля не настроен GPS IMEI")
+    
+    try:
+        auth_token = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+        if not auth_token:
+            raise HTTPException(status_code=500, detail="Не удалось получить токен авторизации GPS")
+        
+        engine_was_locked = False
+        try:
+            glonassoft_data = await glonassoft_client.get_vehicle_data(car.gps_imei)
+            if glonassoft_data:
+                telemetry = process_glonassoft_data(glonassoft_data, car.name)
+                if telemetry.is_engine_on:
+                    await send_lock_engine(car.gps_imei, auth_token)
+                    engine_was_locked = True
+                    logger.info(f"Двигатель автомобиля {car.name} заблокирован перед забором ключа")
+        except Exception as e:
+            logger.warning(f"Не удалось проверить состояние двигателя: {e}")
+        
+        result = await send_take_key(car.gps_imei, auth_token)
+        
+        return {
+            "message": "Команда на забор ключа отправлена",
+            "car_id": uuid_to_sid(car.id),
+            "car_name": car.name,
+            "command_id": result.get("command_id"),
+            "engine_was_locked": engine_was_locked
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        await log_error_to_telegram(error=e, request=None, user=current_user, additional_context={
+            "action": "admin_take_key", "car_id": car_id, "gps_imei": car.gps_imei
+        })
+        raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
