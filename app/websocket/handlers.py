@@ -1,4 +1,5 @@
 import asyncio
+import httpx
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional
 from app.models.user_model import User, UserRole
@@ -9,8 +10,7 @@ from app.rent.utils.user_utils import get_user_available_auto_classes
 from app.admin.cars.utils import sort_car_photos
 from app.rent.utils.calculate_price import get_open_price
 from app.utils.user_data import get_user_me_data
-from app.gps_api.utils.glonassoft_client import glonassoft_client
-from app.gps_api.utils.telemetry_processor import process_glonassoft_data
+
 
 
 async def get_vehicles_data_for_user(user: User, db: Session) -> Dict[str, Any]:
@@ -80,34 +80,25 @@ async def get_vehicles_data_for_user(user: User, db: Session) -> Dict[str, Any]:
         else:
             cars = query.all()
 
-        async def get_car_speed(car: Car) -> Optional[float]:
-            """Получить скорость машины из телеметрии"""
-            try:
-                vehicle_imei = (
-                    getattr(car, 'gps_imei', None)
-                    or getattr(car, 'imei', None)
-                    or getattr(car, 'vehicle_imei', None)
-                )
-                if not vehicle_imei:
-                    return None
-                
-                glonassoft_data = await glonassoft_client.get_vehicle_data(vehicle_imei)
-                if glonassoft_data:
-                    telemetry = process_glonassoft_data(glonassoft_data, car.name)
-                    return telemetry.speed if hasattr(telemetry, 'speed') else None
-                return None
-            except Exception:
-                return None
-        
-        speed_tasks = [get_car_speed(car) for car in cars]
-        speeds = await asyncio.gather(*speed_tasks, return_exceptions=True)
+        # Получаем скорости всех машин одним запросом к внутреннему API
         car_speeds = {}
-        for i, car in enumerate(cars):
-            speed = speeds[i]
-            if isinstance(speed, Exception) or speed is None:
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get("http://195.93.152.69:8667/vehicles")
+                if response.status_code == 200:
+                    vehicles_cache = response.json()
+                    # Создаём словарь IMEI -> speed для быстрого поиска
+                    imei_to_speed = {v.get("vehicle_imei"): v.get("speed") for v in vehicles_cache}
+                    for car in cars:
+                        if car.gps_imei and car.gps_imei in imei_to_speed:
+                            car_speeds[car.id] = imei_to_speed[car.gps_imei]
+                        else:
+                            car_speeds[car.id] = None
+        except Exception:
+            # В случае ошибки просто не показываем скорость
+            for car in cars:
                 car_speeds[car.id] = None
-            else:
-                car_speeds[car.id] = speed
+
 
         vehicles_data = []
         for car in cars:
