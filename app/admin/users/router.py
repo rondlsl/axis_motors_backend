@@ -1524,8 +1524,59 @@ async def admin_start_rental(
         RentalHistory.user_id == target_user_uuid,
         RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
     ).first()
+    
     if active_rental:
-        raise HTTPException(status_code=400, detail="У пользователя уже есть активная аренда")
+        if active_rental.rental_status == RentalStatus.IN_USE:
+            raise HTTPException(status_code=400, detail="У пользователя уже есть активная аренда в использовании")
+        
+        if active_rental.rental_status == RentalStatus.RESERVED and active_rental.car_id == car_uuid:
+            existing_rental = active_rental
+            existing_rental.rental_status = RentalStatus.IN_USE
+            existing_rental.rental_type = rental_type_enum
+            existing_rental.duration = parsed_duration
+            existing_rental.start_time = get_local_time()
+            existing_rental.start_latitude = car.latitude
+            existing_rental.start_longitude = car.longitude
+            
+            photos_before = list(existing_rental.photos_before or [])
+            if filtered_selfie and filtered_selfie.content_type in ["image/jpeg", "image/png", "image/jpg"]:
+                selfie_url = await save_file(filtered_selfie, existing_rental.id, f"uploads/rents/{existing_rental.id}/before/selfie/")
+                photos_before.append(selfie_url)
+            for photo in filtered_car_photos:
+                if photo.content_type in ["image/jpeg", "image/png", "image/jpg"]:
+                    car_url = await save_file(photo, existing_rental.id, f"uploads/rents/{existing_rental.id}/before/car/")
+                    photos_before.append(car_url)
+            for photo in filtered_interior_photos:
+                if photo.content_type in ["image/jpeg", "image/png", "image/jpg"]:
+                    interior_url = await save_file(photo, existing_rental.id, f"uploads/rents/{existing_rental.id}/before/interior/")
+                    photos_before.append(interior_url)
+            existing_rental.photos_before = photos_before
+            
+            car.status = CarStatus.IN_USE
+            car.current_renter_id = target_user_uuid
+            target_user.last_activity_at = get_local_time()
+            
+            db.commit()
+            db.refresh(existing_rental)
+            
+            asyncio.create_task(notify_user_status_update(str(target_user.id)))
+            
+            return {
+                "success": True,
+                "message": "Бронь переведена в активную аренду",
+                "rental_id": uuid_to_sid(existing_rental.id),
+                "user_id": uuid_to_sid(existing_rental.user_id),
+                "car_id": uuid_to_sid(existing_rental.car_id),
+                "rental_type": existing_rental.rental_type.value,
+                "rental_status": existing_rental.rental_status.value,
+                "start_time": existing_rental.start_time.isoformat(),
+                "photos_count": len(photos_before),
+                "started_by_admin": uuid_to_sid(current_user.id)
+            }
+        
+        if active_rental.rental_status == RentalStatus.RESERVED and active_rental.car_id != car_uuid:
+            active_rental.rental_status = RentalStatus.CANCELLED
+            active_rental.end_time = get_local_time()
     
     open_fee = get_open_price(car)
     
