@@ -1133,6 +1133,13 @@ async def update_trip_details(
     rating: Optional[str] = Form(None),
     with_driver: Optional[str] = Form(None),
     
+    photos_before: Optional[List[UploadFile]] = File(None, description="Фото до аренды"),
+    photos_after: Optional[List[UploadFile]] = File(None, description="Фото после аренды"),
+    mechanic_photos_before: Optional[List[UploadFile]] = File(None, description="Фото механика до"),
+    mechanic_photos_after: Optional[List[UploadFile]] = File(None, description="Фото механика после"),
+    delivery_photos_before: Optional[List[UploadFile]] = File(None, description="Фото доставки до"),
+    delivery_photos_after: Optional[List[UploadFile]] = File(None, description="Фото доставки после"),
+    
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -1159,6 +1166,8 @@ async def update_trip_details(
     filtered_photos_after = get_files_from_form("photos_after")
     filtered_mechanic_photos_before = get_files_from_form("mechanic_photos_before")
     filtered_mechanic_photos_after = get_files_from_form("mechanic_photos_after")
+    filtered_delivery_photos_before = get_files_from_form("delivery_photos_before")
+    filtered_delivery_photos_after = get_files_from_form("delivery_photos_after")
         
     rental_uuid = safe_sid_to_uuid(trip_id)
     rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
@@ -1198,6 +1207,13 @@ async def update_trip_details(
 
     if filtered_mechanic_photos_after:
         rental.mechanic_photos_after = await process_photos_upload(filtered_mechanic_photos_after, rental.mechanic_photos_after, "after/mechanic_upload")
+
+    if filtered_delivery_photos_before:
+        rental.delivery_photos_before = await process_photos_upload(filtered_delivery_photos_before, rental.delivery_photos_before, "before/delivery_upload")
+
+    if filtered_delivery_photos_after:
+        rental.delivery_photos_after = await process_photos_upload(filtered_delivery_photos_after, rental.delivery_photos_after, "after/delivery_upload")
+
     update_data = {}
     
     def set_uuid(field_name: str, value: Optional[str]):
