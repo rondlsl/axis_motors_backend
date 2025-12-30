@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Form, File, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, Form, File, UploadFile, Request
 from sqlalchemy.orm import Session, joinedload, aliased
 from sqlalchemy import and_, or_, func, case, desc, distinct, select, String
 from typing import List, Optional, Dict, Any
@@ -1071,6 +1071,7 @@ async def edit_user_transaction(
 
 @users_router.patch("/trips/{trip_id}", response_model=TripDetailSchema, summary="Редактирование данных поездки (Form Data)")
 async def update_trip_details(
+    request: Request,
     trip_id: str,
     car_id: Optional[str] = Form(None),
     user_id: Optional[str] = Form(None),
@@ -1083,20 +1084,7 @@ async def update_trip_details(
     start_time: Optional[str] = Form(None),
     end_time: Optional[str] = Form(None),
     
-    price_per_minute: Optional[str] = Form(None),
-    price_per_hour: Optional[str] = Form(None),
-    price_per_day: Optional[str] = Form(None),
     total_price: Optional[str] = Form(None),
-    
-    photos_before: Optional[List[UploadFile]] = File(None),
-    photos_after: Optional[List[UploadFile]] = File(None),
-    mechanic_photos_before: Optional[List[UploadFile]] = File(None),
-    mechanic_photos_after: Optional[List[UploadFile]] = File(None),
-    
-    client_comment: Optional[str] = Form(None),
-    mechanic_comment: Optional[str] = Form(None),
-    client_rating: Optional[str] = Form(None),
-    mechanic_rating: Optional[str] = Form(None),
     
     start_latitude: Optional[str] = Form(None),
     start_longitude: Optional[str] = Form(None),
@@ -1157,12 +1145,6 @@ async def update_trip_details(
         except ValueError:
             return None
     
-    def filter_upload_files(files: Optional[List[UploadFile]]) -> Optional[List[UploadFile]]:
-        if files is None:
-            return None
-        valid_files = [f for f in files if isinstance(f, UploadFile) and hasattr(f, 'content_type')]
-        return valid_files if valid_files else None
-    
     parsed_car_id = parse_str(car_id)
     parsed_user_id = parse_str(user_id)
     parsed_delivery_mechanic_id = parse_str(delivery_mechanic_id)
@@ -1171,14 +1153,7 @@ async def update_trip_details(
     parsed_rental_status = parse_str(rental_status)
     parsed_start_time = parse_datetime(start_time)
     parsed_end_time = parse_datetime(end_time)
-    parsed_price_per_minute = parse_float(price_per_minute)
-    parsed_price_per_hour = parse_float(price_per_hour)
-    parsed_price_per_day = parse_float(price_per_day)
     parsed_total_price = parse_float(total_price)
-    parsed_client_comment = parse_str(client_comment)
-    parsed_mechanic_comment = parse_str(mechanic_comment)
-    parsed_client_rating = parse_int(client_rating)
-    parsed_mechanic_rating = parse_int(mechanic_rating)
     parsed_start_latitude = parse_float(start_latitude)
     parsed_start_longitude = parse_float(start_longitude)
     parsed_end_latitude = parse_float(end_latitude)
@@ -1188,10 +1163,20 @@ async def update_trip_details(
     parsed_mileage_start = parse_float(mileage_start)
     parsed_mileage_end = parse_float(mileage_end)
     
-    filtered_photos_before = filter_upload_files(photos_before)
-    filtered_photos_after = filter_upload_files(photos_after)
-    filtered_mechanic_photos_before = filter_upload_files(mechanic_photos_before)
-    filtered_mechanic_photos_after = filter_upload_files(mechanic_photos_after)
+    form = await request.form()
+    
+    def get_files_from_form(field_name: str) -> List[UploadFile]:
+        files = []
+        for key, value in form.multi_items():
+            if key == field_name and isinstance(value, UploadFile):
+                if value.filename and value.content_type:
+                    files.append(value)
+        return files
+    
+    filtered_photos_before = get_files_from_form("photos_before")
+    filtered_photos_after = get_files_from_form("photos_after")
+    filtered_mechanic_photos_before = get_files_from_form("mechanic_photos_before")
+    filtered_mechanic_photos_after = get_files_from_form("mechanic_photos_after")
         
     rental_uuid = safe_sid_to_uuid(trip_id)
     rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
@@ -1241,23 +1226,15 @@ async def update_trip_details(
         "rental_status": parsed_rental_status,
         "start_time": parsed_start_time,
         "end_time": parsed_end_time,
-        "price_per_minute": parsed_price_per_minute,
-        "price_per_hour": parsed_price_per_hour,
-        "price_per_day": parsed_price_per_day,
         "total_price": parsed_total_price,
-        
-        "client_comment": parsed_client_comment,
-        "mechanic_comment": parsed_mechanic_comment,
-        "client_rating": parsed_client_rating,
-        "mechanic_rating": parsed_mechanic_rating,
         "start_latitude": parsed_start_latitude,
         "start_longitude": parsed_start_longitude,
         "end_latitude": parsed_end_latitude,
         "end_longitude": parsed_end_longitude,
-        "fuel_level_start": parsed_fuel_level_start,
-        "fuel_level_end": parsed_fuel_level_end,
-        "mileage_start": parsed_mileage_start,
-        "mileage_end": parsed_mileage_end,
+        "fuel_before": parsed_fuel_level_start,
+        "fuel_after": parsed_fuel_level_end,
+        "mileage_before": parsed_mileage_start,
+        "mileage_after": parsed_mileage_end,
     }
     
     update_dict = {k: v for k, v in update_data.items() if v is not None}
