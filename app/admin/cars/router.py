@@ -40,6 +40,7 @@ from app.owner.availability import update_car_availability_snapshot
 from app.owner.router import calculate_owner_earnings, calculate_fuel_cost, calculate_delivery_cost
 import asyncio
 import uuid
+from app.models.contract_model import UserContractSignature, ContractFile, ContractType
 
 cars_router = APIRouter(tags=["Admin Cars"])
 
@@ -912,8 +913,6 @@ async def get_trip_detail(
     except Exception:
         route_data = None
 
-    # Calculate fuel fee (same logic as user endpoint)
-
     from app.rent.utils.calculate_price import FUEL_PRICE_PER_LITER, ELECTRIC_FUEL_PRICE_PER_LITER
     
     fuel_fee = 0
@@ -923,7 +922,6 @@ async def get_trip_detail(
             fuel_price = ELECTRIC_FUEL_PRICE_PER_LITER if car.body_type == CarBodyType.ELECTRIC else FUEL_PRICE_PER_LITER
             fuel_fee = int(fuel_consumed * fuel_price)
     
-    # Calculate total price without fuel
     total_price_without_fuel = (
         (rental.base_price or 0) +
         (rental.open_fee or 0) +
@@ -933,7 +931,6 @@ async def get_trip_detail(
         (rental.distance_fee or 0)
     )
 
-    # Определяем человекочитаемое описание типа тарифа
     tariff_display = ""
     if rental.rental_type:
         tariff_value = rental.rental_type.value if hasattr(rental.rental_type, 'value') else str(rental.rental_type)
@@ -953,8 +950,6 @@ async def get_trip_detail(
         "start_time": rental.start_time.isoformat() if rental.start_time else None,
         "end_time": rental.end_time.isoformat() if rental.end_time else None,
         "duration_minutes": int((rental.end_time - rental.start_time).total_seconds() // 60) if rental.start_time and rental.end_time else 0,
-        
-        # Billing information
         "already_payed": rental.already_payed,
         "total_price": rental.total_price,
         "total_price_without_fuel": total_price_without_fuel,
@@ -962,8 +957,6 @@ async def get_trip_detail(
         "rental_type": rental.rental_type.value,
         "tariff": rental.rental_type.value,
         "tariff_display": tariff_display,
-        
-        # Price breakdown
         "base_price": rental.base_price or 0,
         "open_fee": rental.open_fee or 0,
         "delivery_fee": rental.delivery_fee or 0,
@@ -974,8 +967,6 @@ async def get_trip_detail(
         "with_driver": rental.with_driver,
         "driver_fee": rental.driver_fee or 0,
         "rebooking_fee": rental.rebooking_fee or 0,
-        
-        # Fuel levels
         "fuel_before": rental.fuel_before,
         "fuel_after": rental.fuel_after,
         "fuel_after_main_tariff": rental.fuel_after_main_tariff,
@@ -1014,7 +1005,6 @@ async def get_trip_detail(
         },
     }
 
-    # Добавляем информацию о доставке, если она была
     has_delivery = (
         rental.delivery_start_time is not None or 
         rental.delivery_end_time is not None or 
@@ -1029,6 +1019,36 @@ async def get_trip_detail(
         result["delivery_end_time"] = rental.delivery_end_time.isoformat() if rental.delivery_end_time else None
         result["delivery_photos_before"] = rental.delivery_photos_before or []
         result["delivery_photos_after"] = rental.delivery_photos_after or []
+    
+    signed_contracts = db.query(UserContractSignature).join(ContractFile).filter(
+        UserContractSignature.rental_id == rental.id
+    ).all()
+    
+    signed_types = set()
+    for sig in signed_contracts:
+        if sig.contract_file:
+            signed_types.add(sig.contract_file.contract_type)
+    
+    result["contracts"] = {
+        "main_contract": ContractType.RENTAL_MAIN_CONTRACT in signed_types or ContractType.MAIN_CONTRACT in signed_types,
+        "appendix_7_1": ContractType.APPENDIX_7_1 in signed_types,
+        "appendix_7_2": ContractType.APPENDIX_7_2 in signed_types,
+    }
+    
+    photos_before = rental.photos_before or []
+    photos_after = rental.photos_after or []
+    
+    has_car_before = any("car" in p.lower() or "before" in p.lower() for p in photos_before) if photos_before else len(photos_before) > 0
+    has_interior_before = any("interior" in p.lower() or "salon" in p.lower() for p in photos_before) if photos_before else False
+    has_car_after = any("car" in p.lower() or "after" in p.lower() for p in photos_after) if photos_after else len(photos_after) > 0
+    has_interior_after = any("interior" in p.lower() or "salon" in p.lower() for p in photos_after) if photos_after else False
+    
+    result["photo_status"] = {
+        "photo_before_car": len(photos_before) > 0,
+        "photo_before_interior": has_interior_before or len(photos_before) > 1,
+        "photo_after_car": len(photos_after) > 0,
+        "photo_after_interior": has_interior_after or len(photos_after) > 1,
+    }
 
     return result
 
