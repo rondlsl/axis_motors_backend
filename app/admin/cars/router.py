@@ -3,7 +3,7 @@ from math import ceil, floor
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
-from sqlalchemy import or_, func
+from sqlalchemy import or_, and_, func
 import os
 import uuid
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
