@@ -1070,7 +1070,6 @@ async def edit_user_transaction(
 
 
 @users_router.patch("/trips/{trip_id}", response_model=TripDetailSchema, summary="Редактирование данных поездки (Form Data)")
-
 async def update_trip_details(
     trip_id: str,
     car_id: Optional[str] = Form(None),
@@ -1078,36 +1077,36 @@ async def update_trip_details(
     delivery_mechanic_id: Optional[str] = Form(None),
     mechanic_inspector_id: Optional[str] = Form(None),
     
-    rental_type: Optional[RentalType] = Form(None),
+    rental_type: Optional[str] = Form(None),
     rental_status: Optional[str] = Form(None),
     
-    start_time: Optional[datetime] = Form(None),
-    end_time: Optional[datetime] = Form(None),
+    start_time: Optional[str] = Form(None),
+    end_time: Optional[str] = Form(None),
     
-    price_per_minute: Optional[float] = Form(None),
-    price_per_hour: Optional[float] = Form(None),
-    price_per_day: Optional[float] = Form(None),
-    total_price: Optional[float] = Form(None),
+    price_per_minute: Optional[str] = Form(None),
+    price_per_hour: Optional[str] = Form(None),
+    price_per_day: Optional[str] = Form(None),
+    total_price: Optional[str] = Form(None),
     
-    photos_before: List[UploadFile] = File(None),
-    photos_after: List[UploadFile] = File(None),
-    mechanic_photos_before: List[UploadFile] = File(None),
-    mechanic_photos_after: List[UploadFile] = File(None),
+    photos_before: Optional[List[UploadFile]] = File(None),
+    photos_after: Optional[List[UploadFile]] = File(None),
+    mechanic_photos_before: Optional[List[UploadFile]] = File(None),
+    mechanic_photos_after: Optional[List[UploadFile]] = File(None),
     
     client_comment: Optional[str] = Form(None),
     mechanic_comment: Optional[str] = Form(None),
-    client_rating: Optional[int] = Form(None),
-    mechanic_rating: Optional[int] = Form(None),
+    client_rating: Optional[str] = Form(None),
+    mechanic_rating: Optional[str] = Form(None),
     
-    start_latitude: Optional[float] = Form(None),
-    start_longitude: Optional[float] = Form(None),
-    end_latitude: Optional[float] = Form(None),
-    end_longitude: Optional[float] = Form(None),
+    start_latitude: Optional[str] = Form(None),
+    start_longitude: Optional[str] = Form(None),
+    end_latitude: Optional[str] = Form(None),
+    end_longitude: Optional[str] = Form(None),
     
-    fuel_level_start: Optional[float] = Form(None),
-    fuel_level_end: Optional[float] = Form(None),
-    mileage_start: Optional[float] = Form(None),
-    mileage_end: Optional[float] = Form(None),
+    fuel_level_start: Optional[str] = Form(None),
+    fuel_level_end: Optional[str] = Form(None),
+    mileage_start: Optional[str] = Form(None),
+    mileage_end: Optional[str] = Form(None),
     
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -1120,6 +1119,79 @@ async def update_trip_details(
     """
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    def parse_str(val: Optional[str]) -> Optional[str]:
+        if val is None or val.strip() == "":
+            return None
+        return val.strip()
+    
+    def parse_float(val: Optional[str]) -> Optional[float]:
+        if val is None or val.strip() == "":
+            return None
+        try:
+            return float(val)
+        except ValueError:
+            return None
+    
+    def parse_int(val: Optional[str]) -> Optional[int]:
+        if val is None or val.strip() == "":
+            return None
+        try:
+            return int(val)
+        except ValueError:
+            return None
+    
+    def parse_datetime(val: Optional[str]) -> Optional[datetime]:
+        if val is None or val.strip() == "":
+            return None
+        try:
+            return datetime.fromisoformat(val.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    
+    def parse_rental_type(val: Optional[str]) -> Optional[RentalType]:
+        if val is None or val.strip() == "":
+            return None
+        try:
+            return RentalType(val.lower())
+        except ValueError:
+            return None
+    
+    def filter_upload_files(files: Optional[List[UploadFile]]) -> Optional[List[UploadFile]]:
+        if files is None:
+            return None
+        valid_files = [f for f in files if isinstance(f, UploadFile) and hasattr(f, 'content_type')]
+        return valid_files if valid_files else None
+    
+    parsed_car_id = parse_str(car_id)
+    parsed_user_id = parse_str(user_id)
+    parsed_delivery_mechanic_id = parse_str(delivery_mechanic_id)
+    parsed_mechanic_inspector_id = parse_str(mechanic_inspector_id)
+    parsed_rental_type = parse_rental_type(rental_type)
+    parsed_rental_status = parse_str(rental_status)
+    parsed_start_time = parse_datetime(start_time)
+    parsed_end_time = parse_datetime(end_time)
+    parsed_price_per_minute = parse_float(price_per_minute)
+    parsed_price_per_hour = parse_float(price_per_hour)
+    parsed_price_per_day = parse_float(price_per_day)
+    parsed_total_price = parse_float(total_price)
+    parsed_client_comment = parse_str(client_comment)
+    parsed_mechanic_comment = parse_str(mechanic_comment)
+    parsed_client_rating = parse_int(client_rating)
+    parsed_mechanic_rating = parse_int(mechanic_rating)
+    parsed_start_latitude = parse_float(start_latitude)
+    parsed_start_longitude = parse_float(start_longitude)
+    parsed_end_latitude = parse_float(end_latitude)
+    parsed_end_longitude = parse_float(end_longitude)
+    parsed_fuel_level_start = parse_float(fuel_level_start)
+    parsed_fuel_level_end = parse_float(fuel_level_end)
+    parsed_mileage_start = parse_float(mileage_start)
+    parsed_mileage_end = parse_float(mileage_end)
+    
+    filtered_photos_before = filter_upload_files(photos_before)
+    filtered_photos_after = filter_upload_files(photos_after)
+    filtered_mechanic_photos_before = filter_upload_files(mechanic_photos_before)
+    filtered_mechanic_photos_after = filter_upload_files(mechanic_photos_after)
         
     rental_uuid = safe_sid_to_uuid(trip_id)
     rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
@@ -1148,44 +1220,44 @@ async def update_trip_details(
                 
         return final_urls
     
-    if photos_before:
-        rental.photos_before = await process_photos_upload(photos_before, rental.photos_before, "before/admin_upload")
+    if filtered_photos_before:
+        rental.photos_before = await process_photos_upload(filtered_photos_before, rental.photos_before, "before/admin_upload")
         
-    if photos_after:
-        rental.photos_after = await process_photos_upload(photos_after, rental.photos_after, "after/admin_upload")
+    if filtered_photos_after:
+        rental.photos_after = await process_photos_upload(filtered_photos_after, rental.photos_after, "after/admin_upload")
         
-    if mechanic_photos_before:
-        rental.mechanic_photos_before = await process_photos_upload(mechanic_photos_before, rental.mechanic_photos_before, "before/mechanic_upload")
+    if filtered_mechanic_photos_before:
+        rental.mechanic_photos_before = await process_photos_upload(filtered_mechanic_photos_before, rental.mechanic_photos_before, "before/mechanic_upload")
 
-    if mechanic_photos_after:
-        rental.mechanic_photos_after = await process_photos_upload(mechanic_photos_after, rental.mechanic_photos_after, "after/mechanic_upload")
+    if filtered_mechanic_photos_after:
+        rental.mechanic_photos_after = await process_photos_upload(filtered_mechanic_photos_after, rental.mechanic_photos_after, "after/mechanic_upload")
    
     update_data = {
-        "car_id": car_id,
-        "user_id": user_id,
-        "delivery_mechanic_id": delivery_mechanic_id,
-        "mechanic_inspector_id": mechanic_inspector_id,
-        "rental_type": rental_type,
-        "rental_status": rental_status,
-        "start_time": start_time,
-        "end_time": end_time,
-        "price_per_minute": price_per_minute,
-        "price_per_hour": price_per_hour,
-        "price_per_day": price_per_day,
-        "total_price": total_price,
+        "car_id": parsed_car_id,
+        "user_id": parsed_user_id,
+        "delivery_mechanic_id": parsed_delivery_mechanic_id,
+        "mechanic_inspector_id": parsed_mechanic_inspector_id,
+        "rental_type": parsed_rental_type,
+        "rental_status": parsed_rental_status,
+        "start_time": parsed_start_time,
+        "end_time": parsed_end_time,
+        "price_per_minute": parsed_price_per_minute,
+        "price_per_hour": parsed_price_per_hour,
+        "price_per_day": parsed_price_per_day,
+        "total_price": parsed_total_price,
         
-        "client_comment": client_comment,
-        "mechanic_comment": mechanic_comment,
-        "client_rating": client_rating,
-        "mechanic_rating": mechanic_rating,
-        "start_latitude": start_latitude,
-        "start_longitude": start_longitude,
-        "end_latitude": end_latitude,
-        "end_longitude": end_longitude,
-        "fuel_level_start": fuel_level_start,
-        "fuel_level_end": fuel_level_end,
-        "mileage_start": mileage_start,
-        "mileage_end": mileage_end,
+        "client_comment": parsed_client_comment,
+        "mechanic_comment": parsed_mechanic_comment,
+        "client_rating": parsed_client_rating,
+        "mechanic_rating": parsed_mechanic_rating,
+        "start_latitude": parsed_start_latitude,
+        "start_longitude": parsed_start_longitude,
+        "end_latitude": parsed_end_latitude,
+        "end_longitude": parsed_end_longitude,
+        "fuel_level_start": parsed_fuel_level_start,
+        "fuel_level_end": parsed_fuel_level_end,
+        "mileage_start": parsed_mileage_start,
+        "mileage_end": parsed_mileage_end,
     }
     
     update_dict = {k: v for k, v in update_data.items() if v is not None}
@@ -1348,10 +1420,10 @@ async def admin_start_rental(
     car_id: str = Form(..., description="ID машины"),
     user_id: str = Form(..., description="ID пользователя"),
     rental_type: str = Form(..., description="Тип аренды: MINUTES, HOURS, DAYS"),
-    duration: Optional[int] = Form(None, description="Длительность (для HOURS/DAYS)"),
-    selfie: UploadFile = File(..., description="Селфи пользователя"),
-    car_photos: List[UploadFile] = File(..., description="Фото кузова (1-10)"),
-    interior_photos: List[UploadFile] = File(..., description="Фото салона (1-10)"),
+    duration: Optional[str] = Form(None, description="Длительность (для HOURS/DAYS)"),
+    selfie: Optional[UploadFile] = File(None, description="Селфи пользователя"),
+    car_photos: Optional[List[UploadFile]] = File(None, description="Фото кузова (1-10)"),
+    interior_photos: Optional[List[UploadFile]] = File(None, description="Фото салона (1-10)"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -1366,6 +1438,22 @@ async def admin_start_rental(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
+    parsed_duration = None
+    if duration and duration.strip():
+        try:
+            parsed_duration = int(duration.strip())
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Duration должен быть целым числом")
+    
+    def filter_files(files):
+        if files is None:
+            return []
+        return [f for f in files if isinstance(f, UploadFile) and hasattr(f, 'content_type') and f.content_type]
+    
+    filtered_selfie = selfie if isinstance(selfie, UploadFile) and hasattr(selfie, 'content_type') and selfie.content_type else None
+    filtered_car_photos = filter_files(car_photos)
+    filtered_interior_photos = filter_files(interior_photos)
+    
     rental_type_map = {
         "MINUTES": RentalType.MINUTES,
         "HOURS": RentalType.HOURS,
@@ -1375,7 +1463,7 @@ async def admin_start_rental(
     if not rental_type_enum:
         raise HTTPException(status_code=400, detail="Неверный тип аренды. Допустимые: MINUTES, HOURS, DAYS")
     
-    if rental_type_enum in [RentalType.HOURS, RentalType.DAYS] and not duration:
+    if rental_type_enum in [RentalType.HOURS, RentalType.DAYS] and not parsed_duration:
         raise HTTPException(status_code=400, detail="Duration обязателен для аренды по часам/дням")
     
     target_user_uuid = safe_sid_to_uuid(user_id)
@@ -1410,7 +1498,7 @@ async def admin_start_rental(
         user_id=target_user_uuid,
         car_id=car_uuid,
         rental_type=rental_type_enum,
-        duration=duration,
+        duration=parsed_duration,
         rental_status=RentalStatus.IN_USE,
         reservation_time=get_local_time(),
         start_time=get_local_time(),
@@ -1426,21 +1514,19 @@ async def admin_start_rental(
     
     photos_before = []
     
-    if selfie and selfie.content_type in ["image/jpeg", "image/png", "image/jpg"]:
-        selfie_url = await save_file(selfie, new_rental.id, f"uploads/rents/{new_rental.id}/before/selfie/")
+    if filtered_selfie and filtered_selfie.content_type in ["image/jpeg", "image/png", "image/jpg"]:
+        selfie_url = await save_file(filtered_selfie, new_rental.id, f"uploads/rents/{new_rental.id}/before/selfie/")
         photos_before.append(selfie_url)
     
-    if car_photos:
-        for photo in car_photos:
-            if photo.content_type in ["image/jpeg", "image/png", "image/jpg"]:
-                car_url = await save_file(photo, new_rental.id, f"uploads/rents/{new_rental.id}/before/car/")
-                photos_before.append(car_url)
+    for photo in filtered_car_photos:
+        if photo.content_type in ["image/jpeg", "image/png", "image/jpg"]:
+            car_url = await save_file(photo, new_rental.id, f"uploads/rents/{new_rental.id}/before/car/")
+            photos_before.append(car_url)
     
-    if interior_photos:
-        for photo in interior_photos:
-            if photo.content_type in ["image/jpeg", "image/png", "image/jpg"]:
-                interior_url = await save_file(photo, new_rental.id, f"uploads/rents/{new_rental.id}/before/interior/")
-                photos_before.append(interior_url)
+    for photo in filtered_interior_photos:
+        if photo.content_type in ["image/jpeg", "image/png", "image/jpg"]:
+            interior_url = await save_file(photo, new_rental.id, f"uploads/rents/{new_rental.id}/before/interior/")
+            photos_before.append(interior_url)
     
     new_rental.photos_before = photos_before
     
@@ -1486,9 +1572,9 @@ async def admin_start_rental(
 async def admin_end_rental(
     car_id: str = Form(..., description="ID машины"),
     user_id: str = Form(..., description="ID пользователя"),
-    selfie: UploadFile = File(..., description="Селфи пользователя после аренды"),
-    car_photos: List[UploadFile] = File(..., description="Фото кузова после (1-10)"),
-    interior_photos: List[UploadFile] = File(..., description="Фото салона после (1-10)"),
+    selfie: Optional[UploadFile] = File(None, description="Селфи пользователя после аренды"),
+    car_photos: Optional[List[UploadFile]] = File(None, description="Фото кузова после (1-10)"),
+    interior_photos: Optional[List[UploadFile]] = File(None, description="Фото салона после (1-10)"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -1503,6 +1589,15 @@ async def admin_end_rental(
     """
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    def filter_files(files):
+        if files is None:
+            return []
+        return [f for f in files if isinstance(f, UploadFile) and hasattr(f, 'content_type') and f.content_type]
+    
+    filtered_selfie = selfie if isinstance(selfie, UploadFile) and hasattr(selfie, 'content_type') and selfie.content_type else None
+    filtered_car_photos = filter_files(car_photos)
+    filtered_interior_photos = filter_files(interior_photos)
     
     target_user_uuid = safe_sid_to_uuid(user_id)
     target_user = db.query(User).filter(User.id == target_user_uuid).first()
@@ -1525,21 +1620,19 @@ async def admin_end_rental(
     
     photos_after = list(active_rental.photos_after or [])
     
-    if selfie and selfie.content_type in ["image/jpeg", "image/png", "image/jpg"]:
-        selfie_url = await save_file(selfie, active_rental.id, f"uploads/rents/{active_rental.id}/after/selfie/")
+    if filtered_selfie and filtered_selfie.content_type in ["image/jpeg", "image/png", "image/jpg"]:
+        selfie_url = await save_file(filtered_selfie, active_rental.id, f"uploads/rents/{active_rental.id}/after/selfie/")
         photos_after.append(selfie_url)
     
-    if car_photos:
-        for photo in car_photos:
-            if photo.content_type in ["image/jpeg", "image/png", "image/jpg"]:
-                car_url = await save_file(photo, active_rental.id, f"uploads/rents/{active_rental.id}/after/car/")
-                photos_after.append(car_url)
+    for photo in filtered_car_photos:
+        if photo.content_type in ["image/jpeg", "image/png", "image/jpg"]:
+            car_url = await save_file(photo, active_rental.id, f"uploads/rents/{active_rental.id}/after/car/")
+            photos_after.append(car_url)
     
-    if interior_photos:
-        for photo in interior_photos:
-            if photo.content_type in ["image/jpeg", "image/png", "image/jpg"]:
-                interior_url = await save_file(photo, active_rental.id, f"uploads/rents/{active_rental.id}/after/interior/")
-                photos_after.append(interior_url)
+    for photo in filtered_interior_photos:
+        if photo.content_type in ["image/jpeg", "image/png", "image/jpg"]:
+            interior_url = await save_file(photo, active_rental.id, f"uploads/rents/{active_rental.id}/after/interior/")
+            photos_after.append(interior_url)
     
     active_rental.photos_after = photos_after
     
