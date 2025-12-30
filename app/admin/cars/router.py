@@ -122,6 +122,7 @@ async def get_car_details(
     
     # Получаем информацию о текущем арендаторе
     current_renter_obj = None
+    reservation_time_str = None
     if car.current_renter_id:
         renter = db.query(User).filter(User.id == car.current_renter_id).first()
         if renter:
@@ -134,6 +135,27 @@ async def get_car_details(
                 role=renter.role.value if renter.role else "client",
                 selfie=renter.selfie_url or renter.selfie_with_license_url
             )
+            
+            # Получаем время бронирования из активной аренды
+            active_rental = (
+                db.query(RentalHistory)
+                .filter(
+                    RentalHistory.car_id == car.id,
+                    RentalHistory.user_id == renter.id,
+                    RentalHistory.rental_status.in_([
+                        RentalStatus.RESERVED,
+                        RentalStatus.IN_USE,
+                        RentalStatus.DELIVERING,
+                        RentalStatus.DELIVERING_IN_PROGRESS,
+                        RentalStatus.DELIVERY_RESERVED,
+                        RentalStatus.SCHEDULED
+                    ])
+                )
+                .order_by(RentalHistory.reservation_time.desc())
+                .first()
+            )
+            if active_rental and active_rental.reservation_time:
+                reservation_time_str = active_rental.reservation_time.isoformat()
 
     return CarDetailSchema(
         id=uuid_to_sid(car.id),
@@ -170,6 +192,7 @@ async def get_car_details(
         vin=car.vin,
         color=car.color,
         rating=car.rating,
+        reservationtime=reservation_time_str,
     )
 
 

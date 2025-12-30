@@ -4,6 +4,7 @@ import re
 from sqlalchemy.orm import Session
 from app.models.car_model import Car
 from app.models.user_model import User
+from app.models.history_model import RentalHistory, RentalStatus
 from app.admin.cars.schemas import CarDetailSchema, OwnerSchema, CurrentRenterSchema
 from app.utils.short_id import uuid_to_sid
 
@@ -84,6 +85,7 @@ def car_to_detail_schema(car: Car, db: Optional[Session] = None) -> CarDetailSch
     
     # Получаем информацию о текущем арендаторе
     current_renter_obj = None
+    reservation_time_str = None
     if car.current_renter_id and db:
         renter = db.query(User).filter(User.id == car.current_renter_id).first()
         if renter:
@@ -96,6 +98,27 @@ def car_to_detail_schema(car: Car, db: Optional[Session] = None) -> CarDetailSch
                 role=renter.role.value if renter.role else "client",
                 selfie=renter.selfie_url or renter.selfie_with_license_url
             )
+            
+            # Получаем время бронирования из активной аренды
+            active_rental = (
+                db.query(RentalHistory)
+                .filter(
+                    RentalHistory.car_id == car.id,
+                    RentalHistory.user_id == renter.id,
+                    RentalHistory.rental_status.in_([
+                        RentalStatus.RESERVED,
+                        RentalStatus.IN_USE,
+                        RentalStatus.DELIVERING,
+                        RentalStatus.DELIVERING_IN_PROGRESS,
+                        RentalStatus.DELIVERY_RESERVED,
+                        RentalStatus.SCHEDULED
+                    ])
+                )
+                .order_by(RentalHistory.reservation_time.desc())
+                .first()
+            )
+            if active_rental and active_rental.reservation_time:
+                reservation_time_str = active_rental.reservation_time.isoformat()
     
     return CarDetailSchema(
         id=uuid_to_sid(car.id),
@@ -132,6 +155,7 @@ def car_to_detail_schema(car: Car, db: Optional[Session] = None) -> CarDetailSch
         vin=car.vin,
         color=car.color,
         rating=car.rating,
+        reservationtime=reservation_time_str,
     )
 
 

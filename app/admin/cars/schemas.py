@@ -173,7 +173,8 @@ class CarDetailSchema(BaseModel):
     gps_imei: Optional[str] = None
     vin: Optional[str] = None
     color: Optional[str] = None
-    rating: Optional[float] = None  
+    rating: Optional[float] = None
+    reservationtime: Optional[str] = None  # Время бронирования машины
     
     class Config:
         from_attributes = True
