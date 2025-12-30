@@ -1024,6 +1024,45 @@ async def get_trip_detail(
         },
     }
 
+    if rental.mechanic_inspector_id:
+        mechanic_inspector = db.query(User).filter(User.id == rental.mechanic_inspector_id).first()
+        result["mechanic_inspector"] = {
+            "id": uuid_to_sid(mechanic_inspector.id) if mechanic_inspector else None,
+            "first_name": mechanic_inspector.first_name if mechanic_inspector else None,
+            "last_name": mechanic_inspector.last_name if mechanic_inspector else None,
+            "phone_number": mechanic_inspector.phone_number if mechanic_inspector else None,
+            "selfie": mechanic_inspector.selfie_url if mechanic_inspector else None,
+        }
+    else:
+        result["mechanic_inspector"] = None
+    
+    if rental.delivery_mechanic_id:
+        delivery_mechanic = db.query(User).filter(User.id == rental.delivery_mechanic_id).first()
+        result["delivery_mechanic"] = {
+            "id": uuid_to_sid(delivery_mechanic.id) if delivery_mechanic else None,
+            "first_name": delivery_mechanic.first_name if delivery_mechanic else None,
+            "last_name": delivery_mechanic.last_name if delivery_mechanic else None,
+            "phone_number": delivery_mechanic.phone_number if delivery_mechanic else None,
+            "selfie": delivery_mechanic.selfie_url if delivery_mechanic else None,
+        }
+    else:
+        result["delivery_mechanic"] = None
+    
+    result["mechanic_inspection"] = {
+        "status": rental.mechanic_inspection_status,
+        "status_display": {
+            "PENDING": "Ожидает осмотра",
+            "IN_PROGRESS": "Осмотр в процессе",
+            "COMPLETED": "Осмотр завершён",
+            "CANCELLED": "Осмотр отменён",
+        }.get(rental.mechanic_inspection_status, rental.mechanic_inspection_status),
+        "start_time": rental.mechanic_inspection_start_time.isoformat() if rental.mechanic_inspection_start_time else None,
+        "end_time": rental.mechanic_inspection_end_time.isoformat() if rental.mechanic_inspection_end_time else None,
+        "comment": rental.mechanic_inspection_comment,
+        "photos_before": rental.mechanic_photos_before or [],
+        "photos_after": rental.mechanic_photos_after or [],
+    }
+
     has_delivery = (
         rental.delivery_start_time is not None or 
         rental.delivery_end_time is not None or 
