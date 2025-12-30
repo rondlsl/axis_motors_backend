@@ -42,7 +42,7 @@ from app.websocket.notifications import notify_user_status_update
 from app.utils.time_utils import get_local_time
 import asyncio
 from app.wallet.utils import record_wallet_transaction
-from app.rent.utils.calculate_price import get_open_price
+from app.rent.utils.calculate_price import get_open_price, calc_required_balance
 
 users_router = APIRouter(tags=["Admin Users"])
 
@@ -1530,6 +1530,25 @@ async def admin_start_rental(
             raise HTTPException(status_code=400, detail="У пользователя уже есть активная аренда в использовании")
         
         if active_rental.rental_status == RentalStatus.RESERVED and active_rental.car_id == car_uuid:
+            is_owner = (car.owner_id == target_user_uuid)
+            required_balance = calc_required_balance(
+                rental_type=rental_type_enum,
+                duration=parsed_duration,
+                car=car,
+                include_delivery=False,
+                is_owner=is_owner,
+                with_driver=False
+            )
+            
+            if target_user.wallet_balance < required_balance:
+                formatted_required = f"{required_balance:,}".replace(",", " ")
+                formatted_balance = f"{int(target_user.wallet_balance):,}".replace(",", " ")
+                raise HTTPException(
+                    status_code=402, 
+                    detail=f"Недостаточно средств на балансе клиента. Требуется минимум: {formatted_required} ₸, доступно: {formatted_balance} ₸"
+                )
+            
+            # Convert existing reservation to IN_USE
             existing_rental = active_rental
             existing_rental.rental_status = RentalStatus.IN_USE
             existing_rental.rental_type = rental_type_enum
@@ -1580,10 +1599,23 @@ async def admin_start_rental(
     
     open_fee = get_open_price(car)
     
-    if target_user.wallet_balance < open_fee:
+    is_owner = (car.owner_id == target_user_uuid)
+    
+    required_balance = calc_required_balance(
+        rental_type=rental_type_enum,
+        duration=parsed_duration,
+        car=car,
+        include_delivery=False,
+        is_owner=is_owner,
+        with_driver=False
+    )
+    
+    if target_user.wallet_balance < required_balance:
+        formatted_required = f"{required_balance:,}".replace(",", " ")
+        formatted_balance = f"{int(target_user.wallet_balance):,}".replace(",", " ")
         raise HTTPException(
-            status_code=400, 
-            detail=f"Недостаточно средств на балансе. Требуется: {open_fee}₸, доступно: {target_user.wallet_balance}₸"
+            status_code=402, 
+            detail=f"Недостаточно средств на балансе клиента. Требуется минимум: {formatted_required} ₸, доступно: {formatted_balance} ₸"
         )
     
     new_rental = RentalHistory(
