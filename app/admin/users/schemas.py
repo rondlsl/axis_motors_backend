@@ -203,6 +203,12 @@ class TripDetailSchema(SidMixin):
     start_longitude: Optional[float] = None
     end_latitude: Optional[float] = None
     end_longitude: Optional[float] = None
+    
+    # Поля для таймера ожидания
+    rental_status: Optional[str] = None  # Статус аренды (reserved, in_use, completed, etc.)
+    reservation_time: Optional[datetime] = None  # Время бронирования
+    delivery_end_time: Optional[datetime] = None  # Время окончания доставки
+    price_per_minute: Optional[int] = None  # Цена за минуту для расчета стоимости ожидания
 
 
 class OwnerCarListItemSchema(SidMixin):
