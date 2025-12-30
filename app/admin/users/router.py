@@ -1108,61 +1108,6 @@ async def update_trip_details(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    def parse_str(val: Optional[str]) -> Optional[str]:
-        if val is None or val.strip() == "":
-            return None
-        return val.strip()
-    
-    def parse_float(val: Optional[str]) -> Optional[float]:
-        if val is None or val.strip() == "":
-            return None
-        try:
-            return float(val)
-        except ValueError:
-            return None
-    
-    def parse_int(val: Optional[str]) -> Optional[int]:
-        if val is None or val.strip() == "":
-            return None
-        try:
-            return int(val)
-        except ValueError:
-            return None
-    
-    def parse_datetime(val: Optional[str]) -> Optional[datetime]:
-        if val is None or val.strip() == "":
-            return None
-        try:
-            return datetime.fromisoformat(val.replace("Z", "+00:00"))
-        except ValueError:
-            return None
-    
-    def parse_rental_type(val: Optional[str]) -> Optional[RentalType]:
-        if val is None or val.strip() == "":
-            return None
-        try:
-            return RentalType(val.lower())
-        except ValueError:
-            return None
-    
-    parsed_car_id = parse_str(car_id)
-    parsed_user_id = parse_str(user_id)
-    parsed_delivery_mechanic_id = parse_str(delivery_mechanic_id)
-    parsed_mechanic_inspector_id = parse_str(mechanic_inspector_id)
-    parsed_rental_type = parse_rental_type(rental_type)
-    parsed_rental_status = parse_str(rental_status)
-    parsed_start_time = parse_datetime(start_time)
-    parsed_end_time = parse_datetime(end_time)
-    parsed_total_price = parse_float(total_price)
-    parsed_start_latitude = parse_float(start_latitude)
-    parsed_start_longitude = parse_float(start_longitude)
-    parsed_end_latitude = parse_float(end_latitude)
-    parsed_end_longitude = parse_float(end_longitude)
-    parsed_fuel_level_start = parse_float(fuel_level_start)
-    parsed_fuel_level_end = parse_float(fuel_level_end)
-    parsed_mileage_start = parse_float(mileage_start)
-    parsed_mileage_end = parse_float(mileage_end)
-    
     form = await request.form()
     
     def get_files_from_form(field_name: str) -> List[UploadFile]:
@@ -1217,44 +1162,83 @@ async def update_trip_details(
     if filtered_mechanic_photos_after:
         rental.mechanic_photos_after = await process_photos_upload(filtered_mechanic_photos_after, rental.mechanic_photos_after, "after/mechanic_upload")
    
-    update_data = {
-        "car_id": parsed_car_id,
-        "user_id": parsed_user_id,
-        "delivery_mechanic_id": parsed_delivery_mechanic_id,
-        "mechanic_inspector_id": parsed_mechanic_inspector_id,
-        "rental_type": parsed_rental_type,
-        "rental_status": parsed_rental_status,
-        "start_time": parsed_start_time,
-        "end_time": parsed_end_time,
-        "total_price": parsed_total_price,
-        "start_latitude": parsed_start_latitude,
-        "start_longitude": parsed_start_longitude,
-        "end_latitude": parsed_end_latitude,
-        "end_longitude": parsed_end_longitude,
-        "fuel_before": parsed_fuel_level_start,
-        "fuel_after": parsed_fuel_level_end,
-        "mileage_before": parsed_mileage_start,
-        "mileage_after": parsed_mileage_end,
-    }
+    update_data = {}
     
-    update_dict = {k: v for k, v in update_data.items() if v is not None}
-    
-    if "rental_status" in update_dict and update_dict["rental_status"]:
+    if car_id and car_id.strip():
+        update_data["car_id"] = safe_sid_to_uuid(car_id.strip())
+    if user_id and user_id.strip():
+        update_data["user_id"] = safe_sid_to_uuid(user_id.strip())
+    if delivery_mechanic_id and delivery_mechanic_id.strip():
+        update_data["delivery_mechanic_id"] = safe_sid_to_uuid(delivery_mechanic_id.strip())
+    if mechanic_inspector_id and mechanic_inspector_id.strip():
+        update_data["mechanic_inspector_id"] = safe_sid_to_uuid(mechanic_inspector_id.strip())
+    if rental_type and rental_type.strip():
         try:
-            update_dict["rental_status"] = RentalStatus(update_dict["rental_status"])
+            update_data["rental_type"] = RentalType(rental_type.strip().lower())
+        except ValueError:
+            pass
+    if rental_status and rental_status.strip():
+        try:
+            update_data["rental_status"] = RentalStatus(rental_status.strip())
         except ValueError:
             raise HTTPException(status_code=400, detail="Неверный статус аренды")
-            
-    if "car_id" in update_dict and update_dict["car_id"]:
-        update_dict["car_id"] = safe_sid_to_uuid(update_dict["car_id"])
-    if "user_id" in update_dict and update_dict["user_id"]:
-         update_dict["user_id"] = safe_sid_to_uuid(update_dict["user_id"])
-    if "delivery_mechanic_id" in update_dict and update_dict["delivery_mechanic_id"]:
-        update_dict["delivery_mechanic_id"] = safe_sid_to_uuid(update_dict["delivery_mechanic_id"])
-    if "mechanic_inspector_id" in update_dict and update_dict["mechanic_inspector_id"]:
-        update_dict["mechanic_inspector_id"] = safe_sid_to_uuid(update_dict["mechanic_inspector_id"])
-
-    for key, value in update_dict.items():
+    if start_time and start_time.strip():
+        try:
+            update_data["start_time"] = datetime.fromisoformat(start_time.strip().replace("Z", "+00:00"))
+        except ValueError:
+            pass
+    if end_time and end_time.strip():
+        try:
+            update_data["end_time"] = datetime.fromisoformat(end_time.strip().replace("Z", "+00:00"))
+        except ValueError:
+            pass
+    if total_price and total_price.strip():
+        try:
+            update_data["total_price"] = float(total_price.strip())
+        except ValueError:
+            pass
+    if start_latitude and start_latitude.strip():
+        try:
+            update_data["start_latitude"] = float(start_latitude.strip())
+        except ValueError:
+            pass
+    if start_longitude and start_longitude.strip():
+        try:
+            update_data["start_longitude"] = float(start_longitude.strip())
+        except ValueError:
+            pass
+    if end_latitude and end_latitude.strip():
+        try:
+            update_data["end_latitude"] = float(end_latitude.strip())
+        except ValueError:
+            pass
+    if end_longitude and end_longitude.strip():
+        try:
+            update_data["end_longitude"] = float(end_longitude.strip())
+        except ValueError:
+            pass
+    if fuel_level_start and fuel_level_start.strip():
+        try:
+            update_data["fuel_before"] = float(fuel_level_start.strip())
+        except ValueError:
+            pass
+    if fuel_level_end and fuel_level_end.strip():
+        try:
+            update_data["fuel_after"] = float(fuel_level_end.strip())
+        except ValueError:
+            pass
+    if mileage_start and mileage_start.strip():
+        try:
+            update_data["mileage_before"] = float(mileage_start.strip())
+        except ValueError:
+            pass
+    if mileage_end and mileage_end.strip():
+        try:
+            update_data["mileage_after"] = float(mileage_end.strip())
+        except ValueError:
+            pass
+    
+    for key, value in update_data.items():
         setattr(rental, key, value)
         
     db.commit()
@@ -1278,10 +1262,10 @@ async def update_trip_details(
         photos_after=rental.photos_after or [],
         mechanic_photos_before=rental.mechanic_photos_before or [],
         mechanic_photos_after=rental.mechanic_photos_after or [],
-        client_comment=rental.client_comment,
-        mechanic_comment=rental.mechanic_comment,
-        client_rating=rental.client_rating,
-        mechanic_rating=rental.mechanic_rating,
+        client_comment=rental.review.comment if rental.review else None,
+        mechanic_comment=rental.review.mechanic_comment if rental.review else None,
+        client_rating=rental.review.rating if rental.review else None,
+        mechanic_rating=rental.review.mechanic_rating if rental.review else None,
         rating=float(rental.rating) if rental.rating else None,
         start_latitude=rental.start_latitude,
         start_longitude=rental.start_longitude,
