@@ -1456,6 +1456,127 @@ async def create_rental(
     }
 
 
+@users_router.post("/trips/reserve", summary="Забронировать машину за клиента (Admin)")
+async def admin_reserve_car(
+    car_id: str = Form(..., description="ID машины"),
+    user_id: str = Form(..., description="ID пользователя"),
+    rental_type: str = Form(..., description="Тип аренды: MINUTES, HOURS, DAYS"),
+    duration: Optional[str] = Form(None, description="Длительность (для HOURS/DAYS)"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Эндпоинт для админа для бронирования машины за клиента.
+    
+    - Создает аренду со статусом RESERVED
+    - Проверяет минимальный баланс клиента
+    - Обновляет статус машины на RESERVED
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    parsed_duration = None
+    if duration and duration.strip():
+        try:
+            parsed_duration = int(duration.strip())
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Duration должен быть целым числом")
+    
+    rental_type_map = {
+        "MINUTES": RentalType.MINUTES,
+        "HOURS": RentalType.HOURS,
+        "DAYS": RentalType.DAYS
+    }
+    rental_type_enum = rental_type_map.get(rental_type.upper())
+    if not rental_type_enum:
+        raise HTTPException(status_code=400, detail="Неверный тип аренды. Допустимые: MINUTES, HOURS, DAYS")
+    
+    if rental_type_enum in [RentalType.HOURS, RentalType.DAYS] and not parsed_duration:
+        raise HTTPException(status_code=400, detail="Duration обязателен для аренды по часам/дням")
+    
+    target_user_uuid = safe_sid_to_uuid(user_id)
+    target_user = db.query(User).filter(User.id == target_user_uuid).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    car_uuid = safe_sid_to_uuid(car_id)
+    car = db.query(Car).filter(Car.id == car_uuid).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    if car.status not in [CarStatus.FREE, CarStatus.PENDING]:
+        raise HTTPException(status_code=400, detail=f"Машина недоступна для бронирования. Текущий статус: {car.status.value}")
+    
+    active_rental = db.query(RentalHistory).filter(
+        RentalHistory.user_id == target_user_uuid,
+        RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
+    ).first()
+    
+    if active_rental:
+        if active_rental.rental_status == RentalStatus.IN_USE:
+            raise HTTPException(status_code=400, detail="У пользователя уже есть активная аренда")
+        if active_rental.rental_status == RentalStatus.RESERVED:
+            raise HTTPException(status_code=400, detail="У пользователя уже есть активное бронирование")
+    
+    is_owner = (car.owner_id == target_user_uuid)
+    required_balance = calc_required_balance(
+        rental_type=rental_type_enum,
+        duration=parsed_duration,
+        car=car,
+        include_delivery=False,
+        is_owner=is_owner,
+        with_driver=False
+    )
+    
+    if target_user.wallet_balance < required_balance:
+        formatted_required = f"{required_balance:,}".replace(",", " ")
+        formatted_balance = f"{int(target_user.wallet_balance):,}".replace(",", " ")
+        raise HTTPException(
+            status_code=402, 
+            detail=f"Недостаточно средств на балансе клиента. Требуется минимум: {formatted_required} ₸, доступно: {formatted_balance} ₸"
+        )
+    
+    open_fee = get_open_price(car)
+    
+    new_rental = RentalHistory(
+        user_id=target_user_uuid,
+        car_id=car_uuid,
+        rental_type=rental_type_enum,
+        duration=parsed_duration,
+        rental_status=RentalStatus.RESERVED,
+        reservation_time=get_local_time(),
+        start_latitude=car.latitude or 0,
+        start_longitude=car.longitude or 0,
+        open_fee=open_fee,
+        base_price=required_balance,
+    )
+    
+    db.add(new_rental)
+    
+    car.status = CarStatus.RESERVED
+    car.current_renter_id = target_user_uuid
+    
+    target_user.last_activity_at = get_local_time()
+    
+    db.commit()
+    db.refresh(new_rental)
+    
+    asyncio.create_task(notify_user_status_update(str(target_user.id)))
+    
+    return {
+        "success": True,
+        "message": "Машина успешно забронирована за клиента",
+        "rental_id": uuid_to_sid(new_rental.id),
+        "user_id": uuid_to_sid(new_rental.user_id),
+        "car_id": uuid_to_sid(new_rental.car_id),
+        "rental_type": new_rental.rental_type.value,
+        "rental_status": new_rental.rental_status.value,
+        "duration": new_rental.duration,
+        "required_balance": required_balance,
+        "reservation_time": new_rental.reservation_time.isoformat(),
+        "reserved_by_admin": uuid_to_sid(current_user.id)
+    }
+
 @users_router.post("/trips/start", summary="Начать аренду за клиента (Admin)")
 async def admin_start_rental(
     car_id: str = Form(..., description="ID машины"),
