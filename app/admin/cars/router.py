@@ -808,23 +808,37 @@ async def get_car_trips_list(
     start_dt = datetime(year, month, 1)
     end_dt = datetime(year, month, monthrange(year, month)[1], 23, 59, 59)
 
-
     base_query = (
         db.query(RentalHistory, User)
         .join(User, User.id == RentalHistory.user_id)
         .filter(
             RentalHistory.car_id == car.id,
-            RentalHistory.rental_status == RentalStatus.COMPLETED,
-            RentalHistory.end_time >= start_dt,
-            RentalHistory.end_time <= end_dt
+            or_(
+                and_(RentalHistory.reservation_time >= start_dt, RentalHistory.reservation_time <= end_dt),
+                and_(RentalHistory.start_time >= start_dt, RentalHistory.start_time <= end_dt),
+                and_(RentalHistory.end_time >= start_dt, RentalHistory.end_time <= end_dt),
+            )
         )
-        .order_by(RentalHistory.end_time.desc())
+        .order_by(RentalHistory.reservation_time.desc())
     )
     
 
     total = base_query.count()
     
     rentals = base_query.offset((page - 1) * limit).limit(limit).all()
+
+    def get_status_display(status):
+        status_map = {
+            "reserved": "Забронирована",
+            "in_use": "В аренде",
+            "completed": "Завершена",
+            "cancelled": "Отменена",
+            "delivering": "Доставка",
+            "delivering_in_progress": "Доставляется",
+            "delivery_reserved": "Доставка забронирована",
+            "scheduled": "Запланирована",
+        }
+        return status_map.get(status, status)
 
     items = []
     for r, renter in rentals:
@@ -844,8 +858,13 @@ async def get_car_trips_list(
             else:
                 tariff_display = tariff_value
         
+        rental_status_value = r.rental_status.value if r.rental_status else None
+        
         items.append({
             "rental_id": uuid_to_sid(r.id),
+            "rental_status": rental_status_value,
+            "status_display": get_status_display(rental_status_value),
+            "reservation_time": r.reservation_time.isoformat() if r.reservation_time else None,
             "start_date": r.start_time.isoformat() if r.start_time else None,
             "end_date": r.end_time.isoformat() if r.end_time else None,
             "duration_minutes": duration_minutes,
