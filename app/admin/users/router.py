@@ -1080,21 +1080,58 @@ async def update_trip_details(
     
     rental_type: Optional[str] = Form(None),
     rental_status: Optional[str] = Form(None),
+    duration: Optional[str] = Form(None),
     
     start_time: Optional[str] = Form(None),
     end_time: Optional[str] = Form(None),
+    reservation_time: Optional[str] = Form(None),
+    scheduled_start_time: Optional[str] = Form(None),
+    scheduled_end_time: Optional[str] = Form(None),
+    is_advance_booking: Optional[str] = Form(None),
     
+    base_price: Optional[str] = Form(None),
+    open_fee: Optional[str] = Form(None),
+    delivery_fee: Optional[str] = Form(None),
+    waiting_fee: Optional[str] = Form(None),
+    overtime_fee: Optional[str] = Form(None),
+    distance_fee: Optional[str] = Form(None),
+    already_payed: Optional[str] = Form(None),
     total_price: Optional[str] = Form(None),
+    driver_fee: Optional[str] = Form(None),
+    rebooking_fee: Optional[str] = Form(None),
+    delivery_penalty_fee: Optional[str] = Form(None),
     
     start_latitude: Optional[str] = Form(None),
     start_longitude: Optional[str] = Form(None),
     end_latitude: Optional[str] = Form(None),
     end_longitude: Optional[str] = Form(None),
+    delivery_latitude: Optional[str] = Form(None),
+    delivery_longitude: Optional[str] = Form(None),
+    delivery_start_latitude: Optional[str] = Form(None),
+    delivery_start_longitude: Optional[str] = Form(None),
+    delivery_end_latitude: Optional[str] = Form(None),
+    delivery_end_longitude: Optional[str] = Form(None),
+    mechanic_inspection_start_latitude: Optional[str] = Form(None),
+    mechanic_inspection_start_longitude: Optional[str] = Form(None),
+    mechanic_inspection_end_latitude: Optional[str] = Form(None),
+    mechanic_inspection_end_longitude: Optional[str] = Form(None),
     
-    fuel_level_start: Optional[str] = Form(None),
-    fuel_level_end: Optional[str] = Form(None),
-    mileage_start: Optional[str] = Form(None),
-    mileage_end: Optional[str] = Form(None),
+    fuel_before: Optional[str] = Form(None),
+    fuel_after: Optional[str] = Form(None),
+    fuel_after_main_tariff: Optional[str] = Form(None),
+    mileage_before: Optional[str] = Form(None),
+    mileage_after: Optional[str] = Form(None),
+    
+    delivery_start_time: Optional[str] = Form(None),
+    delivery_end_time: Optional[str] = Form(None),
+    
+    mechanic_inspection_start_time: Optional[str] = Form(None),
+    mechanic_inspection_end_time: Optional[str] = Form(None),
+    mechanic_inspection_status: Optional[str] = Form(None),
+    mechanic_inspection_comment: Optional[str] = Form(None),
+    
+    rating: Optional[str] = Form(None),
+    with_driver: Optional[str] = Form(None),
     
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -1161,17 +1198,46 @@ async def update_trip_details(
 
     if filtered_mechanic_photos_after:
         rental.mechanic_photos_after = await process_photos_upload(filtered_mechanic_photos_after, rental.mechanic_photos_after, "after/mechanic_upload")
-   
     update_data = {}
     
-    if car_id and car_id.strip():
-        update_data["car_id"] = safe_sid_to_uuid(car_id.strip())
-    if user_id and user_id.strip():
-        update_data["user_id"] = safe_sid_to_uuid(user_id.strip())
-    if delivery_mechanic_id and delivery_mechanic_id.strip():
-        update_data["delivery_mechanic_id"] = safe_sid_to_uuid(delivery_mechanic_id.strip())
-    if mechanic_inspector_id and mechanic_inspector_id.strip():
-        update_data["mechanic_inspector_id"] = safe_sid_to_uuid(mechanic_inspector_id.strip())
+    def set_uuid(field_name: str, value: Optional[str]):
+        if value and value.strip():
+            update_data[field_name] = safe_sid_to_uuid(value.strip())
+    
+    def set_float(field_name: str, value: Optional[str]):
+        if value and value.strip():
+            try:
+                update_data[field_name] = float(value.strip())
+            except ValueError:
+                pass
+    
+    def set_int(field_name: str, value: Optional[str]):
+        if value and value.strip():
+            try:
+                update_data[field_name] = int(value.strip())
+            except ValueError:
+                pass
+    
+    def set_datetime(field_name: str, value: Optional[str]):
+        if value and value.strip():
+            try:
+                update_data[field_name] = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+            except ValueError:
+                pass
+    
+    def set_str(field_name: str, value: Optional[str]):
+        if value and value.strip():
+            update_data[field_name] = value.strip()
+    
+    def set_bool(field_name: str, value: Optional[str]):
+        if value and value.strip():
+            update_data[field_name] = value.strip().lower() in ["true", "1", "yes"]
+    
+    set_uuid("car_id", car_id)
+    set_uuid("user_id", user_id)
+    set_uuid("delivery_mechanic_id", delivery_mechanic_id)
+    set_uuid("mechanic_inspector_id", mechanic_inspector_id)
+    
     if rental_type and rental_type.strip():
         try:
             update_data["rental_type"] = RentalType(rental_type.strip().lower())
@@ -1182,61 +1248,59 @@ async def update_trip_details(
             update_data["rental_status"] = RentalStatus(rental_status.strip())
         except ValueError:
             raise HTTPException(status_code=400, detail="Неверный статус аренды")
-    if start_time and start_time.strip():
-        try:
-            update_data["start_time"] = datetime.fromisoformat(start_time.strip().replace("Z", "+00:00"))
-        except ValueError:
-            pass
-    if end_time and end_time.strip():
-        try:
-            update_data["end_time"] = datetime.fromisoformat(end_time.strip().replace("Z", "+00:00"))
-        except ValueError:
-            pass
-    if total_price and total_price.strip():
-        try:
-            update_data["total_price"] = float(total_price.strip())
-        except ValueError:
-            pass
-    if start_latitude and start_latitude.strip():
-        try:
-            update_data["start_latitude"] = float(start_latitude.strip())
-        except ValueError:
-            pass
-    if start_longitude and start_longitude.strip():
-        try:
-            update_data["start_longitude"] = float(start_longitude.strip())
-        except ValueError:
-            pass
-    if end_latitude and end_latitude.strip():
-        try:
-            update_data["end_latitude"] = float(end_latitude.strip())
-        except ValueError:
-            pass
-    if end_longitude and end_longitude.strip():
-        try:
-            update_data["end_longitude"] = float(end_longitude.strip())
-        except ValueError:
-            pass
-    if fuel_level_start and fuel_level_start.strip():
-        try:
-            update_data["fuel_before"] = float(fuel_level_start.strip())
-        except ValueError:
-            pass
-    if fuel_level_end and fuel_level_end.strip():
-        try:
-            update_data["fuel_after"] = float(fuel_level_end.strip())
-        except ValueError:
-            pass
-    if mileage_start and mileage_start.strip():
-        try:
-            update_data["mileage_before"] = float(mileage_start.strip())
-        except ValueError:
-            pass
-    if mileage_end and mileage_end.strip():
-        try:
-            update_data["mileage_after"] = float(mileage_end.strip())
-        except ValueError:
-            pass
+    set_int("duration", duration)
+    
+    set_datetime("start_time", start_time)
+    set_datetime("end_time", end_time)
+    set_datetime("reservation_time", reservation_time)
+    set_datetime("scheduled_start_time", scheduled_start_time)
+    set_datetime("scheduled_end_time", scheduled_end_time)
+    set_str("is_advance_booking", is_advance_booking)
+    
+    set_int("base_price", base_price)
+    set_int("open_fee", open_fee)
+    set_int("delivery_fee", delivery_fee)
+    set_int("waiting_fee", waiting_fee)
+    set_int("overtime_fee", overtime_fee)
+    set_int("distance_fee", distance_fee)
+    set_int("already_payed", already_payed)
+    set_int("total_price", total_price)
+    set_int("driver_fee", driver_fee)
+    set_int("rebooking_fee", rebooking_fee)
+    set_int("delivery_penalty_fee", delivery_penalty_fee)
+    
+    set_float("start_latitude", start_latitude)
+    set_float("start_longitude", start_longitude)
+    set_float("end_latitude", end_latitude)
+    set_float("end_longitude", end_longitude)
+    set_float("delivery_latitude", delivery_latitude)
+    set_float("delivery_longitude", delivery_longitude)
+    set_float("delivery_start_latitude", delivery_start_latitude)
+    set_float("delivery_start_longitude", delivery_start_longitude)
+    set_float("delivery_end_latitude", delivery_end_latitude)
+    set_float("delivery_end_longitude", delivery_end_longitude)
+    set_float("mechanic_inspection_start_latitude", mechanic_inspection_start_latitude)
+    set_float("mechanic_inspection_start_longitude", mechanic_inspection_start_longitude)
+    set_float("mechanic_inspection_end_latitude", mechanic_inspection_end_latitude)
+    set_float("mechanic_inspection_end_longitude", mechanic_inspection_end_longitude)
+    
+    set_float("fuel_before", fuel_before)
+    set_float("fuel_after", fuel_after)
+    set_float("fuel_after_main_tariff", fuel_after_main_tariff)
+    set_int("mileage_before", mileage_before)
+    set_int("mileage_after", mileage_after)
+    
+    set_datetime("delivery_start_time", delivery_start_time)
+    set_datetime("delivery_end_time", delivery_end_time)
+    
+    set_datetime("mechanic_inspection_start_time", mechanic_inspection_start_time)
+    set_datetime("mechanic_inspection_end_time", mechanic_inspection_end_time)
+    set_str("mechanic_inspection_status", mechanic_inspection_status)
+    set_str("mechanic_inspection_comment", mechanic_inspection_comment)
+    
+    set_float("rating", rating)
+    set_bool("with_driver", with_driver)
+
     
     for key, value in update_data.items():
         setattr(rental, key, value)
