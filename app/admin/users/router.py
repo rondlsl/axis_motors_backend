@@ -16,7 +16,7 @@ from app.auth.dependencies.save_documents import save_file, validate_photos
 from app.models.user_model import User, UserRole
 from app.models.application_model import Application, ApplicationStatus
 from app.models.history_model import RentalHistory, RentalStatus, RentalReview, RentalType
-from app.models.car_model import Car
+from app.models.car_model import Car, CarStatus
 from app.models.guarantor_model import GuarantorRequest
 from app.models.wallet_transaction_model import WalletTransaction, WalletTransactionType
 from app.models.rental_actions_model import RentalAction
@@ -41,6 +41,8 @@ from app.push.utils import send_push_to_user_by_id, send_localized_notification_
 from app.websocket.notifications import notify_user_status_update
 from app.utils.time_utils import get_local_time
 import asyncio
+from app.wallet.utils import record_wallet_transaction
+from app.rent.utils.calculate_price import get_open_price
 
 users_router = APIRouter(tags=["Admin Users"])
 
@@ -1338,6 +1340,282 @@ async def create_rental(
         "start_time": new_rental.start_time.isoformat() if new_rental.start_time else None,
         "end_time": new_rental.end_time.isoformat() if new_rental.end_time else None,
         "total_price": new_rental.total_price
+    }
+
+
+@users_router.post("/trips/start", summary="Начать аренду за клиента (Admin)")
+async def admin_start_rental(
+    car_id: str = Form(..., description="ID машины"),
+    user_id: str = Form(..., description="ID пользователя"),
+    rental_type: str = Form(..., description="Тип аренды: MINUTES, HOURS, DAYS"),
+    duration: Optional[int] = Form(None, description="Длительность (для HOURS/DAYS)"),
+    selfie: UploadFile = File(..., description="Селфи пользователя"),
+    car_photos: List[UploadFile] = File(..., description="Фото кузова (1-10)"),
+    interior_photos: List[UploadFile] = File(..., description="Фото салона (1-10)"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Эндпоинт для админа для начала аренды за клиента.
+    
+    - Создает аренду со статусом IN_USE
+    - Сохраняет фотографии (селфи, кузов, салон)
+    - Списывает open_fee с кошелька пользователя
+    - Обновляет статус машины на IN_USE
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    rental_type_map = {
+        "MINUTES": RentalType.MINUTES,
+        "HOURS": RentalType.HOURS,
+        "DAYS": RentalType.DAYS
+    }
+    rental_type_enum = rental_type_map.get(rental_type.upper())
+    if not rental_type_enum:
+        raise HTTPException(status_code=400, detail="Неверный тип аренды. Допустимые: MINUTES, HOURS, DAYS")
+    
+    if rental_type_enum in [RentalType.HOURS, RentalType.DAYS] and not duration:
+        raise HTTPException(status_code=400, detail="Duration обязателен для аренды по часам/дням")
+    
+    target_user_uuid = safe_sid_to_uuid(user_id)
+    target_user = db.query(User).filter(User.id == target_user_uuid).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    car_uuid = safe_sid_to_uuid(car_id)
+    car = db.query(Car).filter(Car.id == car_uuid).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    if car.status not in [CarStatus.FREE, CarStatus.RESERVED, CarStatus.PENDING]:
+        raise HTTPException(status_code=400, detail=f"Машина недоступна для аренды. Текущий статус: {car.status.value}")
+    
+    active_rental = db.query(RentalHistory).filter(
+        RentalHistory.user_id == target_user_uuid,
+        RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
+    ).first()
+    if active_rental:
+        raise HTTPException(status_code=400, detail="У пользователя уже есть активная аренда")
+    
+    open_fee = get_open_price(car)
+    
+    if target_user.wallet_balance < open_fee:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Недостаточно средств на балансе. Требуется: {open_fee}₸, доступно: {target_user.wallet_balance}₸"
+        )
+    
+    new_rental = RentalHistory(
+        user_id=target_user_uuid,
+        car_id=car_uuid,
+        rental_type=rental_type_enum,
+        duration=duration,
+        rental_status=RentalStatus.IN_USE,
+        reservation_time=get_local_time(),
+        start_time=get_local_time(),
+        start_latitude=car.latitude,
+        start_longitude=car.longitude,
+        open_fee=open_fee,
+        already_payed=open_fee,
+        base_price=0,
+        total_price=open_fee
+    )
+    db.add(new_rental)
+    db.flush()
+    
+    photos_before = []
+    
+    if selfie and selfie.content_type in ["image/jpeg", "image/png", "image/jpg"]:
+        selfie_url = await save_file(selfie, new_rental.id, f"uploads/rents/{new_rental.id}/before/selfie/")
+        photos_before.append(selfie_url)
+    
+    if car_photos:
+        for photo in car_photos:
+            if photo.content_type in ["image/jpeg", "image/png", "image/jpg"]:
+                car_url = await save_file(photo, new_rental.id, f"uploads/rents/{new_rental.id}/before/car/")
+                photos_before.append(car_url)
+    
+    if interior_photos:
+        for photo in interior_photos:
+            if photo.content_type in ["image/jpeg", "image/png", "image/jpg"]:
+                interior_url = await save_file(photo, new_rental.id, f"uploads/rents/{new_rental.id}/before/interior/")
+                photos_before.append(interior_url)
+    
+    new_rental.photos_before = photos_before
+    
+    balance_before = float(target_user.wallet_balance or 0)
+    target_user.wallet_balance = balance_before - open_fee
+    
+    record_wallet_transaction(
+        db,
+        user=target_user,
+        amount=-open_fee,
+        ttype=WalletTransactionType.RENT_OPEN_FEE,
+        description=f"Открытие авто (админ: {current_user.phone_number})",
+        related_rental=new_rental,
+        balance_before_override=balance_before
+    )
+    
+    car.status = CarStatus.IN_USE
+    car.current_renter_id = target_user_uuid
+    
+    target_user.last_activity_at = get_local_time()
+    
+    db.commit()
+    db.refresh(new_rental)
+    
+    asyncio.create_task(notify_user_status_update(str(target_user.id)))
+    
+    return {
+        "success": True,
+        "rental_id": uuid_to_sid(new_rental.id),
+        "user_id": uuid_to_sid(new_rental.user_id),
+        "car_id": uuid_to_sid(new_rental.car_id),
+        "rental_type": new_rental.rental_type.value,
+        "rental_status": new_rental.rental_status.value,
+        "start_time": new_rental.start_time.isoformat(),
+        "open_fee": open_fee,
+        "photos_count": len(photos_before),
+        "new_balance": float(target_user.wallet_balance),
+        "started_by_admin": uuid_to_sid(current_user.id)
+    }
+
+
+@users_router.post("/trips/end", summary="Завершить аренду за клиента (Admin)")
+async def admin_end_rental(
+    car_id: str = Form(..., description="ID машины"),
+    user_id: str = Form(..., description="ID пользователя"),
+    selfie: UploadFile = File(..., description="Селфи пользователя после аренды"),
+    car_photos: List[UploadFile] = File(..., description="Фото кузова после (1-10)"),
+    interior_photos: List[UploadFile] = File(..., description="Фото салона после (1-10)"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Эндпоинт для админа для завершения аренды за клиента.
+    
+    - Находит активную аренду по car_id и user_id
+    - Сохраняет фотографии после аренды (селфи, кузов, салон)
+    - Рассчитывает и списывает итоговую стоимость
+    - Завершает аренду со статусом COMPLETED
+    - Освобождает машину (статус FREE)
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    target_user_uuid = safe_sid_to_uuid(user_id)
+    target_user = db.query(User).filter(User.id == target_user_uuid).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    car_uuid = safe_sid_to_uuid(car_id)
+    car = db.query(Car).filter(Car.id == car_uuid).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    active_rental = db.query(RentalHistory).filter(
+        RentalHistory.user_id == target_user_uuid,
+        RentalHistory.car_id == car_uuid,
+        RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
+    ).first()
+    
+    if not active_rental:
+        raise HTTPException(status_code=404, detail="Активная аренда не найдена для данного пользователя и машины")
+    
+    photos_after = list(active_rental.photos_after or [])
+    
+    if selfie and selfie.content_type in ["image/jpeg", "image/png", "image/jpg"]:
+        selfie_url = await save_file(selfie, active_rental.id, f"uploads/rents/{active_rental.id}/after/selfie/")
+        photos_after.append(selfie_url)
+    
+    if car_photos:
+        for photo in car_photos:
+            if photo.content_type in ["image/jpeg", "image/png", "image/jpg"]:
+                car_url = await save_file(photo, active_rental.id, f"uploads/rents/{active_rental.id}/after/car/")
+                photos_after.append(car_url)
+    
+    if interior_photos:
+        for photo in interior_photos:
+            if photo.content_type in ["image/jpeg", "image/png", "image/jpg"]:
+                interior_url = await save_file(photo, active_rental.id, f"uploads/rents/{active_rental.id}/after/interior/")
+                photos_after.append(interior_url)
+    
+    active_rental.photos_after = photos_after
+    
+    now = get_local_time()
+    start_time = active_rental.start_time or active_rental.reservation_time
+    
+    if start_time:
+        duration_minutes = int((now - start_time).total_seconds() / 60)
+    else:
+        duration_minutes = 0
+    
+    price_per_minute = car.price_per_minute or 0
+    price_per_hour = car.price_per_hour or 0
+    price_per_day = car.price_per_day or 0
+    
+    rental_cost = 0
+    if active_rental.rental_type == RentalType.MINUTES:
+        rental_cost = duration_minutes * price_per_minute
+    elif active_rental.rental_type == RentalType.HOURS:
+        hours = max(1, (duration_minutes + 59) // 60)
+        rental_cost = hours * price_per_hour
+    elif active_rental.rental_type == RentalType.DAYS:
+        days = max(1, (duration_minutes + 1439) // 1440)
+        rental_cost = days * price_per_day
+    
+    already_payed = float(active_rental.already_payed or 0)
+    open_fee = float(active_rental.open_fee or 0)
+    
+    total_to_charge = max(0, rental_cost - already_payed + open_fee)
+    
+    balance_before = float(target_user.wallet_balance or 0)
+    if total_to_charge > 0 and balance_before >= total_to_charge:
+        target_user.wallet_balance = balance_before - total_to_charge
+        
+        record_wallet_transaction(
+            db,
+            user=target_user,
+            amount=-total_to_charge,
+            ttype=WalletTransactionType.RENT_PAYMENT,
+            description=f"Оплата аренды (админ: {current_user.phone_number})",
+            related_rental=active_rental,
+            balance_before_override=balance_before
+        )
+    
+    active_rental.rental_status = RentalStatus.COMPLETED
+    active_rental.end_time = now
+    active_rental.end_latitude = car.latitude
+    active_rental.end_longitude = car.longitude
+    active_rental.total_price = rental_cost + open_fee
+    active_rental.already_payed = already_payed + total_to_charge
+    
+    car.status = CarStatus.PENDING  
+    car.current_renter_id = None
+    
+    target_user.last_activity_at = now
+    
+    db.commit()
+    db.refresh(active_rental)
+    
+    asyncio.create_task(notify_user_status_update(str(target_user.id)))
+    
+    return {
+        "success": True,
+        "rental_id": uuid_to_sid(active_rental.id),
+        "user_id": uuid_to_sid(active_rental.user_id),
+        "car_id": uuid_to_sid(active_rental.car_id),
+        "rental_status": active_rental.rental_status.value,
+        "start_time": start_time.isoformat() if start_time else None,
+        "end_time": active_rental.end_time.isoformat(),
+        "duration_minutes": duration_minutes,
+        "rental_cost": rental_cost,
+        "open_fee": open_fee,
+        "total_charged": total_to_charge,
+        "photos_after_count": len(photos_after),
+        "new_balance": float(target_user.wallet_balance),
+        "ended_by_admin": uuid_to_sid(current_user.id)
     }
 
 
