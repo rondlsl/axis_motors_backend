@@ -149,8 +149,8 @@ def get_commands_by_imei(imei: str) -> dict:
             "unlock_engine": "OUTPUT0 0"
         },
         "860803068151071": {  # Toyota Camry - vehicle_id 800408106
-            "open": "chat OPEN",
-            "close": "chat CLOSE",
+            "open": "OUTPUT2 1|OUTPUT3 0|OUTPUT3 0|OUTPUT2 0",
+            "close": "OUTPUT3 1|OUTPUT2 0|OUTPUT2 0|OUTPUT3 0",
             "give_key": "OUTPUT1 1",
             "take_key": "OUTPUT1 0",
             "lock_engine": "OUTPUT0 1",
