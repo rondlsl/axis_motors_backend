@@ -1580,9 +1580,9 @@ async def admin_start_rental(
     user_id: str = Form(..., description="ID пользователя"),
     rental_type: str = Form(..., description="Тип аренды: MINUTES, HOURS, DAYS"),
     duration: Optional[str] = Form(None, description="Длительность (для HOURS/DAYS)"),
-    selfie: Optional[UploadFile] = File(None, description="Селфи пользователя"),
-    car_photos: Optional[List[UploadFile]] = File(None, description="Фото кузова (1-10)"),
-    interior_photos: Optional[List[UploadFile]] = File(None, description="Фото салона (1-10)"),
+    selfie: UploadFile = File(default=None, description="Селфи пользователя"),
+    car_photos: List[UploadFile] = File(default=[], description="Фото кузова (1-10)"),
+    interior_photos: List[UploadFile] = File(default=[], description="Фото салона (1-10)"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -1823,9 +1823,9 @@ async def admin_start_rental(
 async def admin_end_rental(
     car_id: str = Form(..., description="ID машины"),
     user_id: str = Form(..., description="ID пользователя"),
-    selfie: Optional[UploadFile] = File(None, description="Селфи пользователя после аренды"),
-    car_photos: Optional[List[UploadFile]] = File(None, description="Фото кузова после (1-10)"),
-    interior_photos: Optional[List[UploadFile]] = File(None, description="Фото салона после (1-10)"),
+    selfie: UploadFile = File(default=None, description="Селфи пользователя после аренды"),
+    car_photos: List[UploadFile] = File(default=[], description="Фото кузова после (1-10)"),
+    interior_photos: List[UploadFile] = File(default=[], description="Фото салона после (1-10)"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
