@@ -195,7 +195,6 @@ def create_cars(db: Session, owner: User) -> None:
             "price_per_minute": 195,
             "price_per_hour": 8800,
             "price_per_day": 140000,
-            "open_fee": 8000,
             "plate_number": "195BGY02",
             "latitude": 43.224048,
             "longitude": 76.961871,
