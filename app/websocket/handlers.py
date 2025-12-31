@@ -19,7 +19,7 @@ async def get_vehicles_data_for_user(user: User, db: Session) -> Dict[str, Any]:
         if user.role == UserRole.MECHANIC:
             query = db.query(Car)
             if user.phone_number not in ["71011111111", "71234567890", "77057726400", "71234567876", "77766639210"]:
-                query = query.filter(Car.plate_number.notin_(["666AZV02", "195BGY02"]))
+                query = query.filter(Car.plate_number.notin_(["666AZV02"]))
         else:
             active_rental = db.query(RentalHistory).filter(
                 RentalHistory.user_id == user.id,
@@ -31,7 +31,7 @@ async def get_vehicles_data_for_user(user: User, db: Session) -> Dict[str, Any]:
             else:
                 query = db.query(Car)
                 if user.phone_number not in ["71011111111", "71234567890", "77057726400", "71234567876", "77766639210"]:
-                    query = query.filter(Car.plate_number.notin_(["666AZV02", "195BGY02"]))
+                    query = query.filter(Car.plate_number.notin_(["666AZV02"]))
 
         if user.role == UserRole.USER and bool(user.documents_verified):
             available_classes = get_user_available_auto_classes(user, db)
