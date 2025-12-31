@@ -1607,19 +1607,31 @@ async def admin_start_rental(
     
     form = await request.form()
     
+    # Debug: log all form items
+    import logging
+    logging.warning(f"DEBUG /trips/start: Form items count: {len(list(form.multi_items()))}")
+    for key, value in form.multi_items():
+        is_upload = isinstance(value, UploadFile)
+        logging.warning(f"DEBUG /trips/start: key={key}, type={type(value).__name__}, is_upload={is_upload}")
+        if is_upload:
+            logging.warning(f"DEBUG /trips/start:   filename={value.filename}, content_type={value.content_type}")
+    
     def get_files_from_form(field_name: str) -> List[UploadFile]:
         files = []
         for key, value in form.multi_items():
             if key == field_name and isinstance(value, UploadFile):
                 if value.filename:
                     files.append(value)
+        logging.warning(f"DEBUG /trips/start: get_files_from_form({field_name}) -> {len(files)} files")
         return files
     
     def get_single_file_from_form(field_name: str) -> Optional[UploadFile]:
         for key, value in form.multi_items():
             if key == field_name and isinstance(value, UploadFile):
                 if value.filename:
+                    logging.warning(f"DEBUG /trips/start: get_single_file_from_form({field_name}) -> found {value.filename}")
                     return value
+        logging.warning(f"DEBUG /trips/start: get_single_file_from_form({field_name}) -> None")
         return None
     
     filtered_selfie = get_single_file_from_form("selfie")
