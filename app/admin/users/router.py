@@ -1154,10 +1154,10 @@ async def update_trip_details(
     
     form = await request.form()
     
-    def get_files_from_form(field_name: str) -> List[UploadFile]:
+    def get_files_from_form(field_name: str) -> List:
         files = []
         for key, value in form.multi_items():
-            if key == field_name and isinstance(value, UploadFile):
+            if key == field_name and hasattr(value, 'filename') and hasattr(value, 'read'):
                 if value.filename: 
                     files.append(value)
         return files
@@ -1611,23 +1611,23 @@ async def admin_start_rental(
     import logging
     logging.warning(f"DEBUG /trips/start: Form items count: {len(list(form.multi_items()))}")
     for key, value in form.multi_items():
-        is_upload = isinstance(value, UploadFile)
-        logging.warning(f"DEBUG /trips/start: key={key}, type={type(value).__name__}, is_upload={is_upload}")
-        if is_upload:
-            logging.warning(f"DEBUG /trips/start:   filename={value.filename}, content_type={value.content_type}")
+        has_filename = hasattr(value, 'filename') and value.filename
+        logging.warning(f"DEBUG /trips/start: key={key}, type={type(value).__name__}, has_filename={has_filename}")
     
-    def get_files_from_form(field_name: str) -> List[UploadFile]:
+    def get_files_from_form(field_name: str) -> List:
         files = []
         for key, value in form.multi_items():
-            if key == field_name and isinstance(value, UploadFile):
+            # Check by attribute presence, not isinstance (different UploadFile classes)
+            if key == field_name and hasattr(value, 'filename') and hasattr(value, 'read'):
                 if value.filename:
                     files.append(value)
         logging.warning(f"DEBUG /trips/start: get_files_from_form({field_name}) -> {len(files)} files")
         return files
     
-    def get_single_file_from_form(field_name: str) -> Optional[UploadFile]:
+    def get_single_file_from_form(field_name: str):
         for key, value in form.multi_items():
-            if key == field_name and isinstance(value, UploadFile):
+            # Check by attribute presence, not isinstance (different UploadFile classes)
+            if key == field_name and hasattr(value, 'filename') and hasattr(value, 'read'):
                 if value.filename:
                     logging.warning(f"DEBUG /trips/start: get_single_file_from_form({field_name}) -> found {value.filename}")
                     return value
@@ -1856,17 +1856,17 @@ async def admin_end_rental(
     
     form = await request.form()
     
-    def get_files_from_form(field_name: str) -> List[UploadFile]:
+    def get_files_from_form(field_name: str) -> List:
         files = []
         for key, value in form.multi_items():
-            if key == field_name and isinstance(value, UploadFile):
+            if key == field_name and hasattr(value, 'filename') and hasattr(value, 'read'):
                 if value.filename:
                     files.append(value)
         return files
     
-    def get_single_file_from_form(field_name: str) -> Optional[UploadFile]:
+    def get_single_file_from_form(field_name: str):
         for key, value in form.multi_items():
-            if key == field_name and isinstance(value, UploadFile):
+            if key == field_name and hasattr(value, 'filename') and hasattr(value, 'read'):
                 if value.filename:
                     return value
         return None
