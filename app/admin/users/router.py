@@ -1158,7 +1158,7 @@ async def update_trip_details(
         files = []
         for key, value in form.multi_items():
             if key == field_name and isinstance(value, UploadFile):
-                if value.filename and value.content_type:
+                if value.filename: 
                     files.append(value)
         return files
     
@@ -1184,9 +1184,6 @@ async def update_trip_details(
              
         if new_files:
             for file in new_files:
-                if file.content_type not in ["image/jpeg", "image/png"]:
-                    continue 
-                
                 try:
                     file_url = await save_file(file, rental.id, f"uploads/rents/{rental.id}/{save_folder}")
                     final_urls.append(file_url)
