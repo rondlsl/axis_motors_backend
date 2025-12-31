@@ -1610,9 +1610,22 @@ async def admin_start_rental(
     def filter_files(files):
         if files is None:
             return []
-        return [f for f in files if isinstance(f, UploadFile) and hasattr(f, 'content_type') and f.content_type]
+        if not isinstance(files, list):
+            files = [files]
+        result = []
+        for f in files:
+            if isinstance(f, UploadFile) and f.filename:
+                result.append(f)
+        return result
     
-    filtered_selfie = selfie if isinstance(selfie, UploadFile) and hasattr(selfie, 'content_type') and selfie.content_type else None
+    def filter_single_file(file):
+        if file is None:
+            return None
+        if isinstance(file, UploadFile) and file.filename:
+            return file
+        return None
+    
+    filtered_selfie = filter_single_file(selfie)
     filtered_car_photos = filter_files(car_photos)
     filtered_interior_photos = filter_files(interior_photos)
     
@@ -1679,17 +1692,15 @@ async def admin_start_rental(
             existing_rental.start_longitude = car.longitude
             
             photos_before = list(existing_rental.photos_before or [])
-            if filtered_selfie and filtered_selfie.content_type in ["image/jpeg", "image/png", "image/jpg"]:
+            if filtered_selfie:
                 selfie_url = await save_file(filtered_selfie, existing_rental.id, f"uploads/rents/{existing_rental.id}/before/selfie/")
                 photos_before.append(selfie_url)
             for photo in filtered_car_photos:
-                if photo.content_type in ["image/jpeg", "image/png", "image/jpg"]:
-                    car_url = await save_file(photo, existing_rental.id, f"uploads/rents/{existing_rental.id}/before/car/")
-                    photos_before.append(car_url)
+                car_url = await save_file(photo, existing_rental.id, f"uploads/rents/{existing_rental.id}/before/car/")
+                photos_before.append(car_url)
             for photo in filtered_interior_photos:
-                if photo.content_type in ["image/jpeg", "image/png", "image/jpg"]:
-                    interior_url = await save_file(photo, existing_rental.id, f"uploads/rents/{existing_rental.id}/before/interior/")
-                    photos_before.append(interior_url)
+                interior_url = await save_file(photo, existing_rental.id, f"uploads/rents/{existing_rental.id}/before/interior/")
+                photos_before.append(interior_url)
             existing_rental.photos_before = photos_before
             
             car.status = CarStatus.IN_USE
@@ -1759,19 +1770,17 @@ async def admin_start_rental(
     
     photos_before = []
     
-    if filtered_selfie and filtered_selfie.content_type in ["image/jpeg", "image/png", "image/jpg"]:
+    if filtered_selfie:
         selfie_url = await save_file(filtered_selfie, new_rental.id, f"uploads/rents/{new_rental.id}/before/selfie/")
         photos_before.append(selfie_url)
     
     for photo in filtered_car_photos:
-        if photo.content_type in ["image/jpeg", "image/png", "image/jpg"]:
-            car_url = await save_file(photo, new_rental.id, f"uploads/rents/{new_rental.id}/before/car/")
-            photos_before.append(car_url)
+        car_url = await save_file(photo, new_rental.id, f"uploads/rents/{new_rental.id}/before/car/")
+        photos_before.append(car_url)
     
     for photo in filtered_interior_photos:
-        if photo.content_type in ["image/jpeg", "image/png", "image/jpg"]:
-            interior_url = await save_file(photo, new_rental.id, f"uploads/rents/{new_rental.id}/before/interior/")
-            photos_before.append(interior_url)
+        interior_url = await save_file(photo, new_rental.id, f"uploads/rents/{new_rental.id}/before/interior/")
+        photos_before.append(interior_url)
     
     new_rental.photos_before = photos_before
     
@@ -1838,9 +1847,11 @@ async def admin_end_rental(
     def filter_files(files):
         if files is None:
             return []
-        return [f for f in files if isinstance(f, UploadFile) and hasattr(f, 'content_type') and f.content_type]
+        if not isinstance(files, list):
+            files = [files]
+        return [f for f in files if isinstance(f, UploadFile) and f.filename]
     
-    filtered_selfie = selfie if isinstance(selfie, UploadFile) and hasattr(selfie, 'content_type') and selfie.content_type else None
+    filtered_selfie = selfie if isinstance(selfie, UploadFile) and selfie.filename else None
     filtered_car_photos = filter_files(car_photos)
     filtered_interior_photos = filter_files(interior_photos)
     
@@ -1865,19 +1876,17 @@ async def admin_end_rental(
     
     photos_after = list(active_rental.photos_after or [])
     
-    if filtered_selfie and filtered_selfie.content_type in ["image/jpeg", "image/png", "image/jpg"]:
+    if filtered_selfie:
         selfie_url = await save_file(filtered_selfie, active_rental.id, f"uploads/rents/{active_rental.id}/after/selfie/")
         photos_after.append(selfie_url)
     
     for photo in filtered_car_photos:
-        if photo.content_type in ["image/jpeg", "image/png", "image/jpg"]:
-            car_url = await save_file(photo, active_rental.id, f"uploads/rents/{active_rental.id}/after/car/")
-            photos_after.append(car_url)
+        car_url = await save_file(photo, active_rental.id, f"uploads/rents/{active_rental.id}/after/car/")
+        photos_after.append(car_url)
     
     for photo in filtered_interior_photos:
-        if photo.content_type in ["image/jpeg", "image/png", "image/jpg"]:
-            interior_url = await save_file(photo, active_rental.id, f"uploads/rents/{active_rental.id}/after/interior/")
-            photos_after.append(interior_url)
+        interior_url = await save_file(photo, active_rental.id, f"uploads/rents/{active_rental.id}/after/interior/")
+        photos_after.append(interior_url)
     
     active_rental.photos_after = photos_after
     
