@@ -1576,6 +1576,7 @@ async def admin_reserve_car(
 
 @users_router.post("/trips/start", summary="Начать аренду за клиента (Admin)")
 async def admin_start_rental(
+    request: Request,
     car_id: str = Form(..., description="ID машины"),
     user_id: str = Form(..., description="ID пользователя"),
     rental_type: str = Form(..., description="Тип аренды: MINUTES, HOURS, DAYS"),
@@ -1604,27 +1605,26 @@ async def admin_start_rental(
         except ValueError:
             raise HTTPException(status_code=400, detail="Duration должен быть целым числом")
     
-    def filter_files(files):
-        if files is None:
-            return []
-        if not isinstance(files, list):
-            files = [files]
-        result = []
-        for f in files:
-            if isinstance(f, UploadFile) and f.filename:
-                result.append(f)
-        return result
+    form = await request.form()
     
-    def filter_single_file(file):
-        if file is None:
-            return None
-        if isinstance(file, UploadFile) and file.filename:
-            return file
+    def get_files_from_form(field_name: str) -> List[UploadFile]:
+        files = []
+        for key, value in form.multi_items():
+            if key == field_name and isinstance(value, UploadFile):
+                if value.filename:
+                    files.append(value)
+        return files
+    
+    def get_single_file_from_form(field_name: str) -> Optional[UploadFile]:
+        for key, value in form.multi_items():
+            if key == field_name and isinstance(value, UploadFile):
+                if value.filename:
+                    return value
         return None
     
-    filtered_selfie = filter_single_file(selfie)
-    filtered_car_photos = filter_files(car_photos)
-    filtered_interior_photos = filter_files(interior_photos)
+    filtered_selfie = get_single_file_from_form("selfie")
+    filtered_car_photos = get_files_from_form("car_photos")
+    filtered_interior_photos = get_files_from_form("interior_photos")
     
     rental_type_map = {
         "MINUTES": RentalType.MINUTES,
@@ -1821,6 +1821,7 @@ async def admin_start_rental(
 
 @users_router.post("/trips/end", summary="Завершить аренду за клиента (Admin)")
 async def admin_end_rental(
+    request: Request,
     car_id: str = Form(..., description="ID машины"),
     user_id: str = Form(..., description="ID пользователя"),
     selfie: UploadFile = File(default=None, description="Селфи пользователя после аренды"),
@@ -1841,16 +1842,26 @@ async def admin_end_rental(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    def filter_files(files):
-        if files is None:
-            return []
-        if not isinstance(files, list):
-            files = [files]
-        return [f for f in files if isinstance(f, UploadFile) and f.filename]
+    form = await request.form()
     
-    filtered_selfie = selfie if isinstance(selfie, UploadFile) and selfie.filename else None
-    filtered_car_photos = filter_files(car_photos)
-    filtered_interior_photos = filter_files(interior_photos)
+    def get_files_from_form(field_name: str) -> List[UploadFile]:
+        files = []
+        for key, value in form.multi_items():
+            if key == field_name and isinstance(value, UploadFile):
+                if value.filename:
+                    files.append(value)
+        return files
+    
+    def get_single_file_from_form(field_name: str) -> Optional[UploadFile]:
+        for key, value in form.multi_items():
+            if key == field_name and isinstance(value, UploadFile):
+                if value.filename:
+                    return value
+        return None
+    
+    filtered_selfie = get_single_file_from_form("selfie")
+    filtered_car_photos = get_files_from_form("car_photos")
+    filtered_interior_photos = get_files_from_form("interior_photos")
     
     target_user_uuid = safe_sid_to_uuid(user_id)
     target_user = db.query(User).filter(User.id == target_user_uuid).first()
