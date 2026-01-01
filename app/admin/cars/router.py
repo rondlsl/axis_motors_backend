@@ -1019,6 +1019,7 @@ async def get_trip_detail(
             "last_name": renter.last_name,
             "phone_number": renter.phone_number,
             "selfie": renter.selfie_url,
+            "is_owner": car.owner_id == renter.id if car.owner_id else False,
         },
         "photos": photos,
         "client_rating": review.rating if review else None,
