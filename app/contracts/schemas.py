@@ -35,6 +35,14 @@ class SignContractByTypeRequest(BaseModel):
     guarantor_relationship_id: Optional[str] = Field(None, description="SID связи гарант-клиент (для договоров гаранта)")
 
 
+class AdminSignContractRequest(BaseModel):
+    """Схема для подписания договора админом от имени клиента"""
+    user_id: str = Field(..., description="SID пользователя, от имени которого подписывается договор")
+    contract_type: ContractType = Field(..., description="Тип договора")
+    rental_id: Optional[str] = Field(None, description="SID аренды (для договоров аренды)")
+    guarantor_relationship_id: Optional[str] = Field(None, description="SID связи гарант-клиент (для договоров гаранта)")
+
+
 class UserSignatureResponse(BaseModel):
     """Схема ответа с информацией о подписи"""
     id: str

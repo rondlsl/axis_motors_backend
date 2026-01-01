@@ -3465,3 +3465,339 @@ async def delete_rentals(
         except:
             pass
         raise HTTPException(status_code=500, detail=f"Ошибка удаления аренд: {str(e)}")
+
+
+@users_router.post("/rentals/{rental_id}/admin-upload-photos-before")
+async def admin_upload_photos_before(
+    rental_id: str,
+    selfie: Optional[UploadFile] = File(None, description="Селфи клиента (необязательно для владельца)"),
+    car_photos: List[UploadFile] = File(..., description="Фотографии кузова автомобиля"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Загрузить фотографии ДО начала аренды от имени клиента (только для админа).
+    
+    - selfie: селфи клиента (необязательно для владельца)
+    - car_photos: фотографии кузова автомобиля (обязательно)
+    
+    Без проверки ГЛОНАСС и без отправки GPS-команд — просто загрузка файлов.
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администратор может загружать фотографии от имени клиентов")
+    
+    try:
+        rental_uuid = safe_sid_to_uuid(rental_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Неверный формат rental_id: {str(e)}")
+    
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Аренда не найдена")
+    
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    validate_photos(car_photos, "car_photos")
+    if selfie:
+        validate_photos([selfie], "selfie")
+    
+    uploaded_files = []
+    try:
+        urls = list(rental.photos_before or [])
+        
+        if selfie:
+            selfie_url = await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/before/selfie/")
+            urls.append(selfie_url)
+            uploaded_files.append(selfie_url)
+        
+        for p in car_photos:
+            car_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/car/")
+            urls.append(car_url)
+            uploaded_files.append(car_url)
+        
+        rental.photos_before = urls
+        db.commit()
+        
+        db.expire_all()
+        db.refresh(rental)
+        
+        try:
+            if rental.user_id:
+                await notify_user_status_update(str(rental.user_id))
+            if car.owner_id:
+                await notify_user_status_update(str(car.owner_id))
+        except Exception as e:
+            print(f"Error sending WebSocket notifications: {e}")
+        
+        return {
+            "message": "Фотографии до аренды (selfie+car) загружены",
+            "rental_id": rental_id,
+            "photo_count": len(urls),
+            "selfie_uploaded": selfie is not None
+        }
+    except HTTPException:
+        db.rollback()
+        for f in uploaded_files:
+            try:
+                if os.path.exists(f):
+                    os.remove(f)
+            except:
+                pass
+        raise
+    except Exception as e:
+        db.rollback()
+        for f in uploaded_files:
+            try:
+                if os.path.exists(f):
+                    os.remove(f)
+            except:
+                pass
+        raise HTTPException(status_code=500, detail=f"Ошибка при загрузке фотографий: {str(e)}")
+
+
+@users_router.post("/rentals/{rental_id}/admin-upload-photos-before-interior")
+async def admin_upload_photos_before_interior(
+    rental_id: str,
+    interior_photos: List[UploadFile] = File(..., description="Фотографии салона автомобиля"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Загрузить фотографии салона ДО начала аренды от имени клиента (только для админа).
+    
+    - interior_photos: фотографии салона автомобиля (обязательно)
+    
+    Без проверки ГЛОНАСС и без отправки GPS-команд — просто загрузка файлов.
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администратор может загружать фотографии от имени клиентов")
+    
+    try:
+        rental_uuid = safe_sid_to_uuid(rental_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Неверный формат rental_id: {str(e)}")
+    
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Аренда не найдена")
+    
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    validate_photos(interior_photos, "interior_photos")
+    
+    uploaded_files = []
+    try:
+        urls = list(rental.photos_before or [])
+        
+        for p in interior_photos:
+            interior_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/interior/")
+            urls.append(interior_url)
+            uploaded_files.append(interior_url)
+        
+        rental.photos_before = urls
+        db.commit()
+        
+        db.expire_all()
+        db.refresh(rental)
+        
+        try:
+            if rental.user_id:
+                await notify_user_status_update(str(rental.user_id))
+            if car.owner_id:
+                await notify_user_status_update(str(car.owner_id))
+        except Exception as e:
+            print(f"Error sending WebSocket notifications: {e}")
+        
+        return {
+            "message": "Фотографии салона до аренды загружены",
+            "rental_id": rental_id,
+            "photo_count": len(interior_photos)
+        }
+    except HTTPException:
+        db.rollback()
+        for f in uploaded_files:
+            try:
+                if os.path.exists(f):
+                    os.remove(f)
+            except:
+                pass
+        raise
+    except Exception as e:
+        db.rollback()
+        for f in uploaded_files:
+            try:
+                if os.path.exists(f):
+                    os.remove(f)
+            except:
+                pass
+        raise HTTPException(status_code=500, detail=f"Ошибка при загрузке фотографий салона: {str(e)}")
+
+
+@users_router.post("/rentals/{rental_id}/admin-upload-photos-after")
+async def admin_upload_photos_after(
+    rental_id: str,
+    selfie: Optional[UploadFile] = File(None, description="Селфи клиента (необязательно для владельца)"),
+    interior_photos: List[UploadFile] = File(..., description="Фотографии салона автомобиля"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Загрузить фотографии ПОСЛЕ аренды от имени клиента (только для админа).
+    
+    - selfie: селфи клиента (необязательно для владельца)
+    - interior_photos: фотографии салона автомобиля (обязательно)
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администратор может загружать фотографии от имени клиентов")
+    
+    try:
+        rental_uuid = safe_sid_to_uuid(rental_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Неверный формат rental_id: {str(e)}")
+    
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Аренда не найдена")
+    
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    validate_photos(interior_photos, "interior_photos")
+    if selfie:
+        validate_photos([selfie], "selfie")
+    
+    uploaded_files = []
+    try:
+        urls = list(rental.photos_after or [])
+        
+        if selfie:
+            selfie_url = await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/after/selfie/")
+            urls.append(selfie_url)
+            uploaded_files.append(selfie_url)
+        
+        for p in interior_photos:
+            interior_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/interior/")
+            urls.append(interior_url)
+            uploaded_files.append(interior_url)
+        
+        rental.photos_after = urls
+        db.commit()
+        
+        db.expire_all()
+        db.refresh(rental)
+        
+        try:
+            if rental.user_id:
+                await notify_user_status_update(str(rental.user_id))
+            if car.owner_id:
+                await notify_user_status_update(str(car.owner_id))
+        except Exception as e:
+            print(f"Error sending WebSocket notifications: {e}")
+        
+        return {
+            "message": "Фотографии после аренды (selfie+interior) загружены",
+            "rental_id": rental_id,
+            "photo_count": len(urls),
+            "selfie_uploaded": selfie is not None
+        }
+    except HTTPException:
+        db.rollback()
+        for f in uploaded_files:
+            try:
+                if os.path.exists(f):
+                    os.remove(f)
+            except:
+                pass
+        raise
+    except Exception as e:
+        db.rollback()
+        for f in uploaded_files:
+            try:
+                if os.path.exists(f):
+                    os.remove(f)
+            except:
+                pass
+        raise HTTPException(status_code=500, detail=f"Ошибка при загрузке фотографий: {str(e)}")
+
+
+@users_router.post("/rentals/{rental_id}/admin-upload-photos-after-car")
+async def admin_upload_photos_after_car(
+    rental_id: str,
+    car_photos: List[UploadFile] = File(..., description="Фотографии кузова автомобиля"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Загрузить фотографии кузова ПОСЛЕ аренды от имени клиента (только для админа).
+    
+    - car_photos: фотографии кузова автомобиля (обязательно)
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администратор может загружать фотографии от имени клиентов")
+    
+    try:
+        rental_uuid = safe_sid_to_uuid(rental_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Неверный формат rental_id: {str(e)}")
+    
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Аренда не найдена")
+    
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    validate_photos(car_photos, "car_photos")
+    
+    uploaded_files = []
+    try:
+        urls = list(rental.photos_after or [])
+        
+        for p in car_photos:
+            car_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/car/")
+            urls.append(car_url)
+            uploaded_files.append(car_url)
+        
+        rental.photos_after = urls
+        db.commit()
+        
+        db.expire_all()
+        db.refresh(rental)
+        
+        try:
+            if rental.user_id:
+                await notify_user_status_update(str(rental.user_id))
+            if car.owner_id:
+                await notify_user_status_update(str(car.owner_id))
+        except Exception as e:
+            print(f"Error sending WebSocket notifications: {e}")
+        
+        return {
+            "message": "Фотографии кузова после аренды загружены",
+            "rental_id": rental_id,
+            "photo_count": len(car_photos)
+        }
+    except HTTPException:
+        db.rollback()
+        for f in uploaded_files:
+            try:
+                if os.path.exists(f):
+                    os.remove(f)
+            except:
+                pass
+        raise
+    except Exception as e:
+        db.rollback()
+        for f in uploaded_files:
+            try:
+                if os.path.exists(f):
+                    os.remove(f)
+            except:
+                pass
+        raise HTTPException(status_code=500, detail=f"Ошибка при загрузке фотографий кузова: {str(e)}")

@@ -20,6 +20,8 @@ from app.utils.telegram_logger import log_error_to_telegram, telegram_error_logg
 from app.websocket.notifications import notify_user_status_update
 import asyncio
 import logging
+from sqlalchemy import and_
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -49,6 +51,7 @@ if not logger.handlers:
 from app.contracts.schemas import (
     ContractFileResponse,
     SignContractRequest,
+    AdminSignContractRequest,
     UserSignatureResponse,
     UserContractsResponse,
     ContractRequirements,
@@ -882,3 +885,184 @@ async def get_guarantor_contract_status(
         can_guarantee=can_guarantee
     )
 
+
+@ContractsRouter.post("/admin/sign", response_model=UserSignatureResponse)
+async def admin_sign_contract(
+    sign_request: AdminSignContractRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Подписать договор от имени клиента (только для админа).
+    
+    Админ передает user_id клиента, и договор подписывается от имени этого клиента.
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Только администратор может подписывать договоры от имени клиентов"
+        )
+    
+    try:
+        client_uuid = safe_sid_to_uuid(sign_request.user_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Неверный формат user_id: {str(e)}"
+        )
+    
+    client = db.query(User).filter(User.id == client_uuid).first()
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Пользователь не найден"
+        )
+    
+    user_field_mapping = {
+        ContractType.USER_AGREEMENT: "is_user_agreement",
+        ContractType.CONSENT_TO_DATA_PROCESSING: "is_consent_to_data_processing", 
+        ContractType.MAIN_CONTRACT: "is_contract_read"
+    }
+    
+    contract_file = db.query(ContractFile).filter(
+        ContractFile.contract_type == sign_request.contract_type,
+        ContractFile.is_active == True
+    ).first()
+    
+    if not contract_file:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Активный файл договора типа {sign_request.contract_type} не найден"
+        )
+    
+    if not client.digital_signature:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="У клиента отсутствует цифровая подпись"
+        )
+    
+    rental_uuid = None
+    guarantor_rel_uuid = None
+
+    if sign_request.rental_id:
+        try:
+            rental_uuid = uuid.UUID(sign_request.rental_id)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Неверный формат rental_id: {str(e)}"
+            )
+    
+    if sign_request.guarantor_relationship_id:
+        try:
+            guarantor_rel_uuid = uuid.UUID(sign_request.guarantor_relationship_id)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Неверный формат guarantor_relationship_id: {str(e)}"
+            )
+        
+    existing_signature_filters = [
+        UserContractSignature.user_id == client.id,
+        UserContractSignature.contract_file_id == contract_file.id
+    ]
+    
+    if rental_uuid is not None:
+        existing_signature_filters.append(UserContractSignature.rental_id == rental_uuid)
+    else:
+        existing_signature_filters.append(UserContractSignature.rental_id.is_(None))
+    
+    if guarantor_rel_uuid is not None:
+        existing_signature_filters.append(UserContractSignature.guarantor_relationship_id == guarantor_rel_uuid)
+    else:
+        existing_signature_filters.append(UserContractSignature.guarantor_relationship_id.is_(None))
+    
+    existing_signature = db.query(UserContractSignature).filter(
+        and_(*existing_signature_filters)
+    ).first()
+    
+    if existing_signature:
+        return UserSignatureResponse(
+            id=uuid_to_sid(existing_signature.id),
+            user_id=uuid_to_sid(existing_signature.user_id),
+            contract_file_id=uuid_to_sid(existing_signature.contract_file_id),
+            contract_type=sign_request.contract_type,
+            digital_signature=existing_signature.digital_signature,
+            signed_at=to_gmt_plus_5(existing_signature.signed_at),
+            rental_id=str(existing_signature.rental_id) if existing_signature.rental_id else None,
+            guarantor_relationship_id=str(existing_signature.guarantor_relationship_id) if existing_signature.guarantor_relationship_id else None,
+            already_signed=True
+        )
+    
+    if contract_file.contract_type in [ContractType.RENTAL_MAIN_CONTRACT, ContractType.APPENDIX_7_1, ContractType.APPENDIX_7_2]:
+        if not sign_request.rental_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Для договоров аренды необходимо указать rental_id"
+            )
+        
+        rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+        if not rental:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Аренда не найдена"
+            )
+        
+        if rental.user_id != client.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Аренда не принадлежит указанному пользователю"
+            )
+    
+    if sign_request.contract_type in [ContractType.GUARANTOR_CONTRACT, ContractType.GUARANTOR_MAIN_CONTRACT]:
+        if not sign_request.guarantor_relationship_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Для договоров гаранта необходимо указать guarantor_relationship_id"
+            )
+        
+        guarantor_rel = db.query(Guarantor).filter(Guarantor.id == guarantor_rel_uuid).first()
+        if not guarantor_rel or guarantor_rel.guarantor_id != client.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Связь гарант-клиент не найдена или не принадлежит указанному пользователю"
+            )
+    
+    signature = UserContractSignature(
+        user_id=client.id,
+        contract_file_id=contract_file.id,
+        rental_id=rental_uuid if contract_file.contract_type in [ContractType.RENTAL_MAIN_CONTRACT, ContractType.APPENDIX_7_1, ContractType.APPENDIX_7_2] else None,
+        guarantor_relationship_id=guarantor_rel_uuid if sign_request.contract_type in [ContractType.GUARANTOR_CONTRACT, ContractType.GUARANTOR_MAIN_CONTRACT] else None,
+        digital_signature=client.digital_signature
+    )
+    
+    db.add(signature)
+    db.commit()
+    db.refresh(signature)
+    
+    if sign_request.contract_type in user_field_mapping:
+        field_name = user_field_mapping[sign_request.contract_type]
+        setattr(client, field_name, True)
+        db.add(client)
+        db.commit()
+    
+    db.expire_all()
+    db.refresh(client)
+    
+    try:
+        await notify_user_status_update(str(client.id))
+    except Exception as e:
+        logger.error(f"Error sending WebSocket notification: {e}")
+    
+    logger.info("=" * 80)
+    
+    return UserSignatureResponse(
+        id=uuid_to_sid(signature.id),
+        user_id=uuid_to_sid(signature.user_id),
+        contract_file_id=uuid_to_sid(signature.contract_file_id),
+        contract_type=sign_request.contract_type,
+        digital_signature=signature.digital_signature,
+        signed_at=to_gmt_plus_5(signature.signed_at),
+        rental_id=str(signature.rental_id) if signature.rental_id else None,
+        guarantor_relationship_id=str(signature.guarantor_relationship_id) if signature.guarantor_relationship_id else None
+    )
