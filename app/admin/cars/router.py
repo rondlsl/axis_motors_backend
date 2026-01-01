@@ -1120,16 +1120,16 @@ async def get_trip_detail(
     photos_before = rental.photos_before or []
     photos_after = rental.photos_after or []
     
-    has_car_before = any("car" in p.lower() or "before" in p.lower() for p in photos_before) if photos_before else len(photos_before) > 0
+    has_car_before = any("car" in p.lower() for p in photos_before) if photos_before else False
     has_interior_before = any("interior" in p.lower() or "salon" in p.lower() for p in photos_before) if photos_before else False
-    has_car_after = any("car" in p.lower() or "after" in p.lower() for p in photos_after) if photos_after else len(photos_after) > 0
+    has_car_after = any("car" in p.lower() for p in photos_after) if photos_after else False
     has_interior_after = any("interior" in p.lower() or "salon" in p.lower() for p in photos_after) if photos_after else False
     
     result["photo_status"] = {
-        "photo_before_car": len(photos_before) > 0,
-        "photo_before_interior": has_interior_before or len(photos_before) > 1,
-        "photo_after_car": len(photos_after) > 0,
-        "photo_after_interior": has_interior_after or len(photos_after) > 1,
+        "photo_before_car": has_car_before,
+        "photo_before_interior": has_interior_before,
+        "photo_after_car": has_car_after,
+        "photo_after_interior": has_interior_after,
     }
 
     return result
