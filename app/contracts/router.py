@@ -5,15 +5,16 @@ import base64
 import os
 import uuid
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
+from app.utils.time_utils import get_local_time
 from datetime import datetime, timezone, timedelta
 
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole
 from app.models.contract_model import ContractFile, ContractType, UserContractSignature
-from app.models.history_model import RentalHistory
+from app.models.history_model import RentalHistory, RentalStatus
 from app.models.guarantor_model import Guarantor
-from app.models.car_model import Car
+from app.models.car_model import Car, CarStatus
 from app.gps_api.utils.auth_api import get_auth_token
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.utils.telegram_logger import log_error_to_telegram, telegram_error_logger
@@ -1048,6 +1049,30 @@ async def admin_sign_contract(
     
     db.expire_all()
     db.refresh(client)
+    
+    # Если подписан appendix_7_1, начать аренду
+    if sign_request.contract_type == ContractType.APPENDIX_7_1 and rental_uuid:
+        rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+        if rental and rental.rental_status == RentalStatus.RESERVED:
+            # Начинаем аренду
+            rental.rental_status = RentalStatus.IN_USE
+            if not rental.start_time:
+                rental.start_time = get_local_time()
+            
+            db.add(rental)
+            db.commit()
+            db.refresh(rental)
+            
+            logger.info(f"✅ Аренда {uuid_to_sid(rental.id)} автоматически начата после подписания appendix_7_1")
+            
+            # Обновляем статус машины
+            car = db.query(Car).filter(Car.id == rental.car_id).first()
+            if car:
+                car.status = CarStatus.IN_USE
+                car.current_renter_id = client.id
+                db.add(car)
+                db.commit()
+                logger.info(f"✅ Статус машины обновлен на IN_USE")
     
     try:
         await notify_user_status_update(str(client.id))
