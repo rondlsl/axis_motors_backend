@@ -278,7 +278,7 @@ async def sign_contract(
     
     if sign_request.rental_id:
         try:
-            rental_uuid = uuid.UUID(sign_request.rental_id)
+            rental_uuid = safe_sid_to_uuid(sign_request.rental_id)
             logger.info(f"🔍 Rental UUID (converted): {rental_uuid}")
         except ValueError as e:
             logger.error(f"❌ Invalid rental_id format: {str(e)}")
@@ -304,7 +304,7 @@ async def sign_contract(
     
     if sign_request.guarantor_relationship_id:
         try:
-            guarantor_rel_uuid = uuid.UUID(sign_request.guarantor_relationship_id)
+            guarantor_rel_uuid = safe_sid_to_uuid(sign_request.guarantor_relationship_id)
             logger.info(f"🔍 Guarantor UUID (converted): {guarantor_rel_uuid}")
         except ValueError as e:
             logger.error(f"❌ Invalid guarantor_relationship_id format: {str(e)}")
@@ -946,7 +946,7 @@ async def admin_sign_contract(
 
     if sign_request.rental_id:
         try:
-            rental_uuid = uuid.UUID(sign_request.rental_id)
+            rental_uuid = safe_sid_to_uuid(sign_request.rental_id)
         except ValueError as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -955,7 +955,7 @@ async def admin_sign_contract(
     
     if sign_request.guarantor_relationship_id:
         try:
-            guarantor_rel_uuid = uuid.UUID(sign_request.guarantor_relationship_id)
+            guarantor_rel_uuid = safe_sid_to_uuid(sign_request.guarantor_relationship_id)
         except ValueError as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
