@@ -989,8 +989,10 @@ async def get_trip_detail(
         "rental_id": uuid_to_sid(rental.id),
         "car_name": car.name,
         "plate_number": car.plate_number,
+        "reservation_time": rental.reservation_time.isoformat() if rental.reservation_time else None,
         "start_time": rental.start_time.isoformat() if rental.start_time else None,
         "end_time": rental.end_time.isoformat() if rental.end_time else None,
+        "duration": rental.duration,  # Длительность аренды в часах/днях
         "duration_minutes": int((rental.end_time - rental.start_time).total_seconds() // 60) if rental.start_time and rental.end_time else 0,
         "already_payed": rental.already_payed,
         "total_price": rental.total_price,
