@@ -173,23 +173,23 @@ async def get_car_details(
     if car.gps_imei:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                logger.info(f"Fetching vehicle status from {CARS_V2_API_URL} for IMEI {car.gps_imei}")
+                print(f"[VEHICLE STATUS] Fetching from {CARS_V2_API_URL} for IMEI {car.gps_imei}")
                 response = await client.get(CARS_V2_API_URL)
-                logger.info(f"Response status: {response.status_code}")
+                print(f"[VEHICLE STATUS] Response status: {response.status_code}")
                 if response.status_code == 200:
                     vehicles_data = response.json()
-                    logger.info(f"Received {len(vehicles_data)} vehicles")
+                    print(f"[VEHICLE STATUS] Received {len(vehicles_data)} vehicles")
                     for v in vehicles_data:
                         if v.get("vehicle_imei") == car.gps_imei:
                             vehicle_status = {field: v.get(field) for field in VEHICLE_STATUS_FIELDS}
-                            logger.info(f"Found vehicle status for IMEI {car.gps_imei}")
+                            print(f"[VEHICLE STATUS] Found for IMEI {car.gps_imei}")
                             break
                     if not vehicle_status:
-                        logger.warning(f"IMEI {car.gps_imei} not found in vehicles data")
+                        print(f"[VEHICLE STATUS] IMEI {car.gps_imei} not found in data")
                 else:
-                    logger.error(f"Failed to fetch vehicles: {response.status_code} - {response.text}")
+                    print(f"[VEHICLE STATUS] Failed: {response.status_code}")
         except Exception as e:
-            logger.error(f"Error fetching vehicle status: {e}")
+            print(f"[VEHICLE STATUS] Error: {e}")
 
     return CarDetailSchema(
         id=uuid_to_sid(car.id),
