@@ -172,7 +172,7 @@ async def get_car_details(
     vehicle_status = {}
     if car.gps_imei:
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
                 print(f"[VEHICLE STATUS] Fetching from {CARS_V2_API_URL} for IMEI {car.gps_imei}")
                 response = await client.get(CARS_V2_API_URL)
                 print(f"[VEHICLE STATUS] Response status: {response.status_code}")
