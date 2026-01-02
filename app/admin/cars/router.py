@@ -40,7 +40,19 @@ from app.owner.availability import update_car_availability_snapshot
 from app.owner.router import calculate_owner_earnings, calculate_fuel_cost, calculate_delivery_cost
 import asyncio
 import uuid
+import httpx
 from app.models.contract_model import UserContractSignature, ContractFile, ContractType
+
+VEHICLE_STATUS_FIELDS = [
+    "is_engine_on", "is_ignition_on", "is_hood_open",
+    "front_right_door_open", "front_left_door_open", "rear_left_door_open", "rear_right_door_open",
+    "front_right_door_locked", "front_left_door_locked", "rear_left_door_locked", "rear_right_door_locked",
+    "central_locks_locked",
+    "front_left_window_closed", "front_right_window_closed", "rear_left_window_closed", "rear_right_window_closed",
+    "is_trunk_open", "is_handbrake_on", "are_lights_on", "is_light_auto_mode_on",
+]
+
+CARS_V2_API_URL = "http://195.93.152.69:8667/vehicles"
 
 cars_router = APIRouter(tags=["Admin Cars"])
 
@@ -157,6 +169,19 @@ async def get_car_details(
             if active_rental and active_rental.reservation_time:
                 reservation_time_str = active_rental.reservation_time.isoformat()
 
+    vehicle_status = {}
+    if car.gps_imei:
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(CARS_V2_API_URL)
+                if response.status_code == 200:
+                    for v in response.json():
+                        if v.get("vehicle_imei") == car.gps_imei:
+                            vehicle_status = {field: v.get(field) for field in VEHICLE_STATUS_FIELDS}
+                            break
+        except Exception as e:
+            logger.error(f"Error fetching vehicle status: {e}")
+
     return CarDetailSchema(
         id=uuid_to_sid(car.id),
         name=car.name,
@@ -193,6 +218,26 @@ async def get_car_details(
         color=car.color,
         rating=car.rating,
         reservationtime=reservation_time_str,
+        is_engine_on=vehicle_status.get("is_engine_on"),
+        is_ignition_on=vehicle_status.get("is_ignition_on"),
+        is_hood_open=vehicle_status.get("is_hood_open"),
+        front_right_door_open=vehicle_status.get("front_right_door_open"),
+        front_left_door_open=vehicle_status.get("front_left_door_open"),
+        rear_left_door_open=vehicle_status.get("rear_left_door_open"),
+        rear_right_door_open=vehicle_status.get("rear_right_door_open"),
+        front_right_door_locked=vehicle_status.get("front_right_door_locked"),
+        front_left_door_locked=vehicle_status.get("front_left_door_locked"),
+        rear_left_door_locked=vehicle_status.get("rear_left_door_locked"),
+        rear_right_door_locked=vehicle_status.get("rear_right_door_locked"),
+        central_locks_locked=vehicle_status.get("central_locks_locked"),
+        front_left_window_closed=vehicle_status.get("front_left_window_closed"),
+        front_right_window_closed=vehicle_status.get("front_right_window_closed"),
+        rear_left_window_closed=vehicle_status.get("rear_left_window_closed"),
+        rear_right_window_closed=vehicle_status.get("rear_right_window_closed"),
+        is_trunk_open=vehicle_status.get("is_trunk_open"),
+        is_handbrake_on=vehicle_status.get("is_handbrake_on"),
+        are_lights_on=vehicle_status.get("are_lights_on"),
+        is_light_auto_mode_on=vehicle_status.get("is_light_auto_mode_on"),
     )
 
 

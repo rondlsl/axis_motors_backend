@@ -175,10 +175,29 @@ class CarDetailSchema(BaseModel):
     color: Optional[str] = None
     rating: Optional[float] = None
     reservationtime: Optional[str] = None  # Время бронирования машины
+    is_engine_on: Optional[bool] = None
+    is_ignition_on: Optional[bool] = None
+    is_hood_open: Optional[bool] = None
+    front_right_door_open: Optional[bool] = None
+    front_left_door_open: Optional[bool] = None
+    rear_left_door_open: Optional[bool] = None
+    rear_right_door_open: Optional[bool] = None
+    front_right_door_locked: Optional[bool] = None
+    front_left_door_locked: Optional[bool] = None
+    rear_left_door_locked: Optional[bool] = None
+    rear_right_door_locked: Optional[bool] = None
+    central_locks_locked: Optional[bool] = None
+    front_left_window_closed: Optional[bool] = None
+    front_right_window_closed: Optional[bool] = None
+    rear_left_window_closed: Optional[bool] = None
+    rear_right_window_closed: Optional[bool] = None
+    is_trunk_open: Optional[bool] = None
+    is_handbrake_on: Optional[bool] = None
+    are_lights_on: Optional[bool] = None
+    is_light_auto_mode_on: Optional[bool] = None
     
     class Config:
         from_attributes = True
-
 
 class CarEditSchema(BaseModel):
     """Схема для редактирования автомобиля"""
