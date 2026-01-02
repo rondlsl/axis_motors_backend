@@ -3810,12 +3810,20 @@ class AdminRentalReviewRequest(BaseModel):
     comment: Optional[str] = Field(None, max_length=500, description="Комментарий к оценке")
 
 
-@users_router.post("/rentals/review")
+class AdminRentalReviewResponse(BaseModel):
+    message: str
+    rental_id: str
+    rating: int
+    comment: Optional[str] = None
+    updated: bool
+
+
+@users_router.post("/rentals/review", response_model=AdminRentalReviewResponse)
 async def admin_submit_rental_review(
     request: AdminRentalReviewRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
-):
+) -> AdminRentalReviewResponse:
     """
     Добавить/обновить оценку и комментарий к аренде от имени клиента (только для админа).
     
