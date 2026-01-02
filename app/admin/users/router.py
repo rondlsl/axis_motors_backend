@@ -3801,3 +3801,69 @@ async def admin_upload_photos_after_car(
             except:
                 pass
         raise HTTPException(status_code=500, detail=f"Ошибка при загрузке фотографий кузова: {str(e)}")
+
+
+class AdminRentalReviewRequest(BaseModel):
+    rental_id: str = Field(..., description="ID аренды")
+    rating: int = Field(..., ge=1, le=5, description="Оценка от 1 до 5")
+    comment: Optional[str] = Field(None, max_length=500, description="Комментарий к оценке")
+
+
+@users_router.post("/rentals/review")
+async def admin_submit_rental_review(
+    request: AdminRentalReviewRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Добавить/обновить оценку и комментарий к аренде от имени клиента (только для админа).
+    
+    - rental_id: ID аренды
+    - rating: оценка от 1 до 5
+    - comment: текстовый комментарий (опционально)
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администратор может добавлять оценки от имени клиентов")
+    
+    try:
+        rental_uuid = safe_sid_to_uuid(request.rental_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Неверный формат rental_id: {str(e)}")
+    
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Аренда не найдена")
+    
+    existing_review = db.query(RentalReview).filter(RentalReview.rental_id == rental.id).first()
+    
+    if existing_review:
+        existing_review.rating = request.rating
+        existing_review.comment = request.comment
+        db.commit()
+        db.refresh(existing_review)
+        
+        return {
+            "message": "Оценка обновлена",
+            "rental_id": request.rental_id,
+            "rating": existing_review.rating,
+            "comment": existing_review.comment,
+            "updated": True
+        }
+    else:
+        review = RentalReview(
+            rental_id=rental.id,
+            rating=request.rating,
+            comment=request.comment
+        )
+        db.add(review)
+        db.commit()
+        db.refresh(review)
+        
+        return {
+            "message": "Оценка добавлена",
+            "rental_id": request.rental_id,
+            "rating": review.rating,
+            "comment": review.comment,
+            "updated": False
+        }
+
