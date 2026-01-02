@@ -173,23 +173,14 @@ async def get_car_details(
     if car.gps_imei:
         try:
             async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-                print(f"[VEHICLE STATUS] Fetching from {CARS_V2_API_URL} for IMEI {car.gps_imei}")
                 response = await client.get(CARS_V2_API_URL)
-                print(f"[VEHICLE STATUS] Response status: {response.status_code}")
                 if response.status_code == 200:
-                    vehicles_data = response.json()
-                    print(f"[VEHICLE STATUS] Received {len(vehicles_data)} vehicles")
-                    for v in vehicles_data:
+                    for v in response.json():
                         if v.get("vehicle_imei") == car.gps_imei:
                             vehicle_status = {field: v.get(field) for field in VEHICLE_STATUS_FIELDS}
-                            print(f"[VEHICLE STATUS] Found for IMEI {car.gps_imei}")
                             break
-                    if not vehicle_status:
-                        print(f"[VEHICLE STATUS] IMEI {car.gps_imei} not found in data")
-                else:
-                    print(f"[VEHICLE STATUS] Failed: {response.status_code}")
-        except Exception as e:
-            print(f"[VEHICLE STATUS] Error: {e}")
+        except Exception:
+            pass
 
     return CarDetailSchema(
         id=uuid_to_sid(car.id),
