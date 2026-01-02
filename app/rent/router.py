@@ -3,7 +3,7 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, status, Query, Security
 from pydantic import BaseModel, constr, Field, conint
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, text
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 import httpx
@@ -641,44 +641,44 @@ async def add_money(amount: int,
               tracking_id: Optional[str] = None,
               db: Session = Depends(get_db),
               current_user: User = Depends(get_current_user)):
-    # Если есть tracking_id, проверяем транзакцию через API ForteBank
-    if tracking_id:
-        # Проверяем, не была ли уже обработана транзакция с таким tracking_id для ЛЮБОГО пользователя
-        existing_transaction = db.query(WalletTransaction).filter(
-            WalletTransaction.tracking_id == tracking_id
-        ).first()
-        
-        if existing_transaction:
-            # Если транзакция уже была обработана, проверяем, для какого пользователя
-            if existing_transaction.user_id == current_user.id:
-                return {
-                    "wallet_balance": float(current_user.wallet_balance),
-                    "bonus": 0,
-                    "promo_applied": False,
-                    "message": "Транзакция уже была обработана"
-                }
-            else:
-                # Транзакция уже была обработана для другого пользователя
-                raise HTTPException(
-                    status_code=400,
-                    detail="Транзакция уже была обработана для другого пользователя"
-                )
-        
-        # Проверяем транзакцию через API ForteBank
-        is_successful, verified_amount, error_message = await verify_forte_transaction(tracking_id)
-        
-        if not is_successful:
+    if not tracking_id:
+        raise HTTPException(
+            status_code=400,
+            detail="tracking_id обязателен для пополнения"
+        )
+    
+    existing_transaction = db.query(WalletTransaction).filter(
+        WalletTransaction.tracking_id == tracking_id
+    ).with_for_update().first()
+    
+    if existing_transaction:
+        if existing_transaction.user_id == current_user.id:
+            return {
+                "wallet_balance": float(current_user.wallet_balance),
+                "bonus": 0,
+                "promo_applied": False,
+                "message": "Транзакция уже была обработана"
+            }
+        else:
             raise HTTPException(
                 status_code=400,
-                detail=error_message or "Транзакция не прошла проверку"
+                detail="Транзакция уже была обработана для другого пользователя"
             )
-        
-        # Используем сумму из проверенной транзакции
-        if verified_amount and verified_amount != amount:
-            # Если сумма не совпадает, используем проверенную сумму
-            amount = verified_amount
     
-    # 1) Ищем у юзера активный промокод
+    # Проверяем транзакцию через API ForteBank
+    is_successful, verified_amount, error_message = await verify_forte_transaction(tracking_id)
+    
+    if not is_successful:
+        raise HTTPException(
+            status_code=400,
+            detail=error_message or "Транзакция не прошла проверку"
+        )
+    
+    # Используем сумму из проверенной транзакции
+    if verified_amount and verified_amount != amount:
+        amount = verified_amount
+    
+    # Ищем у юзера активный промокод
     up = db.query(UserPromoCode) \
         .filter_by(user_id=current_user.id, status=UserPromoStatus.ACTIVATED) \
         .join(PromoCode) \
@@ -688,29 +688,41 @@ async def add_money(amount: int,
     promo_applied = False
 
     if up:
-        # считать бонус
         bonus = int(amount * (float(up.promo.discount_percent) / 100))
         promo_applied = True
 
-        # фиксируем баланс до депозита, чтобы корректно отразить 2 транзакции подряд
+        # Фиксируем баланс до депозита
         before = float(current_user.wallet_balance or 0)
-        # депозит
+        
+        # Записываем транзакции
         record_wallet_transaction(db, user=current_user, amount=amount, ttype=WalletTransactionType.DEPOSIT, description="Пополнение кошелька", balance_before_override=before, tracking_id=tracking_id)
-        # бонус
         record_wallet_transaction(db, user=current_user, amount=bonus, ttype=WalletTransactionType.PROMO_BONUS, description=f"Бонус по промокоду {up.promo.code if up and up.promo else ''}", balance_before_override=before + amount)
-        # начисляем основную сумму + бонус
-        current_user.wallet_balance += amount + bonus
+        
+        # Атомарное обновление баланса через SQL
+        total_amount = amount + bonus
+        db.execute(
+            text("UPDATE users SET wallet_balance = wallet_balance + :amount WHERE id = :user_id"),
+            {"amount": total_amount, "user_id": current_user.id}
+        )
 
-        # меняем статус промокода
+        # Меняем статус промокода
         up.status = UserPromoStatus.USED
         up.used_at = get_local_time()
 
     else:
-        # обычное пополнение
+        # Обычное пополнение
         record_wallet_transaction(db, user=current_user, amount=amount, ttype=WalletTransactionType.DEPOSIT, description="Пополнение кошелька", tracking_id=tracking_id)
-        current_user.wallet_balance += amount
+        
+        # Атомарное обновление баланса через SQL
+        db.execute(
+            text("UPDATE users SET wallet_balance = wallet_balance + :amount WHERE id = :user_id"),
+            {"amount": amount, "user_id": current_user.id}
+        )
 
     db.commit()
+    
+    # Обновляем объект пользователя после commit
+    db.refresh(current_user)
 
     asyncio.create_task(notify_user_status_update(str(current_user.id)))
 
