@@ -3876,3 +3876,89 @@ async def admin_submit_rental_review(
             "updated": False
         }
 
+
+class AdminCancelReservationRequest(BaseModel):
+    rental_id: str = Field(..., description="ID аренды для отмены")
+
+
+class AdminCancelReservationResponse(BaseModel):
+    message: str
+    rental_id: str
+    car_name: str
+    plate_number: str
+    previous_status: str
+    client_id: Optional[str] = None
+
+
+@users_router.post("/rentals/cancel", response_model=AdminCancelReservationResponse)
+async def admin_cancel_reservation(
+    request: AdminCancelReservationRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> AdminCancelReservationResponse:
+    """
+    Отменить бронь/аренду клиента от имени админа.
+    
+    - rental_id: ID аренды
+    
+    Работает для статусов: RESERVED, DELIVERING, DELIVERY_RESERVED, DELIVERING_IN_PROGRESS, SCHEDULED, IN_USE
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администратор может отменять брони")
+    
+    try:
+        rental_uuid = safe_sid_to_uuid(request.rental_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Неверный формат rental_id: {str(e)}")
+    
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Аренда не найдена")
+    
+    cancellable_statuses = [
+        RentalStatus.RESERVED,
+        RentalStatus.DELIVERING,
+        RentalStatus.DELIVERY_RESERVED,
+        RentalStatus.DELIVERING_IN_PROGRESS,
+        RentalStatus.SCHEDULED,
+        RentalStatus.IN_USE,
+    ]
+    
+    if rental.rental_status not in cancellable_statuses:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Нельзя отменить аренду со статусом {rental.rental_status.value}"
+        )
+    
+    previous_status = rental.rental_status.value
+    
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    rental.rental_status = RentalStatus.CANCELLED
+    rental.end_time = datetime.now()
+    
+    car.current_renter_id = None
+    car.status = CarStatus.FREE
+    
+    client_id = uuid_to_sid(rental.user_id) if rental.user_id else None
+    
+    db.commit()
+    
+    try:
+        if rental.user_id:
+            await notify_user_status_update(str(rental.user_id))
+        if car.owner_id:
+            await notify_user_status_update(str(car.owner_id))
+    except Exception as e:
+        print(f"Error sending WebSocket notifications: {e}")
+    
+    return AdminCancelReservationResponse(
+        message="Бронь отменена",
+        rental_id=request.rental_id,
+        car_name=car.name,
+        plate_number=car.plate_number,
+        previous_status=previous_status,
+        client_id=client_id
+    )
