@@ -3374,7 +3374,7 @@ async def delete_rentals(
     Удаляет: wallet_transactions, contract_signatures, rental_actions, rental_reviews, rental_history
     """
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Недостаточно прав. Только администраторы могут удалять аренды")
+        raise HTTPException(status_code=403, detail="Недостаточно прав. Только администраторы или саппорт могут удалять аренды")
 
     if not request.rental_ids:
         raise HTTPException(status_code=400, detail="Список ID аренд не может быть пустым")
@@ -3506,7 +3506,7 @@ async def admin_upload_photos_before(
     Без проверки ГЛОНАСС и без отправки GPS-команд — просто загрузка файлов.
     """
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Только администратор может загружать фотографии от имени клиентов")
+        raise HTTPException(status_code=403, detail="Только администратор или саппорт может загружать фотографии от имени клиентов")
     
     try:
         rental_uuid = safe_sid_to_uuid(rental_id)
@@ -3594,7 +3594,7 @@ async def admin_upload_photos_before_interior(
     Без проверки ГЛОНАСС и без отправки GPS-команд — просто загрузка файлов.
     """
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Только администратор может загружать фотографии от имени клиентов")
+        raise HTTPException(status_code=403, detail="Только администратор или саппорт может загружать фотографии от имени клиентов")
     
     try:
         rental_uuid = safe_sid_to_uuid(rental_id)
@@ -3674,7 +3674,7 @@ async def admin_upload_photos_after(
     - interior_photos: фотографии салона автомобиля (обязательно)
     """
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Только администратор может загружать фотографии от имени клиентов")
+        raise HTTPException(status_code=403, detail="Только администратор или саппорт может загружать фотографии от имени клиентов")
     
     try:
         rental_uuid = safe_sid_to_uuid(rental_id)
@@ -3760,7 +3760,7 @@ async def admin_upload_photos_after_car(
     - car_photos: фотографии кузова автомобиля (обязательно)
     """
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Только администратор может загружать фотографии от имени клиентов")
+        raise HTTPException(status_code=403, detail="Только администратор или саппорт может загружать фотографии от имени клиентов")
     
     try:
         rental_uuid = safe_sid_to_uuid(rental_id)

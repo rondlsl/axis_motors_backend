@@ -361,7 +361,7 @@ async def get_car_status(
 ):
     """Получить текущий статус автомобиля"""
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Только администраторы могут получать статус автомобилей")
+        raise HTTPException(status_code=403, detail="Только администраторы или саппорт могут получать статус автомобилей")
     
     car = get_car_by_id(db, car_id)
     if not car:
@@ -384,7 +384,7 @@ async def delete_car(
 ):
     """Удалить автомобиль (необратимая операция)"""
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Только администраторы могут удалять автомобили")
+        raise HTTPException(status_code=403, detail="Только администраторы или саппорт могут удалять автомобили")
     
     car = get_car_by_id(db, car_id)
     if not car:
@@ -451,7 +451,7 @@ async def get_available_statuses(
 ):
     """Получить список всех доступных статусов автомобилей"""
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Только администраторы могут получать список статусов")
+        raise HTTPException(status_code=403, detail="Только администраторы или саппорт могут получать список статусов")
     
     statuses = []
     for status in CarStatus:
