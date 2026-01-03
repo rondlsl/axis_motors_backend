@@ -38,7 +38,7 @@ from math import ceil
 from app.owner.router import calculate_owner_earnings
 from app.admin.cars.utils import sort_car_photos
 from app.utils.telegram_logger import log_error_to_telegram
-from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user, send_localized_notification_to_user_async, user_has_push_tokens
+from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user, send_localized_notification_to_user_async, user_has_push_tokens, send_localized_notification_to_all_mechanics
 from app.websocket.notifications import notify_user_status_update
 from app.utils.time_utils import get_local_time
 import asyncio
@@ -1955,7 +1955,22 @@ async def admin_end_rental(
     db.commit()
     db.refresh(active_rental)
     
+    # Отправляем WebSocket уведомления
     asyncio.create_task(notify_user_status_update(str(target_user.id)))
+    if car.owner_id:
+        asyncio.create_task(notify_user_status_update(str(car.owner_id)))
+    
+    # Отправляем уведомление всем механикам о новой машине для проверки
+    try:
+        await send_localized_notification_to_all_mechanics(
+            db,
+            "new_car_for_inspection",
+            "new_car_for_inspection",
+            car_name=car.name,
+            plate_number=car.plate_number
+        )
+    except Exception as e:
+        print(f"Error sending notification to mechanics: {e}")
     
     return {
         "success": True,
@@ -3828,7 +3843,7 @@ async def admin_submit_rental_review(
 ) -> AdminRentalReviewResponse:
     """
     Добавить/обновить оценку и комментарий к аренде от имени клиента (только для админа).
-    После добавления отзыва аренда автоматически завершается.
+    После добавления отзыва аренда автоматически завершается, а машина переходит в статус PENDING.
     
     - rental_id: ID аренды
     - rating: оценка от 1 до 5
@@ -3919,11 +3934,14 @@ async def admin_submit_rental_review(
             
             # Обновляем статус аренды
             rental.end_time = now
+            rental.end_latitude = car.latitude
+            rental.end_longitude = car.longitude
             rental.rental_status = RentalStatus.COMPLETED
             rental.total_price = int(rental_cost + open_fee)
+            rental.already_payed = already_payed + total_to_charge
             
-            # Освобождаем машину
-            car.status = CarStatus.FREE
+            # Машина переходит в статус PENDING (требуется проверка механиком)
+            car.status = CarStatus.PENDING
             car.current_renter_id = None
             
             rental_completed = True
@@ -3939,6 +3957,18 @@ async def admin_submit_rental_review(
                     await notify_user_status_update(str(car.owner_id))
             except Exception as e:
                 print(f"Error sending WebSocket notifications: {e}")
+            
+            # Отправляем уведомление всем механикам о новой машине для проверки
+            try:
+                await send_localized_notification_to_all_mechanics(
+                    db,
+                    "new_car_for_inspection",
+                    "new_car_for_inspection",
+                    car_name=car.name,
+                    plate_number=car.plate_number
+                )
+            except Exception as e:
+                print(f"Error sending notification to mechanics: {e}")
     
     db.commit()
     
