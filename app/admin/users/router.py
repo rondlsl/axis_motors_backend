@@ -4127,7 +4127,7 @@ async def admin_extend_rental(
         user=user,
         amount=-price_to_charge,
         ttype=WalletTransactionType.RENT_BASE_CHARGE,
-        description=f"Продление аренды на {duration_text} (админ: {current_user.phone_number})",
+        description=f"Продление аренды на {duration_text}",
         related_rental=rental,
         balance_before_override=balance_before
     )
