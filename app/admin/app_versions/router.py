@@ -29,7 +29,7 @@ async def update_ai_status(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Недостаточно прав. Только администраторы или саппорт могут изменять статус AI"
+            detail="Недостаточно прав. Только администраторы или техподдержка могут изменять статус AI"
         )
     
     app_version = db.query(AppVersion).first()
@@ -69,7 +69,7 @@ async def get_ai_status(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Недостаточно прав. Только администраторы или саппорт могут просматривать статус AI"
+            detail="Недостаточно прав. Только администраторы или техподдержка могут просматривать статус AI"
         )
     
     app_version = db.query(AppVersion).first()

@@ -1114,7 +1114,7 @@ async def admin_sign_contract_mechanic(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Только администратор или саппорт может подписывать договоры от имени механиков"
+            detail="Только администратор или техподдержка может подписывать договоры от имени механиков"
         )
     
     try:

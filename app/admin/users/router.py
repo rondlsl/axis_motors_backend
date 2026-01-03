@@ -3374,7 +3374,7 @@ async def delete_rentals(
     Удаляет: wallet_transactions, contract_signatures, rental_actions, rental_reviews, rental_history
     """
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Недостаточно прав. Только администраторы или саппорт могут удалять аренды")
+        raise HTTPException(status_code=403, detail="Недостаточно прав. Только администраторы или техподдержка могут удалять аренды")
 
     if not request.rental_ids:
         raise HTTPException(status_code=400, detail="Список ID аренд не может быть пустым")
@@ -3506,7 +3506,7 @@ async def admin_upload_photos_before(
     Без проверки ГЛОНАСС и без отправки GPS-команд — просто загрузка файлов.
     """
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Только администратор или саппорт может загружать фотографии от имени клиентов")
+        raise HTTPException(status_code=403, detail="Только администратор или техподдержка может загружать фотографии от имени клиентов")
     
     try:
         rental_uuid = safe_sid_to_uuid(rental_id)
@@ -3594,7 +3594,7 @@ async def admin_upload_photos_before_interior(
     Без проверки ГЛОНАСС и без отправки GPS-команд — просто загрузка файлов.
     """
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Только администратор или саппорт может загружать фотографии от имени клиентов")
+        raise HTTPException(status_code=403, detail="Только администратор или техподдержка может загружать фотографии от имени клиентов")
     
     try:
         rental_uuid = safe_sid_to_uuid(rental_id)
@@ -3674,7 +3674,7 @@ async def admin_upload_photos_after(
     - interior_photos: фотографии салона автомобиля (обязательно)
     """
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Только администратор или саппорт может загружать фотографии от имени клиентов")
+        raise HTTPException(status_code=403, detail="Только администратор или техподдержка может загружать фотографии от имени клиентов")
     
     try:
         rental_uuid = safe_sid_to_uuid(rental_id)
@@ -3760,7 +3760,7 @@ async def admin_upload_photos_after_car(
     - car_photos: фотографии кузова автомобиля (обязательно)
     """
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Только администратор или саппорт может загружать фотографии от имени клиентов")
+        raise HTTPException(status_code=403, detail="Только администратор или техподдержка может загружать фотографии от имени клиентов")
     
     try:
         rental_uuid = safe_sid_to_uuid(rental_id)
@@ -3841,7 +3841,7 @@ async def admin_submit_rental_review(
     - comment: текстовый комментарий (опционально)
     """
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Только администратор или саппорт может добавлять оценки от имени клиентов")
+        raise HTTPException(status_code=403, detail="Только администратор или техподдержка может добавлять оценки от имени клиентов")
     
     try:
         rental_uuid = safe_sid_to_uuid(request.rental_id)
@@ -3989,7 +3989,7 @@ async def admin_cancel_reservation(
     Работает для статусов: RESERVED, DELIVERING, DELIVERY_RESERVED, DELIVERING_IN_PROGRESS, SCHEDULED, IN_USE
     """
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Только администратор или саппорт может отменять брони")
+        raise HTTPException(status_code=403, detail="Только администратор или техподдержка может отменять брони")
     
     try:
         rental_uuid = safe_sid_to_uuid(request.rental_id)
@@ -4065,7 +4065,7 @@ async def admin_extend_rental(
     Создаёт транзакцию, списывает с баланса клиента, отправляет уведомление.
     """
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Только администратор или саппорт может продлевать аренды")
+        raise HTTPException(status_code=403, detail="Только администратор или техподдержка может продлевать аренды")
     
     try:
         rental_uuid = safe_sid_to_uuid(request.rental_id)
@@ -4167,7 +4167,7 @@ async def admin_mechanic_start_inspection(
 ) -> MechanicStartInspectionResponse:
     """Инициация осмотра механиком от имени админа (без GPS команд)."""
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Только администратор или саппорт")
+        raise HTTPException(status_code=403, detail="Только администратор или техподдержка")
     
     rental_uuid = safe_sid_to_uuid(rental_id)
     rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
@@ -4209,7 +4209,7 @@ async def admin_mechanic_upload_photos_before(
 ) -> MechanicPhotoUploadResponse:
     """Загрузка фото ДО осмотра: селфи (опционально) + кузов. Без GPS."""
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Только администратор или саппорт")
+        raise HTTPException(status_code=403, detail="Только администратор или техподдержка")
     
     rental_uuid = safe_sid_to_uuid(rental_id)
     rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
@@ -4243,7 +4243,7 @@ async def admin_mechanic_upload_photos_before_interior(
 ) -> MechanicPhotoUploadResponse:
     """Загрузка фото ДО осмотра: салон. Без GPS."""
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Только администратор или саппорт")
+        raise HTTPException(status_code=403, detail="Только администратор или техподдержка")
     
     rental_uuid = safe_sid_to_uuid(rental_id)
     rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
@@ -4273,7 +4273,7 @@ async def admin_mechanic_upload_photos_after(
 ) -> MechanicPhotoUploadResponse:
     """Загрузка фото ПОСЛЕ осмотра: селфи (опционально) + салон. Без GPS."""
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Только администратор или саппорт")
+        raise HTTPException(status_code=403, detail="Только администратор или техподдержка")
     
     rental_uuid = safe_sid_to_uuid(rental_id)
     rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
@@ -4307,7 +4307,7 @@ async def admin_mechanic_upload_photos_after_car(
 ) -> MechanicPhotoUploadResponse:
     """Загрузка фото ПОСЛЕ осмотра: кузов. Без GPS."""
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Только администратор или саппорт")
+        raise HTTPException(status_code=403, detail="Только администратор или техподдержка")
     
     rental_uuid = safe_sid_to_uuid(rental_id)
     rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
@@ -4337,7 +4337,7 @@ async def admin_mechanic_complete_inspection(
 ) -> MechanicCompleteInspectionResponse:
     """Завершение осмотра механиком от имени админа. Без GPS."""
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Только администратор или саппорт")
+        raise HTTPException(status_code=403, detail="Только администратор или техподдержка")
     
     rental_uuid = safe_sid_to_uuid(rental_id)
     rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
@@ -4391,7 +4391,7 @@ async def admin_assign_mechanic(
     Устанавливает mechanic_inspector_id и отправляет уведомление механику.
     """
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Только администратор или саппорт")
+        raise HTTPException(status_code=403, detail="Только администратор или техподдержка")
     
     rental_uuid = safe_sid_to_uuid(rental_id)
     rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
@@ -4461,7 +4461,7 @@ async def admin_unassign_mechanic(
     Освобождает машину и сбрасывает mechanic_inspector_id.
     """
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Только администратор или саппорт")
+        raise HTTPException(status_code=403, detail="Только администратор или техподдержка")
     
     rental_uuid = safe_sid_to_uuid(rental_id)
     rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
