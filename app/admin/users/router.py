@@ -3816,6 +3816,8 @@ class AdminRentalReviewResponse(BaseModel):
     rating: int
     comment: Optional[str] = None
     updated: bool
+    rental_completed: bool = False
+    total_charged: Optional[float] = None
 
 
 @users_router.post("/rentals/review", response_model=AdminRentalReviewResponse)
@@ -3826,6 +3828,7 @@ async def admin_submit_rental_review(
 ) -> AdminRentalReviewResponse:
     """
     Добавить/обновить оценку и комментарий к аренде от имени клиента (только для админа).
+    После добавления отзыва аренда автоматически завершается.
     
     - rental_id: ID аренды
     - rating: оценка от 1 до 5
@@ -3843,21 +3846,14 @@ async def admin_submit_rental_review(
     if not rental:
         raise HTTPException(status_code=404, detail="Аренда не найдена")
     
+    # 1. Сохраняем отзыв
     existing_review = db.query(RentalReview).filter(RentalReview.rental_id == rental.id).first()
+    is_update = False
     
     if existing_review:
         existing_review.rating = request.rating
         existing_review.comment = request.comment
-        db.commit()
-        db.refresh(existing_review)
-        
-        return {
-            "message": "Оценка обновлена",
-            "rental_id": request.rental_id,
-            "rating": existing_review.rating,
-            "comment": existing_review.comment,
-            "updated": True
-        }
+        is_update = True
     else:
         review = RentalReview(
             rental_id=rental.id,
@@ -3865,16 +3861,96 @@ async def admin_submit_rental_review(
             comment=request.comment
         )
         db.add(review)
-        db.commit()
-        db.refresh(review)
+    
+    # 2. Завершаем аренду, если она активна
+    rental_completed = False
+    total_charged = None
+    
+    if rental.rental_status == RentalStatus.IN_USE:
+        # Получаем машину и пользователя
+        car = db.query(Car).filter(Car.id == rental.car_id).first()
+        user = db.query(User).filter(User.id == rental.user_id).first()
         
-        return {
-            "message": "Оценка добавлена",
-            "rental_id": request.rental_id,
-            "rating": review.rating,
-            "comment": review.comment,
-            "updated": False
-        }
+        if car and user:
+            now = get_local_time()
+            start_time = rental.start_time or rental.reservation_time
+            
+            # Рассчитываем стоимость
+            if start_time:
+                duration_minutes = int((now - start_time).total_seconds() / 60)
+            else:
+                duration_minutes = 0
+            
+            price_per_minute = car.price_per_minute or 0
+            price_per_hour = car.price_per_hour or 0
+            price_per_day = car.price_per_day or 0
+            
+            rental_cost = 0
+            if rental.rental_type == RentalType.MINUTES:
+                rental_cost = duration_minutes * price_per_minute
+            elif rental.rental_type == RentalType.HOURS:
+                hours = max(1, (duration_minutes + 59) // 60)
+                rental_cost = hours * price_per_hour
+            elif rental.rental_type == RentalType.DAYS:
+                days = max(1, (duration_minutes + 1439) // 1440)
+                rental_cost = days * price_per_day
+            
+            already_payed = float(rental.already_payed or 0)
+            open_fee = float(rental.open_fee or 0)
+            
+            total_to_charge = max(0, rental_cost - already_payed + open_fee)
+            
+            # Списываем деньги с баланса
+            balance_before = float(user.wallet_balance or 0)
+            if total_to_charge > 0 and balance_before >= total_to_charge:
+                user.wallet_balance = balance_before - total_to_charge
+                
+                record_wallet_transaction(
+                    db,
+                    user=user,
+                    amount=-total_to_charge,
+                    ttype=WalletTransactionType.RENT_PAYMENT,
+                    description=f"Завершение аренды с отзывом (админ: {current_user.phone_number})",
+                    related_rental=rental,
+                    balance_before_override=balance_before
+                )
+                
+                total_charged = total_to_charge
+            
+            # Обновляем статус аренды
+            rental.end_time = now
+            rental.rental_status = RentalStatus.COMPLETED
+            rental.total_price = int(rental_cost + open_fee)
+            
+            # Освобождаем машину
+            car.status = CarStatus.FREE
+            car.current_renter_id = None
+            
+            rental_completed = True
+            
+            # Обновляем last_activity пользователя
+            user.last_activity_at = now
+            
+            # Отправляем WebSocket уведомления
+            try:
+                if rental.user_id:
+                    await notify_user_status_update(str(rental.user_id))
+                if car.owner_id:
+                    await notify_user_status_update(str(car.owner_id))
+            except Exception as e:
+                print(f"Error sending WebSocket notifications: {e}")
+    
+    db.commit()
+    
+    return {
+        "message": "Отзыв добавлен и аренда завершена" if rental_completed else ("Оценка обновлена" if is_update else "Оценка добавлена"),
+        "rental_id": request.rental_id,
+        "rating": request.rating,
+        "comment": request.comment,
+        "updated": is_update,
+        "rental_completed": rental_completed,
+        "total_charged": total_charged
+    }
 
 
 class AdminCancelReservationRequest(BaseModel):
