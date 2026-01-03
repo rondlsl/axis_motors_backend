@@ -1111,10 +1111,10 @@ async def admin_sign_contract_mechanic(
     
     Админ передает mechanic_id и rental_id, договор подписывается от имени механика.
     """
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Только администратор может подписывать договоры от имени механиков"
+            detail="Только администратор или саппорт может подписывать договоры от имени механиков"
         )
     
     try:
