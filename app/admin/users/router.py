@@ -4068,3 +4068,127 @@ async def admin_cancel_reservation(
         previous_status=previous_status,
         client_id=client_id
     )
+
+
+class AdminExtendRentalRequest(BaseModel):
+    rental_id: str = Field(..., description="ID аренды для продления")
+
+
+class AdminExtendRentalResponse(BaseModel):
+    message: str
+    rental_id: str
+    rental_type: str
+    added_duration: int
+    price_charged: float
+    new_duration: int
+    new_balance: float
+    car_name: str
+    plate_number: str
+
+
+@users_router.post("/rentals/extend", response_model=AdminExtendRentalResponse)
+async def admin_extend_rental(
+    request: AdminExtendRentalRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> AdminExtendRentalResponse:
+    """
+    Продлить аренду клиента от имени админа.
+    
+    - Для часовой аренды: добавляет 1 час
+    - Для суточной аренды: добавляет 1 день
+    
+    Создаёт транзакцию, списывает с баланса клиента, отправляет уведомление.
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администратор может продлевать аренды")
+    
+    try:
+        rental_uuid = safe_sid_to_uuid(request.rental_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Неверный формат rental_id: {str(e)}")
+    
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Аренда не найдена")
+    
+    if rental.rental_status != RentalStatus.IN_USE:
+        raise HTTPException(status_code=400, detail=f"Аренда не активна (статус: {rental.rental_status.value})")
+    
+    if rental.rental_type not in [RentalType.HOURS, RentalType.DAYS]:
+        raise HTTPException(status_code=400, detail="Продление доступно только для часовой и суточной аренды")
+    
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    user = db.query(User).filter(User.id == rental.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Клиент не найден")
+    
+    if rental.rental_type == RentalType.HOURS:
+        price_to_charge = car.price_per_hour or 0
+        added_duration = 1  
+        duration_text = "1 час"
+    else:  
+        price_to_charge = car.price_per_day or 0
+        added_duration = 1 
+        duration_text = "1 день"
+    
+    balance_before = float(user.wallet_balance or 0)
+    if balance_before < price_to_charge:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Недостаточно средств на балансе клиента. Нужно: {price_to_charge}, доступно: {balance_before}"
+        )
+    
+    user.wallet_balance = balance_before - price_to_charge
+    
+    record_wallet_transaction(
+        db,
+        user=user,
+        amount=-price_to_charge,
+        ttype=WalletTransactionType.RENT_BASE_CHARGE,
+        description=f"Продление аренды на {duration_text} (админ: {current_user.phone_number})",
+        related_rental=rental,
+        balance_before_override=balance_before
+    )
+    
+    rental.duration = (rental.duration or 0) + added_duration
+    rental.already_payed = (rental.already_payed or 0) + price_to_charge
+    
+    new_balance = float(user.wallet_balance)
+    
+    db.commit()
+    
+    try:
+        await notify_user_status_update(str(user.id))
+        if car.owner_id:
+            await notify_user_status_update(str(car.owner_id))
+    except Exception as e:
+        print(f"Error sending WebSocket notifications: {e}")
+    
+    try:
+        if user_has_push_tokens(db, user.id):
+            await send_localized_notification_to_user_async(
+                user.id,
+                "rental_extended",
+                "rental_extended",
+                duration=duration_text,
+                car_name=car.name,
+                amount=int(price_to_charge)
+            )
+    except Exception as e:
+        print(f"Error sending push notification: {e}")
+    
+    return AdminExtendRentalResponse(
+        message=f"Аренда продлена на {duration_text}",
+        rental_id=request.rental_id,
+        rental_type=rental.rental_type.value,
+        added_duration=added_duration,
+        price_charged=price_to_charge,
+        new_duration=rental.duration,
+        new_balance=new_balance,
+        car_name=car.name,
+        plate_number=car.plate_number
+    )
