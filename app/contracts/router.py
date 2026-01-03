@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from typing import List
 import base64
@@ -1090,4 +1091,122 @@ async def admin_sign_contract(
         signed_at=to_gmt_plus_5(signature.signed_at),
         rental_id=str(signature.rental_id) if signature.rental_id else None,
         guarantor_relationship_id=str(signature.guarantor_relationship_id) if signature.guarantor_relationship_id else None
+    )
+
+
+class AdminSignMechanicContractRequest(BaseModel):
+    mechanic_id: str = Field(..., description="SID механика")
+    rental_id: str = Field(..., description="SID аренды")
+    contract_type: ContractType = Field(..., description="Тип договора")
+
+
+@ContractsRouter.post("/admin/sign-mechanic", response_model=UserSignatureResponse)
+async def admin_sign_contract_mechanic(
+    sign_request: AdminSignMechanicContractRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Подписать договор от имени механика (только для админа).
+    
+    Админ передает mechanic_id и rental_id, договор подписывается от имени механика.
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Только администратор может подписывать договоры от имени механиков"
+        )
+    
+    try:
+        mechanic_uuid = safe_sid_to_uuid(sign_request.mechanic_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Неверный формат mechanic_id: {str(e)}"
+        )
+    
+    mechanic = db.query(User).filter(User.id == mechanic_uuid).first()
+    if not mechanic:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Механик не найден"
+        )
+    
+    if mechanic.role != UserRole.MECHANIC:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Указанный пользователь не является механиком"
+        )
+    
+    try:
+        rental_uuid = safe_sid_to_uuid(sign_request.rental_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Неверный формат rental_id: {str(e)}"
+        )
+    
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+    if not rental:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Аренда не найдена"
+        )
+    
+    contract_file = db.query(ContractFile).filter(
+        ContractFile.contract_type == sign_request.contract_type,
+        ContractFile.is_active == True
+    ).first()
+    
+    if not contract_file:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Активный файл договора типа {sign_request.contract_type} не найден"
+        )
+    
+    if not mechanic.digital_signature:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="У механика отсутствует цифровая подпись"
+        )
+    
+    existing_signature = db.query(UserContractSignature).filter(
+        UserContractSignature.user_id == mechanic.id,
+        UserContractSignature.contract_file_id == contract_file.id,
+        UserContractSignature.rental_id == rental_uuid
+    ).first()
+    
+    if existing_signature:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Этот договор уже подписан механиком для данной аренды"
+        )
+    
+    signature = UserContractSignature(
+        id=uuid.uuid4(),
+        user_id=mechanic.id,
+        contract_file_id=contract_file.id,
+        digital_signature=mechanic.digital_signature,
+        signed_at=get_local_time(),
+        rental_id=rental_uuid
+    )
+    
+    db.add(signature)
+    db.commit()
+    db.refresh(signature)
+        
+    try:
+        await notify_user_status_update(str(mechanic.id))
+    except Exception as e:
+        logger.error(f"Error sending WebSocket notification: {e}")
+    
+    return UserSignatureResponse(
+        id=uuid_to_sid(signature.id),
+        user_id=uuid_to_sid(signature.user_id),
+        contract_file_id=uuid_to_sid(signature.contract_file_id),
+        contract_type=sign_request.contract_type,
+        digital_signature=signature.digital_signature,
+        signed_at=to_gmt_plus_5(signature.signed_at),
+        rental_id=str(signature.rental_id) if signature.rental_id else None,
+        guarantor_relationship_id=None
     )
