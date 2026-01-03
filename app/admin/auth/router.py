@@ -40,7 +40,7 @@ async def admin_read_users_me(
     """
     Эндпоинт профиля администратора
     """
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     try:
@@ -66,7 +66,7 @@ async def admin_update_profile(
     """
     Обновление профиля администратора (phone_number, email, ФИО, birth_date, wallet_balance).
     """
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     if payload.phone_number and payload.phone_number != current_user.phone_number:

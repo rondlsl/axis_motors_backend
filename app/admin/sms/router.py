@@ -35,7 +35,7 @@ async def send_custom_sms(
     ```
     """
     # Проверка прав администратора
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав. Только администраторы могут отправлять SMS.")
     
     # Валидация номера телефона

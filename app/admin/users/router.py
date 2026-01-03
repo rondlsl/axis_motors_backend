@@ -103,7 +103,7 @@ async def generate_user_token(
     Получить access token для указанного пользователя.
     Только для ADMIN.
     """
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Доступ только для админа")
     
     from app.auth.security.tokens import create_access_token, create_refresh_token
@@ -141,7 +141,7 @@ async def get_pending_users(
     db: Session = Depends(get_db)
 ):
     """Получение пользователей, ожидающих одобрения"""
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
     users = db.query(User).filter(User.role == UserRole.PENDING).all()
@@ -186,7 +186,7 @@ async def approve_or_reject_user(
     db: Session = Depends(get_db)
 ):
     """Одобрение или отклонение пользователя"""
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
     user_uuid = safe_sid_to_uuid(user_id)
@@ -221,7 +221,7 @@ async def get_all_users(
     db: Session = Depends(get_db)
 ):
     """Получение всех пользователей"""
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
     users = db.query(User).all()
@@ -264,7 +264,7 @@ async def get_all_clients(
     db: Session = Depends(get_db)
 ):
     """Получение всех клиентов"""
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
     users = db.query(User).filter(User.role == UserRole.CLIENT).all()
@@ -309,7 +309,7 @@ async def update_employee_role(
     db: Session = Depends(get_db)
 ):
     """Обновление роли сотрудника"""
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
     user_uuid = safe_sid_to_uuid(user_id)
@@ -330,7 +330,7 @@ async def get_user_profile(
     db: Session = Depends(get_db)
 ) -> UserProfileSchema:
     """Получить профиль пользователя"""
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     try:
@@ -495,7 +495,7 @@ async def get_users_list(
     db: Session = Depends(get_db)
 ) -> UserPaginatedResponse:
     """Получение списка пользователей с фильтрацией и поиском"""
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
     from sqlalchemy.orm import aliased
@@ -710,7 +710,7 @@ async def get_users_map_positions(
     db: Session = Depends(get_db)
 ):
     """Получение позиций пользователей для карты"""
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
     # Получаем всех пользователей
@@ -915,7 +915,7 @@ async def delete_user_transaction(
     - adjust_balance=true: удаляет транзакцию, пересчитывает balance_before/balance_after 
       для всех последующих транзакций и обновляет баланс пользователя
     """
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав. Только ADMIN может удалять транзакции.")
     
     user_uuid = safe_sid_to_uuid(user_id)
@@ -999,7 +999,7 @@ async def edit_user_transaction(
     - description: новое описание (если указано)
     - adjust_balance: если true, пересчитывает balance_before/balance_after для всех последующих транзакций
     """
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав. Только ADMIN может редактировать транзакции.")
     
     user_uuid = safe_sid_to_uuid(user_id)
@@ -2575,7 +2575,7 @@ async def set_user_balance(
     
     Создаёт транзакцию корректировки с разницей между старым и новым балансом.
     """
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав. Только ADMIN может изменять баланс.")
     
     user_uuid = safe_sid_to_uuid(user_id)
@@ -3051,7 +3051,7 @@ async def edit_user(
     db: Session = Depends(get_db)
 ):
     """Редактирование пользователя (смена класса допуска и роли)"""
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
     user_uuid = safe_sid_to_uuid(user_id)
@@ -3086,7 +3086,7 @@ async def block_user(
     db: Session = Depends(get_db)
 ):
     """Блокировка/разблокировка пользователя по ИИН/паспорту"""
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
     user_uuid = safe_sid_to_uuid(user_id)
@@ -3168,7 +3168,7 @@ async def add_company_bonus(
     db: Session = Depends(get_db)
 ):
     """Начисление бонуса от компании клиенту"""
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
     try:
@@ -3267,7 +3267,7 @@ async def add_sanction_penalty(
     - Создаёт транзакцию SANCTION_PENALTY, привязанную к аренде
     - Отправляет push-уведомление пользователю
     """
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
     if not penalty_data.phone_number.isdigit():
@@ -3373,7 +3373,7 @@ async def delete_rentals(
     Удалить конкретные аренды из базы данных (включая связанные данные).
     Удаляет: wallet_transactions, contract_signatures, rental_actions, rental_reviews, rental_history
     """
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав. Только администраторы могут удалять аренды")
 
     if not request.rental_ids:
@@ -3505,7 +3505,7 @@ async def admin_upload_photos_before(
     
     Без проверки ГЛОНАСС и без отправки GPS-команд — просто загрузка файлов.
     """
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Только администратор может загружать фотографии от имени клиентов")
     
     try:
@@ -3593,7 +3593,7 @@ async def admin_upload_photos_before_interior(
     
     Без проверки ГЛОНАСС и без отправки GPS-команд — просто загрузка файлов.
     """
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Только администратор может загружать фотографии от имени клиентов")
     
     try:
@@ -3673,7 +3673,7 @@ async def admin_upload_photos_after(
     - selfie: селфи клиента (необязательно для владельца)
     - interior_photos: фотографии салона автомобиля (обязательно)
     """
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Только администратор может загружать фотографии от имени клиентов")
     
     try:
@@ -3759,7 +3759,7 @@ async def admin_upload_photos_after_car(
     
     - car_photos: фотографии кузова автомобиля (обязательно)
     """
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Только администратор может загружать фотографии от имени клиентов")
     
     try:

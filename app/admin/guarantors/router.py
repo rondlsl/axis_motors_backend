@@ -30,7 +30,7 @@ async def get_guarantor_requests(
     db: Session = Depends(get_db)
 ):
     """Получение всех заявок гарантов для админ панели"""
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
     requests = db.query(GuarantorRequest).all()
@@ -76,7 +76,7 @@ async def approve_guarantor_request(
 ):
     """Одобрение заявки гаранта администратором"""
     
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
     request_uuid = safe_sid_to_uuid(request_id)
@@ -157,7 +157,7 @@ async def reject_guarantor_request(
 ):
     """Отклонение заявки гаранта администратором"""
     
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
     request_uuid = safe_sid_to_uuid(request_id)

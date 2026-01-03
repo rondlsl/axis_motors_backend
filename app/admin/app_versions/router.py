@@ -26,7 +26,7 @@ async def update_ai_status(
     """
     Включить/выключить AI (только для админов)
     """
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Недостаточно прав. Только администраторы могут изменять статус AI"
@@ -66,7 +66,7 @@ async def get_ai_status(
     """
     Получить текущий статус AI (только для админов)
     """
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Недостаточно прав. Только администраторы могут просматривать статус AI"

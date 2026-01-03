@@ -107,7 +107,7 @@ async def get_car_details(
     db: Session = Depends(get_db)
 ) -> CarDetailSchema:
     """Получить детальную информацию об автомобиле"""
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     car = get_car_by_id(db, car_id)
@@ -248,7 +248,7 @@ async def get_all_cars_for_admin(
 ):
     """Получение всех автомобилей для админ панели"""
     
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
     cars = db.query(Car).all()
@@ -360,7 +360,7 @@ async def get_car_status(
     current_user: User = Depends(get_current_user)
 ):
     """Получить текущий статус автомобиля"""
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Только администраторы могут получать статус автомобилей")
     
     car = get_car_by_id(db, car_id)
@@ -383,7 +383,7 @@ async def delete_car(
     current_user: User = Depends(get_current_user)
 ):
     """Удалить автомобиль (необратимая операция)"""
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Только администраторы могут удалять автомобили")
     
     car = get_car_by_id(db, car_id)
@@ -450,7 +450,7 @@ async def get_available_statuses(
     current_user: User = Depends(get_current_user)
 ):
     """Получить список всех доступных статусов автомобилей"""
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Только администраторы могут получать список статусов")
     
     statuses = []
@@ -1221,7 +1221,7 @@ async def get_cars_map(
     db: Session = Depends(get_db)
 ) -> CarMapResponseSchema:
     """Карта автопарка: вернуть все машины с координатами и статусами"""
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     base_query = db.query(Car)
@@ -1293,7 +1293,7 @@ async def get_cars_list(
     db: Session = Depends(get_db)
 ) -> CarListResponseSchema:
     """Список автомобилей с фильтрами/поиском для боковой панели"""
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     total_count = db.query(Car).count()
@@ -1399,7 +1399,7 @@ async def get_cars_statistics(
     db: Session = Depends(get_db)
 ) -> CarStatisticsSchema:
     """Статистика автопарка"""
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     total_cars = db.query(Car).count()
@@ -1437,7 +1437,7 @@ async def update_car(
     db: Session = Depends(get_db)
 ):
     """Редактировать автомобиль"""
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     car = get_car_by_id(db, car_id)
@@ -1469,7 +1469,7 @@ async def upload_car_photos(
     db: Session = Depends(get_db)
 ):
     """Загрузка фотографий автомобиля (append к существующим car.photos)"""
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     car = get_car_by_id(db, car_id)
@@ -1528,7 +1528,7 @@ async def delete_car_photos(
     db: Session = Depends(get_db)
 ):
     """Удалить все фотографии автомобиля из базы данных и с файловой системы"""
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     car = get_car_by_id(db, car_id)
@@ -1587,7 +1587,7 @@ async def delete_car_rentals(
     db: Session = Depends(get_db)
 ):
     """Удалить все поездки автомобиля из базы данных (включая связанные данные)"""
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     car = get_car_by_id(db, car_id)
