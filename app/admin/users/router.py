@@ -1796,7 +1796,7 @@ async def admin_start_rental(
         user=target_user,
         amount=-open_fee,
         ttype=WalletTransactionType.RENT_OPEN_FEE,
-        description=f"Открытие авто (админ: {current_user.phone_number})",
+        description=f"Открытие авто",
         related_rental=new_rental,
         balance_before_override=balance_before
     )
@@ -1941,7 +1941,7 @@ async def admin_end_rental(
             user=target_user,
             amount=-total_to_charge,
             ttype=WalletTransactionType.RENT_BASE_CHARGE,
-            description=f"Оплата аренды (админ: {current_user.phone_number})",
+            description=f"Оплата аренды",
             related_rental=active_rental,
             balance_before_override=balance_before
         )
@@ -3916,7 +3916,7 @@ async def admin_submit_rental_review(
                     user=user,
                     amount=-total_to_charge,
                     ttype=WalletTransactionType.RENT_BASE_CHARGE,
-                    description=f"Завершение аренды с отзывом (админ: {current_user.phone_number})",
+                    description=f"Завершение аренды с отзывом",
                     related_rental=rental,
                     balance_before_override=balance_before
                 )
