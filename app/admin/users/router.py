@@ -1934,7 +1934,7 @@ async def admin_end_rental(
             db,
             user=target_user,
             amount=-total_to_charge,
-            ttype=WalletTransactionType.RENT_PAYMENT,
+            ttype=WalletTransactionType.RENT_BASE_CHARGE,
             description=f"Оплата аренды (админ: {current_user.phone_number})",
             related_rental=active_rental,
             balance_before_override=balance_before
@@ -3924,7 +3924,7 @@ async def admin_submit_rental_review(
                     db,
                     user=user,
                     amount=-total_to_charge,
-                    ttype=WalletTransactionType.RENT_PAYMENT,
+                    ttype=WalletTransactionType.RENT_BASE_CHARGE,
                     description=f"Завершение аренды с отзывом (админ: {current_user.phone_number})",
                     related_rental=rental,
                     balance_before_override=balance_before
@@ -3970,17 +3970,17 @@ async def admin_submit_rental_review(
             except Exception as e:
                 print(f"Error sending notification to mechanics: {e}")
     
-    db.commit()
-    
-    return {
+        db.commit()
+        
+        return {
         "message": "Отзыв добавлен и аренда завершена" if rental_completed else ("Оценка обновлена" if is_update else "Оценка добавлена"),
-        "rental_id": request.rental_id,
+            "rental_id": request.rental_id,
         "rating": request.rating,
         "comment": request.comment,
         "updated": is_update,
         "rental_completed": rental_completed,
         "total_charged": total_charged
-    }
+        }
 
 
 class AdminCancelReservationRequest(BaseModel):
