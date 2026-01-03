@@ -1164,6 +1164,22 @@ async def get_trip_detail(
         "appendix_7_2": ContractType.APPENDIX_7_2 in signed_types,
     }
     
+    mechanic_signed_types = set()
+    if rental.mechanic_inspector_id:
+        mechanic_contracts = db.query(UserContractSignature).join(ContractFile).filter(
+            UserContractSignature.rental_id == rental.id,
+            UserContractSignature.user_id == rental.mechanic_inspector_id
+        ).all()
+        for sig in mechanic_contracts:
+            if sig.contract_file:
+                mechanic_signed_types.add(sig.contract_file.contract_type)
+    
+    result["mechanic_contracts"] = {
+        "main_contract": ContractType.RENTAL_MAIN_CONTRACT in mechanic_signed_types or ContractType.MAIN_CONTRACT in mechanic_signed_types,
+        "appendix_7_1": ContractType.APPENDIX_7_1 in mechanic_signed_types,
+        "appendix_7_2": ContractType.APPENDIX_7_2 in mechanic_signed_types,
+    }
+    
     photos_before = rental.photos_before or []
     photos_after = rental.photos_after or []
     
