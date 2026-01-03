@@ -392,6 +392,7 @@ class AdminCancelReservationResponse(BaseModel):
 
 class AdminExtendRentalRequest(BaseModel):
     rental_id: str = Field(..., description="ID аренды для продления")
+    count: int = Field(1, ge=1, le=100, description="Количество часов/дней для продления (от 1 до 100)")
 
 
 class AdminExtendRentalResponse(BaseModel):

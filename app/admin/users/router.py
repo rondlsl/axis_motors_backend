@@ -4059,8 +4059,8 @@ async def admin_extend_rental(
     """
     Продлить аренду клиента от имени админа.
     
-    - Для часовой аренды: добавляет 1 час
-    - Для суточной аренды: добавляет 1 день
+    - Для часовой аренды: добавляет указанное количество часов
+    - Для суточной аренды: добавляет указанное количество дней
     
     Создаёт транзакцию, списывает с баланса клиента, отправляет уведомление.
     """
@@ -4090,14 +4090,28 @@ async def admin_extend_rental(
     if not user:
         raise HTTPException(status_code=404, detail="Клиент не найден")
     
+    count = request.count if request.count else 1
+    
     if rental.rental_type == RentalType.HOURS:
-        price_to_charge = car.price_per_hour or 0
-        added_duration = 1  
-        duration_text = "1 час"
+        price_per_unit = car.price_per_hour or 0
+        price_to_charge = price_per_unit * count
+        added_duration = count
+        if count == 1:
+            duration_text = "1 час"
+        elif count < 5:
+            duration_text = f"{count} часа"
+        else:
+            duration_text = f"{count} часов"
     else:  
-        price_to_charge = car.price_per_day or 0
-        added_duration = 1 
-        duration_text = "1 день"
+        price_per_unit = car.price_per_day or 0
+        price_to_charge = price_per_unit * count
+        added_duration = count
+        if count == 1:
+            duration_text = "1 день"
+        elif count < 5:
+            duration_text = f"{count} дня"
+        else:
+            duration_text = f"{count} дней"
     
     balance_before = float(user.wallet_balance or 0)
     if balance_before < price_to_charge:
