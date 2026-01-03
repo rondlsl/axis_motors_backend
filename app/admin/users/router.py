@@ -4148,13 +4148,23 @@ async def admin_extend_rental(
     
     try:
         if user_has_push_tokens(db, user.id):
+            new_duration = rental.duration or added_duration
+            if rental.rental_type == RentalType.HOURS:
+                days_text = "час" if count == 1 else ("часа" if count < 5 else "часов")
+                days_text2 = "час" if new_duration == 1 else ("часа" if new_duration < 5 else "часов")
+            else:
+                days_text = "день" if count == 1 else ("дня" if count < 5 else "дней")
+                days_text2 = "день" if new_duration == 1 else ("дня" if new_duration < 5 else "дней")
+            
             await send_localized_notification_to_user_async(
                 user.id,
                 "rental_extended",
                 "rental_extended",
-                duration=duration_text,
-                car_name=car.name,
-                amount=int(price_to_charge)
+                days=count,
+                days_text=days_text,
+                new_duration=new_duration,
+                days_text2=days_text2,
+                cost=int(price_to_charge)
             )
     except Exception as e:
         print(f"Error sending push notification: {e}")
