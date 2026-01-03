@@ -362,3 +362,89 @@ class BalanceTopUpSchema(BaseModel):
 class AutoClassUpdateSchema(BaseModel):
     """Схема для изменения уровня доступа к автомобилям"""
     auto_class: List[str] = Field(..., description="Список доступных классов авто (A, B, C)")
+
+class AdminRentalReviewRequest(BaseModel):
+    rental_id: str = Field(..., description="ID аренды")
+    rating: int = Field(..., ge=1, le=5, description="Оценка от 1 до 5")
+    comment: Optional[str] = Field(None, max_length=500, description="Комментарий к оценке")
+
+class AdminRentalReviewResponse(BaseModel):
+    message: str
+    rental_id: str
+    rating: int
+    comment: Optional[str] = None
+    updated: bool
+    rental_completed: bool = False
+    total_charged: Optional[float] = None
+
+class AdminCancelReservationRequest(BaseModel):
+    rental_id: str = Field(..., description="ID аренды для отмены")
+
+
+class AdminCancelReservationResponse(BaseModel):
+    message: str
+    rental_id: str
+    car_name: str
+    plate_number: str
+    previous_status: str
+    client_id: Optional[str] = None
+
+
+class AdminExtendRentalRequest(BaseModel):
+    rental_id: str = Field(..., description="ID аренды для продления")
+
+
+class AdminExtendRentalResponse(BaseModel):
+    message: str
+    rental_id: str
+    rental_type: str
+    added_duration: int
+    price_charged: float
+    new_duration: int
+    new_balance: float
+    car_name: str
+    plate_number: str
+
+
+class MechanicStartInspectionResponse(BaseModel):
+    message: str
+    rental_id: str
+    inspection_status: str
+
+
+class MechanicPhotoUploadResponse(BaseModel):
+    message: str
+    photo_count: int
+
+
+class MechanicCompleteInspectionResponse(BaseModel):
+    message: str
+    rental_id: str
+    car_status: str
+    rating: Optional[int] = None
+
+
+class AdminMechanicCompleteRequest(BaseModel):
+    comment: Optional[str] = Field(None, max_length=500, description="Комментарий механика")
+    rating: Optional[int] = Field(None, ge=1, le=5, description="Оценка от 1 до 5")
+
+
+class AdminAssignMechanicRequest(BaseModel):
+    mechanic_id: str = Field(..., description="ID механика для назначения")
+
+
+class AssignMechanicResponse(BaseModel):
+    message: str
+    rental_id: str
+    mechanic_id: str
+    mechanic_name: str
+    car_name: str
+    plate_number: str
+
+
+class UnassignMechanicResponse(BaseModel):
+    message: str
+    rental_id: str
+    car_name: str
+    plate_number: str
+    car_status: str

@@ -32,7 +32,13 @@ from app.admin.users.schemas import (
     UserEditSchema, UserBlockSchema, CompanyBonusSchema, SanctionPenaltySchema,
     DeleteRentalsRequestSchema, UserPaginatedResponse,
     WalletTransactionSchema, WalletTransactionPaginationSchema, RentalHistoryUpdateSchema, RentalCreateSchema,
-    BalanceTopUpSchema, AutoClassUpdateSchema
+    BalanceTopUpSchema, AutoClassUpdateSchema,
+    AdminRentalReviewRequest, AdminRentalReviewResponse,
+    AdminCancelReservationRequest, AdminCancelReservationResponse,
+    AdminExtendRentalRequest, AdminExtendRentalResponse,
+    MechanicStartInspectionResponse, MechanicPhotoUploadResponse, MechanicCompleteInspectionResponse,
+    AdminMechanicCompleteRequest, AdminAssignMechanicRequest,
+    AssignMechanicResponse, UnassignMechanicResponse
 )
 from math import ceil
 from app.owner.router import calculate_owner_earnings
@@ -3819,21 +3825,6 @@ async def admin_upload_photos_after_car(
         raise HTTPException(status_code=500, detail=f"Ошибка при загрузке фотографий кузова: {str(e)}")
 
 
-class AdminRentalReviewRequest(BaseModel):
-    rental_id: str = Field(..., description="ID аренды")
-    rating: int = Field(..., ge=1, le=5, description="Оценка от 1 до 5")
-    comment: Optional[str] = Field(None, max_length=500, description="Комментарий к оценке")
-
-
-class AdminRentalReviewResponse(BaseModel):
-    message: str
-    rental_id: str
-    rating: int
-    comment: Optional[str] = None
-    updated: bool
-    rental_completed: bool = False
-    total_charged: Optional[float] = None
-
 
 @users_router.post("/rentals/review", response_model=AdminRentalReviewResponse)
 async def admin_submit_rental_review(
@@ -3983,18 +3974,6 @@ async def admin_submit_rental_review(
         }
 
 
-class AdminCancelReservationRequest(BaseModel):
-    rental_id: str = Field(..., description="ID аренды для отмены")
-
-
-class AdminCancelReservationResponse(BaseModel):
-    message: str
-    rental_id: str
-    car_name: str
-    plate_number: str
-    previous_status: str
-    client_id: Optional[str] = None
-
 
 @users_router.post("/rentals/cancel", response_model=AdminCancelReservationResponse)
 async def admin_cancel_reservation(
@@ -4069,21 +4048,6 @@ async def admin_cancel_reservation(
         client_id=client_id
     )
 
-
-class AdminExtendRentalRequest(BaseModel):
-    rental_id: str = Field(..., description="ID аренды для продления")
-
-
-class AdminExtendRentalResponse(BaseModel):
-    message: str
-    rental_id: str
-    rental_type: str
-    added_duration: int
-    price_charged: float
-    new_duration: int
-    new_balance: float
-    car_name: str
-    plate_number: str
 
 
 @users_router.post("/rentals/extend", response_model=AdminExtendRentalResponse)
@@ -4192,3 +4156,353 @@ async def admin_extend_rental(
         car_name=car.name,
         plate_number=car.plate_number
     )
+
+
+
+@users_router.post("/rentals/{rental_id}/mechanic-start-inspection", response_model=MechanicStartInspectionResponse)
+async def admin_mechanic_start_inspection(
+    rental_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> MechanicStartInspectionResponse:
+    """Инициация осмотра механиком от имени админа (без GPS команд)."""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администратор")
+    
+    rental_uuid = safe_sid_to_uuid(rental_id)
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Аренда не найдена")
+    
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    rental.mechanic_inspector_id = current_user.id
+    rental.mechanic_inspection_start_time = get_local_time()
+    rental.mechanic_inspection_status = "PENDING"
+    rental.mechanic_inspection_start_latitude = car.latitude
+    rental.mechanic_inspection_start_longitude = car.longitude
+    
+    car.status = CarStatus.SERVICE
+    car.current_renter_id = current_user.id
+    
+    db.commit()
+    
+    try:
+        await notify_user_status_update(str(current_user.id))
+        if rental.user_id:
+            await notify_user_status_update(str(rental.user_id))
+    except:
+        pass
+    
+    return {"message": "Осмотр инициирован", "rental_id": rental_id, "inspection_status": "PENDING"}
+
+
+@users_router.post("/rentals/{rental_id}/mechanic-photos-before", response_model=MechanicPhotoUploadResponse)
+async def admin_mechanic_upload_photos_before(
+    rental_id: str,
+    selfie: Optional[UploadFile] = File(None),
+    car_photos: List[UploadFile] = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> MechanicPhotoUploadResponse:
+    """Загрузка фото ДО осмотра: селфи (опционально) + кузов. Без GPS."""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администратор")
+    
+    rental_uuid = safe_sid_to_uuid(rental_id)
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Аренда не найдена")
+    
+    validate_photos(car_photos, "car_photos")
+    urls = list(rental.mechanic_photos_before or [])
+    
+    if selfie:
+        validate_photos([selfie], "selfie")
+        selfie_url = await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/mechanic/before/selfie/")
+        urls.append(selfie_url)
+    
+    for p in car_photos:
+        photo_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/mechanic/before/car/")
+        urls.append(photo_url)
+    
+    rental.mechanic_photos_before = urls
+    db.commit()
+    
+    return {"message": "Фото до осмотра (селфи+кузов) загружены", "photo_count": len(urls)}
+
+
+@users_router.post("/rentals/{rental_id}/mechanic-photos-before-interior", response_model=MechanicPhotoUploadResponse)
+async def admin_mechanic_upload_photos_before_interior(
+    rental_id: str,
+    interior_photos: List[UploadFile] = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> MechanicPhotoUploadResponse:
+    """Загрузка фото ДО осмотра: салон. Без GPS."""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администратор")
+    
+    rental_uuid = safe_sid_to_uuid(rental_id)
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Аренда не найдена")
+    
+    validate_photos(interior_photos, "interior_photos")
+    urls = list(rental.mechanic_photos_before or [])
+    
+    for p in interior_photos:
+        photo_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/mechanic/before/interior/")
+        urls.append(photo_url)
+    
+    rental.mechanic_photos_before = urls
+    db.commit()
+    
+    return {"message": "Фото салона до осмотра загружены", "photo_count": len(urls)}
+
+
+@users_router.post("/rentals/{rental_id}/mechanic-photos-after", response_model=MechanicPhotoUploadResponse)
+async def admin_mechanic_upload_photos_after(
+    rental_id: str,
+    selfie: Optional[UploadFile] = File(None),
+    interior_photos: List[UploadFile] = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> MechanicPhotoUploadResponse:
+    """Загрузка фото ПОСЛЕ осмотра: селфи (опционально) + салон. Без GPS."""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администратор")
+    
+    rental_uuid = safe_sid_to_uuid(rental_id)
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Аренда не найдена")
+    
+    validate_photos(interior_photos, "interior_photos")
+    urls = list(rental.mechanic_photos_after or [])
+    
+    if selfie:
+        validate_photos([selfie], "selfie")
+        selfie_url = await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/mechanic/after/selfie/")
+        urls.append(selfie_url)
+    
+    for p in interior_photos:
+        photo_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/mechanic/after/interior/")
+        urls.append(photo_url)
+    
+    rental.mechanic_photos_after = urls
+    db.commit()
+    
+    return {"message": "Фото после осмотра (селфи+салон) загружены", "photo_count": len(urls)}
+
+
+@users_router.post("/rentals/{rental_id}/mechanic-photos-after-car", response_model=MechanicPhotoUploadResponse)
+async def admin_mechanic_upload_photos_after_car(
+    rental_id: str,
+    car_photos: List[UploadFile] = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> MechanicPhotoUploadResponse:
+    """Загрузка фото ПОСЛЕ осмотра: кузов. Без GPS."""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администратор")
+    
+    rental_uuid = safe_sid_to_uuid(rental_id)
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Аренда не найдена")
+    
+    validate_photos(car_photos, "car_photos")
+    urls = list(rental.mechanic_photos_after or [])
+    
+    for p in car_photos:
+        photo_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/mechanic/after/car/")
+        urls.append(photo_url)
+    
+    rental.mechanic_photos_after = urls
+    db.commit()
+    
+    return {"message": "Фото кузова после осмотра загружены", "photo_count": len(urls)}
+
+
+
+@users_router.post("/rentals/{rental_id}/mechanic-complete-inspection", response_model=MechanicCompleteInspectionResponse)
+async def admin_mechanic_complete_inspection(
+    rental_id: str,
+    request: AdminMechanicCompleteRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> MechanicCompleteInspectionResponse:
+    """Завершение осмотра механиком от имени админа. Без GPS."""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администратор")
+    
+    rental_uuid = safe_sid_to_uuid(rental_id)
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Аренда не найдена")
+    
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    rental.mechanic_inspection_status = "COMPLETED"
+    rental.mechanic_inspection_end_time = get_local_time()
+    rental.mechanic_inspection_end_latitude = car.latitude
+    rental.mechanic_inspection_end_longitude = car.longitude
+    rental.mechanic_inspection_comment = request.comment
+    
+    if request.rating:
+        existing_review = db.query(RentalReview).filter(RentalReview.rental_id == rental.id).first()
+        if existing_review:
+            existing_review.mechanic_rating = request.rating
+            existing_review.mechanic_comment = request.comment
+        else:
+            review = RentalReview(rental_id=rental.id, mechanic_rating=request.rating, mechanic_comment=request.comment)
+            db.add(review)
+    
+    car.status = CarStatus.FREE
+    car.current_renter_id = None
+    
+    db.commit()
+    
+    try:
+        await notify_user_status_update(str(current_user.id))
+        if rental.user_id:
+            await notify_user_status_update(str(rental.user_id))
+    except:
+        pass
+    
+    return {"message": "Осмотр завершён", "rental_id": rental_id, "car_status": "FREE", "rating": request.rating}
+
+
+
+@users_router.post("/rentals/{rental_id}/assign-mechanic", response_model=AssignMechanicResponse)
+async def admin_assign_mechanic(
+    rental_id: str,
+    request: AdminAssignMechanicRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> AssignMechanicResponse:
+    """
+    Назначить механика для осмотра автомобиля.
+    Устанавливает mechanic_inspector_id и отправляет уведомление механику.
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администратор")
+    
+    rental_uuid = safe_sid_to_uuid(rental_id)
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Аренда не найдена")
+    
+    mechanic_uuid = safe_sid_to_uuid(request.mechanic_id)
+    mechanic = db.query(User).filter(User.id == mechanic_uuid).first()
+    if not mechanic:
+        raise HTTPException(status_code=404, detail="Механик не найден")
+    
+    if mechanic.role != UserRole.MECHANIC:
+        raise HTTPException(status_code=400, detail="Указанный пользователь не является механиком")
+    
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    rental.mechanic_inspector_id = mechanic.id
+    rental.mechanic_inspection_status = "PENDING"
+    
+    car.status = CarStatus.SERVICE
+    car.current_renter_id = mechanic.id
+    
+    db.commit()
+    
+    try:
+        await notify_user_status_update(str(mechanic.id))
+        if rental.user_id:
+            await notify_user_status_update(str(rental.user_id))
+        if car.owner_id:
+            await notify_user_status_update(str(car.owner_id))
+    except Exception as e:
+        print(f"Error sending WebSocket notifications: {e}")
+    
+    try:
+        if user_has_push_tokens(db, mechanic.id):
+            await send_localized_notification_to_user_async(
+                mechanic.id,
+                "new_car_for_inspection",
+                "new_car_for_inspection",
+                car_name=car.name,
+                plate_number=car.plate_number
+            )
+    except Exception as e:
+        print(f"Error sending push notification: {e}")
+    
+    return {
+        "message": "Механик назначен",
+        "rental_id": rental_id,
+        "mechanic_id": request.mechanic_id,
+        "mechanic_name": f"{mechanic.first_name or ''} {mechanic.last_name or ''}".strip(),
+        "car_name": car.name,
+        "plate_number": car.plate_number
+    }
+
+
+@users_router.post("/rentals/{rental_id}/unassign-mechanic", response_model=UnassignMechanicResponse)
+async def admin_unassign_mechanic(
+    rental_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> UnassignMechanicResponse:
+    """
+    Снять назначение механика с осмотра.
+    Работает только если осмотр ещё не завершён (статус != COMPLETED).
+    Освобождает машину и сбрасывает mechanic_inspector_id.
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администратор")
+    
+    rental_uuid = safe_sid_to_uuid(rental_id)
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Аренда не найдена")
+    
+    if not rental.mechanic_inspector_id:
+        raise HTTPException(status_code=400, detail="Механик не назначен для этой аренды")
+    
+    if rental.mechanic_inspection_status == "COMPLETED":
+        raise HTTPException(status_code=400, detail="Осмотр уже завершён, нельзя снять назначение")
+    
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    mechanic_id = rental.mechanic_inspector_id
+    
+    rental.mechanic_inspector_id = None
+    rental.mechanic_inspection_status = None
+    rental.mechanic_inspection_start_time = None
+    
+    if car.status == CarStatus.SERVICE:
+        car.status = CarStatus.PENDING
+        car.current_renter_id = None
+    
+    db.commit()
+    
+    try:
+        await notify_user_status_update(str(mechanic_id))
+        if rental.user_id:
+            await notify_user_status_update(str(rental.user_id))
+        if car.owner_id:
+            await notify_user_status_update(str(car.owner_id))
+    except Exception as e:
+        print(f"Error sending WebSocket notifications: {e}")
+    
+    return {
+        "message": "Назначение механика снято",
+        "rental_id": rental_id,
+        "car_name": car.name,
+        "plate_number": car.plate_number,
+        "car_status": car.status.value
+    }
