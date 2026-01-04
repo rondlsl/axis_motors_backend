@@ -962,11 +962,11 @@ async def get_car_trips_list(
     
     rentals = base_query.offset((page - 1) * limit).limit(limit).all()
 
-    def get_status_display(status):
+    def get_status_display(status, has_inspection=True):
         status_map = {
             "reserved": "Забронирована",
             "in_use": "В аренде",
-            "completed": "Завершена",
+            "completed": "Завершена" if has_inspection else "Требует осмотра",
             "cancelled": "Отменена",
             "delivering": "Доставка",
             "delivering_in_progress": "Доставляется",
@@ -995,10 +995,16 @@ async def get_car_trips_list(
         
         rental_status_value = r.rental_status.value if r.rental_status else None
         
+        has_inspection = (
+            r.mechanic_inspection_status == "COMPLETED" or 
+            r.mechanic_inspector_id is not None or
+            (r.mechanic_photos_after and len(r.mechanic_photos_after) > 0)
+        )
+        
         items.append({
             "rental_id": uuid_to_sid(r.id),
-            "rental_status": rental_status_value,
-            "status_display": get_status_display(rental_status_value),
+            "rental_status": rental_status_value if has_inspection or rental_status_value != "completed" else "pending",
+            "status_display": get_status_display(rental_status_value, has_inspection),
             "reservation_time": r.reservation_time.isoformat() if r.reservation_time else None,
             "start_date": r.start_time.isoformat() if r.start_time else None,
             "end_date": r.end_time.isoformat() if r.end_time else None,
