@@ -62,6 +62,7 @@ class User(Base):
     last_sms_code = Column(String)
     sms_code_valid_until = Column(DateTime)
     is_active = Column(Boolean, default=True, nullable=False)
+    is_blocked = Column(Boolean, default=False, nullable=False, server_default="false") 
     is_verified_email = Column(Boolean, default=False, nullable=False, server_default="false")
     is_citizen_kz = Column(Boolean, default=False, nullable=False, server_default="false")  
     fcm_token = Column(String, nullable=True)

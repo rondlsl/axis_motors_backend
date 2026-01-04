@@ -285,6 +285,10 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
                     "С уважением, Команда ≪AZV Motors≫."
                 ))
             
+            # Проверяем, не заблокирован ли пользователь администратором
+            if inactive_user.is_blocked:
+                raise HTTPException(status_code=403, detail="Ваш аккаунт заблокирован. Обратитесь в техподдержку.")
+            
             # Восстанавливаем удаленный аккаунт
             # Проверяем, что не переданы лишние поля (имя/фамилия уже есть в профиле)
             if request.first_name or request.last_name or request.middle_name:
@@ -600,6 +604,10 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
             "Обращаем внимание, что на основании п. 4.4 Договора, Арендодатель вправе по своему усмотрению отказаться от заключения Договора с Клиентом. "
             "С уважением, Команда ≪AZV Motors≫."
         ))
+    
+    # Проверяем, не заблокирован ли пользователь администратором
+    if user.is_blocked:
+        raise HTTPException(status_code=403, detail="Ваш аккаунт заблокирован. Обратитесь в техподдержку.")
 
     # Обновляем время последней активности
     user.last_activity_at = get_local_time()

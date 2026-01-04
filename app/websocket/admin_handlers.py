@@ -214,7 +214,7 @@ async def get_admin_users_list_data(
             pass
     
     if is_blocked is not None:
-        query = query.filter(User.is_active == (not is_blocked))
+        query = query.filter(User.is_blocked == is_blocked)
     
     if search_query:
         search_query = search_query.strip()
@@ -286,7 +286,7 @@ async def get_admin_users_list_data(
             "role": user.role.value if user.role else None,
             "latitude": last_lat,
             "longitude": last_lng,
-            "is_blocked": not user.is_active,
+            "is_blocked": user.is_blocked,
             "selfie_url": user.selfie_url,
             "carStatus": car_status
         }

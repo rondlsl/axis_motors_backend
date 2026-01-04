@@ -557,7 +557,7 @@ async def get_users_list(
             raise HTTPException(status_code=400, detail="Неверная роль")
     
     if is_blocked is not None:
-        query = query.filter(User.is_active == (not is_blocked))
+        query = query.filter(User.is_blocked == is_blocked)
     
     if search_query:
         search_filter = or_(
@@ -583,7 +583,7 @@ async def get_users_list(
         except ValueError:
             pass
     if is_blocked is not None:
-        count_query = count_query.filter(User.is_active == (not is_blocked))
+        count_query = count_query.filter(User.is_blocked == is_blocked)
     if search_query:
         count_query = count_query.filter(search_filter)
     
@@ -685,7 +685,7 @@ async def get_users_list(
             "role": user.role.value,
             "auto_class": auto_class_list,
             "selfie_url": user.selfie_url,
-            "is_blocked": not user.is_active,
+            "is_blocked": user.is_blocked,
             "current_rental_car": current_car,
             "rating": float(user.rating) if user.rating else None,
             "carStatus": car_status_value
@@ -839,7 +839,7 @@ async def get_user_card(
         "created_at": user.created_at,
         "last_activity_at": user.last_activity_at,
         "mvd_approved": mvd_approved,
-        "is_blocked": not user.is_active,
+        "is_blocked": user.is_blocked,
         "admin_comment": user.admin_comment,
         "current_rental_car": current_car,
         "owner_earnings_current_month": owner_earnings["current_month"] if owner_earnings else None,
@@ -3098,10 +3098,10 @@ async def block_user(
     if block_data.is_blocked and not block_data.block_reason:
         raise HTTPException(status_code=400, detail="При блокировке обязательно указать причину")
     
-    # Обновляем статус активности
-    user.is_active = not block_data.is_blocked
+    # Обновляем статус блокировки
+    user.is_blocked = block_data.is_blocked
     
-    # Сохраняем причину блокировки в комментарии (можно создать отдельную таблицу для аудита)
+    # Сохраняем причину блокировки в комментарии
     if block_data.is_blocked:
         block_reason = f"Блокировка: {block_data.block_reason}"
         if user.admin_comment:

@@ -322,6 +322,7 @@ def create_users_table():
         sa.Column('last_sms_code', sa.String(), nullable=True),
         sa.Column('sms_code_valid_until', sa.DateTime(), nullable=True),
         sa.Column('is_active', sa.Boolean(), nullable=False, server_default='true'),
+        sa.Column('is_blocked', sa.Boolean(), nullable=False, server_default='false'),
         sa.Column('is_verified_email', sa.Boolean(), nullable=False, server_default='false'),
         sa.Column('is_citizen_kz', sa.Boolean(), nullable=False, server_default='false'),
         sa.Column('fcm_token', sa.String(), nullable=True),
