@@ -4560,7 +4560,6 @@ async def delete_user(
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Только администратор может удалять пользователей")
     
-    # Проверяем тип удаления
     if delete_data.delete_type not in ["soft", "hard"]:
         raise HTTPException(status_code=400, detail="delete_type должен быть 'soft' или 'hard'")
     
@@ -4569,19 +4568,16 @@ async def delete_user(
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
-    # Нельзя удалить самого себя
     if user.id == current_user.id:
         raise HTTPException(status_code=400, detail="Нельзя удалить свой собственный аккаунт")
     
     deleted_at_str = None
     
     if delete_data.delete_type == "soft":
-        # Логическое удаление
         user.is_deleted = True
         user.deleted_at = get_local_time()
         deleted_at_str = user.deleted_at.isoformat()
         
-        # Сохраняем причину в комментарии
         if delete_data.reason:
             delete_reason = f"Удалён: {delete_data.reason}"
             if user.admin_comment:
@@ -4590,16 +4586,13 @@ async def delete_user(
                 user.admin_comment = delete_reason
         
         db.commit()
-        message = "Пользователь логически удалён (is_deleted = true)"
+        message = "Пользователь мягко удалён"
         
-    else:  # hard delete
-        # Физическое удаление
-        # Каскадное удаление всех связанных данных произойдёт автоматически
+    else: 
         db.delete(user)
         db.commit()
         message = "Пользователь физически удалён из базы данных"
     
-    # Отправляем уведомление об обновлении (только для soft delete)
     if delete_data.delete_type == "soft":
         try:
             await notify_user_status_update(str(user.id))
