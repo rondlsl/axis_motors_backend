@@ -1103,6 +1103,15 @@ async def get_trip_detail(
         else:
             tariff_display = tariff_value
 
+    has_inspection = (
+        rental.mechanic_inspection_status == "COMPLETED" or 
+        rental.mechanic_inspector_id is not None or
+        (rental.mechanic_photos_after and len(rental.mechanic_photos_after) > 0)
+    )
+    
+    rental_status_value = rental.rental_status.value if rental.rental_status else None
+    display_rental_status = rental_status_value if has_inspection or rental_status_value != "completed" else "pending"
+
     result = {
         "rental_id": uuid_to_sid(rental.id),
         "car_name": car.name,
@@ -1115,7 +1124,8 @@ async def get_trip_detail(
         "already_payed": rental.already_payed,
         "total_price": rental.total_price,
         "total_price_without_fuel": total_price_without_fuel,
-        "rental_status": rental.rental_status.value,
+        "rental_status": display_rental_status,
+        "status_display": "Требует осмотра" if display_rental_status == "pending" else ("Завершена" if display_rental_status == "completed" else display_rental_status),
         "rental_type": rental.rental_type.value,
         "tariff": rental.rental_type.value,
         "tariff_display": tariff_display,
