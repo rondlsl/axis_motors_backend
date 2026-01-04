@@ -57,3 +57,13 @@ class UserDeviceResponse(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+class BroadcastNotificationRequest(BaseModel):
+    title: str
+    body: str
+    status: Optional[str] = None
+
+
+class BroadcastLocalizedNotificationRequest(BaseModel):
+    translation_key: str

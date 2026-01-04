@@ -839,14 +839,6 @@ async def mark_as_read(
     return {"success": True, "id": notif_id}
 
 
-class BroadcastNotificationRequest(BaseModel):
-    title: str
-    body: str
-    status: Optional[str] = None  
-
-
-class BroadcastLocalizedNotificationRequest(BaseModel):
-    translation_key: str 
 
 
 @router.post("/broadcast", status_code=status.HTTP_200_OK)
