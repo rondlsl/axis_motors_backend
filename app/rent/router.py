@@ -984,9 +984,6 @@ async def reserve_car(
     ).order_by(RentalHistory.reservation_time.desc()).first()
     
     rebooking_fee = 0
-    if previous_rental:
-        # Если пользователь уже бронировал это авто и отменял/завершал - списываем 500тг
-        rebooking_fee = 500
 
     # НЕ владельцу – проверка баланса
     required_balance = calc_required_balance(
@@ -1373,6 +1370,29 @@ async def cancel_reservation(
         # Рассчитываем время, прошедшее с момента бронирования
         time_passed = (now - base_time).total_seconds() / 60
 
+        cancellation_penalty = 2000
+        
+        if current_user.wallet_balance < cancellation_penalty:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Недостаточно средств для отмены бронирования. Комиссия за отмену: {cancellation_penalty} тг"
+            )
+        
+        balance_before_penalty = float(current_user.wallet_balance or 0)
+        current_user.wallet_balance = balance_before_penalty - cancellation_penalty
+        
+        cancellation_tx = WalletTransaction(
+            user_id=current_user.id,
+            amount=-cancellation_penalty,
+            transaction_type=WalletTransactionType.RESERVATION_CANCELLATION_FEE,
+            description="Комиссия за отмену бронирования",
+            balance_before=balance_before_penalty,
+            balance_after=current_user.wallet_balance,
+            related_rental_id=rental.id,
+            created_at=get_local_time(),
+        )
+        db.add(cancellation_tx)
+
         # Комиссия за ожидание при отмене (если прошло больше 15 минут)
         # Рассчитываем полную сумму платного ожидания на момент отмены
         total_waiting_fee = 0
@@ -1498,7 +1518,9 @@ async def cancel_reservation(
             return {
                 "message": "Аренда отменена",
                 "minutes_used": int(time_passed),
-                "cancellation_fee": final_waiting_fee,
+                "cancellation_fee": cancellation_penalty + final_waiting_fee,
+                "cancellation_penalty": cancellation_penalty,
+                "waiting_fee": final_waiting_fee,
                 "current_wallet_balance": float(current_user.wallet_balance)
             }
         except Exception as e:
