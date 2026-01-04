@@ -758,7 +758,7 @@ async def get_car_history_summary(
 ):
     """
     Агрегированные данные по месяцам для автомобиля.
-    Возвращает информацию по всем месяцам, в которых были поездки.
+    Возвращает информацию по всем месяцам, в которых были поездки (все статусы).
     """
     from calendar import monthrange
     from collections import defaultdict
@@ -770,11 +770,9 @@ async def get_car_history_summary(
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
-    # Получаем все завершенные поездки для машины
+    # Получаем все поездки для машины со всеми статусами
     rentals = db.query(RentalHistory).filter(
-        RentalHistory.car_id == car.id,
-        RentalHistory.rental_status == RentalStatus.COMPLETED,
-        RentalHistory.end_time.isnot(None)
+        RentalHistory.car_id == car.id
     ).all()
     
     # Группируем поездки по месяцам
@@ -786,9 +784,11 @@ async def get_car_history_summary(
     })
     
     for r in rentals:
-        if not r.end_time:
+        # Используем end_time если есть, иначе start_time, иначе reservation_time
+        date_for_grouping = r.end_time or r.start_time or r.reservation_time
+        if not date_for_grouping:
             continue
-        month_key = (r.end_time.year, r.end_time.month)
+        month_key = (date_for_grouping.year, date_for_grouping.month)
         monthly_data[month_key]["trips_count"] += 1
         monthly_data[month_key]["total_income"] += int(r.total_price or 0)
         
@@ -864,7 +864,7 @@ async def get_car_trips_list(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Список поездок автомобиля за выбранный месяц с пагинацией"""
+    """Список поездок автомобиля за выбранный месяц с пагинацией (все статусы)"""
     from calendar import monthrange
     
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
