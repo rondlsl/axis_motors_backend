@@ -449,3 +449,24 @@ class UnassignMechanicResponse(BaseModel):
     car_name: str
     plate_number: str
     car_status: str
+
+class AdminDeleteUserRequest(BaseModel):
+    """Запрос на удаление пользователя"""
+    delete_type: str = Field(..., description="Тип удаления: 'soft' (логическое) или 'hard' (физическое)")
+    reason: Optional[str] = Field(None, description="Причина удаления")
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "delete_type": "soft",
+                "reason": "Нарушение условий пользования"
+            }
+        }
+
+
+class AdminDeleteUserResponse(BaseModel):
+    """Ответ на удаление пользователя"""
+    message: str
+    user_id: str
+    delete_type: str
+    deleted_at: Optional[str] = None

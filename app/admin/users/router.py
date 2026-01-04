@@ -38,7 +38,8 @@ from app.admin.users.schemas import (
     AdminExtendRentalRequest, AdminExtendRentalResponse,
     MechanicStartInspectionResponse, MechanicPhotoUploadResponse, MechanicCompleteInspectionResponse,
     AdminMechanicCompleteRequest, AdminAssignMechanicRequest,
-    AssignMechanicResponse, UnassignMechanicResponse
+    AssignMechanicResponse, UnassignMechanicResponse,
+    AdminDeleteUserRequest, AdminDeleteUserResponse
 )
 from math import ceil
 from app.owner.router import calculate_owner_earnings
@@ -559,6 +560,8 @@ async def get_users_list(
     if is_blocked is not None:
         query = query.filter(User.is_blocked == is_blocked)
     
+    query = query.filter(User.is_deleted == False)
+    
     if search_query:
         search_filter = or_(
             func.lower(User.first_name).contains(search_query.lower()),
@@ -584,6 +587,9 @@ async def get_users_list(
             pass
     if is_blocked is not None:
         count_query = count_query.filter(User.is_blocked == is_blocked)
+    
+    count_query = count_query.filter(User.is_deleted == False)
+    
     if search_query:
         count_query = count_query.filter(search_filter)
     
@@ -4530,3 +4536,73 @@ async def admin_unassign_mechanic(
         "plate_number": car.plate_number,
         "car_status": car.status.value
     }
+
+
+@users_router.delete("/{user_id}", response_model=AdminDeleteUserResponse)
+async def delete_user(
+    user_id: str,
+    delete_data: AdminDeleteUserRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Удаление пользователя (доступно только админу)
+    
+    - **soft**: Логическое удаление (is_deleted = True, deleted_at = now())
+    - **hard**: Физическое удаление из БД (каскадное удаление всех связанных данных)
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только администратор может удалять пользователей")
+    
+    # Проверяем тип удаления
+    if delete_data.delete_type not in ["soft", "hard"]:
+        raise HTTPException(status_code=400, detail="delete_type должен быть 'soft' или 'hard'")
+    
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    # Нельзя удалить самого себя
+    if user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="Нельзя удалить свой собственный аккаунт")
+    
+    deleted_at_str = None
+    
+    if delete_data.delete_type == "soft":
+        # Логическое удаление
+        user.is_deleted = True
+        user.deleted_at = get_local_time()
+        deleted_at_str = user.deleted_at.isoformat()
+        
+        # Сохраняем причину в комментарии
+        if delete_data.reason:
+            delete_reason = f"Удалён: {delete_data.reason}"
+            if user.admin_comment:
+                user.admin_comment = f"{user.admin_comment}\n{delete_reason}"
+            else:
+                user.admin_comment = delete_reason
+        
+        db.commit()
+        message = "Пользователь логически удалён (is_deleted = true)"
+        
+    else:  # hard delete
+        # Физическое удаление
+        # Каскадное удаление всех связанных данных произойдёт автоматически
+        db.delete(user)
+        db.commit()
+        message = "Пользователь физически удалён из базы данных"
+    
+    # Отправляем уведомление об обновлении (только для soft delete)
+    if delete_data.delete_type == "soft":
+        try:
+            await notify_user_status_update(str(user.id))
+        except Exception as e:
+            print(f"Error sending WebSocket notification: {e}")
+    
+    return AdminDeleteUserResponse(
+        message=message,
+        user_id=user_id,
+        delete_type=delete_data.delete_type,
+        deleted_at=deleted_at_str
+    )

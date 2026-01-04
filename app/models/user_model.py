@@ -79,7 +79,9 @@ class User(Base):
     last_activity_at = Column(DateTime, nullable=True)
     upload_document_at = Column(DateTime, nullable=True) 
     admin_comment = Column(String, nullable=True)  # Комментарий админа/поддержки/механика
-    rating = Column(Float, nullable=True) 
+    rating = Column(Float, nullable=True)
+    is_deleted = Column(Boolean, default=False, nullable=False, server_default="false") 
+    deleted_at = Column(DateTime, nullable=True)
 
     rental_history = relationship("RentalHistory", back_populates="user",
                                   foreign_keys="[RentalHistory.user_id]")

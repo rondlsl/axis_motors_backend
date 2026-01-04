@@ -337,7 +337,9 @@ def create_users_table():
         sa.Column('last_activity_at', sa.DateTime(), nullable=True),
         sa.Column('upload_document_at', sa.DateTime(), nullable=True),
         sa.Column('admin_comment', sa.String(), nullable=True),
-        sa.Column('rating', sa.Float(), nullable=True), 
+        sa.Column('rating', sa.Float(), nullable=True),
+        sa.Column('is_deleted', sa.Boolean(), nullable=False, server_default='false'),
+        sa.Column('deleted_at', sa.DateTime(), nullable=True), 
         sa.UniqueConstraint('phone_number'),
         sa.UniqueConstraint('digital_signature')
     )
