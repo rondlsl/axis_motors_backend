@@ -35,7 +35,7 @@ def update_transmission_types():
             # Определяем тип коробки передач на основе названия машины
             car_name_lower = car.name.lower()
             
-        if 'cla45s' in car_name_lower or 'mercedes' in car_name_lower:
+            if 'cla45s' in car_name_lower or 'mercedes' in car_name_lower:
                 # MB CLA45s - обычно автоматическая
                 car.transmission_type = TransmissionType.AUTOMATIC
             elif 'hongqi' in car_name_lower or 'electric' in car_name_lower:
