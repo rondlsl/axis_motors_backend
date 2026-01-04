@@ -51,7 +51,12 @@ from app.utils.time_utils import get_local_time
 import asyncio
 from app.wallet.utils import record_wallet_transaction
 from app.rent.utils.calculate_price import get_open_price, calc_required_balance
-
+from app.models.application_model import Application
+from app.models.history_model import RentalHistory
+from app.models.wallet_transaction_model import WalletTransaction
+from app.models.guarantor_model import Guarantor, GuarantorRequest
+from app.models.user_device_model import UserDevice
+from app.models.digital_signature_model import DigitalSignature
 users_router = APIRouter(tags=["Admin Users"])
 
 
@@ -4588,7 +4593,18 @@ async def delete_user(
         db.commit()
         message = "Пользователь мягко удалён"
         
+        
     else: 
+        db.query(Application).filter(Application.user_id == user.id).delete(synchronize_session=False)
+        db.query(RentalHistory).filter(RentalHistory.user_id == user.id).delete(synchronize_session=False)
+        db.query(WalletTransaction).filter(WalletTransaction.user_id == user.id).delete(synchronize_session=False)
+        db.query(Guarantor).filter(Guarantor.client_id == user.id).delete(synchronize_session=False)
+        db.query(Guarantor).filter(Guarantor.guarantor_id == user.id).delete(synchronize_session=False)
+        db.query(GuarantorRequest).filter(GuarantorRequest.sender_id == user.id).delete(synchronize_session=False)
+        db.query(GuarantorRequest).filter(GuarantorRequest.receiver_id == user.id).delete(synchronize_session=False)
+        db.query(UserDevice).filter(UserDevice.user_id == user.id).delete(synchronize_session=False)
+        db.query(DigitalSignature).filter(DigitalSignature.user_id == user.id).delete(synchronize_session=False)
+        
         db.delete(user)
         db.commit()
         message = "Пользователь физически удалён из базы данных"
