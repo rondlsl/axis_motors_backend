@@ -652,21 +652,6 @@ async def test_push_by_phone(
     print("="*80)
     print()
     sys.stdout.flush()
-
-    if success:
-        log_action(
-            db,
-            actor_id=current_user.id,
-            action="admin_test_push_by_phone",
-            entity_type="user",
-            entity_id=target_user.id,
-            details={
-                "target_phone": payload.phone,
-                "title": payload.title,
-                "body": payload.body
-            }
-        )
-        db.commit()
     
     # Формируем ответ
     full_name = f"{target_user.first_name or ''} {target_user.last_name or ''} {target_user.middle_name or ''}".strip() or "Не указано"
