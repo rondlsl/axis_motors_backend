@@ -4600,8 +4600,8 @@ async def delete_user(
         db.query(WalletTransaction).filter(WalletTransaction.user_id == user.id).delete(synchronize_session=False)
         db.query(Guarantor).filter(Guarantor.client_id == user.id).delete(synchronize_session=False)
         db.query(Guarantor).filter(Guarantor.guarantor_id == user.id).delete(synchronize_session=False)
-        db.query(GuarantorRequest).filter(GuarantorRequest.sender_id == user.id).delete(synchronize_session=False)
-        db.query(GuarantorRequest).filter(GuarantorRequest.receiver_id == user.id).delete(synchronize_session=False)
+        db.query(GuarantorRequest).filter(GuarantorRequest.requestor_id == user.id).delete(synchronize_session=False)
+        db.query(GuarantorRequest).filter(GuarantorRequest.guarantor_id == user.id).delete(synchronize_session=False)
         db.query(UserDevice).filter(UserDevice.user_id == user.id).delete(synchronize_session=False)
         db.query(UserContractSignature).filter(UserContractSignature.user_id == user.id).delete(synchronize_session=False)
         
