@@ -289,6 +289,10 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
             if inactive_user.is_blocked:
                 raise HTTPException(status_code=403, detail="Ваш аккаунт заблокирован. Обратитесь в техподдержку.")
             
+            # Проверяем, не удалён ли пользователь администратором
+            if inactive_user.is_deleted:
+                raise HTTPException(status_code=403, detail="Ваш аккаунт удалён. Обратитесь в техподдержку для восстановления.")
+            
             # Восстанавливаем удаленный аккаунт
             # Проверяем, что не переданы лишние поля (имя/фамилия уже есть в профиле)
             if request.first_name or request.last_name or request.middle_name:
@@ -608,6 +612,10 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
     # Проверяем, не заблокирован ли пользователь администратором
     if user.is_blocked:
         raise HTTPException(status_code=403, detail="Ваш аккаунт заблокирован. Обратитесь в техподдержку.")
+    
+    # Проверяем, не удалён ли пользователь администратором
+    if user.is_deleted:
+        raise HTTPException(status_code=403, detail="Ваш аккаунт удалён. Обратитесь в техподдержку для восстановления.")
 
     # Обновляем время последней активности
     user.last_activity_at = get_local_time()

@@ -216,6 +216,9 @@ async def get_admin_users_list_data(
     if is_blocked is not None:
         query = query.filter(User.is_blocked == is_blocked)
     
+    # Не показываем удалённых пользователей
+    query = query.filter(User.is_deleted == False)
+    
     if search_query:
         search_query = search_query.strip()
         if search_query:

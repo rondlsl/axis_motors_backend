@@ -145,7 +145,10 @@ async def get_pending_users(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    users = db.query(User).filter(User.role == UserRole.PENDING).all()
+    users = db.query(User).filter(
+        User.role == UserRole.PENDING,
+        User.is_deleted == False
+    ).all()
     
     result = []
     for user in users:
@@ -225,7 +228,7 @@ async def get_all_users(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    users = db.query(User).all()
+    users = db.query(User).filter(User.is_deleted == False).all()
     
     result = []
     for user in users:
@@ -268,7 +271,10 @@ async def get_all_clients(
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    users = db.query(User).filter(User.role == UserRole.CLIENT).all()
+    users = db.query(User).filter(
+        User.role == UserRole.CLIENT,
+        User.is_deleted == False
+    ).all()
     
     result = []
     for user in users:
