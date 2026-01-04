@@ -152,6 +152,40 @@ NOTIFICATIONS_TRANSLATIONS = {
         "holiday_greeting_title": "Поздравления с праздником",
         "holiday_greeting_body": "Празднуем вместе! AZV Motors поздравляет вас с праздником.",
         
+        # Индивидуальные праздники Казахстана
+        "new_year_title": "С Новым годом!",
+        "new_year_body": "Поздравляем с Новым годом! AZV Motors желает вам счастья, здоровья и удачных поездок в новом году! 🎉",
+        
+        "christmas_title": "С Рождеством Христовым!",
+        "christmas_body": "Поздравляем с Рождеством! Пусть этот светлый праздник принесёт вам радость и тепло. AZV Motors! ✨",
+        
+        "womens_day_title": "С Международным женским днём!",
+        "womens_day_body": "Поздравляем с 8 Марта! Пусть каждый день будет наполнен красотой и счастьем. AZV Motors поздравляет всех женщин! 🌷",
+        
+        "nauryz_title": "С праздником Наурыз!",
+        "nauryz_body": "Поздравляем с Наурызом! Пусть весна принесёт в ваш дом благополучие и радость. AZV Motors! 🌸",
+        
+        "unity_day_title": "С Днём единства народа Казахстана!",
+        "unity_day_body": "Поздравляем с Днём единства народа Казахстана! Вместе мы сильнее! AZV Motors! 🇰🇿",
+        
+        "defender_day_title": "С Днём защитника Отечества!",
+        "defender_day_body": "Поздравляем с Днём защитника Отечества! Благодарим за мужество и преданность. AZV Motors! 🎖️",
+        
+        "victory_day_title": "С Днём Победы!",
+        "victory_day_body": "Поздравляем с Днём Победы! Помним и чтим подвиг героев. Спасибо за мир! AZV Motors! 🕊️",
+        
+        "capital_day_title": "С Днём столицы!",
+        "capital_day_body": "Поздравляем с Днём столицы! Желаем процветания и благополучия! AZV Motors! 🏙️",
+        
+        "constitution_day_title": "С Днём Конституции!",
+        "constitution_day_body": "Поздравляем с Днём Конституции Республики Казахстан! Пусть закон и справедливость всегда будут с нами. AZV Motors! ⚖️",
+        
+        "republic_day_title": "С Днём Республики!",
+        "republic_day_body": "Поздравляем с Днём Республики! Гордимся нашей страной и её достижениями. AZV Motors! 🇰🇿",
+        
+        "independence_day_title": "С Днём Независимости!",
+        "independence_day_body": "Поздравляем с Днём Независимости Республики Казахстан! Пусть наша страна процветает! AZV Motors! 🎆",
+        
         "airport_location_title": "Локация аэропорта",
         "airport_location_body": "Добро пожаловать! На локации аэропорта доступны свободные авто.",
         
@@ -315,6 +349,39 @@ NOTIFICATIONS_TRANSLATIONS = {
         "holiday_greeting_title": "Holiday Greetings",
         "holiday_greeting_body": "Let's celebrate together! AZV Motors congratulates you on the holiday.",
         
+        "new_year_title": "Happy New Year!",
+        "new_year_body": "Wishing you a Happy New Year! AZV Motors wishes you happiness, health, and safe travels in the new year! 🎉",
+        
+        "christmas_title": "Merry Christmas!",
+        "christmas_body": "Wishing you a Merry Christmas! May this bright holiday bring you joy and warmth. AZV Motors! ✨",
+        
+        "womens_day_title": "Happy International Women's Day!",
+        "womens_day_body": "Happy International Women's Day! May every day be filled with beauty and happiness. AZV Motors congratulates all women! 🌷",
+        
+        "nauryz_title": "Happy Nauryz!",
+        "nauryz_body": "Happy Nauryz! May spring bring prosperity and joy to your home. AZV Motors! 🌸",
+        
+        "unity_day_title": "Happy Unity Day!",
+        "unity_day_body": "Happy Unity Day of the People of Kazakhstan! Together we are stronger! AZV Motors! 🇰🇿",
+        
+        "defender_day_title": "Happy Defender's Day!",
+        "defender_day_body": "Happy Defender of the Fatherland Day! Thank you for your courage and dedication. AZV Motors! 🎖️",
+        
+        "victory_day_title": "Happy Victory Day!",
+        "victory_day_body": "Happy Victory Day! We remember and honor the heroes. Thank you for peace! AZV Motors! 🕊️",
+        
+        "capital_day_title": "Happy Capital City Day!",
+        "capital_day_body": "Happy Capital City Day! Wishing you prosperity and success! AZV Motors! 🏙️",
+        
+        "constitution_day_title": "Happy Constitution Day!",
+        "constitution_day_body": "Happy Constitution Day of the Republic of Kazakhstan! May law and justice always be with us. AZV Motors! ⚖️",
+        
+        "republic_day_title": "Happy Republic Day!",
+        "republic_day_body": "Happy Republic Day! We are proud of our country and its achievements. AZV Motors! 🇰🇿",
+        
+        "independence_day_title": "Happy Independence Day!",
+        "independence_day_body": "Happy Independence Day of the Republic of Kazakhstan! May our country prosper! AZV Motors! 🎆",
+        
         "airport_location_title": "Airport Location",
         "airport_location_body": "Welcome! Free cars are available at the airport location.",
         
@@ -477,6 +544,39 @@ NOTIFICATIONS_TRANSLATIONS = {
         
         "holiday_greeting_title": "Мерекеге құттықтау",
         "holiday_greeting_body": "Бірге мерекелейік! AZV Motors сізді мерекемен құттықтайды.",
+        # Қазақстанның мемлекеттік мерекелері
+        "new_year_title": "Жаңа жылыңызбен!",
+        "new_year_body": "Жаңа жылыңызбен құттықтаймыз! AZV Motors сізге бақыт, денсаулық және қауіпсіз сапарлар тілейді! 🎉",
+        
+        "christmas_title": "Рождество мерекесімен!",
+        "christmas_body": "Рождество мерекесімен құттықтаймыз! Бұл жарқын мереке сізге қуаныш пен жылулық әкелсін. AZV Motors! ✨",
+        
+        "womens_day_title": "Халықаралық әйелдер күнімен!",
+        "womens_day_body": "8 Наурыз - Халықаралық әйелдер күнімен құттықтаймыз! Әр күн сұлулық пен бақытқа толы болсын. AZV Motors барлық әйелдерді құттықтайды! 🌷",
+        
+        "nauryz_title": "Наурыз мейрамымен!",
+        "nauryz_body": "Наурыз мейрамымен құттықтаймыз! Көктем үйіңізге береке мен қуаныш әкелсін. AZV Motors! 🌸",
+        
+        "unity_day_title": "Халықтар бірлігі күні құтты болсын!",
+        "unity_day_body": "Бірлік күні құтты болсын! Бірлік пен татулық мәңгі болсын! AZV Motors! 🇰🇿",
+        
+        "defender_day_title": "Отан қорғаушылар күнімен!",
+        "defender_day_body": "Отан қорғаушылар күнімен құттықтаймыз! Ерлік пен адалдық үшін рахмет! AZV Motors! 🎖️",
+        
+        "victory_day_title": "Жеңіс күнімен!",
+        "victory_day_body": "Жеңіс күнімен құттықтаймыз! Батырлардың ерлігін есте сақтаймыз. Бейбітшілік үшін рахмет! AZV Motors! 🕊️",
+        
+        "capital_day_title": "Астана күнімен!",
+        "capital_day_body": "Астана күнімен құттықтаймыз! Гүлдену мен табыс тілейміз! AZV Motors! 🏙️",
+        
+        "constitution_day_title": "Конституция күнімен!",
+        "constitution_day_body": "Қазақстан Республикасы Конституциясы күнімен құттықтаймыз! Заң мен әділдік әрқашан бізбен болсын. AZV Motors! ⚖️",
+        
+        "republic_day_title": "Республика күнімен!",
+        "republic_day_body": "Республика күнімен құттықтаймыз! Біз өз еліміз бен оның жетістіктерімен мақтанамыз. AZV Motors! 🇰🇿",
+        
+        "independence_day_title": "Тәуелсіздік күнімен!",
+        "independence_day_body": "Қазақстан Республикасының Тәуелсіздік күнімен құттықтаймыз! Еліміз гүлденсін! AZV Motors! 🎆",
         
         "airport_location_title": "Әуежай орналасуы",
         "airport_location_body": "Қош келдіңіз! Әуежай орналасуында бос автомобильдер қолжетімді.",
@@ -640,6 +740,39 @@ NOTIFICATIONS_TRANSLATIONS = {
         
         "holiday_greeting_title": "节日问候",
         "holiday_greeting_body": "让我们一起庆祝！AZV Motors祝贺您节日快乐。",
+        # 哈萨克斯坦国家节日
+        "new_year_title": "新年快乐！",
+        "new_year_body": "祝您新年快乐！AZV Motors祝您新年幸福、健康、旅途平安！🎉",
+        
+        "christmas_title": "圣诞快乐！",
+        "christmas_body": "祝您圣诞快乐！愿这个节日给您带来欢乐和温暖。AZV Motors！✨",
+        
+        "womens_day_title": "国际妇女节快乐！",
+        "womens_day_body": "祝所有女性国际妇女节快乐！愿每一天都充满美丽和幸福。AZV Motors！🌷",
+        
+        "nauryz_title": "纳吾热孜节快乐！",
+        "nauryz_body": "祝您纳吾热孜节快乐！愿春天为您的家庭带来繁荣和欢乐。AZV Motors！🌸",
+        
+        "unity_day_title": "人民团结日快乐！",
+        "unity_day_body": "祝您哈萨克斯坦人民团结日快乐！团结就是力量！AZV Motors！🇰🇿",
+        
+        "defender_day_title": "祖国保卫者日快乐！",
+        "defender_day_body": "祝您祖国保卫者日快乐！感谢您的勇气和奉献。AZV Motors！🎖️",
+        
+        "victory_day_title": "胜利日快乐！",
+        "victory_day_body": "祝您胜利日快乐！我们铭记并尊敬英雄的功绩。感谢和平！AZV Motors！🕊️",
+        
+        "capital_day_title": "首都日快乐！",
+        "capital_day_body": "祝您首都日快乐！祝愿繁荣和成功！AZV Motors！🏙️",
+        
+        "constitution_day_title": "宪法日快乐！",
+        "constitution_day_body": "祝您哈萨克斯坦共和国宪法日快乐！愿法律和正义永远与我们同在。AZV Motors！⚖️",
+        
+        "republic_day_title": "共和国日快乐！",
+        "republic_day_body": "祝您共和国日快乐！我们为我们的国家及其成就感到自豪。AZV Motors！🇰🇿",
+        
+        "independence_day_title": "独立日快乐！",
+        "independence_day_body": "祝您哈萨克斯坦共和国独立日快乐！愿我们的国家繁荣昌盛！AZV Motors！🎆",
         
         "airport_location_title": "机场位置",
         "airport_location_body": "欢迎！机场位置有可用车辆。",
