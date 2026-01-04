@@ -56,7 +56,7 @@ from app.models.history_model import RentalHistory
 from app.models.wallet_transaction_model import WalletTransaction
 from app.models.guarantor_model import Guarantor, GuarantorRequest
 from app.models.user_device_model import UserDevice
-from app.models.digital_signature_model import DigitalSignature
+from app.models.contract_model import UserContractSignature
 users_router = APIRouter(tags=["Admin Users"])
 
 
@@ -4603,7 +4603,7 @@ async def delete_user(
         db.query(GuarantorRequest).filter(GuarantorRequest.sender_id == user.id).delete(synchronize_session=False)
         db.query(GuarantorRequest).filter(GuarantorRequest.receiver_id == user.id).delete(synchronize_session=False)
         db.query(UserDevice).filter(UserDevice.user_id == user.id).delete(synchronize_session=False)
-        db.query(DigitalSignature).filter(DigitalSignature.user_id == user.id).delete(synchronize_session=False)
+        db.query(UserContractSignature).filter(UserContractSignature.user_id == user.id).delete(synchronize_session=False)
         
         db.delete(user)
         db.commit()
