@@ -450,7 +450,7 @@ async def delete_car(
             actor_id=current_user.id,
             action="delete_car",
             entity_type="car",
-            entity_id=car_id, 
+            entity_id=car.id, 
             details={"car_info": car_info}
         )
         
