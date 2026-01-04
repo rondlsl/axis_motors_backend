@@ -19,6 +19,7 @@ from app.schemas.support_schemas import (
     SupportMessageReply
 )
 from app.utils.telegram_logger import log_error_to_telegram
+from app.utils.action_logger import log_action
 
 logger = logging.getLogger(__name__)
 
@@ -243,6 +244,20 @@ async def assign_chat(
     if not success:
         raise HTTPException(status_code=400, detail="Failed to assign chat")
     
+    if current_user.role == UserRole.ADMIN:
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="admin_assign_support_chat",
+            entity_type="support_chat",
+            entity_id=None,  
+            details={
+                "chat_sid": chat_id,
+                "assigned_to_sid": assign_data.assigned_to
+            }
+        )
+        db.commit()
+
     return {"message": "Chat assigned successfully"}
 
 

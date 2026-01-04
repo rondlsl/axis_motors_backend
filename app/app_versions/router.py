@@ -119,6 +119,11 @@ async def create_app_version(
     Создать или обновить запись о последних версиях приложения.
     Если запись уже существует, она будет обновлена.
     """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+        
+    from app.utils.action_logger import log_action
+    
     existing = db.query(AppVersion).first()
     
     if existing:
@@ -129,6 +134,16 @@ async def create_app_version(
         if app_version_data.ai_is_worked is not None:
             existing.ai_is_worked = app_version_data.ai_is_worked
         existing.update_timestamp()
+        
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="update_app_version",
+            entity_type="app_version",
+            entity_id=existing.id,
+            details=app_version_data.dict()
+        )
+        
         db.commit()
         db.refresh(existing)
         
@@ -152,6 +167,16 @@ async def create_app_version(
     )
     
     db.add(app_version)
+    
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="update_app_version",
+        entity_type="app_version",
+        entity_id=app_version.id if not existing else existing.id,
+        details=app_version_data.dict()
+    )
+    
     db.commit()
     db.refresh(app_version)
     
@@ -202,6 +227,9 @@ async def delete_app_version(
     """
     Удалить запись о версиях приложения.
     """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+
     app_version = db.query(AppVersion).first()
     
     if not app_version:
@@ -211,6 +239,17 @@ async def delete_app_version(
         )
     
     db.delete(app_version)
+    
+    from app.utils.action_logger import log_action
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="delete_app_version",
+        entity_type="app_version",
+        entity_id=app_version.id,
+        details={}
+    )
+    
     db.commit()
     
     return None

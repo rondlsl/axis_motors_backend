@@ -10,6 +10,7 @@ from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole
 from app.core.config import logger
+from app.utils.action_logger import log_action
 
 
 admin_auth_router = APIRouter(tags=["Admin Auth"])
@@ -98,6 +99,16 @@ async def admin_update_profile(
 
     try:
         db.add(current_user)
+        
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="admin_update_own_profile",
+            entity_type="user",
+            entity_id=current_user.id,
+            details=payload.dict(exclude_unset=True)
+        )
+        
         db.commit()
         db.refresh(current_user)
 

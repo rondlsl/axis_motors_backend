@@ -8,6 +8,7 @@ from app.admin.sms.schemas import SendSmsRequest, SendSmsResponse
 from app.guarantor.sms_utils import send_sms_mobizon
 from app.core.config import SMS_TOKEN
 from app.utils.telegram_logger import log_error_to_telegram
+from app.utils.action_logger import log_action
 
 sms_router = APIRouter(tags=["Admin SMS"])
 
@@ -63,6 +64,17 @@ async def send_custom_sms(
     # Отправка SMS
     try:
         result = await send_sms_mobizon(phone_number, message_text, SMS_TOKEN)
+        
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="admin_send_sms",
+            entity_type="user", # Or maybe just 'sms' since it's by phone number, but 'user' fits if we can find them. But here we only have phone.
+            entity_id=current_user.id, # We don't have target user ID easily without querying. Let's just log actor and details.
+            details={"phone_number": phone_number, "message": message_text, "result": result}
+        )
+        db.commit()
+
         return SendSmsResponse(
             success=True,
             message="SMS sent successfully",

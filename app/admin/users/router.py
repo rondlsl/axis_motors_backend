@@ -57,6 +57,7 @@ from app.models.wallet_transaction_model import WalletTransaction
 from app.models.guarantor_model import Guarantor, GuarantorRequest
 from app.models.user_device_model import UserDevice
 from app.models.contract_model import UserContractSignature
+from app.utils.action_logger import log_action
 users_router = APIRouter(tags=["Admin Users"])
 
 
@@ -127,6 +128,16 @@ async def generate_user_token(
     
     access_token = create_access_token(data={"sub": user.phone_number})
     refresh_token = create_refresh_token(data={"sub": user.phone_number})
+    
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="admin_impersonate_user_token",
+        entity_type="user",
+        entity_id=user.id,
+        details={"phone": user.phone_number}
+    )
+    db.commit()
     
     return {
         "access_token": access_token,
@@ -219,6 +230,19 @@ async def approve_or_reject_user(
         user.role = UserRole.REJECTED
         message = "Пользователь отклонен"
     
+    db.commit()
+
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="approve_or_reject_user",
+        entity_type="user",
+        entity_id=user.id,
+        details={
+            "approved": approved,
+            "new_role": user.role.value
+        }
+    )
     db.commit()
     
     return {"message": message}
@@ -329,6 +353,17 @@ async def update_employee_role(
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
+    db.commit()
+
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="update_user_role",
+        entity_type="user",
+        entity_id=user.id,
+        details={"old_role": user.role.value, "new_role": role_data.role.value}
+    )
+    user.role = role_data.role
     db.commit()
     
     return {"message": f"Роль пользователя изменена на {role_data.role.value}"}
@@ -986,6 +1021,19 @@ async def delete_user_transaction(
     else:
         db.delete(transaction)
     
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="delete_transaction",
+        entity_type="wallet_transaction",
+        entity_id=tx_uuid,
+        details={
+            "user_id": user_id,
+            "adjust_balance": adjust_balance,
+            "transaction_data": tx_data
+        }
+    )
+    
     db.commit()
     
     return {
@@ -1073,6 +1121,21 @@ async def edit_user_transaction(
     
     db.commit()
     db.refresh(transaction)
+
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="edit_transaction",
+        entity_type="wallet_transaction",
+        entity_id=transaction.id,
+        details={
+            "old_amount": old_amount,
+            "new_amount": float(transaction.amount),
+            "adjust_balance": adjust_balance,
+            "description_changed": old_description != transaction.description
+        }
+    )
+    db.commit()
     
     return {
         "success": True,
@@ -1824,6 +1887,21 @@ async def admin_start_rental(
     target_user.last_activity_at = get_local_time()
     
     db.commit()
+    
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="admin_start_rental",
+        entity_type="rental",
+        entity_id=new_rental.id,
+        details={
+            "user_id": target_user_uuid,
+            "car_id": car_uuid,
+            "open_fee": open_fee,
+            "rental_type": new_rental.rental_type.value
+        }
+    )
+    db.commit()
     db.refresh(new_rental)
     
     asyncio.create_task(notify_user_status_update(str(target_user.id)))
@@ -1975,6 +2053,21 @@ async def admin_end_rental(
     
     target_user.last_activity_at = now
     
+    db.commit()
+
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="admin_end_rental",
+        entity_type="rental",
+        entity_id=active_rental.id,
+        details={
+            "total_price": active_rental.total_price,
+            "already_payed": active_rental.already_payed,
+            "end_latitude": car.latitude,
+            "end_longitude": car.longitude
+        }
+    )
     db.commit()
     db.refresh(active_rental)
     
@@ -2466,6 +2559,20 @@ async def topup_user_balance(
     db.add(transaction)
     
     user.wallet_balance = balance_after
+
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="balance_topup",
+        entity_type="user",
+        entity_id=user.id,
+        details={
+            "amount": payload.amount,
+            "balance_before": balance_before,
+            "balance_after": balance_after,
+            "description": payload.description
+        }
+    )
     
     db.commit()
     db.refresh(transaction)
@@ -2542,6 +2649,20 @@ async def deduct_user_balance(
     db.add(transaction)
     
     user.wallet_balance = balance_after
+
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="balance_deduct",
+        entity_type="user",
+        entity_id=user.id,
+        details={
+            "amount": payload.amount,
+            "balance_before": balance_before,
+            "balance_after": balance_after,
+            "description": payload.description
+        }
+    )
     
     db.commit()
     db.refresh(transaction)
@@ -2615,6 +2736,21 @@ async def set_user_balance(
         db.add(transaction)
     
     user.wallet_balance = new_balance
+
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="balance_set",
+        entity_type="user",
+        entity_id=user.id,
+        details={
+            "old_balance": old_balance,
+            "new_balance": new_balance,
+            "difference": diff,
+            "description": description
+        }
+    )
+
     db.commit()
     
     return {
@@ -2652,6 +2788,16 @@ async def update_user_auto_class(
     new_classes = set(payload.auto_class)
     
     user.auto_class = payload.auto_class
+    
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="update_user_auto_class",
+        entity_type="user",
+        entity_id=user.id,
+        details={"old_classes": list(old_classes), "new_classes": payload.auto_class}
+    )
+
     db.commit()
     
     class_names = {"A": "A", "B": "B", "C": "C"}
@@ -2703,6 +2849,16 @@ async def update_user_zone_exit_permission(
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
     user.can_exit_zone = can_exit_zone
+    
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="update_zone_permission",
+        entity_type="user",
+        entity_id=user.id,
+        details={"can_exit_zone": can_exit_zone}
+    )
+
     db.commit()
     
     return {
@@ -2747,6 +2903,16 @@ async def update_user_comment(
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
     user.admin_comment = comment_data.admin_comment
+    
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="update_user_comment",
+        entity_type="user",
+        entity_id=user.id,
+        details={"comment": comment_data.admin_comment}
+    )
+
     db.commit()
     
     return {"message": "Комментарий обновлен", "admin_comment": comment_data.admin_comment}
@@ -3089,6 +3255,17 @@ async def edit_user(
             await cancel_guarantor_requests_on_rejection(str(user.id), db)
     
     db.commit()
+
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="edit_user_profile",
+        entity_type="user",
+        entity_id=user.id,
+        details={"edit_data": edit_data.dict(exclude_unset=True)}
+    )
+
+    db.commit()
     
     asyncio.create_task(notify_user_status_update(str(user.id)))
     
@@ -3126,6 +3303,20 @@ async def block_user(
         else:
             user.admin_comment = block_reason
     
+    db.commit()
+
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="block_user",
+        entity_type="user",
+        entity_id=user.id,
+        details={
+            "is_blocked": block_data.is_blocked,
+            "reason": block_data.block_reason
+        }
+    )
+
     db.commit()
     
     asyncio.create_task(notify_user_status_update(str(user.id)))
@@ -4228,6 +4419,17 @@ async def admin_mechanic_start_inspection(
     car.status = CarStatus.SERVICE
     car.current_renter_id = current_user.id
     
+    car.current_renter_id = current_user.id
+    
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="mechanic_start_inspection",
+        entity_type="rental",
+        entity_id=rental.id,
+        details={"status": "PENDING"}
+    )
+
     db.commit()
     
     try:
@@ -4270,6 +4472,15 @@ async def admin_mechanic_upload_photos_before(
         urls.append(photo_url)
     
     rental.mechanic_photos_before = urls
+    
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="mechanic_upload_photos_before",
+        entity_type="rental",
+        entity_id=rental.id,
+        details={"photo_count": len(urls)}
+    )
     db.commit()
     
     return {"message": "Фото до осмотра (селфи+кузов) загружены", "photo_count": len(urls)}
@@ -4299,6 +4510,15 @@ async def admin_mechanic_upload_photos_before_interior(
         urls.append(photo_url)
     
     rental.mechanic_photos_before = urls
+
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="mechanic_upload_photos_before_interior",
+        entity_type="rental",
+        entity_id=rental.id,
+        details={"photo_count": len(urls)}
+    )
     db.commit()
     
     return {"message": "Фото салона до осмотра загружены", "photo_count": len(urls)}
@@ -4334,6 +4554,15 @@ async def admin_mechanic_upload_photos_after(
         urls.append(photo_url)
     
     rental.mechanic_photos_after = urls
+
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="mechanic_upload_photos_after",
+        entity_type="rental",
+        entity_id=rental.id,
+        details={"photo_count": len(urls)}
+    )
     db.commit()
     
     return {"message": "Фото после осмотра (селфи+салон) загружены", "photo_count": len(urls)}
@@ -4363,6 +4592,15 @@ async def admin_mechanic_upload_photos_after_car(
         urls.append(photo_url)
     
     rental.mechanic_photos_after = urls
+
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="mechanic_upload_photos_after_car",
+        entity_type="rental",
+        entity_id=rental.id,
+        details={"photo_count": len(urls)}
+    )
     db.commit()
     
     return {"message": "Фото кузова после осмотра загружены", "photo_count": len(urls)}
@@ -4407,6 +4645,17 @@ async def admin_mechanic_complete_inspection(
     car.status = CarStatus.FREE
     car.current_renter_id = None
     
+    car.current_renter_id = None
+    
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="mechanic_complete_inspection",
+        entity_type="rental",
+        entity_id=rental.id,
+        details={"rating": request.rating, "comment": request.comment}
+    )
+
     db.commit()
     
     try:
@@ -4457,6 +4706,17 @@ async def admin_assign_mechanic(
     car.status = CarStatus.SERVICE
     car.current_renter_id = mechanic.id
     
+    car.current_renter_id = mechanic.id
+    
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="assign_mechanic",
+        entity_type="rental",
+        entity_id=rental.id,
+        details={"mechanic_id": str(mechanic.id), "mechanic_name": f"{mechanic.first_name} {mechanic.last_name}"}
+    )
+
     db.commit()
     
     try:
@@ -4529,6 +4789,19 @@ async def admin_unassign_mechanic(
         car.status = CarStatus.PENDING
         car.current_renter_id = None
     
+    if car.status == CarStatus.SERVICE:
+        car.status = CarStatus.PENDING
+        car.current_renter_id = None
+    
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="unassign_mechanic",
+        entity_type="rental",
+        entity_id=rental.id,
+        details={"previous_mechanic_id": str(mechanic_id)}
+    )
+
     db.commit()
     
     try:
@@ -4591,6 +4864,16 @@ async def delete_user(
                 user.admin_comment = delete_reason
         
         db.commit()
+        
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="delete_user_soft",
+            entity_type="user",
+            entity_id=user.id,
+            details={"reason": delete_data.reason}
+        )
+        db.commit()
         message = "Пользователь мягко удалён"
         
         
@@ -4606,6 +4889,16 @@ async def delete_user(
         db.query(UserContractSignature).filter(UserContractSignature.user_id == user.id).delete(synchronize_session=False)
         
         db.delete(user)
+        
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="delete_user_hard",
+            entity_type="user",
+            entity_id=user_uuid,
+            details={"reason": delete_data.reason}
+        )
+
         db.commit()
         message = "Пользователь физически удалён из базы данных"
     

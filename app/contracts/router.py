@@ -19,6 +19,7 @@ from app.models.car_model import Car, CarStatus
 from app.gps_api.utils.auth_api import get_auth_token
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.utils.telegram_logger import log_error_to_telegram, telegram_error_logger
+from app.utils.action_logger import log_action
 from app.websocket.notifications import notify_user_status_update
 import asyncio
 import logging
@@ -127,6 +128,19 @@ async def upload_contract(
         file_name=unique_filename
     )
     db.add(contract_file)
+    
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="admin_upload_contract_template",
+        entity_type="contract_file",
+        entity_id=contract_file.id,
+        details={
+            "contract_type": contract_type.value,
+            "filename": unique_filename
+        }
+    )
+    
     db.commit()
     db.refresh(contract_file)
     
@@ -1039,6 +1053,20 @@ async def admin_sign_contract(
     )
     
     db.add(signature)
+
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="admin_sign_contract_for_user",
+        entity_type="user_contract_signature",
+        entity_id=signature.id,
+        details={
+            "user_id": str(client.id),
+            "contract_type": contract_file.contract_type.value,
+            "contract_file_id": str(contract_file.id)
+        }
+    )
+
     db.commit()
     db.refresh(signature)
     

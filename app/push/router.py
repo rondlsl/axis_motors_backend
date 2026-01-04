@@ -20,7 +20,10 @@ from app.push.schemas import (
     NotificationListResponse,
     DeviceRegisterRequest,
     UserDeviceResponse,
+    BroadcastNotificationRequest,
+    BroadcastLocalizedNotificationRequest
 )
+from app.utils.action_logger import log_action
 from app.push.utils import (
     send_push_notification_async,
     send_localized_notification_to_user,
@@ -634,11 +637,36 @@ async def test_push_by_phone(
     print("-"*80)
     if success:
         print(f"✅ [TEST_PUSH_BY_PHONE] Push отправлен успешно!")
+        
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="test_push_by_phone",
+            entity_type="user",
+            entity_id=target_user.id,
+            details={"phone": payload.phone, "title": payload.title, "body": payload.body}
+        )
+        db.commit()
     else:
         print(f"❌ [TEST_PUSH_BY_PHONE] Ошибка отправки push")
     print("="*80)
     print()
     sys.stdout.flush()
+
+    if success:
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="admin_test_push_by_phone",
+            entity_type="user",
+            entity_id=target_user.id,
+            details={
+                "target_phone": payload.phone,
+                "title": payload.title,
+                "body": payload.body
+            }
+        )
+        db.commit()
     
     # Формируем ответ
     full_name = f"{target_user.first_name or ''} {target_user.last_name or ''} {target_user.middle_name or ''}".strip() or "Не указано"
@@ -927,6 +955,21 @@ async def broadcast_notification(
                 print(f"Ошибка сохранения уведомления для пользователя {user.id}: {e}")
         
         db.commit()
+
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="admin_broadcast_push",
+            entity_type="notification",
+            entity_id=None,
+            details={
+                "title": payload.title,
+                "body": payload.body,
+                "status": payload.status,
+                "success_count": success_count
+            }
+        )
+        db.commit()
         
         print(f"✅ [BROADCAST] Успешно: {success_count}, Ошибок: {failed_count}, Сохранено в БД: {saved_count}")
         
@@ -1045,6 +1088,20 @@ async def broadcast_localized_notification(
         
         print(f"✅ [BROADCAST_LOCALIZED] Успешно: {success_count}, Ошибок: {failed_count}")
         
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="admin_broadcast_localized_push",
+            entity_type="notification",
+            entity_id=None,
+            details={
+                "translation_key": payload.translation_key,
+                "success_count": success_count,
+                "failed_count": failed_count
+            }
+        )
+        db.commit()
+
         return {
             "success": success_count,
             "failed": failed_count,

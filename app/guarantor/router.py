@@ -17,12 +17,8 @@ from app.utils.time_utils import get_local_time
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole
-from app.models.guarantor_model import Guarantor
-from app.models.guarantor_model import (
-    GuarantorRequest, 
-    GuarantorRequestStatus, 
-    Guarantor
-)
+from app.models.guarantor_model import Guarantor, GuarantorRequest, GuarantorRequestStatus
+from app.utils.action_logger import log_action
 from app.models.contract_model import ContractFile, ContractType, UserContractSignature
 from app.models.application_model import Application, ApplicationStatus
 from app.guarantor.schemas import (
@@ -798,6 +794,19 @@ async def upload_contract(
         )
         
         db.add(new_contract)
+        
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="admin_upload_contract",
+            entity_type="contract",
+            entity_id=None, 
+            details={
+                "contract_type": contract_data.contract_type,
+                "file_name": unique_filename
+            }
+        )
+        
         db.commit()
     
         return {"message": f"Договор {contract_data.contract_type} успешно загружен"}

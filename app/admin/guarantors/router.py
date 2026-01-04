@@ -20,6 +20,7 @@ from app.utils.telegram_logger import log_error_to_telegram
 from app.utils.time_utils import get_local_time
 from app.push.utils import send_localized_notification_to_user, user_has_push_tokens
 from app.websocket.notifications import notify_user_status_update
+from app.utils.action_logger import log_action
 
 guarantors_router = APIRouter(tags=["Admin Guarantors"])
 
@@ -100,6 +101,19 @@ async def approve_guarantor_request(
     guarantor = db.query(User).filter(User.id == request.guarantor_id).first()
     
     db.commit()
+
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="approve_guarantor_request",
+        entity_type="guarantor_request",
+        entity_id=request.id,
+        details={
+            "admin_notes": approval_data.admin_notes,
+            "auto_classes": [cls.value for cls in approval_data.auto_classes]
+        }
+    )
+    db.commit()
     
     if requestor:
         asyncio.create_task(notify_user_status_update(str(requestor.id)))
@@ -173,6 +187,19 @@ async def reject_guarantor_request(
     # Получаем данные заявителя для отправки SMS
     requestor = db.query(User).filter(User.id == request.requestor_id).first()
     
+    db.commit()
+
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="reject_guarantor_request",
+        entity_type="guarantor_request",
+        entity_id=request.id,
+        details={
+            "rejection_data": rejection_data.dict(),
+            "admin_notes": rejection_data.admin_notes
+        }
+    )
     db.commit()
     
     # Отправляем SMS заявителю с предложением гаранта

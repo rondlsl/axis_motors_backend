@@ -32,6 +32,7 @@ from app.admin.cars.utils import sort_car_photos
 from app.push.utils import send_localized_notification_to_user, send_localized_notification_to_user_async, user_has_push_tokens, get_user_push_tokens
 from pydantic import BaseModel
 from app.models.guarantor_model import Guarantor, GuarantorRequest, GuarantorRequestStatus
+from app.utils.action_logger import log_action
 
 # Временно закомментировано: генерация FCM токенов
 # from app.utils.fcm_token import ensure_user_has_unique_fcm_token
@@ -1446,6 +1447,17 @@ async def open_vehicle_by_id(
             )
             db.add(action)
             db.commit()
+
+        if current_user.role == UserRole.ADMIN:
+            log_action(
+                db,
+                actor_id=current_user.id,
+                action="admin_gps_open_vehicle",
+                entity_type="car",
+                entity_id=car.id,
+                details={"rental_id": str(rental.id) if rental else None}
+            )
+            db.commit()
         
         return {"message": "Команда открытия отправлена", "car_name": car.name, "result": cmd}
     except Exception as e:
@@ -1493,6 +1505,17 @@ async def close_vehicle_by_id(
                 action_type=ActionType.CLOSE_VEHICLE
             )
             db.add(action)
+            db.commit()
+
+        if current_user.role == UserRole.ADMIN:
+            log_action(
+                db,
+                actor_id=current_user.id,
+                action="admin_gps_close_vehicle",
+                entity_type="car",
+                entity_id=car.id,
+                details={"rental_id": str(rental.id) if rental else None}
+            )
             db.commit()
         
         return {"message": "Команда закрытия отправлена", "car_name": car.name, "result": cmd}
@@ -1542,6 +1565,17 @@ async def lock_engine_by_id(
             )
             db.add(action)
             db.commit()
+
+        if current_user.role == UserRole.ADMIN:
+            log_action(
+                db,
+                actor_id=current_user.id,
+                action="admin_gps_lock_engine",
+                entity_type="car",
+                entity_id=car.id,
+                details={"rental_id": str(rental.id) if rental else None}
+            )
+            db.commit()
         
         return {"message": "Команда блокировки двигателя отправлена", "car_name": car.name, "result": cmd}
     except Exception as e:
@@ -1590,6 +1624,17 @@ async def unlock_engine_by_id(
             )
             db.add(action)
             db.commit()
+            
+        if current_user.role == UserRole.ADMIN:
+            log_action(
+                db,
+                actor_id=current_user.id,
+                action="admin_gps_unlock_engine",
+                entity_type="car",
+                entity_id=car.id,
+                details={"rental_id": str(rental.id) if rental else None}
+            )
+            db.commit()
         
         return {"message": "Команда разблокировки двигателя отправлена", "car_name": car.name, "result": cmd}
     except Exception as e:
@@ -1637,6 +1682,17 @@ async def give_key_by_id(
                 action_type=ActionType.GIVE_KEY
             )
             db.add(action)
+            db.commit()
+
+        if current_user.role == UserRole.ADMIN:
+            log_action(
+                db,
+                actor_id=current_user.id,
+                action="admin_gps_give_key",
+                entity_type="car",
+                entity_id=car.id,
+                details={"rental_id": str(rental.id) if rental else None}
+            )
             db.commit()
         
         return {"message": "Команда выдачи ключа отправлена", "car_name": car.name, "result": cmd}
@@ -1708,6 +1764,17 @@ async def take_key_by_id(
                 action_type=ActionType.TAKE_KEY
             )
             db.add(action)
+            db.commit()
+
+        if current_user.role == UserRole.ADMIN:
+            log_action(
+                db,
+                actor_id=current_user.id,
+                action="admin_gps_take_key",
+                entity_type="car",
+                entity_id=car.id,
+                details={"rental_id": str(rental.id) if rental else None}
+            )
             db.commit()
         
         return {"message": "Команда забора ключа отправлена", "car_name": car.name, "result": cmd}

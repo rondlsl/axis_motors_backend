@@ -8,6 +8,7 @@ from app.models.user_model import User, UserRole
 from app.models.app_version_model import AppVersion
 from app.app_versions.schemas import AppVersionResponse
 from app.utils.short_id import uuid_to_sid
+from app.utils.action_logger import log_action
 
 router = APIRouter(tags=["Admin App Versions"])
 
@@ -44,6 +45,17 @@ async def update_ai_status(
     app_version.update_timestamp()
     
     db.commit()
+    
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="update_ai_status",
+        entity_type="app_version",
+        entity_id=app_version.id,
+        details={"ai_is_worked": request.ai_is_worked}
+    )
+    db.commit()
+
     db.refresh(app_version)
     
     return {

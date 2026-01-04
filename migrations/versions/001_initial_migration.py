@@ -40,6 +40,7 @@ def upgrade() -> None:
     create_promo_codes_table()
     create_user_promo_codes_table()
     create_support_actions_table()
+    create_action_logs_table()
     create_wallet_transactions_table()
     create_support_chats_table()
     create_support_messages_table()
@@ -663,6 +664,22 @@ def create_support_actions_table():
     )
 
 
+def create_action_logs_table():
+    """Create action_logs table"""
+    op.create_table('action_logs',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
+        sa.Column('actor_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=False),
+        sa.Column('action', sa.String(128), nullable=False),
+        sa.Column('entity_type', sa.String(64), nullable=True),
+        sa.Column('entity_id', postgresql.UUID(as_uuid=True), nullable=True),
+        sa.Column('details', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now())
+    )
+    op.create_index('ix_action_logs_actor_id', 'action_logs', ['actor_id'])
+    op.create_index('ix_action_logs_created_at', 'action_logs', ['created_at'])
+
+
+
 def create_wallet_transactions_table():
     """Create wallet_transactions table"""
     op.create_table('wallet_transactions',
@@ -759,6 +776,7 @@ def downgrade() -> None:
     # Drop all tables in reverse order
     # Drop indexes first (with existence check)
     op.drop_table('car_availability_history')
+    op.drop_table('action_logs')
     op.execute("""
         DO $$ BEGIN
             IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'ix_auth_tokens_token') THEN

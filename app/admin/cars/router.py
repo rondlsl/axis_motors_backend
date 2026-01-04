@@ -42,6 +42,7 @@ import asyncio
 import uuid
 import httpx
 from app.models.contract_model import UserContractSignature, ContractFile, ContractType
+from app.utils.action_logger import log_action
 
 VEHICLE_STATUS_FIELDS = [
     "is_engine_on", "is_ignition_on", "is_hood_open",
@@ -95,6 +96,16 @@ async def edit_car(
             setattr(car, field, value)
 
     db.commit()
+    
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="edit_car",
+        entity_type="car",
+        entity_id=car.id,
+        details={"updated_fields": list(update_fields.keys()), "update_data": str(update_fields)}
+    )
+
     db.refresh(car)
 
     return car_to_detail_schema(car, db)
@@ -327,6 +338,16 @@ async def change_car_status(
             )
             db.add(sa)
             db.commit()
+
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="change_car_status",
+            entity_type="car",
+            entity_id=car.id,
+            details={"old_status": old_status.value if old_status else None, "new_status": new_status.value}
+        )
+        db.commit()
         
         return {
             "message": "Статус автомобиля успешно изменен",
@@ -416,15 +437,27 @@ async def delete_car(
             "plate_number": car.plate_number,
             "status": car.status.value if car.status else None
         }
+
+        # Delete related comments
+        db.query(CarComment).filter(CarComment.car_id == car.id).delete()
+        
+        # Delete related rentals cache or similar if needed (skipped here as cascade happens in DB usually or handled below)
         
         db.delete(car)
+        
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="delete_car",
+            entity_type="car",
+            entity_id=car_id, 
+            details={"car_info": car_info}
+        )
+        
         db.commit()
         
-        return {
-            "message": "Автомобиль успешно удален",
-            "deleted_car": car_info
-        }
-        
+        return {"message": "Автомобиль успешно удален", "car": car_info}
+
     except HTTPException:
         raise
     except Exception as e:
@@ -541,6 +574,16 @@ async def create_car_comment(
     )
 
     db.add(comment)
+    
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="add_car_comment",
+        entity_type="car_comment",
+        entity_id=comment.id,
+        details={"car_id": car_id, "comment": comment.comment}
+    )
+    
     db.commit()
     db.refresh(comment)
 
@@ -601,6 +644,20 @@ async def update_car_comment(
     comment.updated_at = get_local_time()
 
     db.commit()
+    
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="update_car_comment",
+        entity_type="car_comment",
+        entity_id=comment.id,
+        details={
+            "car_id": car_id, 
+            "new_comment": comment.comment if comment_data.comment else None
+        }
+    )
+    
+    db.commit()
     db.refresh(comment)
 
     # Аудит действий поддержки
@@ -656,6 +713,16 @@ async def delete_car_comment(
         raise HTTPException(status_code=404, detail="Комментарий не найден")
 
     db.delete(comment)
+    
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="delete_car_comment",
+        entity_type="car_comment",
+        entity_id=comment_uuid,
+        details={"car_id": car_id}
+    )
+    
     db.commit()
 
     # Аудит действий поддержки
@@ -1451,6 +1518,16 @@ async def update_car(
             setattr(car, field, value)
 
     db.commit()
+
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="update_car",
+        entity_type="car",
+        entity_id=car.id,
+        details={"updated_fields": list(update_data.keys()), "update_data": str(update_data)}
+    )
+
     db.refresh(car)
 
     return {
@@ -1510,6 +1587,17 @@ async def upload_car_photos(
 
     existing = car.photos or []
     car.photos = existing + saved_paths
+    car.photos = existing + saved_paths
+    
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="upload_car_photos",
+        entity_type="car",
+        entity_id=car.id,
+        details={"added_count": len(saved_paths), "total_count": len(car.photos)}
+    )
+
     db.commit()
     db.refresh(car)
 
@@ -1568,6 +1656,15 @@ async def delete_car_photos(
         db.commit()
         db.refresh(car)
 
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="delete_car_photos",
+            entity_type="car",
+            entity_id=car.id,
+            details={"deleted_count": deleted_count, "deleted_files": deleted_files}
+        )
+        
         return {
             "message": "Все фотографии автомобиля успешно удалены",
             "car_id": uuid_to_sid(car.id),
@@ -1607,6 +1704,29 @@ async def delete_car_rentals(
 
         deleted_rentals_count = len(rentals)
         deleted_actions_count = 0
+        
+        for rental in rentals:
+             db.delete(rental)
+        
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="delete_car_rentals",
+            entity_type="car",
+            entity_id=car.id,
+            details={"deleted_rentals_count": deleted_rentals_count}
+        )
+        
+        db.commit()
+        
+        return {
+            "message": "Поездки автомобиля удалены",
+            "car_id": uuid_to_sid(car.id),
+            "deleted_count": deleted_rentals_count
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Ошибка удаления поездок: {str(e)}")
         deleted_signatures_count = 0
         deleted_transactions_count = 0
         deleted_reviews_count = 0
@@ -1872,6 +1992,16 @@ async def admin_open_vehicle(
             raise HTTPException(status_code=500, detail="Не удалось получить токен авторизации GPS")
         
         result = await send_open(car.gps_imei, auth_token)
+
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="open_vehicle",
+            entity_type="car",
+            entity_id=car.id,
+            details={"gps_imei": car.gps_imei, "command_id": result.get("command_id")}
+        )
+        db.commit()
         
         return {
             "message": "Команда на открытие отправлена",
@@ -1911,6 +2041,16 @@ async def admin_close_vehicle(
             raise HTTPException(status_code=500, detail="Не удалось получить токен авторизации GPS")
         
         result = await send_close(car.gps_imei, auth_token)
+
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="close_vehicle",
+            entity_type="car",
+            entity_id=car.id,
+            details={"gps_imei": car.gps_imei, "command_id": result.get("command_id")}
+        )
+        db.commit()
         
         return {
             "message": "Команда на закрытие отправлена",
@@ -1950,6 +2090,16 @@ async def admin_lock_engine(
             raise HTTPException(status_code=500, detail="Не удалось получить токен авторизации GPS")
         
         result = await send_lock_engine(car.gps_imei, auth_token)
+
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="lock_engine",
+            entity_type="car",
+            entity_id=car.id,
+            details={"gps_imei": car.gps_imei, "command_id": result.get("command_id"), "skipped": False}
+        )
+        db.commit()
         
         if result.get("skipped"):
             return {
@@ -1998,6 +2148,16 @@ async def admin_unlock_engine(
             raise HTTPException(status_code=500, detail="Не удалось получить токен авторизации GPS")
         
         result = await send_unlock_engine(car.gps_imei, auth_token)
+
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="unlock_engine",
+            entity_type="car",
+            entity_id=car.id,
+            details={"gps_imei": car.gps_imei, "command_id": result.get("command_id")}
+        )
+        db.commit()
         
         return {
             "message": "Команда на разблокировку двигателя отправлена",
@@ -2037,6 +2197,16 @@ async def admin_give_key(
             raise HTTPException(status_code=500, detail="Не удалось получить токен авторизации GPS")
         
         result = await send_give_key(car.gps_imei, auth_token)
+
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="give_key",
+            entity_type="car",
+            entity_id=car.id,
+            details={"gps_imei": car.gps_imei, "command_id": result.get("command_id")}
+        )
+        db.commit()
         
         return {
             "message": "Команда на выдачу ключа отправлена",
@@ -2091,6 +2261,16 @@ async def admin_take_key(
             logger.warning(f"Не удалось проверить состояние двигателя: {e}")
         
         result = await send_take_key(car.gps_imei, auth_token)
+
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="take_key",
+            entity_type="car",
+            entity_id=car.id,
+            details={"gps_imei": car.gps_imei, "command_id": result.get("command_id"), "engine_was_locked": engine_was_locked}
+        )
+        db.commit()
         
         return {
             "message": "Команда на забор ключа отправлена",
