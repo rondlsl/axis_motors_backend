@@ -892,6 +892,7 @@ async def get_user_card(
         "last_activity_at": user.last_activity_at,
         "mvd_approved": mvd_approved,
         "is_blocked": user.is_blocked,
+        "can_exit_zone": user.can_exit_zone,
         "admin_comment": user.admin_comment,
         "current_rental_car": current_car,
         "owner_earnings_current_month": owner_earnings["current_month"] if owner_earnings else None,

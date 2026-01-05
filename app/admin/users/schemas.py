@@ -71,6 +71,7 @@ class UserCardSchema(SidMixin):
     last_activity_at: Optional[datetime] = None
     mvd_approved: bool = False
     is_blocked: bool = False
+    can_exit_zone: bool = False
     admin_comment: Optional[str] = None
     
     # Дополнительная информация
