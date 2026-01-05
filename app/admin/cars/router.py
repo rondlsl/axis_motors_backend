@@ -1021,14 +1021,9 @@ async def get_car_trips_list(
             r.mechanic_inspection_status != "CANCELLED"
         )
         
-        # Если идет осмотр механиком, возвращаем статус осмотра
+        # Если идет осмотр механиком, возвращаем статус "service"
         if is_mechanic_inspecting:
-            if r.mechanic_inspection_status == "PENDING":
-                display_rental_status = "pending"
-            elif r.mechanic_inspection_status == "IN_PROGRESS":
-                display_rental_status = "service"
-            else:
-                display_rental_status = r.mechanic_inspection_status.lower() if r.mechanic_inspection_status else "pending"
+            display_rental_status = "service"
         else:
             display_rental_status = rental_status_value if has_inspection or rental_status_value != "completed" else "pending"
         
