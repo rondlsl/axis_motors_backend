@@ -59,7 +59,7 @@ async def billing_job():
     """
     push_notifications, telegram_alerts, lock_requests = await asyncio.to_thread(process_rentals_sync)
 
-    db = SessionLocal()
+    db = None  
 
     push_semaphore = get_global_push_notification_semaphore()
     
@@ -122,6 +122,7 @@ async def billing_job():
 
     # 5) Выполняем блокировки двигателя для просроченных (10+ минут) нулевых балансов
     try:
+        db = SessionLocal()  
         if lock_requests:
             auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
             for imei, car_name, user_id in lock_requests:
@@ -231,7 +232,8 @@ async def billing_job():
     except Exception as e:
         print(f"Error sending WebSocket notifications in billing_job: {e}")
     finally:
-        db.close()
+        if db:
+            db.close()
 
     await asyncio.sleep(0)
 
@@ -259,6 +261,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
     rental_count = db.query(RentalHistory).count()
     if rental_count == 0:
         print("ℹ️ Таблица rental_history пуста, пропускаем billing_job")
+        db.close()
         return [], [], []
     
     rentals = (
