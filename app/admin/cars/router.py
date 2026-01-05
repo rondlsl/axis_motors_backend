@@ -1110,12 +1110,32 @@ async def get_trip_detail(
     )
     
     rental_status_value = rental.rental_status.value if rental.rental_status else None
-    display_rental_status = rental_status_value if has_inspection or rental_status_value != "completed" else "pending"
+    
+    # Проверяем, идет ли осмотр механиком (машина в статусе SERVICE)
+    is_mechanic_inspecting = (
+        car.status == CarStatus.SERVICE and 
+        rental.mechanic_inspector_id is not None and
+        rental.mechanic_inspection_status is not None and
+        rental.mechanic_inspection_status != "COMPLETED" and
+        rental.mechanic_inspection_status != "CANCELLED"
+    )
+    
+    # Если идет осмотр механиком, возвращаем статус осмотра
+    if is_mechanic_inspecting:
+        if rental.mechanic_inspection_status == "PENDING":
+            display_rental_status = "pending"
+        elif rental.mechanic_inspection_status == "IN_PROGRESS":
+            display_rental_status = "in_progress"
+        else:
+            display_rental_status = rental.mechanic_inspection_status.lower() if rental.mechanic_inspection_status else "pending"
+    else:
+        display_rental_status = rental_status_value if has_inspection or rental_status_value != "completed" else "pending"
 
     result = {
         "rental_id": uuid_to_sid(rental.id),
         "car_name": car.name,
         "plate_number": car.plate_number,
+        "car_status": car.status.value if car.status else None,  # Статус машины (SERVICE, FREE, etc.)
         "reservation_time": rental.reservation_time.isoformat() if rental.reservation_time else None,
         "start_time": rental.start_time.isoformat() if rental.start_time else None,
         "end_time": rental.end_time.isoformat() if rental.end_time else None,
@@ -1125,7 +1145,12 @@ async def get_trip_detail(
         "total_price": rental.total_price,
         "total_price_without_fuel": total_price_without_fuel,
         "rental_status": display_rental_status,
-        "status_display": "Требует осмотра" if display_rental_status == "pending" else ("Завершена" if display_rental_status == "completed" else display_rental_status),
+        "status_display": (
+            "Требует осмотра" if display_rental_status == "pending" 
+            else "Осмотр в процессе" if display_rental_status == "in_progress"
+            else "Завершена" if display_rental_status == "completed" 
+            else display_rental_status
+        ),
         "rental_type": rental.rental_type.value,
         "tariff": rental.rental_type.value,
         "tariff_display": tariff_display,
