@@ -962,7 +962,16 @@ async def get_car_trips_list(
     
     rentals = base_query.offset((page - 1) * limit).limit(limit).all()
 
-    def get_status_display(status, has_inspection=True):
+    def get_status_display(status, has_inspection=True, is_mechanic_inspecting=False, inspection_status=None):
+        # Если идет осмотр механиком, возвращаем соответствующий статус
+        if is_mechanic_inspecting:
+            if inspection_status == "PENDING":
+                return "Требует осмотра"
+            elif inspection_status == "IN_PROGRESS":
+                return "Осмотр в процессе"
+            else:
+                return inspection_status or "Требует осмотра"
+        
         status_map = {
             "reserved": "Забронирована",
             "in_use": "В аренде",
@@ -972,6 +981,8 @@ async def get_car_trips_list(
             "delivering_in_progress": "Доставляется",
             "delivery_reserved": "Доставка забронирована",
             "scheduled": "Запланирована",
+            "pending": "Требует осмотра",
+            "service": "Осмотр в процессе",
         }
         return status_map.get(status, status)
 
@@ -1001,10 +1012,30 @@ async def get_car_trips_list(
             (r.mechanic_photos_after and len(r.mechanic_photos_after) > 0)
         )
         
+        # Проверяем, идет ли осмотр механиком (машина в статусе SERVICE)
+        is_mechanic_inspecting = (
+            car.status == CarStatus.SERVICE and 
+            r.mechanic_inspector_id is not None and
+            r.mechanic_inspection_status is not None and
+            r.mechanic_inspection_status != "COMPLETED" and
+            r.mechanic_inspection_status != "CANCELLED"
+        )
+        
+        # Если идет осмотр механиком, возвращаем статус осмотра
+        if is_mechanic_inspecting:
+            if r.mechanic_inspection_status == "PENDING":
+                display_rental_status = "pending"
+            elif r.mechanic_inspection_status == "IN_PROGRESS":
+                display_rental_status = "service"
+            else:
+                display_rental_status = r.mechanic_inspection_status.lower() if r.mechanic_inspection_status else "pending"
+        else:
+            display_rental_status = rental_status_value if has_inspection or rental_status_value != "completed" else "pending"
+        
         items.append({
             "rental_id": uuid_to_sid(r.id),
-            "rental_status": rental_status_value if has_inspection or rental_status_value != "completed" else "pending",
-            "status_display": get_status_display(rental_status_value, has_inspection),
+            "rental_status": display_rental_status,
+            "status_display": get_status_display(display_rental_status, has_inspection, is_mechanic_inspecting, r.mechanic_inspection_status),
             "reservation_time": r.reservation_time.isoformat() if r.reservation_time else None,
             "start_date": r.start_time.isoformat() if r.start_time else None,
             "end_date": r.end_time.isoformat() if r.end_time else None,
