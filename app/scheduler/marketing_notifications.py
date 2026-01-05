@@ -225,6 +225,7 @@ async def check_weekend_promotions():
             notification_key = "monday_morning"
         
         if not notification_key:
+            db.close()
             return
         
         user_ids_result = (
@@ -247,6 +248,7 @@ async def check_weekend_promotions():
         
         if not user_ids_result:
             logger.info(f"Нет пользователей с push токенами для {notification_key}")
+            db.close()
             return
         
         user_ids = [uid[0] for uid in user_ids_result]
@@ -284,6 +286,7 @@ async def check_new_cars():
         )
 
         if not new_cars_exist:
+            db.close()
             return
 
         user_ids_result = (
@@ -305,6 +308,7 @@ async def check_new_cars():
         )
 
         if not user_ids_result:
+            db.close()
             return
 
         user_ids = [uid[0] for uid in user_ids_result]
