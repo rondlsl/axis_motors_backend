@@ -72,6 +72,12 @@ NOTIFICATIONS_TRANSLATIONS = {
         # Новая машина для осмотра
         "new_car_for_inspection_title": "Новая машина для осмотра",
         "new_car_for_inspection_body": "Аренда автомобиля {car_name} ({plate_number}) завершена. Требуется осмотр.",
+        
+        "inspection_assigned_by_admin_title": "Вам назначен осмотр",
+        "inspection_assigned_by_admin_body": "Администратор назначил вас для осмотра автомобиля {car_name} ({plate_number}). Пожалуйста, проведите осмотр.",
+        
+        "inspection_unassigned_by_admin_title": "Назначение отменено",
+        "inspection_unassigned_by_admin_body": "Администратор снял назначение на осмотр автомобиля {car_name} ({plate_number}).",
 
         # Повторная проверка документов по запросу финансиста
         "financier_request_recheck_title": "Требуется повторная проверка документов",
@@ -269,6 +275,12 @@ NOTIFICATIONS_TRANSLATIONS = {
         # New car for inspection
         "new_car_for_inspection_title": "New Car for Inspection",
         "new_car_for_inspection_body": "Rental of car {car_name} ({plate_number}) completed. Inspection required.",
+        
+        "inspection_assigned_by_admin_title": "Inspection Assigned",
+        "inspection_assigned_by_admin_body": "Administrator assigned you to inspect vehicle {car_name} ({plate_number}). Please perform the inspection.",
+        
+        "inspection_unassigned_by_admin_title": "Assignment Cancelled",
+        "inspection_unassigned_by_admin_body": "Administrator cancelled your assignment to inspect vehicle {car_name} ({plate_number}).",
 
         # Recheck requested by financier
         "financier_request_recheck_title": "Documents Recheck Required",
@@ -465,6 +477,14 @@ NOTIFICATIONS_TRANSLATIONS = {
         # Жаңа автомобильді тексеру
         "new_car_for_inspection_title": "Жаңа автомобильді тексеру",
         "new_car_for_inspection_body": "{car_name} ({plate_number}) автомобилінің жалға алуы аяқталды. Тексеру қажет.",
+        
+        # Механик осмотрға тағайындалды
+        "inspection_assigned_by_admin_title": "Сізге тексеру тағайындалды",
+        "inspection_assigned_by_admin_body": "Әкімші сізді {car_name} ({plate_number}) автомобилін тексеруге тағайындады. Тексеруді өткізіңіз.",
+        
+        # Механиктің тағайындауы алынды
+        "inspection_unassigned_by_admin_title": "Тағайындау алынды",
+        "inspection_unassigned_by_admin_body": "Әкімші {car_name} ({plate_number}) автомобилін тексеруге тағайындауды алды.",
 
         # Қаржы менеджерінің сұрауы бойынша құжаттарды қайта тексеру
         "financier_request_recheck_title": "Құжаттарды қайта тексеру қажет",
@@ -661,6 +681,12 @@ NOTIFICATIONS_TRANSLATIONS = {
         # 需要检查的新车
         "new_car_for_inspection_title": "需要检查的新车",
         "new_car_for_inspection_body": "车辆 {car_name} ({plate_number}) 的租赁已完成。需要检查。",
+        
+        "inspection_assigned_by_admin_title": "已分配检查任务",
+        "inspection_assigned_by_admin_body": "管理员已指派您检查车辆 {car_name} ({plate_number})。请进行检查。",
+        
+        "inspection_unassigned_by_admin_title": "已取消分配",
+        "inspection_unassigned_by_admin_body": "管理员已取消您对车辆 {car_name} ({plate_number}) 的检查任务。",
 
         # 财务要求重新检查文件
         "financier_request_recheck_title": "需要重新检查文件",

@@ -4733,8 +4733,8 @@ async def admin_assign_mechanic(
         if user_has_push_tokens(db, mechanic.id):
             await send_localized_notification_to_user_async(
                 mechanic.id,
-                "new_car_for_inspection",
-                "new_car_for_inspection",
+                "inspection_assigned_by_admin",
+                "inspection_assigned_by_admin",
                 car_name=car.name,
                 plate_number=car.plate_number
             )
@@ -4813,6 +4813,18 @@ async def admin_unassign_mechanic(
             await notify_user_status_update(str(car.owner_id))
     except Exception as e:
         print(f"Error sending WebSocket notifications: {e}")
+    
+    try:
+        if user_has_push_tokens(db, mechanic_id):
+            await send_localized_notification_to_user_async(
+                mechanic_id,
+                "inspection_unassigned_by_admin",
+                "inspection_unassigned_by_admin",
+                car_name=car.name,
+                plate_number=car.plate_number
+            )
+    except Exception as e:
+        print(f"Error sending push notification: {e}")
     
     return {
         "message": "Назначение механика снято",
