@@ -1042,6 +1042,7 @@ async def get_car_trips_list(
             "tariff": r.rental_type.value if r.rental_type else None,
             "tariff_display": tariff_display,
             "total_price": r.total_price,
+            "owner_earnings": int(((r.base_price or 0) + (r.waiting_fee or 0) + (r.overtime_fee or 0)) * 0.5 * 0.97),
             "renter": {
                 "id": uuid_to_sid(renter.id),
                 "first_name": renter.first_name,
@@ -1192,6 +1193,12 @@ async def get_trip_detail(
         "with_driver": rental.with_driver,
         "driver_fee": rental.driver_fee or 0,
         "rebooking_fee": rental.rebooking_fee or 0,
+        
+        "base_price_owner": int((rental.base_price or 0) * 0.5 * 0.97),
+        "waiting_fee_owner": int((rental.waiting_fee or 0) * 0.5 * 0.97),
+        "overtime_fee_owner": int((rental.overtime_fee or 0) * 0.5 * 0.97),
+        "total_owner_earnings": int(((rental.base_price or 0) + (rental.waiting_fee or 0) + (rental.overtime_fee or 0)) * 0.5 * 0.97),
+        
         "fuel_before": rental.fuel_before,
         "fuel_after": rental.fuel_after,
         "fuel_after_main_tariff": rental.fuel_after_main_tariff,
