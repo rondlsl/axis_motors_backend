@@ -1146,8 +1146,11 @@ async def get_trip_detail(
         rental.mechanic_inspection_status != "CANCELLED"
     )
     
+    # Если статус осмотра "IN_USE", возвращаем статус "in_progress"
+    if rental.mechanic_inspection_status == "IN_USE":
+        display_rental_status = "in_progress"
     # Если идет осмотр механиком, возвращаем статус "in_progress"
-    if is_mechanic_inspecting:
+    elif is_mechanic_inspecting:
         display_rental_status = "in_progress"
     else:
         display_rental_status = rental_status_value if has_inspection or rental_status_value != "completed" else "pending"
@@ -1253,6 +1256,7 @@ async def get_trip_detail(
         "status_display": {
             "PENDING": "Ожидает осмотра",
             "IN_PROGRESS": "Осмотр в процессе",
+            "IN_USE": "IN_USE",
             "COMPLETED": "Осмотр завершён",
             "CANCELLED": "Осмотр отменён",
         }.get(rental.mechanic_inspection_status, rental.mechanic_inspection_status),
