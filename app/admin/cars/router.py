@@ -1043,6 +1043,9 @@ async def get_car_trips_list(
             "tariff_display": tariff_display,
             "total_price": r.total_price,
             "owner_earnings": int(((r.base_price or 0) + (r.waiting_fee or 0) + (r.overtime_fee or 0)) * 0.5 * 0.97),
+            "base_price_owner": int((r.base_price or 0) * 0.5 * 0.97),
+            "waiting_fee_owner": int((r.waiting_fee or 0) * 0.5 * 0.97),
+            "overtime_fee_owner": int((r.overtime_fee or 0) * 0.5 * 0.97),
             "renter": {
                 "id": uuid_to_sid(renter.id),
                 "first_name": renter.first_name,
