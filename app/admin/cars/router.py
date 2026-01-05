@@ -964,10 +964,10 @@ async def get_car_trips_list(
 
     def get_status_display(status, has_inspection=True, is_mechanic_inspecting=False, inspection_status=None):
         # Если идет осмотр механиком, возвращаем соответствующий статус
-        if is_mechanic_inspecting:
+        if is_mechanic_inspecting or inspection_status == "IN_USE":
             if inspection_status == "PENDING":
                 return "Требует осмотра"
-            elif inspection_status == "IN_PROGRESS":
+            elif inspection_status == "IN_PROGRESS" or inspection_status == "IN_USE":
                 return "Осмотр в процессе"
             else:
                 return inspection_status or "Требует осмотра"
@@ -975,6 +975,7 @@ async def get_car_trips_list(
         status_map = {
             "reserved": "Забронирована",
             "in_use": "В аренде",
+            "in_progress": "Осмотр в процессе",
             "completed": "Завершена" if has_inspection else "Требует осмотра",
             "cancelled": "Отменена",
             "delivering": "Доставка",
@@ -1021,9 +1022,12 @@ async def get_car_trips_list(
             r.mechanic_inspection_status != "CANCELLED"
         )
         
-        # Если идет осмотр механиком, возвращаем статус "service"
-        if is_mechanic_inspecting:
-            display_rental_status = "service"
+        # Если статус осмотра "IN_USE", возвращаем статус "in_progress"
+        if r.mechanic_inspection_status == "IN_USE":
+            display_rental_status = "in_progress"
+        # Если идет осмотр механиком, возвращаем статус "in_progress"
+        elif is_mechanic_inspecting:
+            display_rental_status = "in_progress"
         else:
             display_rental_status = rental_status_value if has_inspection or rental_status_value != "completed" else "pending"
         
