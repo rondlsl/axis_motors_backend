@@ -11,6 +11,9 @@ engine = create_engine(
     pool_timeout=30,  # ждать соединение не более 30 секунд
     pool_pre_ping=True,  # проверять «живость» соединения перед выдачей
     pool_recycle=1800,  # перезапускать соединение через 30 минут
+    connect_args={
+        "options": "-c statement_timeout=180000 -c lock_timeout=60000 -c idle_in_transaction_session_timeout=180000"
+    }
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
