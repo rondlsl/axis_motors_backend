@@ -3273,6 +3273,235 @@ async def edit_user(
     return {"message": "Пользователь обновлен"}
 
 
+@users_router.post("/{user_id}/edit-full", summary="Полное редактирование пользователя (Admin)")
+async def edit_user_full(
+    user_id: str,
+    first_name: Optional[str] = Form(None, description="Имя"),
+    last_name: Optional[str] = Form(None, description="Фамилия"),
+    middle_name: Optional[str] = Form(None, description="Отчество"),
+    phone_number: Optional[str] = Form(None, description="Номер телефона"),
+    email: Optional[str] = Form(None, description="Email"),
+    iin: Optional[str] = Form(None, description="ИИН (12 цифр)"),
+    passport_number: Optional[str] = Form(None, description="Номер паспорта"),
+    birth_date: Optional[str] = Form(None, description="Дата рождения (YYYY-MM-DD)"),
+    drivers_license_expiry: Optional[str] = Form(None, description="Срок действия прав (YYYY-MM-DD)"),
+    id_card_expiry: Optional[str] = Form(None, description="Срок действия ID карты (YYYY-MM-DD)"),
+    locale: Optional[str] = Form(None, description="Язык (ru/en/kz/zh)"),
+    admin_comment: Optional[str] = Form(None, description="Комментарий администратора"),
+    role: Optional[str] = Form(None, description="Роль пользователя"),
+    auto_class: Optional[str] = Form(None, description="Классы авто через запятую (A,B,C)"),
+    is_active: Optional[bool] = Form(None, description="Активен"),
+    is_blocked: Optional[bool] = Form(None, description="Заблокирован"),
+    is_verified_email: Optional[bool] = Form(None, description="Email подтвержден"),
+    is_citizen_kz: Optional[bool] = Form(None, description="Гражданин РК"),
+    documents_verified: Optional[bool] = Form(None, description="Документы проверены"),
+    is_consent_to_data_processing: Optional[bool] = Form(None, description="Согласие на обработку данных"),
+    is_contract_read: Optional[bool] = Form(None, description="Договор прочитан"),
+    is_user_agreement: Optional[bool] = Form(None, description="Пользовательское соглашение"),
+    can_exit_zone: Optional[bool] = Form(None, description="Разрешение на выезд за зону"),
+    wallet_balance: Optional[float] = Form(None, description="Баланс кошелька"),
+    rating: Optional[float] = Form(None, description="Рейтинг"),
+    selfie: Optional[UploadFile] = File(None, description="Селфи"),
+    selfie_with_license: Optional[UploadFile] = File(None, description="Селфи с правами"),
+    drivers_license: Optional[UploadFile] = File(None, description="Водительские права"),
+    id_card_front: Optional[UploadFile] = File(None, description="Лицевая сторона ID карты"),
+    id_card_back: Optional[UploadFile] = File(None, description="Обратная сторона ID карты"),
+    psych_neurology_certificate: Optional[UploadFile] = File(None, description="Справка из ПНД"),
+    narcology_certificate: Optional[UploadFile] = File(None, description="Справка из НД"),
+    pension_contributions_certificate: Optional[UploadFile] = File(None, description="Справка о пенсионных отчислениях"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Полное редактирование всех данных пользователя.
+    Поддерживает загрузку файлов (фото, справки).
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только для администраторов")
+    
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    changes = {}
+    
+    if first_name is not None:
+        user.first_name = first_name
+        changes["first_name"] = first_name
+    if last_name is not None:
+        user.last_name = last_name
+        changes["last_name"] = last_name
+    if middle_name is not None:
+        user.middle_name = middle_name
+        changes["middle_name"] = middle_name
+    if phone_number is not None:
+        user.phone_number = phone_number
+        changes["phone_number"] = phone_number
+    if email is not None:
+        user.email = email.lower().strip() if email else None
+        changes["email"] = email
+    if iin is not None:
+        user.iin = iin
+        changes["iin"] = iin
+    if passport_number is not None:
+        user.passport_number = passport_number
+        changes["passport_number"] = passport_number
+    if locale is not None:
+        user.locale = locale
+        changes["locale"] = locale
+    if admin_comment is not None:
+        user.admin_comment = admin_comment
+        changes["admin_comment"] = admin_comment
+    
+    if birth_date is not None:
+        try:
+            user.birth_date = datetime.strptime(birth_date, "%Y-%m-%d")
+            changes["birth_date"] = birth_date
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Неверный формат даты рождения (YYYY-MM-DD)")
+    
+    if drivers_license_expiry is not None:
+        try:
+            user.drivers_license_expiry = datetime.strptime(drivers_license_expiry, "%Y-%m-%d")
+            changes["drivers_license_expiry"] = drivers_license_expiry
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Неверный формат даты прав (YYYY-MM-DD)")
+    
+    if id_card_expiry is not None:
+        try:
+            user.id_card_expiry = datetime.strptime(id_card_expiry, "%Y-%m-%d")
+            changes["id_card_expiry"] = id_card_expiry
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Неверный формат даты ID карты (YYYY-MM-DD)")
+    
+    if role is not None:
+        try:
+            old_role = user.role
+            new_role = UserRole(role)
+            user.role = new_role
+            changes["role"] = role
+            
+            if (new_role in [UserRole.REJECTFIRST, UserRole.REJECTSECOND, UserRole.REJECTFIRSTDOC, UserRole.REJECTFIRSTCERT] 
+                and old_role != new_role):
+                from app.guarantor.router import cancel_guarantor_requests_on_rejection
+                await cancel_guarantor_requests_on_rejection(str(user.id), db)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Неверная роль: {role}")
+    
+    if auto_class is not None:
+        user.auto_class = [c.strip().upper() for c in auto_class.split(",") if c.strip()]
+        changes["auto_class"] = user.auto_class
+    
+    if is_active is not None:
+        user.is_active = is_active
+        changes["is_active"] = is_active
+    if is_blocked is not None:
+        user.is_blocked = is_blocked
+        changes["is_blocked"] = is_blocked
+    if is_verified_email is not None:
+        user.is_verified_email = is_verified_email
+        changes["is_verified_email"] = is_verified_email
+    if is_citizen_kz is not None:
+        user.is_citizen_kz = is_citizen_kz
+        changes["is_citizen_kz"] = is_citizen_kz
+    if documents_verified is not None:
+        user.documents_verified = documents_verified
+        changes["documents_verified"] = documents_verified
+    if is_consent_to_data_processing is not None:
+        user.is_consent_to_data_processing = is_consent_to_data_processing
+        changes["is_consent_to_data_processing"] = is_consent_to_data_processing
+    if is_contract_read is not None:
+        user.is_contract_read = is_contract_read
+        changes["is_contract_read"] = is_contract_read
+    if is_user_agreement is not None:
+        user.is_user_agreement = is_user_agreement
+        changes["is_user_agreement"] = is_user_agreement
+    if can_exit_zone is not None:
+        user.can_exit_zone = can_exit_zone
+        changes["can_exit_zone"] = can_exit_zone
+    
+    if wallet_balance is not None:
+        user.wallet_balance = wallet_balance
+        changes["wallet_balance"] = wallet_balance
+    if rating is not None:
+        user.rating = rating
+        changes["rating"] = rating
+    
+    ALLOWED_FILE_TYPES = ["image/jpeg", "image/png", "application/pdf"]
+    
+    async def save_if_provided(file: Optional[UploadFile], field_name: str) -> Optional[str]:
+        if file is None or file.filename is None or file.filename == "":
+            return None
+        if file.content_type not in ALLOWED_FILE_TYPES:
+            raise HTTPException(status_code=400, detail=f"Файл {field_name} должен быть JPEG, PNG или PDF")
+        path = await save_file(file, user.id, "uploads/documents")
+        changes[field_name] = path
+        return path
+    
+    if selfie:
+        path = await save_if_provided(selfie, "selfie_url")
+        if path:
+            user.selfie_url = path
+    
+    if selfie_with_license:
+        path = await save_if_provided(selfie_with_license, "selfie_with_license_url")
+        if path:
+            user.selfie_with_license_url = path
+    
+    if drivers_license:
+        path = await save_if_provided(drivers_license, "drivers_license_url")
+        if path:
+            user.drivers_license_url = path
+    
+    if id_card_front:
+        path = await save_if_provided(id_card_front, "id_card_front_url")
+        if path:
+            user.id_card_front_url = path
+    
+    if id_card_back:
+        path = await save_if_provided(id_card_back, "id_card_back_url")
+        if path:
+            user.id_card_back_url = path
+    
+    if psych_neurology_certificate:
+        path = await save_if_provided(psych_neurology_certificate, "psych_neurology_certificate_url")
+        if path:
+            user.psych_neurology_certificate_url = path
+    
+    if narcology_certificate:
+        path = await save_if_provided(narcology_certificate, "narcology_certificate_url")
+        if path:
+            user.narcology_certificate_url = path
+    
+    if pension_contributions_certificate:
+        path = await save_if_provided(pension_contributions_certificate, "pension_contributions_certificate_url")
+        if path:
+            user.pension_contributions_certificate_url = path
+    
+    db.commit()
+    
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="admin_edit_user_full",
+        entity_type="user",
+        entity_id=user.id,
+        details={"changes": changes}
+    )
+    
+    db.commit()
+    
+    asyncio.create_task(notify_user_status_update(str(user.id)))
+    
+    return {
+        "message": "Пользователь обновлен",
+        "user_id": uuid_to_sid(user.id),
+        "changes_count": len(changes),
+        "changed_fields": list(changes.keys())
+    }
+
+
 @users_router.patch("/{user_id}/block")
 async def block_user(
     user_id: str,
