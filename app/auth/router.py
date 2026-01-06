@@ -56,6 +56,61 @@ Auth_router = APIRouter(prefix="/auth", tags=["Auth"])
 ALLOWED_TYPES = ["image/jpeg", "image/png"]
 CERT_ALLOWED_TYPES = ["image/jpeg", "image/png", "application/pdf"]
 
+SMS_COOLDOWN_SECONDS = 60  # Минимальный интервал между SMS
+SMS_HOURLY_LIMIT = 5  # Максимум SMS в час
+sms_rate_limit_cache: dict = {} 
+
+
+def check_sms_rate_limit(phone_number: str) -> tuple[bool, str]:
+    """
+    Проверяет rate limit для SMS.
+    Возвращает (can_send, error_message)
+    """
+    now = get_local_time()
+    
+    if phone_number not in sms_rate_limit_cache:
+        return True, ""
+    
+    cache = sms_rate_limit_cache[phone_number]
+    
+    last_sent = cache.get("last_sent")
+    if last_sent:
+        elapsed = (now - last_sent).total_seconds()
+        if elapsed < SMS_COOLDOWN_SECONDS:
+            remaining = int(SMS_COOLDOWN_SECONDS - elapsed)
+            return False, f"Подождите {remaining} секунд перед повторной отправкой SMS"
+    
+    hour_start = cache.get("hour_start")
+    if hour_start and (now - hour_start).total_seconds() < 3600:
+        hourly_count = cache.get("hourly_count", 0)
+        if hourly_count >= SMS_HOURLY_LIMIT:
+            return False, f"Превышен лимит SMS. Попробуйте через час."
+    
+    return True, ""
+
+
+def update_sms_rate_limit(phone_number: str) -> None:
+    """Обновляет счётчики rate limit после отправки SMS"""
+    now = get_local_time()
+    
+    if phone_number not in sms_rate_limit_cache:
+        sms_rate_limit_cache[phone_number] = {
+            "last_sent": now,
+            "hourly_count": 1,
+            "hour_start": now
+        }
+    else:
+        cache = sms_rate_limit_cache[phone_number]
+        hour_start = cache.get("hour_start")
+        
+        if not hour_start or (now - hour_start).total_seconds() >= 3600:
+            cache["hour_start"] = now
+            cache["hourly_count"] = 1
+        else:
+            cache["hourly_count"] = cache.get("hourly_count", 0) + 1
+        
+        cache["last_sent"] = now
+
 
 def generate_email_verification_code() -> str:
     """Генерирует случайный 6-значный код для подтверждения email"""
@@ -253,6 +308,10 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
     if not phone_number.isdigit():
         raise HTTPException(status_code=400, detail="Phone number must contain only digits.")
 
+    can_send, error_msg = check_sms_rate_limit(phone_number)
+    if not can_send:
+        raise HTTPException(status_code=429, detail=error_msg)
+
     sms_code = totp.now()
     # Проверяем блокировку по номеру телефона (REJECTSECOND - независимо от is_active)
     blocked_by_phone = db.query(User).filter(
@@ -392,6 +451,7 @@ ID клиента: {user.id}
     try:
         if SMS_TOKEN:
             await send_sms_mobizon(phone_number, sms_text, f"{SMS_TOKEN}")
+            update_sms_rate_limit(phone_number)
         else:
             logger.warning("SMS_TOKEN is not configured; skipping Mobizon send")
     except Exception as e:
