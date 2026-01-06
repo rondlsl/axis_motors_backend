@@ -10,7 +10,7 @@ from sqlalchemy import func, and_
 from app.dependencies.database.database import get_db
 from app.models.user_model import User, UserRole
 from app.models.wallet_transaction_model import WalletTransaction, WalletTransactionType
-from app.models.rental_model import RentalHistory
+from app.models.history_model import RentalHistory
 from app.models.car_model import Car
 from app.auth.dependencies.jwt_bearer import JWTBearer, get_current_user
 from app.utils.short_id import uuid_to_sid
