@@ -3273,7 +3273,7 @@ async def edit_user(
     return {"message": "Пользователь обновлен"}
 
 
-@users_router.post("/{user_id}/edit-full", summary="Полное редактирование пользователя (Admin)")
+@users_router.patch("/{user_id}/edit-full", summary="Полное редактирование пользователя (Admin)")
 async def edit_user_full(
     user_id: str,
     first_name: Optional[str] = Form(None, description="Имя"),
