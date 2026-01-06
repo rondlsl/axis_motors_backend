@@ -1073,8 +1073,6 @@ async def upload_documents(
         missing_certificates = []
         if psych_neurology_certificate is None:
             missing_certificates.append("психоневрологическая справка")
-        if narcology_certificate is None:
-            missing_certificates.append("наркологическая справка")
         if pension_contributions_certificate is None:
             missing_certificates.append("справка о пенсионных взносах")
         
