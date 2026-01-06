@@ -4398,7 +4398,7 @@ async def admin_mechanic_start_inspection(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> MechanicStartInspectionResponse:
-    """Инициация осмотра механиком от имени админа (без GPS команд)."""
+    """Начало осмотра механиком от имени админа (без GPS команд). Меняет статус с PENDING на IN_USE."""
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Только администратор или техподдержка")
     
@@ -4407,20 +4407,36 @@ async def admin_mechanic_start_inspection(
     if not rental:
         raise HTTPException(status_code=404, detail="Аренда не найдена")
     
+    # Проверяем, что механик назначен
+    if not rental.mechanic_inspector_id:
+        raise HTTPException(status_code=400, detail="Механик-инспектор не назначен для этой аренды")
+    
+    # Проверяем, что статус осмотра PENDING
+    if rental.mechanic_inspection_status != "PENDING":
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Осмотр может быть начат только со статусом PENDING. Текущий статус: {rental.mechanic_inspection_status}"
+        )
+    
     car = db.query(Car).filter(Car.id == rental.car_id).first()
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
     
-    rental.mechanic_inspector_id = current_user.id
-    rental.mechanic_inspection_start_time = get_local_time()
-    rental.mechanic_inspection_status = "PENDING"
-    rental.mechanic_inspection_start_latitude = car.latitude
-    rental.mechanic_inspection_start_longitude = car.longitude
+    # Сохраняем назначенного механика (не меняем mechanic_inspector_id)
+    mechanic_id = rental.mechanic_inspector_id
     
-    car.status = CarStatus.SERVICE
-    car.current_renter_id = current_user.id
+    # Устанавливаем время начала осмотра, если еще не установлено
+    if not rental.mechanic_inspection_start_time:
+        rental.mechanic_inspection_start_time = get_local_time()
+        rental.mechanic_inspection_start_latitude = car.latitude
+        rental.mechanic_inspection_start_longitude = car.longitude
     
-    car.current_renter_id = current_user.id
+    # Меняем статус осмотра с PENDING на IN_USE
+    rental.mechanic_inspection_status = "IN_USE"
+    
+    # Обновляем статус автомобиля и текущего арендатора
+    car.status = CarStatus.IN_USE
+    car.current_renter_id = mechanic_id
     
     log_action(
         db,
@@ -4428,19 +4444,19 @@ async def admin_mechanic_start_inspection(
         action="mechanic_start_inspection",
         entity_type="rental",
         entity_id=rental.id,
-        details={"status": "PENDING"}
+        details={"status": "IN_USE", "mechanic_id": str(mechanic_id)}
     )
 
     db.commit()
     
     try:
-        await notify_user_status_update(str(current_user.id))
+        await notify_user_status_update(str(mechanic_id))
         if rental.user_id:
             await notify_user_status_update(str(rental.user_id))
     except:
         pass
     
-    return {"message": "Осмотр инициирован", "rental_id": rental_id, "inspection_status": "PENDING"}
+    return {"message": "Осмотр начат", "rental_id": rental_id, "inspection_status": "IN_USE"}
 
 
 @users_router.post("/rentals/{rental_id}/mechanic-photos-before", response_model=MechanicPhotoUploadResponse)
