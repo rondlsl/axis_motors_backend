@@ -1065,31 +1065,40 @@ def get_renter_by_plate(
     db: Session = Depends(get_db)
 ):
     """
-    Возвращает user_id арендатора по номеру машины.
+    Возвращает user_id арендатора по номеру машины и разрешение на выезд за зону.
     Используется cars сервисом для проверки разрешения на выезд за зону.
     """
     car = db.query(Car).filter(Car.plate_number == plate_number).first()
     if not car:
-        return {"user_id": None}
+        return {"user_id": None, "can_exit_zone": False}
+    
+    user_id = None
+    can_exit_zone = False
     
     if car.current_renter_id:
-        return {"user_id": uuid_to_sid(car.current_renter_id)}
+        user_id = car.current_renter_id
+    else:
+        statuses = [
+            RentalStatus.IN_USE,
+            RentalStatus.DELIVERING,
+            RentalStatus.DELIVERING_IN_PROGRESS
+        ]
+        
+        active_rental = db.query(RentalHistory).filter(
+            RentalHistory.car_id == car.id,
+            RentalHistory.rental_status.in_(statuses)
+        ).first()
+        
+        if active_rental:
+            user_id = active_rental.user_id
     
-    statuses = [
-        RentalStatus.IN_USE,
-        RentalStatus.DELIVERING,
-        RentalStatus.DELIVERING_IN_PROGRESS
-    ]
+    if user_id:
+        user = db.query(User).filter(User.id == user_id).first()
+        if user:
+            can_exit_zone = user.can_exit_zone or False
+        return {"user_id": uuid_to_sid(user_id), "can_exit_zone": can_exit_zone}
     
-    active_rental = db.query(RentalHistory).filter(
-        RentalHistory.car_id == car.id,
-        RentalHistory.rental_status.in_(statuses)
-    ).first()
-    
-    if active_rental:
-        return {"user_id": uuid_to_sid(active_rental.user_id)}
-    
-    return {"user_id": None}
+    return {"user_id": None, "can_exit_zone": False}
 
 
 @Vehicle_Router.get("/occupied", summary="Список машин в статусе OCCUPIED")
