@@ -273,7 +273,8 @@ async def get_all_transactions(
                 "last_name": user.last_name,
                 "middle_name": user.middle_name,
                 "phone": user.phone_number,
-                "selfie_url": user.selfie_url
+                "selfie_url": user.selfie_url,
+                "wallet_balance": float(user.wallet_balance or 0)
             },
             "car": {
                 "id": uuid_to_sid(car.id) if car else None,
