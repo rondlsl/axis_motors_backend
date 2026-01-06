@@ -4650,6 +4650,11 @@ async def admin_mechanic_complete_inspection(
     rental.mechanic_inspection_end_longitude = car.longitude
     rental.mechanic_inspection_comment = request.comment
     
+    # Меняем статус аренды на COMPLETED при завершении осмотра механиком
+    rental.rental_status = RentalStatus.COMPLETED
+    if not rental.end_time:
+        rental.end_time = get_local_time()
+    
     if request.rating:
         existing_review = db.query(RentalReview).filter(RentalReview.rental_id == rental.id).first()
         if existing_review:
@@ -4660,8 +4665,6 @@ async def admin_mechanic_complete_inspection(
             db.add(review)
     
     car.status = CarStatus.FREE
-    car.current_renter_id = None
-    
     car.current_renter_id = None
     
     log_action(
