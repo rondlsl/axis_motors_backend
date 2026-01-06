@@ -5175,3 +5175,87 @@ async def delete_user(
         delete_type=delete_data.delete_type,
         deleted_at=deleted_at_str
     )
+
+
+class ResetApplicationsRequest(BaseModel):
+    """Запрос на массовый сброс статусов заявок"""
+    phone_numbers: List[str] = Field(..., description="Список номеров телефонов")
+
+
+@users_router.post("/reset-applications", summary="Массовый сброс статусов заявок")
+async def reset_applications(
+    request: ResetApplicationsRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Массовый сброс статусов заявок по номерам телефонов.
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только для администраторов")
+    
+    results = {
+        "success": [],
+        "not_found": [],
+        "no_application": [],
+        "errors": []
+    }
+    
+    for phone in request.phone_numbers:
+        try:
+            user = db.query(User).filter(User.phone_number == phone).first()
+            if not user:
+                results["not_found"].append(phone)
+                continue
+            
+            application = db.query(Application).filter(Application.user_id == user.id).first()
+            if not application:
+                results["no_application"].append(phone)
+                continue
+            
+            application.financier_status = ApplicationStatus.PENDING
+            application.mvd_status = ApplicationStatus.PENDING
+            
+            application.reason = None
+            application.financier_rejected_at = None
+            application.financier_user_id = None
+            application.financier_approved_at = None
+            application.mvd_rejected_at = None
+            application.mvd_user_id = None
+            application.mvd_approved_at = None
+            application.updated_at = get_local_time()
+            
+            user.role = UserRole.PENDINGTOFIRST
+            
+            results["success"].append(phone)
+            
+            log_action(
+                db,
+                actor_id=current_user.id,
+                action="bulk_reset_application",
+                entity_type="user",
+                entity_id=user.id,
+                details={"phone_number": phone}
+            )
+            
+        except Exception as e:
+            results["errors"].append({"phone": phone, "error": str(e)})
+    
+    db.commit()
+    
+    for phone in results["success"]:
+        try:
+            user = db.query(User).filter(User.phone_number == phone).first()
+            if user:
+                asyncio.create_task(notify_user_status_update(str(user.id)))
+        except:
+            pass
+    
+    return {
+        "message": f"Обработано {len(request.phone_numbers)} номеров",
+        "success_count": len(results["success"]),
+        "not_found_count": len(results["not_found"]),
+        "no_application_count": len(results["no_application"]),
+        "error_count": len(results["errors"]),
+        "details": results
+    }
