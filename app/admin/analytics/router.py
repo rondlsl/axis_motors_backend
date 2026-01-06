@@ -207,7 +207,7 @@ async def get_expenses_analytics(
 async def get_all_transactions(
     page: int = Query(1, ge=1, description="Страница"),
     limit: int = Query(50, ge=1, le=200, description="Записей на странице"),
-    transaction_type: Optional[str] = Query(None, description="Фильтр по типу транзакции (например: deposit, rent_minute_charge)"),
+    transaction_type: Optional[str] = Query(None, description="Фильтр по типу транзакции"),
     user_phone: Optional[str] = Query(None, description="Фильтр по номеру телефона"),
     date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
     date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
@@ -215,8 +215,9 @@ async def get_all_transactions(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Полная история всех транзакций с суммами по каждому типу.
+    Полная история транзакций.
     """
+    from collections import defaultdict
     
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
@@ -256,12 +257,11 @@ async def get_all_transactions(
     offset = (page - 1) * limit
     
     transactions = query.order_by(WalletTransaction.created_at.desc()).offset(offset).limit(limit).all()
+    transactions_by_type = defaultdict(list)
     
-    items = []
     for tx, user, rental, car in transactions:
-        items.append({
+        tx_data = {
             "id": uuid_to_sid(tx.id),
-            "type": tx.transaction_type.value,
             "amount": float(tx.amount),
             "balance_before": float(tx.balance_before),
             "balance_after": float(tx.balance_after),
@@ -282,7 +282,8 @@ async def get_all_transactions(
             } if car else None,
             "rental_id": uuid_to_sid(rental.id) if rental else None,
             "tracking_id": tx.tracking_id
-        })
+        }
+        transactions_by_type[tx.transaction_type.value].append(tx_data)
     
     summary_by_type = {}
     for tx_type in WalletTransactionType:
@@ -292,11 +293,11 @@ async def get_all_transactions(
         summary_by_type[tx_type.value] = float(total_amount)
     
     return {
-        "items": items,
+        "transactions_by_type": dict(transactions_by_type),
+        "summary_by_type": summary_by_type,
         "total": total,
         "page": page,
         "limit": limit,
         "pages": ceil(total / limit) if limit > 0 else 0,
-        "summary_by_type": summary_by_type,
         "available_types": [t.value for t in WalletTransactionType]
     }
