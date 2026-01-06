@@ -15,7 +15,8 @@ from app.models.car_model import Car
 from app.auth.dependencies.get_current_user import get_current_user
 from app.utils.short_id import uuid_to_sid
 from app.utils.time_utils import get_local_time
-
+from fastapi import HTTPException
+from math import ceil
 
 analytics_router = APIRouter(prefix="/analytics", tags=["Admin Analytics"])
 
@@ -199,4 +200,103 @@ async def get_expenses_analytics(
         "page": page,
         "limit": limit,
         "transactions": items
+    }
+
+
+@analytics_router.get("/transactions", summary="Полная история транзакций")
+async def get_all_transactions(
+    page: int = Query(1, ge=1, description="Страница"),
+    limit: int = Query(50, ge=1, le=200, description="Записей на странице"),
+    transaction_type: Optional[str] = Query(None, description="Фильтр по типу транзакции (например: deposit, rent_minute_charge)"),
+    user_phone: Optional[str] = Query(None, description="Фильтр по номеру телефона"),
+    date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
+    date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Полная история всех транзакций с суммами по каждому типу.
+    """
+    
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    query = (
+        db.query(WalletTransaction, User, RentalHistory, Car)
+        .join(User, User.id == WalletTransaction.user_id)
+        .outerjoin(RentalHistory, RentalHistory.id == WalletTransaction.related_rental_id)
+        .outerjoin(Car, Car.id == RentalHistory.car_id)
+    )
+    
+    if transaction_type:
+        try:
+            tx_type = WalletTransactionType(transaction_type)
+            query = query.filter(WalletTransaction.transaction_type == tx_type)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Неизвестный тип транзакции: {transaction_type}")
+    
+    if user_phone:
+        query = query.filter(User.phone_number.contains(user_phone))
+    
+    if date_from:
+        try:
+            from_date = datetime.strptime(date_from, "%Y-%m-%d")
+            query = query.filter(WalletTransaction.created_at >= from_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Неверный формат date_from (YYYY-MM-DD)")
+    
+    if date_to:
+        try:
+            to_date = datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)
+            query = query.filter(WalletTransaction.created_at < to_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Неверный формат date_to (YYYY-MM-DD)")
+    
+    total = query.count()
+    offset = (page - 1) * limit
+    
+    transactions = query.order_by(WalletTransaction.created_at.desc()).offset(offset).limit(limit).all()
+    
+    items = []
+    for tx, user, rental, car in transactions:
+        items.append({
+            "id": uuid_to_sid(tx.id),
+            "type": tx.transaction_type.value,
+            "amount": float(tx.amount),
+            "balance_before": float(tx.balance_before),
+            "balance_after": float(tx.balance_after),
+            "description": tx.description,
+            "created_at": tx.created_at.isoformat() if tx.created_at else None,
+            "user": {
+                "id": uuid_to_sid(user.id),
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "middle_name": user.middle_name,
+                "phone": user.phone_number,
+                "selfie_url": user.selfie_url
+            },
+            "car": {
+                "id": uuid_to_sid(car.id) if car else None,
+                "name": car.name if car else None,
+                "plate_number": car.plate_number if car else None
+            } if car else None,
+            "rental_id": uuid_to_sid(rental.id) if rental else None,
+            "tracking_id": tx.tracking_id
+        })
+    
+    summary_by_type = {}
+    for tx_type in WalletTransactionType:
+        total_amount = db.query(func.sum(func.abs(WalletTransaction.amount))).filter(
+            WalletTransaction.transaction_type == tx_type
+        ).scalar() or 0
+        summary_by_type[tx_type.value] = float(total_amount)
+    
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": ceil(total / limit) if limit > 0 else 0,
+        "summary_by_type": summary_by_type,
+        "available_types": [t.value for t in WalletTransactionType]
     }
