@@ -58,6 +58,8 @@ from app.models.guarantor_model import Guarantor, GuarantorRequest
 from app.models.user_device_model import UserDevice
 from app.models.contract_model import UserContractSignature
 from app.utils.action_logger import log_action
+from app.models.action_log_model import ActionLog
+
 users_router = APIRouter(tags=["Admin Users"])
 
 
@@ -5258,4 +5260,86 @@ async def reset_applications(
         "no_application_count": len(results["no_application"]),
         "error_count": len(results["errors"]),
         "details": results
+    }
+
+@users_router.get("/action-logs", summary="История действий админов/техподдержки")
+async def get_action_logs(
+    page: int = Query(1, ge=1, description="Номер страницы"),
+    limit: int = Query(50, ge=1, le=500, description="Количество записей на странице"),
+    actor_id: Optional[str] = Query(None, description="Фильтр по ID исполнителя (SID)"),
+    action: Optional[str] = Query(None, description="Фильтр по типу действия"),
+    entity_type: Optional[str] = Query(None, description="Фильтр по типу сущности (user, car, rental и т.д.)"),
+    entity_id: Optional[str] = Query(None, description="Фильтр по ID сущности (SID)"),
+    date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
+    date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Получить список всех действий админов и техподдержки.
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    query = db.query(ActionLog).join(User, User.id == ActionLog.actor_id)
+    
+    if actor_id:
+        actor_uuid = safe_sid_to_uuid(actor_id)
+        query = query.filter(ActionLog.actor_id == actor_uuid)
+    
+    if action:
+        query = query.filter(ActionLog.action == action)
+    
+    if entity_type:
+        query = query.filter(ActionLog.entity_type == entity_type)
+    
+    if entity_id:
+        entity_uuid = safe_sid_to_uuid(entity_id)
+        query = query.filter(ActionLog.entity_id == entity_uuid)
+    
+    if date_from:
+        try:
+            from_date = datetime.strptime(date_from, "%Y-%m-%d")
+            query = query.filter(ActionLog.created_at >= from_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Неверный формат date_from (YYYY-MM-DD)")
+    
+    if date_to:
+        try:
+            to_date = datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)
+            query = query.filter(ActionLog.created_at < to_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Неверный формат date_to (YYYY-MM-DD)")
+    
+    total = query.count()
+    offset = (page - 1) * limit
+    logs = query.order_by(ActionLog.created_at.desc()).offset(offset).limit(limit).all()
+    
+    items = []
+    for log in logs:
+        actor = log.actor
+        items.append({
+            "id": uuid_to_sid(log.id),
+            "actor": {
+                "id": uuid_to_sid(actor.id) if actor else None,
+                "first_name": actor.first_name if actor else None,
+                "last_name": actor.last_name if actor else None,
+                "middle_name": actor.middle_name if actor else None,
+                "phone_number": actor.phone_number if actor else None,
+                "role": actor.role.value if actor and actor.role else None,
+                "selfie_url": actor.selfie_url if actor else None
+            },
+            "action": log.action,
+            "entity_type": log.entity_type,
+            "entity_id": uuid_to_sid(log.entity_id) if log.entity_id else None,
+            "details": log.details,
+            "created_at": log.created_at.isoformat() if log.created_at else None
+        })
+    
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": ceil(total / limit) if limit > 0 else 0
     }
