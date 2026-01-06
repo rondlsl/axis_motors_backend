@@ -1833,6 +1833,13 @@ async def notify_from_cars_v2(
     if notification_type not in notification_map:
         raise HTTPException(status_code=400, detail=f"Неизвестный тип уведомления: {notification_type}")
     
+    if notification_type == "zone_exit" and user.can_exit_zone:
+        return {
+            "message": "Пользователю разрешён выезд за зону (can_exit_zone=True), уведомление не отправлено",
+            "user_id": str(user.id),
+            "can_exit_zone": True
+        }
+    
     translation_key, status_key = notification_map[notification_type]
     
     # Отправляем уведомление
