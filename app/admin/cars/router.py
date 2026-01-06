@@ -1274,7 +1274,7 @@ async def get_trip_detail(
         "status_display": {
             "PENDING": "Ожидает осмотра",
             "IN_PROGRESS": "Осмотр в процессе",
-            "IN_USE": "IN_USE",
+            "IN_USE": "Осмотр в процессе",
             "COMPLETED": "Осмотр завершён",
             "CANCELLED": "Осмотр отменён",
         }.get(rental.mechanic_inspection_status, rental.mechanic_inspection_status),
