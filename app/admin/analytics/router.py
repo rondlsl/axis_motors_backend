@@ -294,7 +294,7 @@ async def get_all_transactions(
     
     return {
         "transactions": dict(transactions_by_type),
-        "summary_by_type": summary_by_type,
+        "summary": summary_by_type,
         "total": total,
         "page": page,
         "limit": limit,
