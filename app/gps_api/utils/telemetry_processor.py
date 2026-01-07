@@ -464,6 +464,15 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
         # Блокировка двигателя: bit8 (1) = 1 → блокировка активна
         engine_lock_active = param64_flags["engine_lock"]
     
+    # Для Range Rover Sport игнорируем статус замков (доводчики дают false positive)
+    # Всегда показываем замки как закрытые
+    if imei == "860803068151105" or vehicle_id == 800409927:
+        front_right_door_locked = True
+        front_left_door_locked = True
+        rear_right_door_locked = True
+        rear_left_door_locked = True
+        central_locks_locked = True
+    
     # Связь
     gsm_signal = None
     gsm_value = extract_first_match(unregs, ["gsm"])
