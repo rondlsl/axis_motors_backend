@@ -2830,8 +2830,8 @@ async def check_vehicle_status_for_completion(vehicle_imei: str) -> Dict[str, An
                 errors.append("Для завершения аренды пожалуйста закройте багажник")
             
             # Проверка дверей
-            # Пропускаем проверку для определенных IMEI (860803068155890, 800298270)
-            if vehicle_imei not in ["860803068155890", "800298270"]:
+            # Пропускаем проверку для G63 и Range Rover 
+            if vehicle_imei not in ["860803068155890", "800298270", "860803068151105"]:
                 doors_open = []
                 if vehicle.get("front_left_door_open", False):
                     doors_open.append("передняя левая")
