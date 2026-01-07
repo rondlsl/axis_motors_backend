@@ -90,6 +90,7 @@ def get_vehicle_id_by_imei(imei: str) -> int:
         "860803068155916": 800370225,  # BYD Han EV
         "860803068139613": 800406786,  # Maserati Ghibli
         "860803068151071": 800408106,  # Toyota Camry
+        "860803068151105": 800409927,  # Range Rover Sport Supercharged
     }
     vehicle_id = imei_to_vehicle_id.get(imei)
     if vehicle_id is None:
@@ -155,6 +156,16 @@ def get_commands_by_imei(imei: str) -> dict:
             "take_key": "OUTPUT1 0",
             "lock_engine": "OUTPUT0 1",
             "unlock_engine": "OUTPUT0 0"
+        },
+        "860803068151105": {  # Range Rover Sport Supercharged - vehicle_id 800409927
+            # ВАЖНО: open и close нужно отправлять 2 раза! С 1 раза не срабатывает
+            "open": "OUTPUT1 1|OUTPUT3 0|OUTPUT2 0|OUTPUT3 0|OUTPUT2 0|OUTPUT3 0|OUTPUT2 0|OUTPUT3 0|OUTPUT2 0|OUTPUT3 0|OUTPUT3 1|OUTPUT2 0|OUTPUT3 1|OUTPUT2 0|OUTPUT3 1|OUTPUT2 0|OUTPUT3 0||OUTPUT2 0",
+            "close": "OUTPUT1 1|OUTPUT3 0|OUTPUT2 0|OUTPUT3 0|OUTPUT2 0|OUTPUT3 0|OUTPUT2 1|OUTPUT3 0|OUTPUT2 1|OUTPUT3 0|OUTPUT2 1|OUTPUT3 0|OUTPUT2 0|OUTPUT2 0",
+            "give_key": "OUTPUT1 1",
+            "take_key": "OUTPUT1 0",
+            "lock_engine": "OUTPUT0 1",
+            "unlock_engine": "OUTPUT0 0",
+            "requires_double_send": True  # Флаг для двойной отправки open/close
         }
     }
     commands = commands_map.get(imei)
@@ -188,13 +199,25 @@ async def send_unlock_engine(imei: str, token: str, retries: int = 1) -> dict:
 async def send_open(imei: str, token: str, retries: int = 1) -> dict:
     commands = get_commands_by_imei(imei)
     vehicle_id = get_vehicle_id_by_imei(imei)
-    return await send_command_to_terminal(vehicle_id, commands["open"], token, retries)
+    result = await send_command_to_terminal(vehicle_id, commands["open"], token, retries)
+    # Для некоторых авто (Range Rover) нужно отправлять команду 2 раза
+    if commands.get("requires_double_send"):
+        logger.info(f"Отправка повторной команды open для IMEI {imei} (requires_double_send)")
+        await asyncio.sleep(1)  # Небольшая пауза между командами
+        result = await send_command_to_terminal(vehicle_id, commands["open"], token, retries)
+    return result
 
 
 async def send_close(imei: str, token: str, retries: int = 1) -> dict:
     commands = get_commands_by_imei(imei)
     vehicle_id = get_vehicle_id_by_imei(imei)
-    return await send_command_to_terminal(vehicle_id, commands["close"], token, retries)
+    result = await send_command_to_terminal(vehicle_id, commands["close"], token, retries)
+    # Для некоторых авто (Range Rover) нужно отправлять команду 2 раза
+    if commands.get("requires_double_send"):
+        logger.info(f"Отправка повторной команды close для IMEI {imei} (requires_double_send)")
+        await asyncio.sleep(1)  # Небольшая пауза между командами
+        result = await send_command_to_terminal(vehicle_id, commands["close"], token, retries)
+    return result
 
 
 async def send_give_key(imei: str, token: str, retries: int = 1) -> dict:

@@ -107,7 +107,10 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
     is_online = glonassoft_data.get("isonline", False)
     is_moving = glonassoft_data.get("ismoving", False)
     
-    is_special_car = (vehicle_id == 800298270 or imei == "860803068155890")
+    is_special_car = (
+        vehicle_id == 800298270 or imei == "860803068155890" or  # Mercedes G63
+        vehicle_id == 800409927 or imei == "860803068151105"     # Range Rover Sport
+    )
     
     # Координаты
     latitude = glonassoft_data.get("latitude", 0.0)
