@@ -208,6 +208,7 @@ async def get_all_transactions(
     page: int = Query(1, ge=1, description="Страница"),
     limit: int = Query(50, ge=1, le=200, description="Записей на странице"),
     transaction_type: Optional[str] = Query(None, description="Фильтр по типу транзакции"),
+    filter_type: Optional[str] = Query(None, description="Фильтр: deposits, expenses, deposits_with_tracking_id"),
     user_phone: Optional[str] = Query(None, description="Фильтр по номеру телефона"),
     date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
     date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
@@ -216,6 +217,11 @@ async def get_all_transactions(
 ):
     """
     Полная история транзакций.
+    
+    Фильтры:
+    - deposits: только пополнения
+    - expenses: только траты
+    - deposits_with_tracking_id: только пополнения с tracking_id
     """
     from collections import defaultdict
     
@@ -228,6 +234,20 @@ async def get_all_transactions(
         .outerjoin(RentalHistory, RentalHistory.id == WalletTransaction.related_rental_id)
         .outerjoin(Car, Car.id == RentalHistory.car_id)
     )
+    
+    # Применяем фильтр по типу (deposits, expenses, deposits_with_tracking_id)
+    if filter_type:
+        if filter_type == "deposits":
+            query = query.filter(WalletTransaction.transaction_type.in_(DEPOSIT_TYPES))
+        elif filter_type == "expenses":
+            query = query.filter(WalletTransaction.transaction_type.in_(EXPENSE_TYPES))
+        elif filter_type == "deposits_with_tracking_id":
+            query = query.filter(
+                WalletTransaction.transaction_type.in_(DEPOSIT_TYPES),
+                WalletTransaction.tracking_id.isnot(None)
+            )
+        else:
+            raise HTTPException(status_code=400, detail=f"Неизвестный тип фильтра: {filter_type}. Доступные: deposits, expenses, deposits_with_tracking_id")
     
     if transaction_type:
         try:
@@ -267,6 +287,7 @@ async def get_all_transactions(
             "balance_after": float(tx.balance_after),
             "description": tx.description,
             "created_at": tx.created_at.isoformat() if tx.created_at else None,
+            "transaction_type": tx.transaction_type.value,
             "user": {
                 "id": uuid_to_sid(user.id),
                 "first_name": user.first_name,
@@ -286,19 +307,108 @@ async def get_all_transactions(
         }
         transactions_by_type[tx.transaction_type.value].append(tx_data)
     
+    # Вычисляем summary: общая сумма пополнений и сумма пополнений без tracking_id
+    base_summary_query = db.query(func.sum(func.abs(WalletTransaction.amount))).filter(
+        WalletTransaction.transaction_type.in_(DEPOSIT_TYPES)
+    )
+    
+    # Применяем те же фильтры по датам что и к основному запросу
+    if date_from:
+        try:
+            from_date = datetime.strptime(date_from, "%Y-%m-%d")
+            base_summary_query = base_summary_query.filter(WalletTransaction.created_at >= from_date)
+        except ValueError:
+            pass
+    
+    if date_to:
+        try:
+            to_date = datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)
+            base_summary_query = base_summary_query.filter(WalletTransaction.created_at < to_date)
+        except ValueError:
+            pass
+    
+    # Общая сумма всех пополнений
+    total_deposits = base_summary_query.scalar() or 0
+    
+    # Сумма пополнений без tracking_id (создаем новый запрос с теми же фильтрами)
+    deposits_without_tracking_query = db.query(func.sum(func.abs(WalletTransaction.amount))).filter(
+        WalletTransaction.transaction_type.in_(DEPOSIT_TYPES),
+        (WalletTransaction.tracking_id.is_(None)) | (WalletTransaction.tracking_id == "")
+    )
+    
+    if date_from:
+        try:
+            from_date = datetime.strptime(date_from, "%Y-%m-%d")
+            deposits_without_tracking_query = deposits_without_tracking_query.filter(WalletTransaction.created_at >= from_date)
+        except ValueError:
+            pass
+    
+    if date_to:
+        try:
+            to_date = datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)
+            deposits_without_tracking_query = deposits_without_tracking_query.filter(WalletTransaction.created_at < to_date)
+        except ValueError:
+            pass
+    
+    total_deposits_without_tracking = deposits_without_tracking_query.scalar() or 0
+    
+    # Общая сумма всех трат
+    expenses_summary_query = db.query(func.sum(func.abs(WalletTransaction.amount))).filter(
+        WalletTransaction.transaction_type.in_(EXPENSE_TYPES)
+    )
+    
+    if date_from:
+        try:
+            from_date = datetime.strptime(date_from, "%Y-%m-%d")
+            expenses_summary_query = expenses_summary_query.filter(WalletTransaction.created_at >= from_date)
+        except ValueError:
+            pass
+    
+    if date_to:
+        try:
+            to_date = datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)
+            expenses_summary_query = expenses_summary_query.filter(WalletTransaction.created_at < to_date)
+        except ValueError:
+            pass
+    
+    total_expenses = expenses_summary_query.scalar() or 0
+    
     summary_by_type = {}
     for tx_type in WalletTransactionType:
-        total_amount = db.query(func.sum(func.abs(WalletTransaction.amount))).filter(
+        type_query = db.query(func.sum(func.abs(WalletTransaction.amount))).filter(
             WalletTransaction.transaction_type == tx_type
-        ).scalar() or 0
+        )
+        
+        if date_from:
+            try:
+                from_date = datetime.strptime(date_from, "%Y-%m-%d")
+                type_query = type_query.filter(WalletTransaction.created_at >= from_date)
+            except ValueError:
+                pass
+        
+        if date_to:
+            try:
+                to_date = datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)
+                type_query = type_query.filter(WalletTransaction.created_at < to_date)
+            except ValueError:
+                pass
+        
+        total_amount = type_query.scalar() or 0
         summary_by_type[tx_type.value] = float(total_amount)
     
     return {
         "transactions": dict(transactions_by_type),
-        "summary": summary_by_type,
+        "summary": {
+            "total_deposits": float(total_deposits),
+            "total_deposits_without_tracking_id": float(total_deposits_without_tracking),
+            "total_deposits_with_tracking_id": float(total_deposits - total_deposits_without_tracking),
+            "total_expenses": float(total_expenses),
+            "by_type": summary_by_type
+        },
         "total": total,
         "page": page,
         "limit": limit,
         "pages": ceil(total / limit) if limit > 0 else 0,
-        "available_types": [t.value for t in WalletTransactionType]
+        "available_types": [t.value for t in WalletTransactionType],
+        "filter_type": filter_type
     }
