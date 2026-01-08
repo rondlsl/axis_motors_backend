@@ -307,14 +307,9 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
     :param sequence_type: Тип последовательности ('selfie_exterior', 'interior', 'start')
     :return: Результат выполнения команд
     """
-    import time
-    print(f"[DEBUG GPS] execute_gps_sequence START: imei={imei}, type={sequence_type}")
-    
     commands = get_commands_by_imei(imei)
     if not commands:
         return {"success": False, "error": f"Команды для IMEI {imei} не найдены"}
-    
-    print(f"[DEBUG GPS] Commands found: {list(commands.keys())}")
     
     results = {"success": True, "executed_commands": [], "errors": []}
     
@@ -328,13 +323,10 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
             
             # 1. Открыть замки
             try:
-                t1 = time.time()
                 open_cmd = commands.get("open", "")
                 if open_cmd:
                     vehicle_id = get_vehicle_id_by_imei(imei)
-                    print(f"[DEBUG GPS] Step 1: open_locks, vehicle_id={vehicle_id}, cmd={open_cmd}")
                     result = await send_command_to_terminal(vehicle_id, open_cmd, token)
-                    print(f"[DEBUG GPS] Step 1 done: {time.time() - t1:.2f}s")
                     results["executed_commands"].append({"step": 1, "action": "open_locks", "result": result})
                     logger.info(f"Замки автомобиля {imei} открыты")
                     await asyncio.sleep(2)  # Пауза между командами
@@ -342,17 +334,13 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
                 error_msg = f"Ошибка открытия замков: {e}"
                 results["errors"].append(error_msg)
                 logger.error(error_msg)
-                print(f"[DEBUG GPS] Step 1 ERROR: {e}")
             
             # 2. Выдать ключ
             try:
-                t2 = time.time()
                 give_key_cmd = commands.get("give_key", "")
                 if give_key_cmd:
                     vehicle_id = get_vehicle_id_by_imei(imei)
-                    print(f"[DEBUG GPS] Step 2: give_key, cmd={give_key_cmd}")
                     result = await send_command_to_terminal(vehicle_id, give_key_cmd, token)
-                    print(f"[DEBUG GPS] Step 2 done: {time.time() - t2:.2f}s")
                     results["executed_commands"].append({"step": 2, "action": "give_key", "result": result})
                     logger.info(f"Ключ автомобиля {imei} выдан")
                     await asyncio.sleep(2)
@@ -360,17 +348,13 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
                 error_msg = f"Ошибка выдачи ключа: {e}"
                 results["errors"].append(error_msg)
                 logger.error(error_msg)
-                print(f"[DEBUG GPS] Step 2 ERROR: {e}")
             
             # 3. Снова открыть замки
             try:
-                t3 = time.time()
                 open_cmd = commands.get("open", "")
                 if open_cmd:
                     vehicle_id = get_vehicle_id_by_imei(imei)
-                    print(f"[DEBUG GPS] Step 3: open_locks_again")
                     result = await send_command_to_terminal(vehicle_id, open_cmd, token)
-                    print(f"[DEBUG GPS] Step 3 done: {time.time() - t3:.2f}s")
                     results["executed_commands"].append({"step": 3, "action": "open_locks_again", "result": result})
                     logger.info(f"Замки автомобиля {imei} открыты повторно")
                     await asyncio.sleep(2)
@@ -378,17 +362,13 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
                 error_msg = f"Ошибка повторного открытия замков: {e}"
                 results["errors"].append(error_msg)
                 logger.error(error_msg)
-                print(f"[DEBUG GPS] Step 3 ERROR: {e}")
             
             # 4. Забрать ключ
             try:
-                t4 = time.time()
                 take_key_cmd = commands.get("take_key", "")
                 if take_key_cmd:
                     vehicle_id = get_vehicle_id_by_imei(imei)
-                    print(f"[DEBUG GPS] Step 4: take_key, cmd={take_key_cmd}")
                     result = await send_command_to_terminal(vehicle_id, take_key_cmd, token)
-                    print(f"[DEBUG GPS] Step 4 done: {time.time() - t4:.2f}s")
                     results["executed_commands"].append({"step": 4, "action": "take_key", "result": result})
                     logger.info(f"Ключ автомобиля {imei} забран")
             except Exception as e:
