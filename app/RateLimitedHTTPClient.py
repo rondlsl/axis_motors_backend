@@ -8,7 +8,7 @@ class RateLimitedHTTPClient:
 
     def __init__(self):
         self.queue = asyncio.Queue()
-        self.client = httpx.AsyncClient()
+        self.client = httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0))
         # Запуск фонового воркера, который обрабатывает запросы из очереди
         self._worker_task = asyncio.create_task(self._worker())
 
