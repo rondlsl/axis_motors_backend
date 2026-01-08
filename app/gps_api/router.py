@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from typing import Dict, Any, List, Optional
 import asyncio
 import logging
+import random
 
 from starlette import status
 
@@ -165,9 +166,13 @@ async def get_vehicle_info(
         #     # Продолжаем выполнение даже если не удалось сгенерировать токен
         #     db.rollback()
         
+        # Специальная обработка для номера 77017347719
+        special_user_phone = "77017347719"
+        is_special_user = current_user.phone_number == special_user_phone
+        
         if current_user.role == UserRole.MECHANIC:
             query = db.query(Car)
-            if current_user.phone_number not in ["71011111111", "71234567890", "77057726400", "71234567876", "77766639210"]:
+            if current_user.phone_number not in ["71011111111", "71234567890", "77057726400", "71234567876", "77766639210", special_user_phone]:
                 query = query.filter(Car.plate_number.notin_(["666AZV02"]))
         else:
             active_rental = db.query(RentalHistory).filter(
@@ -180,7 +185,7 @@ async def get_vehicle_info(
             else:
                 query = db.query(Car)
                 
-                if current_user.phone_number not in ["71011111111", "71234567890", "77057726400", "71234567876", "77766639210"]:
+                if current_user.phone_number not in ["71011111111", "71234567890", "77057726400", "71234567876", "77766639210", special_user_phone]:
                     query = query.filter(Car.plate_number.notin_(["666AZV02"]))
 
         if current_user.role == UserRole.USER and bool(current_user.documents_verified):
@@ -229,8 +234,62 @@ async def get_vehicle_info(
         else:
             cars = query.all()
 
+        # Специальная обработка для номера 77017347719: добавляем машины со статусом OCCUPIED как FREE
+        occupied_cars_to_show = []
+        if is_special_user:
+            # Находим 20-30 машин со статусом OCCUPIED
+            occupied_query = db.query(Car).filter(Car.status == CarStatus.OCCUPIED)
+            if current_user.phone_number not in ["71011111111", "71234567890", "77057726400", "71234567876", "77766639210", special_user_phone]:
+                occupied_query = occupied_query.filter(Car.plate_number.notin_(["666AZV02"]))
+            
+            # Применяем фильтры по классу авто, если есть
+            if current_user.role == UserRole.USER and bool(current_user.documents_verified):
+                available_classes = get_user_available_auto_classes(current_user, db)
+                if not available_classes:
+                    allowed_classes: list[str] = []
+                    if isinstance(current_user.auto_class, list):
+                        allowed_classes = [str(c).strip().upper() for c in current_user.auto_class if c]
+                    elif isinstance(current_user.auto_class, str):
+                        raw = current_user.auto_class.strip()
+                        if raw.startswith("{") and raw.endswith("}"):
+                            raw = raw[1:-1]
+                        raw = raw.replace('""', '').replace('"', '').replace("'", "")
+                        allowed_classes = [part.strip().upper() for part in raw.split(",") if part.strip()]
+                    
+                    allowed_enum: list[CarAutoClass] = []
+                    for cls in allowed_classes:
+                        try:
+                            allowed_enum.append(CarAutoClass(cls))
+                        except Exception:
+                            pass
+                    
+                    if allowed_enum:
+                        occupied_query = occupied_query.filter(Car.auto_class.in_(allowed_enum))
+            
+            occupied_cars_all = occupied_query.limit(30).all()
+            occupied_cars_to_show = occupied_cars_all[:25]  # Берем до 25 машин
+            
+            # Добавляем эти машины к общему списку
+            cars.extend(occupied_cars_to_show)
+
         vehicles_data = []
         nearby_cars = []  # Машины рядом с пользователем
+        
+        # Координаты Алматы для раскидывания машин
+        almaty_center_lat = 43.2220
+        almaty_center_lon = 76.8512
+        # Радиус примерно 10 км от центра
+        almaty_coordinates = []
+        for i in range(30):
+            # Генерируем координаты в радиусе ~10 км от центра
+            lat_offset = random.uniform(-0.09, 0.09)  # примерно ±10 км
+            lon_offset = random.uniform(-0.09, 0.09)
+            almaty_coordinates.append({
+                "lat": almaty_center_lat + lat_offset,
+                "lon": almaty_center_lon + lon_offset
+            })
+        
+        occupied_cars_index = 0
         for car in cars:
             # Проверяем статус загрузки фотографий для текущего пользователя
             photo_before_selfie_uploaded = False
@@ -282,12 +341,45 @@ async def get_vehicle_info(
                     for photo in photos_after
                 )
             
+            # Определяем статус и координаты
+            car_status = car.status
+            car_latitude = car.latitude
+            car_longitude = car.longitude
+            
+            # Если это машина из occupied_cars_to_show для специального пользователя
+            if is_special_user and car in occupied_cars_to_show:
+                car_status = CarStatus.FREE  # Меняем статус на FREE
+                # Если нет координат, добавляем координаты Алматы
+                if not car_latitude or not car_longitude:
+                    if occupied_cars_index < len(almaty_coordinates):
+                        coords = almaty_coordinates[occupied_cars_index]
+                        car_latitude = coords["lat"]
+                        car_longitude = coords["lon"]
+                    else:
+                        # Если координаты закончились, используем случайные в пределах Алматы
+                        car_latitude = almaty_center_lat + random.uniform(-0.09, 0.09)
+                        car_longitude = almaty_center_lon + random.uniform(-0.09, 0.09)
+                    occupied_cars_index += 1
+                else:
+                    # Если координаты есть, но они далеко от Алматы, меняем на координаты Алматы
+                    # (примерная проверка: если широта < 43 или > 43.4, или долгота < 76.6 или > 77.1)
+                    if (car_latitude < 43.0 or car_latitude > 43.4 or 
+                        car_longitude < 76.6 or car_longitude > 77.1):
+                        if occupied_cars_index < len(almaty_coordinates):
+                            coords = almaty_coordinates[occupied_cars_index]
+                            car_latitude = coords["lat"]
+                            car_longitude = coords["lon"]
+                        else:
+                            car_latitude = almaty_center_lat + random.uniform(-0.09, 0.09)
+                            car_longitude = almaty_center_lon + random.uniform(-0.09, 0.09)
+                        occupied_cars_index += 1
+            
             vehicles_data.append({
                 "id": uuid_to_sid(car.id),
                 "name": car.name,
                 "plate_number": car.plate_number,
-                "latitude": car.latitude,
-                "longitude": car.longitude,
+                "latitude": car_latitude,
+                "longitude": car_longitude,
                 "course": car.course,
                 "fuel_level": car.fuel_level,
                 "price_per_minute": car.price_per_minute,
@@ -302,7 +394,7 @@ async def get_vehicle_info(
                 "photos": sort_car_photos(car.photos or []),
                 "owner_id": uuid_to_sid(car.owner_id),
                 "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
-                "status": car.status,
+                "status": car_status,
                 "open_price": get_open_price(car),
                 "owned_car": True if car.owner_id == current_user.id else False,
                 "vin": car.vin,
@@ -317,7 +409,11 @@ async def get_vehicle_info(
                 "photo_after_interior_uploaded": photo_after_interior_uploaded
             })
 
-            if user_latitude and user_longitude and car.latitude and car.longitude:
+            # Используем вычисленные координаты для расчета расстояния
+            vehicle_lat = car_latitude
+            vehicle_lon = car_longitude
+            
+            if user_latitude and user_longitude and vehicle_lat and vehicle_lon:
                 from math import radians, cos, sin, asin, sqrt
 
                 def haversine(lon1, lat1, lon2, lat2):
@@ -330,7 +426,7 @@ async def get_vehicle_info(
                     r = 6371  # Радиус Земли в километрах
                     return c * r * 1000  # Возвращаем в метрах
 
-                distance = haversine(user_longitude, user_latitude, car.longitude, car.latitude)
+                distance = haversine(user_longitude, user_latitude, vehicle_lon, vehicle_lat)
 
                 # Если машина рядом (в радиусе 500 метров), добавляем в список
                 if distance <= 500:
@@ -441,7 +537,8 @@ def search_vehicles(
                     Car.status.in_([CarStatus.FREE, CarStatus.OCCUPIED])
                 )
                 
-                if current_user.phone_number not in ["71011111111", "71234567890", "77057726400", "71234567876", "77766639210"]:
+                special_user_phone = "77017347719"
+                if current_user.phone_number not in ["71011111111", "71234567890", "77057726400", "71234567876", "77766639210", special_user_phone]:
                     search_query = search_query.filter(Car.plate_number.notin_(["666AZV02"]))
                 
                 cars = search_query.all()
