@@ -64,3 +64,4 @@ class NotificationStatus(str, Enum):
     EMAIL_VERIFICATION_REQUIRED = "email_verification_required"  # Требуется подтверждение почты
     MISSING_DOCUMENTS_BONUS = "missing_documents_bonus"  # Нет документов, бонус 10 000
     RENTAL_EXTENDED = "rental_extended"  # Аренда продлена
+    INSPECTION_ASSIGNED_BY_ADMIN = "inspection_assigned_by_admin"  # Осмотр назначен администратором
