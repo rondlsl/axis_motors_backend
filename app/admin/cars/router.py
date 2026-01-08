@@ -324,59 +324,59 @@ async def change_car_status(
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
     
-    # Проверяем активные процессы перед изменением статуса
-    # Проверяем активную аренду (IN_USE) - независимо от текущего статуса
-    active_rental_in_use = db.query(RentalHistory).filter(
-        RentalHistory.car_id == car.id,
-        RentalHistory.rental_status == RentalStatus.IN_USE
-    ).first()
+    # Проверяем активные процессы перед изменением статуса на основе текущего статуса
+    # 1. Если статус IN_USE (В аренде)
+    if car.status == CarStatus.IN_USE:
+        active_rental = db.query(RentalHistory).filter(
+            RentalHistory.car_id == car.id,
+            RentalHistory.rental_status == RentalStatus.IN_USE
+        ).first()
+        if active_rental:
+            raise HTTPException(
+                status_code=400,
+                detail="Необходимо завершить текущую аренду"
+            )
     
-    if active_rental_in_use:
-        raise HTTPException(
-            status_code=400,
-            detail="Необходимо завершить текущую аренду перед изменением статуса"
-        )
+    # 2. Если статус RESERVED (Зарезервирован)
+    if car.status == CarStatus.RESERVED:
+        active_reservation = db.query(RentalHistory).filter(
+            RentalHistory.car_id == car.id,
+            RentalHistory.rental_status == RentalStatus.RESERVED
+        ).first()
+        if active_reservation:
+            raise HTTPException(
+                status_code=400,
+                detail="Необходимо отменить бронь"
+            )
     
-    # Проверяем бронь (RESERVED) - независимо от текущего статуса
-    active_reservation = db.query(RentalHistory).filter(
-        RentalHistory.car_id == car.id,
-        RentalHistory.rental_status == RentalStatus.RESERVED
-    ).first()
+    # 3. Если статус SCHEDULED (Забронирована заранее)
+    if car.status == CarStatus.SCHEDULED:
+        active_scheduled = db.query(RentalHistory).filter(
+            RentalHistory.car_id == car.id,
+            RentalHistory.rental_status == RentalStatus.SCHEDULED
+        ).first()
+        if active_scheduled:
+            raise HTTPException(
+                status_code=400,
+                detail="Необходимо отменить забронированную заранее аренду"
+            )
     
-    if active_reservation:
-        raise HTTPException(
-            status_code=400,
-            detail="Необходимо отменить бронь перед изменением статуса"
-        )
+    # 4. Если статус DELIVERING (В доставке)
+    if car.status == CarStatus.DELIVERING:
+        active_delivery = db.query(RentalHistory).filter(
+            RentalHistory.car_id == car.id,
+            RentalHistory.rental_status.in_([
+                RentalStatus.DELIVERING,
+                RentalStatus.DELIVERING_IN_PROGRESS
+            ])
+        ).first()
+        if active_delivery:
+            raise HTTPException(
+                status_code=400,
+                detail="Необходимо завершить доставку"
+            )
     
-    # Проверяем заказ доставки (DELIVERY_RESERVED) - независимо от текущего статуса
-    active_delivery_reserved = db.query(RentalHistory).filter(
-        RentalHistory.car_id == car.id,
-        RentalHistory.rental_status == RentalStatus.DELIVERY_RESERVED
-    ).first()
-    
-    if active_delivery_reserved:
-        raise HTTPException(
-            status_code=400,
-            detail="Необходимо отменить заказ доставки перед изменением статуса"
-        )
-    
-    # Проверяем доставку в процессе (DELIVERING, DELIVERING_IN_PROGRESS) - независимо от текущего статуса
-    active_delivery = db.query(RentalHistory).filter(
-        RentalHistory.car_id == car.id,
-        RentalHistory.rental_status.in_([
-            RentalStatus.DELIVERING,
-            RentalStatus.DELIVERING_IN_PROGRESS
-        ])
-    ).first()
-    
-    if active_delivery:
-        raise HTTPException(
-            status_code=400,
-            detail="Необходимо завершить доставку перед изменением статуса"
-        )
-    
-    # Если текущий статус == SERVICE, нужно завершить осмотр
+    # 5. Если статус SERVICE (У механика)
     if car.status == CarStatus.SERVICE:
         active_inspection = db.query(RentalHistory).filter(
             RentalHistory.car_id == car.id,
@@ -385,30 +385,30 @@ async def change_car_status(
             RentalHistory.mechanic_inspection_status != "COMPLETED",
             RentalHistory.mechanic_inspection_end_time.is_(None)
         ).first()
-        
         if active_inspection:
             raise HTTPException(
                 status_code=400,
-                detail="Необходимо завершить осмотр перед изменением статуса"
+                detail="Необходимо завершить осмотр"
             )
     
-    # Если текущий статус == PENDING, нужно осмотреть машину
+    # 6. Если статус PENDING (Ожидает осмотра)
     if car.status == CarStatus.PENDING:
-        pending_inspection = db.query(RentalHistory).filter(
-            RentalHistory.car_id == car.id,
-            RentalHistory.mechanic_inspection_status == "PENDING",
-            RentalHistory.mechanic_inspector_id.isnot(None)
-        ).first()
-        
-        if pending_inspection:
-            raise HTTPException(
-                status_code=400,
-                detail="Необходимо осмотреть машину перед изменением статуса"
-            )
+        raise HTTPException(
+            status_code=400,
+            detail="Необходимо осмотреть машину"
+        )
     
-    # Если текущий статус == OWNER, нельзя менять если есть активная аренда
+    # 7. Если статус OWNER (У владельца)
     if car.status == CarStatus.OWNER:
-        any_active_rental = db.query(RentalHistory).filter(
+        raise HTTPException(
+            status_code=400,
+            detail="Нельзя изменить статус автомобиля у владельца. Необходимо завершить аренду"
+        )
+    
+    # 8. Если статус OCCUPIED (Занята - не отображается)
+    if car.status == CarStatus.OCCUPIED:
+        # Проверяем наличие активных процессов
+        active_process = db.query(RentalHistory).filter(
             RentalHistory.car_id == car.id,
             RentalHistory.rental_status.in_([
                 RentalStatus.RESERVED,
@@ -419,11 +419,10 @@ async def change_car_status(
                 RentalStatus.SCHEDULED
             ])
         ).first()
-        
-        if any_active_rental:
+        if active_process:
             raise HTTPException(
                 status_code=400,
-                detail="Нельзя изменить статус автомобиля у владельца. Необходимо завершить аренду"
+                detail="Необходимо завершить активную аренду перед изменением статуса"
             )
     
     try:
