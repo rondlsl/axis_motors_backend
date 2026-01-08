@@ -2064,10 +2064,18 @@ async def upload_photos_before(
 
     Interior загружается отдельным запросом /upload-photos-before-interior
     """
+    import time
+    start_total = time.time()
+    
+    print(f"[DEBUG] upload-photos-before START for user {current_user.id}")
+    
+    t1 = time.time()
     rental = db.query(RentalHistory).filter(
         RentalHistory.user_id == current_user.id,
         RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
     ).first()
+    print(f"[DEBUG] DB query rental: {time.time() - t1:.2f}s")
+    
     if not rental:
         raise HTTPException(status_code=404, detail="No active rental found")
 
@@ -2078,6 +2086,7 @@ async def upload_photos_before(
     
     try:
         # 1) Сверяем селфи клиента с документом из профиля
+        t2 = time.time()
         try:
             is_same, msg = await run_in_threadpool(verify_user_upload_against_profile, current_user, selfie)
             if not is_same:
@@ -2086,8 +2095,10 @@ async def upload_photos_before(
             raise
         except Exception as e:
             raise HTTPException(status_code=400, detail="Ой! Похоже на фотографии не вы, но если это вы, то пожалуйста сделайте селфи как в профиле.")
+        print(f"[DEBUG] Face verification: {time.time() - t2:.2f}s")
 
         # 2) Если верификация успешна — сохраняем фото
+        t3 = time.time()
         urls = list(rental.photos_before or [])
         # save selfie
         selfie_url = await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/before/selfie/")
@@ -2098,15 +2109,21 @@ async def upload_photos_before(
             car_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/car/")
             urls.append(car_url)
             uploaded_files.append(car_url)
+        print(f"[DEBUG] Save files: {time.time() - t3:.2f}s")
 
         rental.photos_before = urls
         
         car = db.query(Car).get(rental.car_id)
         if car and car.gps_imei:
+            t4 = time.time()
             auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+            print(f"[DEBUG] Get auth token: {time.time() - t4:.2f}s")
             
             # Универсальная последовательность: открыть замки → выдать ключ → открыть замки → забрать ключ
+            t5 = time.time()
             result = await execute_gps_sequence(car.gps_imei, auth_token, "selfie_exterior")
+            print(f"[DEBUG] GPS sequence: {time.time() - t5:.2f}s")
+            
             if not result["success"]:
                 error_msg = result.get('error', 'Unknown error')
                 logger.error(f"Ошибка GPS последовательности для селфи+кузов: {error_msg}")
@@ -2115,7 +2132,9 @@ async def upload_photos_before(
                 # Логируем только краткую информацию, без детального списка команд
                 logger.info(f"GPS последовательность 'selfie_exterior' успешно выполнена для авто {car.id}")
         
+        t6 = time.time()
         db.commit()
+        print(f"[DEBUG] DB commit: {time.time() - t6:.2f}s")
         
         # Обновляем все данные из БД для получения свежих данных (после всех операций)
         db.expire_all()
@@ -2129,6 +2148,7 @@ async def upload_photos_before(
                 db.refresh(owner)
         
         # Отправляем WebSocket уведомления в самом конце, после всех операций
+        t7 = time.time()
         try:
             await notify_user_status_update(str(current_user.id))
             if car and car.owner_id:
@@ -2136,6 +2156,9 @@ async def upload_photos_before(
             logger.info(f"WebSocket user_status notification sent for user {current_user.id} after uploading photos before")
         except Exception as e:
             logger.error(f"Error sending WebSocket notification: {e}")
+        print(f"[DEBUG] WebSocket notify: {time.time() - t7:.2f}s")
+        
+        print(f"[DEBUG] upload-photos-before TOTAL: {time.time() - start_total:.2f}s")
         
         return {"message": "Photos before (selfie+car) uploaded", "photo_count": len(urls)}
     except HTTPException:
