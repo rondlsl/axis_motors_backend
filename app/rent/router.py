@@ -2287,7 +2287,7 @@ async def upload_photos_after(
         raise HTTPException(status_code=404, detail="Car not found")
 
     # Проверяем состояние автомобиля перед блокировкой
-    vehicle_status = await check_vehicle_status_for_completion(car.gps_imei)
+    vehicle_status = await check_vehicle_status_for_completion(car.gps_imei, car.plate_number)
     
     if "error" in vehicle_status:
         raise HTTPException(status_code=400, detail=vehicle_status["error"])
@@ -2435,7 +2435,7 @@ async def upload_photos_after_car(
 
     # Проверяем закрытие дверей перед внешней съёмкой
     try:
-        vehicle_status = await check_vehicle_status_for_completion(car.gps_imei)
+        vehicle_status = await check_vehicle_status_for_completion(car.gps_imei, car.plate_number)
         if vehicle_status.get("errors"):
             doors_errors = [e for e in vehicle_status["errors"] if "двер" in e.lower() or "door" in e.lower()]
             if doors_errors:
@@ -2682,7 +2682,7 @@ async def upload_photos_after_owner(
     validate_photos(interior_photos, 'interior_photos')
     
     # Проверяем состояние автомобиля перед блокировкой
-    vehicle_status = await check_vehicle_status_for_completion(car.gps_imei)
+    vehicle_status = await check_vehicle_status_for_completion(car.gps_imei, car.plate_number)
     
     if "error" in vehicle_status:
         raise HTTPException(status_code=400, detail=vehicle_status["error"])
@@ -2798,7 +2798,7 @@ class RentalReviewInput(BaseModel):
     comment: Optional[constr(max_length=255)] = Field(None, description="Комментарий к аренде (до 255 символов)")
 
 
-async def check_vehicle_status_for_completion(vehicle_imei: str) -> Dict[str, Any]:
+async def check_vehicle_status_for_completion(vehicle_imei: str, plate_number: Optional[str] = None) -> Dict[str, Any]:
     """
     Проверяет состояние автомобиля для завершения аренды.
     Возвращает ошибки если автомобиль не готов к завершению аренды.
@@ -2830,8 +2830,12 @@ async def check_vehicle_status_for_completion(vehicle_imei: str) -> Dict[str, An
                 errors.append("Для завершения аренды пожалуйста закройте багажник")
             
             # Проверка дверей
-            # Пропускаем проверку для G63 и Range Rover 
-            if vehicle_imei not in ["860803068155890", "800298270", "860803068151105"]:
+            # Пропускаем проверку для G63 и Range Rover, а также для F980802 (временно игнорируем статус замков)
+            skip_door_check = (
+                vehicle_imei in ["860803068155890", "800298270", "860803068151105"] or
+                plate_number == "F980802"
+            )
+            if not skip_door_check:
                 doors_open = []
                 if vehicle.get("front_left_door_open", False):
                     doors_open.append("передняя левая")
@@ -3091,7 +3095,7 @@ async def complete_rental(
         raise HTTPException(status_code=404, detail="Car not found")
 
     # 3) Проверить состояние автомобиля для завершения аренды
-    vehicle_status = await check_vehicle_status_for_completion(car.gps_imei)
+    vehicle_status = await check_vehicle_status_for_completion(car.gps_imei, car.plate_number)
     
     if "error" in vehicle_status:
         raise HTTPException(status_code=400, detail=vehicle_status["error"])
