@@ -10,7 +10,7 @@ from starlette import status
 
 logger = logging.getLogger(__name__)
 
-from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD, RENTED_CARS_ENDPOINT_KEY
+from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD, RENTED_CARS_ENDPOINT_KEY, POLYGON_COORDS
 from app.dependencies.database.database import get_db, SessionLocal
 from app.auth.dependencies.get_current_user import get_current_user
 from app.utils.short_id import uuid_to_sid, safe_sid_to_uuid
@@ -30,6 +30,7 @@ from app.gps_api.utils.glonassoft_client import glonassoft_client
 from app.gps_api.utils.telemetry_processor import process_glonassoft_data
 from app.utils.telegram_logger import log_error_to_telegram
 from app.admin.cars.utils import sort_car_photos
+from app.gps_api.utils.point_in_polygon import is_point_inside_polygon
 from app.push.utils import send_localized_notification_to_user, send_localized_notification_to_user_async, user_has_push_tokens, get_user_push_tokens
 from pydantic import BaseModel
 from app.models.guarantor_model import Guarantor, GuarantorRequest, GuarantorRequestStatus
@@ -275,19 +276,33 @@ async def get_vehicle_info(
         vehicles_data = []
         nearby_cars = []  # Машины рядом с пользователем
         
-        # Координаты Алматы для раскидывания машин
-        almaty_center_lat = 43.2220
-        almaty_center_lon = 76.8512
-        # Радиус примерно 10 км от центра
+        # Генерируем координаты внутри полигона зоны обслуживания
+        def generate_coordinate_inside_polygon():
+            """Генерирует случайные координаты внутри полигона зоны обслуживания"""
+            # Находим границы полигона (bounding box) для более эффективной генерации
+            min_lat = min(coord[1] for coord in POLYGON_COORDS)  # coord[1] = lat
+            max_lat = max(coord[1] for coord in POLYGON_COORDS)
+            min_lon = min(coord[0] for coord in POLYGON_COORDS)  # coord[0] = lon
+            max_lon = max(coord[0] for coord in POLYGON_COORDS)
+            
+            # Пытаемся сгенерировать точку внутри полигона
+            max_attempts = 100
+            for attempt in range(max_attempts):
+                lat = random.uniform(min_lat, max_lat)
+                lon = random.uniform(min_lon, max_lon)
+                # Проверяем, находится ли точка внутри полигона
+                if is_point_inside_polygon(lat, lon, POLYGON_COORDS):
+                    return {"lat": lat, "lon": lon}
+            
+            # Если не удалось за 100 попыток, возвращаем центральную точку полигона
+            center_lat = (min_lat + max_lat) / 2
+            center_lon = (min_lon + max_lon) / 2
+            return {"lat": center_lat, "lon": center_lon}
+        
+        # Генерируем предварительно координаты для машин
         almaty_coordinates = []
         for i in range(30):
-            # Генерируем координаты в радиусе ~10 км от центра
-            lat_offset = random.uniform(-0.09, 0.09)  # примерно ±10 км
-            lon_offset = random.uniform(-0.09, 0.09)
-            almaty_coordinates.append({
-                "lat": almaty_center_lat + lat_offset,
-                "lon": almaty_center_lon + lon_offset
-            })
+            almaty_coordinates.append(generate_coordinate_inside_polygon())
         
         occupied_cars_index = 0
         for car in cars:
@@ -349,29 +364,30 @@ async def get_vehicle_info(
             # Если это машина из occupied_cars_to_show для специального пользователя
             if is_special_user and car in occupied_cars_to_show:
                 car_status = CarStatus.FREE  # Меняем статус на FREE
-                # Если нет координат, добавляем координаты Алматы
+                # Если нет координат или координаты вне полигона, добавляем координаты внутри полигона
                 if not car_latitude or not car_longitude:
                     if occupied_cars_index < len(almaty_coordinates):
                         coords = almaty_coordinates[occupied_cars_index]
                         car_latitude = coords["lat"]
                         car_longitude = coords["lon"]
                     else:
-                        # Если координаты закончились, используем случайные в пределах Алматы
-                        car_latitude = almaty_center_lat + random.uniform(-0.09, 0.09)
-                        car_longitude = almaty_center_lon + random.uniform(-0.09, 0.09)
+                        # Если координаты закончились, генерируем новые внутри полигона
+                        coords = generate_coordinate_inside_polygon()
+                        car_latitude = coords["lat"]
+                        car_longitude = coords["lon"]
                     occupied_cars_index += 1
                 else:
-                    # Если координаты есть, но они далеко от Алматы, меняем на координаты Алматы
-                    # (примерная проверка: если широта < 43 или > 43.4, или долгота < 76.6 или > 77.1)
-                    if (car_latitude < 43.0 or car_latitude > 43.4 or 
-                        car_longitude < 76.6 or car_longitude > 77.1):
+                    # Проверяем, находятся ли координаты внутри полигона
+                    if not is_point_inside_polygon(car_latitude, car_longitude, POLYGON_COORDS):
                         if occupied_cars_index < len(almaty_coordinates):
                             coords = almaty_coordinates[occupied_cars_index]
                             car_latitude = coords["lat"]
                             car_longitude = coords["lon"]
                         else:
-                            car_latitude = almaty_center_lat + random.uniform(-0.09, 0.09)
-                            car_longitude = almaty_center_lon + random.uniform(-0.09, 0.09)
+                            # Если координаты закончились, генерируем новые внутри полигона
+                            coords = generate_coordinate_inside_polygon()
+                            car_latitude = coords["lat"]
+                            car_longitude = coords["lon"]
                         occupied_cars_index += 1
             
             vehicles_data.append({
