@@ -5,7 +5,7 @@ from fastapi import HTTPException
 from app.models.car_model import Car, CarBodyType
 from app.models.history_model import RentalType
 
-FUEL_PRICE_PER_LITER = 350
+FUEL_PRICE_PER_LITER = 400
 ELECTRIC_FUEL_PRICE_PER_LITER = 100
 FULL_TANK_LITERS = 100  # Стандартный объем полного бака
 

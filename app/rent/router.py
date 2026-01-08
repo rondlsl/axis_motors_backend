@@ -86,7 +86,7 @@ RentRouter = APIRouter(tags=["Rent"], prefix="/rent")
 OFFSET_HOURS = 5
 
 # Цена за литр бензина (тг)
-FUEL_PRICE_PER_LITER = 350
+FUEL_PRICE_PER_LITER = 400
 ELECTRIC_FUEL_PRICE_PER_LITER = 100
 
 
@@ -345,11 +345,11 @@ def get_trip_history(
                 if fuel_consumed > 0:
                     is_owner = car.owner_id == rental.user_id
                     # Определяем цену за литр в зависимости от типа автомобиля
-                    # Электрокар: 100₸/л, Обычный: 350₸/л
+                    # Электрокар: 100₸/л, Обычный: 400₸/л
                     if car.body_type == CarBodyType.ELECTRIC:
                         price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER  # 100₸
                     else:
-                        price_per_liter = FUEL_PRICE_PER_LITER  # 350₸
+                        price_per_liter = FUEL_PRICE_PER_LITER  # 400₸
                     
                     # Топливо оплачивается для всех тарифов (MINUTES, HOURS, DAYS)
                     fuel_fee_display = int(fuel_consumed * price_per_liter)

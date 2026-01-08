@@ -80,11 +80,11 @@ def calculate_fuel_cost(rental: RentalHistory, car: Car, current_user: User) -> 
     # Если поездка была совершена владельцем
     if rental.user_id == car.owner_id:
         # Определяем цену за литр в зависимости от типа автомобиля
-        # Электрокар: 100₸/л, Обычный: 350₸/л
+        # Электрокар: 100₸/л, Обычный: 400₸/л
         if car.body_type == CarBodyType.ELECTRIC:
             price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER  # 100₸
         else:
-            price_per_liter = FUEL_PRICE_PER_LITER  # 350₸
+            price_per_liter = FUEL_PRICE_PER_LITER  # 400₸
         
         # Владелец платит полную стоимость топлива
         fuel_cost = int(fuel_consumed * price_per_liter)

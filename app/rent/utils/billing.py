@@ -30,7 +30,7 @@ from app.utils.telegram_logger import telegram_error_logger
 from app.websocket.notifications import notify_user_status_update
 from app.utils.time_utils import get_local_time
 
-FUEL_PRICE_PER_LITER = 350
+FUEL_PRICE_PER_LITER = 400
 ELECTRIC_FUEL_PRICE_PER_LITER = 100
 
 # Стоимость водителя
