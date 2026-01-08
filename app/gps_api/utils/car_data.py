@@ -109,13 +109,13 @@ def get_commands_by_imei(imei: str) -> dict:
             "lock_engine": "OUTPUT0 1",
             "unlock_engine": "OUTPUT0 0"
         },
-        "860803068143045": {  # Mercedes - vehicle_id 800212421
-            "open": "OUTPUT3 1|chat OPEN|OUTPUT3 0",
-            "close": "chat BUZZ|chat CLOSE|chat CLOSE|chat CLOSE",
+        "860803068143045": {  # Mercedes CLA45s - vehicle_id 800212421
+            "open": "chat OPEN|OUTPUT1 1|OUTPUT3 1|OUTPUT2 0|OUTPUT2 0|OUTPUT2 0|OUTPUT2 0|OUTPUT3 0|OUTPUT1 0",
+            "close": "chat CLOSE",
             "give_key": "OUTPUT1 1",
-            "take_key": "OUTPUT1 0|OUTPUT3 0",
-            "lock_engine": "chat LOCK|OUTPUT0 1",
-            "unlock_engine": "chat UNLOCK|OUTPUT0 0"
+            "take_key": "OUTPUT1 0",
+            "lock_engine": "OUTPUT0 1",
+            "unlock_engine": "OUTPUT0 0"
         },
         "860803068146253": {  # Hyundai Tucson - vehicle_id 800339176
             "open": "chat OPEN",
