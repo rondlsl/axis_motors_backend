@@ -2351,8 +2351,9 @@ async def upload_photos_after(
         
         # После загрузки селфи+салона: заблокировать двигатель → забрать ключ → закрыть замки
         car = db.query(Car).get(rental.car_id)
+        print(f"[DEBUG] Car found: {car is not None}, GPS IMEI: {car.gps_imei if car else 'N/A'}")
         if car and car.gps_imei:
-            
+            print(f"[DEBUG] Calling GPS sequence complete_selfie_interior for {car.gps_imei}")
             auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
             # Универсальная последовательность: заблокировать двигатель → забрать ключ → закрыть замки
             result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_selfie_interior")
@@ -2360,6 +2361,8 @@ async def upload_photos_after(
                 error_msg = result.get('error', 'Unknown error')
                 print(f"Ошибка GPS последовательности для завершения селфи+салон: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
+        else:
+            print(f"[DEBUG] Skipping GPS sequence - no car or no IMEI")
         
         db.commit()
         
