@@ -16,7 +16,7 @@ jobs:
           host: 195.93.152.69
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: 29022
+          port: 22
           script: |
             cd ~/azv_motors_backend_v2
             git pull origin main
@@ -29,7 +29,7 @@ jobs:
           host: 195.93.152.69
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: 29022
+          port: 22
           script: |
             cd ~/azv_motors_backend_v2
             docker-compose -f docker-compose.test.yml down
