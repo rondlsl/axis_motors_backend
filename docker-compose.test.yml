@@ -5,6 +5,12 @@ services:
     restart: always
     ports:
       - "7141:7141"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:7141/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     environment:
       - DEBUG_API_ERRORS=1
     env_file:

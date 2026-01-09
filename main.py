@@ -547,6 +547,17 @@ async def root(db: Session = Depends(get_db)):
     return {"message": "salam?"}
 
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for monitoring"""
+    return {
+        "status": "ok",
+        "timestamp": datetime.now().isoformat(),
+        "service": "azv_motors_backend"
+    }
+
+
+
 @app.get("/test-websocket")
 async def test_websocket():
     """Проверка доступности WebSocket эндпоинтов"""

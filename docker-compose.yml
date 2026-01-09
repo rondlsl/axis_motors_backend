@@ -5,6 +5,12 @@ services:
     restart: always
     ports:
       - "7139:7139"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:7139/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     environment:
       - DEBUG_API_ERRORS=1
     env_file:
@@ -13,12 +19,9 @@ services:
       - db
     command: /bin/sh -c "uvicorn main:app --host 0.0.0.0 --port 7139 --ws auto"
     volumes:
-      - ./uploads:/app/uploads  # Монтируем всю директорию uploads
-      - ./contracts:/app/contracts  # Монтируем папку contracts
-      - ./backups:/app/backups  # Монтируем директорию для backup'ов
-
-
-
+      - ./uploads:/app/uploads # Монтируем всю директорию uploads
+      - ./contracts:/app/contracts # Монтируем папку contracts
+      - ./backups:/app/backups # Монтируем директорию для backup'ов
 
   db:
     image: postgres:15
@@ -31,7 +34,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data_v2:/var/lib/postgresql/data
-
 
 volumes:
   postgres_data_v2:
