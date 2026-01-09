@@ -3,9 +3,18 @@
 # Health Monitor Script for AZV Motors Backend
 # Checks production and test environments and sends Telegram alerts
 
+# Load environment variables from .env file
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+ENV_FILE="$PROJECT_DIR/.env"
+
+if [ -f "$ENV_FILE" ]; then
+    export $(grep -v '^#' "$ENV_FILE" | grep -E 'TELEGRAM_BOT_TOKEN_2|MONITOR_GROUP_ID' | xargs)
+fi
+
 # Configuration
 TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN_2:-}"
-TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-}"
+TELEGRAM_CHAT_ID="${MONITOR_GROUP_ID:-}"
 PROD_URL="http://localhost:7139/health"
 TEST_URL="http://localhost:7141/health"
 LOG_FILE="/tmp/health_monitor.log"
