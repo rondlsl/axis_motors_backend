@@ -491,6 +491,10 @@ class SwaggerAuthMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         return response
 
+
+from app.middleware.performance_monitor import PerformanceMonitoringMiddleware
+
+app.add_middleware(PerformanceMonitoringMiddleware, slow_threshold=3.0, alert_threshold=10.0)
 app.add_middleware(SwaggerAuthMiddleware)
 app.add_middleware(ErrorLoggerMiddleware)
 app.add_middleware(
