@@ -2902,10 +2902,6 @@ async def check_vehicle_status_for_completion(vehicle_imei: str, plate_number: O
                 if vehicle.get("are_lights_on", False) and not vehicle.get("is_light_auto_mode_on", False):
                     errors.append("Для завершения аренды пожалуйста выключите фары или переведите в режим AUTO")
             
-            # Проверка двигателя (обороты должны быть 0)
-            if vehicle.get("rpm", 0) > 0:
-                errors.append("Для завершения аренды пожалуйста заглушите двигатель")
-            
             return {"errors": errors, "vehicle": vehicle}
             
     except Exception as e:
