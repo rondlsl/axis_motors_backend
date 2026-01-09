@@ -439,21 +439,29 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
             # 2. Забрать ключ
             # 3. Закрыть замки
             
+            print(f"[GPS SEQ] Starting complete_selfie_interior for {imei}")
+            
             # 1. Заблокировать двигатель
             try:
                 vehicle_id = get_vehicle_id_by_imei(imei)
                 if imei in LOCK_ENGINE_DISABLED_IMEIS or vehicle_id in LOCK_ENGINE_DISABLED_VEHICLE_IDS:
+                    print(f"[GPS SEQ] Step 1: Lock engine SKIPPED (disabled for this vehicle)")
                     logger.info(f"Lock engine command skipped in execute_gps_sequence for IMEI {imei} (vehicle_id {vehicle_id})")
                     results["executed_commands"].append({"step": 1, "action": "lock_engine", "result": {"skipped": True, "reason": "lock_engine_disabled"}})
                 else:
                     lock_engine_cmd = commands.get("lock_engine", "")
                     if lock_engine_cmd:
+                        print(f"[GPS SEQ] Step 1: Locking engine with command '{lock_engine_cmd}'")
                         result = await send_command_to_terminal(vehicle_id, lock_engine_cmd, token)
                         results["executed_commands"].append({"step": 1, "action": "lock_engine", "result": result})
                         logger.info(f"Двигатель автомобиля {imei} заблокирован")
+                        print(f"[GPS SEQ] Step 1: Lock engine completed, waiting 2s")
+                    else:
+                        print(f"[GPS SEQ] Step 1: Lock engine command not found")
                     await asyncio.sleep(2)
             except Exception as e:
                 error_msg = f"Ошибка блокировки двигателя: {e}"
+                print(f"[GPS SEQ] Step 1 ERROR: {error_msg}")
                 results["errors"].append(error_msg)
                 logger.error(error_msg)
             
@@ -461,13 +469,18 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
             try:
                 take_key_cmd = commands.get("take_key", "")
                 if take_key_cmd:
+                    print(f"[GPS SEQ] Step 2: Taking key with command '{take_key_cmd}'")
                     vehicle_id = get_vehicle_id_by_imei(imei)
                     result = await send_command_to_terminal(vehicle_id, take_key_cmd, token)
                     results["executed_commands"].append({"step": 2, "action": "take_key", "result": result})
                     logger.info(f"Ключ автомобиля {imei} забран")
+                    print(f"[GPS SEQ] Step 2: Take key completed, waiting 2s")
                     await asyncio.sleep(2)
+                else:
+                    print(f"[GPS SEQ] Step 2: Take key command not found")
             except Exception as e:
                 error_msg = f"Ошибка забора ключа: {e}"
+                print(f"[GPS SEQ] Step 2 ERROR: {error_msg}")
                 results["errors"].append(error_msg)
                 logger.error(error_msg)
             
@@ -475,12 +488,17 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
             try:
                 close_cmd = commands.get("close", "")
                 if close_cmd:
+                    print(f"[GPS SEQ] Step 3: Closing locks with command '{close_cmd}'")
                     vehicle_id = get_vehicle_id_by_imei(imei)
                     result = await send_command_to_terminal(vehicle_id, close_cmd, token)
                     results["executed_commands"].append({"step": 3, "action": "close_locks", "result": result})
                     logger.info(f"Замки автомобиля {imei} закрыты")
+                    print(f"[GPS SEQ] Step 3: Close locks completed")
+                else:
+                    print(f"[GPS SEQ] Step 3: Close command not found")
             except Exception as e:
                 error_msg = f"Ошибка закрытия замков: {e}"
+                print(f"[GPS SEQ] Step 3 ERROR: {error_msg}")
                 results["errors"].append(error_msg)
                 logger.error(error_msg)
                 
