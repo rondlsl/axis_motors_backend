@@ -2,6 +2,7 @@ version: '3.8'
 services:
   back:
     build: .
+    restart: always
     ports:
       - "7139:7139"
     environment:

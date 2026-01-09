@@ -2,6 +2,7 @@ version: '3.8'
 services:
   back-test:
     build: .
+    restart: always
     ports:
       - "7141:7141"
     environment:
@@ -32,7 +33,7 @@ services:
 volumes:
   postgres_test_data_v2:
 
+
 networks:
   test-network:
     driver: bridge
-
