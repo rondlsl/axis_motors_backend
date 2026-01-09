@@ -2076,7 +2076,7 @@ async def upload_photos_before(
 
     import time
     start_time = time.time()
-    logger.info(f"[TIMING] upload_photos_before START for user {current_user.id}")
+    print(f"[TIMING] upload_photos_before START for user {current_user.id}")
 
     uploaded_files = []
     
@@ -2086,7 +2086,7 @@ async def upload_photos_before(
             verify_start = time.time()
             is_same, msg = await run_in_threadpool(verify_user_upload_against_profile, current_user, selfie)
             verify_duration = time.time() - verify_start
-            logger.info(f"[TIMING] Face verification took {verify_duration:.2f}s")
+            print(f"[TIMING] Face verification took {verify_duration:.2f}s")
             if not is_same:
                 raise HTTPException(status_code=400, detail=msg)
         except HTTPException:
@@ -2102,7 +2102,7 @@ async def upload_photos_before(
         selfie_url = await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/before/selfie/")
         urls.append(selfie_url)
         uploaded_files.append(selfie_url)
-        logger.info(f"[TIMING] Selfie save took {time.time() - save_start:.2f}s")
+        print(f"[TIMING] Selfie save took {time.time() - save_start:.2f}s")
         
         # save exterior
         for idx, p in enumerate(car_photos):
@@ -2110,23 +2110,23 @@ async def upload_photos_before(
             car_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/car/")
             urls.append(car_url)
             uploaded_files.append(car_url)
-            logger.info(f"[TIMING] Car photo {idx+1} save took {time.time() - photo_start:.2f}s")
+            print(f"[TIMING] Car photo {idx+1} save took {time.time() - photo_start:.2f}s")
 
         rental.photos_before = urls
         
         car = db.query(Car).get(rental.car_id)
         if car and car.gps_imei:
             gps_start = time.time()
-            logger.info(f"[TIMING] Starting GPS sequence for {car.gps_imei}")
+            print(f"[TIMING] Starting GPS sequence for {car.gps_imei}")
             
             auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-            logger.info(f"[TIMING] GPS auth took {time.time() - gps_start:.2f}s")
+            print(f"[TIMING] GPS auth took {time.time() - gps_start:.2f}s")
             
             # Универсальная последовательность: открыть замки → выдать ключ → открыть замки → забрать ключ
             sequence_start = time.time()
             result = await execute_gps_sequence(car.gps_imei, auth_token, "selfie_exterior")
             sequence_duration = time.time() - sequence_start
-            logger.info(f"[TIMING] GPS sequence took {sequence_duration:.2f}s")
+            print(f"[TIMING] GPS sequence took {sequence_duration:.2f}s")
             
             if not result["success"]:
                 error_msg = result.get('error', 'Unknown error')
@@ -2138,7 +2138,7 @@ async def upload_photos_before(
         
         commit_start = time.time()
         db.commit()
-        logger.info(f"[TIMING] DB commit took {time.time() - commit_start:.2f}s")
+        print(f"[TIMING] DB commit took {time.time() - commit_start:.2f}s")
         
         # Обновляем все данные из БД для получения свежих данных (после всех операций)
         db.expire_all()
@@ -2161,7 +2161,7 @@ async def upload_photos_before(
             logger.error(f"Error sending WebSocket notification: {e}");
         
         total_duration = time.time() - start_time
-        logger.info(f"[TIMING] upload_photos_before TOTAL: {total_duration:.2f}s")
+        print(f"[TIMING] upload_photos_before TOTAL: {total_duration:.2f}s")
         
         return {"message": "Photos before (selfie+car) uploaded", "photo_count": len(urls)}
     except HTTPException:
