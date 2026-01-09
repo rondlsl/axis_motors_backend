@@ -8,56 +8,29 @@ jobs:
   deploy:
     name: Deploy to Server
     runs-on: ubuntu-latest
-    environment: production
     
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -p 29022 -H 195.93.152.69 >> ~/.ssh/known_hosts
-      
-      - name: Deploy to Server
-        run: |
-          ssh -p 29022 ubuntu@195.93.152.69 << 'ENDSSH'
-            set -e
+      - name: Deploy Production
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 195.93.152.69
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 29022
+          script: |
             cd ~/azv_motors_backend_v2
-            
-            echo "📦 Pulling latest code..."
-            git fetch origin
-            git reset --hard origin/main
-            
-            echo "🔧 Stopping services..."
-            docker-compose down || true
-            
-            echo "🏗️ Building Docker image..."
-            docker-compose build --no-cache
-            
-            echo "🗄️ Running database migrations..."
-            docker-compose run --rm back alembic upgrade head || echo "⚠️ Migration failed or already applied"
-            
-            echo "🚀 Starting services..."
-            docker-compose up -d
-            
-            echo "⏳ Waiting for services to start..."
-            sleep 10
-            
-            echo "✅ Deployment completed!"
-            docker-compose ps
-          ENDSSH
+            git pull origin main
+            docker-compose down
+            docker-compose up -d --build
       
-      - name: Health Check
-        run: |
-          sleep 5
-          curl -f http://195.93.152.69:7138/docs || echo "⚠️ Health check failed"
-      
-      - name: Notify on Success
-        if: success()
-        run: echo "✅ Deployment successful!"
-      
-      - name: Notify on Failure
-        if: failure()
-        run: echo "❌ Deployment failed!"
+      - name: Deploy Test Environment
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 195.93.152.69
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 29022
+          script: |
+            cd ~/azv_motors_backend_v2
+            docker-compose -f docker-compose.test.yml down
+            docker-compose -f docker-compose.test.yml up -d --build
