@@ -1,7 +1,7 @@
 import time
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
-from app.core.config import logger, TELEGRAM_BOT_TOKEN_2
+from app.core.config import logger, TELEGRAM_BOT_MONITOR
 from app.notifications import send_telegram_message
 import asyncio
 
@@ -50,8 +50,6 @@ class PerformanceMonitoringMiddleware(BaseHTTPMiddleware):
             
             # Send Telegram alert for very slow requests
             if process_time > self.alert_threshold:
-                from app.core.config import MONITOR_GROUP_ID
-                
                 alert_message = (
                     f"🐌 <b>Very Slow Request Detected!</b>\n\n"
                     f"Method: {request.method}\n"
@@ -60,9 +58,9 @@ class PerformanceMonitoringMiddleware(BaseHTTPMiddleware):
                     f"Client: {request.client.host if request.client else 'unknown'}"
                 )
                 try:
-                    # Send to monitor group
+                    # Send via monitor bot (it knows where to send)
                     asyncio.create_task(
-                        send_telegram_message(alert_message, TELEGRAM_BOT_TOKEN_2, MONITOR_GROUP_ID)
+                        send_telegram_message(alert_message, TELEGRAM_BOT_MONITOR)
                     )
                 except Exception as e:
                     logger.error(f"Failed to send slow request alert: {e}")
