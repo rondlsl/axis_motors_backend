@@ -20,8 +20,8 @@ jobs:
           script: |
             cd ~/azv_motors_backend_v2
             git pull origin main
-            docker-compose down
-            docker-compose up -d --build
+            docker compose down
+            docker compose up -d --build
       
       - name: Deploy Test Environment
         uses: appleboy/ssh-action@v1.0.0
@@ -32,5 +32,5 @@ jobs:
           port: 22
           script: |
             cd ~/azv_motors_backend_v2
-            docker-compose -f docker-compose.test.yml down
-            docker-compose -f docker-compose.test.yml up -d --build
+            docker compose -f docker-compose.test.yml down
+            docker compose -f docker-compose.test.yml up -d --build
