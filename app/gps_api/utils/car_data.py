@@ -458,7 +458,7 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
                         print(f"[GPS SEQ] Step 1: Lock engine completed, waiting 2s")
                     else:
                         print(f"[GPS SEQ] Step 1: Lock engine command not found")
-                    await asyncio.sleep(2)
+                await asyncio.sleep(2)
             except Exception as e:
                 error_msg = f"Ошибка блокировки двигателя: {e}"
                 print(f"[GPS SEQ] Step 1 ERROR: {error_msg}")
@@ -475,9 +475,9 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
                     results["executed_commands"].append({"step": 2, "action": "take_key", "result": result})
                     logger.info(f"Ключ автомобиля {imei} забран")
                     print(f"[GPS SEQ] Step 2: Take key completed, waiting 2s")
-                    await asyncio.sleep(2)
                 else:
                     print(f"[GPS SEQ] Step 2: Take key command not found")
+                await asyncio.sleep(2)
             except Exception as e:
                 error_msg = f"Ошибка забора ключа: {e}"
                 print(f"[GPS SEQ] Step 2 ERROR: {error_msg}")
