@@ -40,6 +40,10 @@ async def send_command_to_terminal(
     :param id_template: ID шаблона команды (если есть).
     :return: Словарь с command_id.
     """
+    import time
+    cmd_start = time.time()
+    print(f"[GPS CMD] Sending '{command}' to vehicle {vehicle_id}")
+    
     url = "https://regions.glonasssoft.ru/api/v3/Vehicles/cmd/create"
     headers = {
         "X-Auth": token,
@@ -59,9 +63,13 @@ async def send_command_to_terminal(
         response: Response = await client.send_request("POST", url, headers=headers, json=payload)
         response.raise_for_status()
         command_id = response.text.strip('"')
+        cmd_duration = time.time() - cmd_start
+        print(f"[GPS CMD] Command '{command}' completed in {cmd_duration:.2f}s")
         return {"command_id": command_id}
 
     except Exception as e:
+        cmd_duration = time.time() - cmd_start
+        print(f"[GPS CMD] Command '{command}' FAILED after {cmd_duration:.2f}s: {e}")
         logger.error(f"Ошибка отправки команды для {vehicle_id}, {command}, {e}")
         try:
             await log_error_to_telegram(
