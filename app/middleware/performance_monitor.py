@@ -50,7 +50,7 @@ class PerformanceMonitoringMiddleware(BaseHTTPMiddleware):
             
             # Send Telegram alert for very slow requests
             if process_time > self.alert_threshold:
-                from app.core.config import TELEGRAM_CHAT_IDS
+                from app.core.config import MONITOR_GROUP_ID
                 
                 alert_message = (
                     f"🐌 <b>Very Slow Request Detected!</b>\n\n"
@@ -60,12 +60,10 @@ class PerformanceMonitoringMiddleware(BaseHTTPMiddleware):
                     f"Client: {request.client.host if request.client else 'unknown'}"
                 )
                 try:
-                    # Send to monitor group 
-                    monitor_chat_id = TELEGRAM_CHAT_IDS.get("Muzon_remix")
-                    if monitor_chat_id:
-                        asyncio.create_task(
-                            send_telegram_message(alert_message, TELEGRAM_BOT_TOKEN_2, monitor_chat_id)
-                        )
+                    # Send to monitor group
+                    asyncio.create_task(
+                        send_telegram_message(alert_message, TELEGRAM_BOT_TOKEN_2, MONITOR_GROUP_ID)
+                    )
                 except Exception as e:
                     logger.error(f"Failed to send slow request alert: {e}")
             
