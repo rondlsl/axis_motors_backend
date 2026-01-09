@@ -18,6 +18,12 @@ class ActionType(enum.Enum):
     UNLOCK_ENGINE = "unlock_engine"
 
 
+class ActionStatus(enum.Enum):
+    SUCCESS = "success"
+    FAILED = "failed"
+    PENDING = "pending"
+
+
 class RentalAction(Base):
     __tablename__ = "rental_actions"
 
@@ -29,6 +35,7 @@ class RentalAction(Base):
     user = relationship("User")
 
     action_type = Column(Enum(ActionType), nullable=False)
+    status = Column(Enum(ActionStatus), nullable=False, default=ActionStatus.SUCCESS)
     timestamp = Column(DateTime, default=get_local_time, nullable=False)
     
     @property

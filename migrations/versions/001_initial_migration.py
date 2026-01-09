@@ -201,6 +201,18 @@ def create_enums():
         END $$;
     """)
     
+    # ActionStatus enum (for rental_actions status)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE actionstatus AS ENUM (
+                'success', 'failed', 'pending',
+                'SUCCESS', 'FAILED', 'PENDING'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    
     # ContractType enum
     op.execute("""
         DO $$ BEGIN
@@ -569,6 +581,7 @@ def create_rental_actions_table():
         sa.Column('rental_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('rental_history.id'), nullable=False),
         sa.Column('user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=False),
         sa.Column('action_type', postgresql.ENUM('open_vehicle', 'close_vehicle', 'give_key', 'take_key', 'lock_engine', 'unlock_engine', name='actiontype', create_type=False), nullable=False),
+        sa.Column('status', postgresql.ENUM('success', 'failed', 'pending', name='actionstatus', create_type=False), nullable=False, server_default='success'),
         sa.Column('timestamp', sa.DateTime(), nullable=False, server_default=sa.func.now())
     )
 
@@ -853,7 +866,7 @@ def downgrade() -> None:
     # Drop all enums
     enums_to_drop = [
         'wallettransactiontype', 'userpromostatus', 'notificationstatus', 'contracttype',
-        'actiontype', 'rentalstatus', 'rentaltype', 'verificationstatus',
+        'actiontype', 'actionstatus', 'rentalstatus', 'rentaltype', 'verificationstatus',
         'guarantorrequeststatus', 'applicationstatus', 'carstatus', 'transmissiontype',
         'carautoclass', 'carbodytype', 'autoclass', 'userrole'
     ]
