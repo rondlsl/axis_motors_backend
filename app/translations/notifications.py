@@ -48,6 +48,9 @@ NOTIFICATIONS_TRANSLATIONS = {
         "balance_exhausted_title": "Баланс исчерпан",
         "balance_exhausted_body": "Ваш баланс 0₸ — завершите аренду, чтобы избежать штрафов.",
         
+        "engine_locked_due_to_balance_title": "Двигатель заблокирован",
+        "engine_locked_due_to_balance_body": "Двигатель вашего автомобиля {car_name} заблокирован из-за задолженности.",
+        
         # Уведомление о загрузке документов
         "documents_uploaded_title": "Ваши документы загружены",
         "documents_uploaded_body": "Ваши документы успешно загружены. Проверка займет до 24 часов.",
@@ -251,6 +254,9 @@ NOTIFICATIONS_TRANSLATIONS = {
         "balance_exhausted_title": "Balance Exhausted",
         "balance_exhausted_body": "Your balance is 0₸ — complete rental to avoid penalties.",
         
+        "engine_locked_due_to_balance_title": "Engine Locked",
+        "engine_locked_due_to_balance_body": "The engine of your car {car_name} has been locked due to outstanding balance.",
+        
         # Documents uploaded notification
         "documents_uploaded_title": "Your documents uploaded",
         "documents_uploaded_body": "Your documents have been successfully uploaded. Verification will take up to 24 hours.",
@@ -452,6 +458,9 @@ NOTIFICATIONS_TRANSLATIONS = {
         
         "balance_exhausted_title": "Баланс таусылды",
         "balance_exhausted_body": "Сіздің балансыңыз 0₸ — айыппұлдардан аулақ болу үшін жалға алуды аяқтаңыз.",
+        
+        "engine_locked_due_to_balance_title": "Қозғалтқыш бұғатталды",
+        "engine_locked_due_to_balance_body": "{car_name} көлігінің қозғалтқышы қарызға байланысты бұғатталды.",
         
         # Құжаттар жүктелген хабарлама
         "documents_uploaded_title": "Сіздің құжаттарыңыз жүктелді",
@@ -656,6 +665,9 @@ NOTIFICATIONS_TRANSLATIONS = {
         
         "balance_exhausted_title": "余额已用完",
         "balance_exhausted_body": "您的余额为 0₸ — 请完成租赁以避免罚款。",
+        
+        "engine_locked_due_to_balance_title": "发动机已锁定",
+        "engine_locked_due_to_balance_body": "由于欠款，您的车辆 {car_name} 的发动机已被锁定。",
         
         # 文件已上传通知
         "documents_uploaded_title": "您的文件已上传",
