@@ -17,7 +17,7 @@ from app.utils.short_id import uuid_to_sid, safe_sid_to_uuid
 from app.gps_api.schemas import RentedCar
 from app.models.car_model import Car, CarAutoClass, CarStatus
 from app.models.history_model import RentalHistory, RentalStatus
-from app.models.rental_actions_model import ActionType, RentalAction
+from app.models.rental_actions_model import ActionType, ActionStatus, RentalAction
 from app.models.user_model import User, UserRole
 from app.rent.utils.user_utils import get_user_available_auto_classes
 from app.models.application_model import Application, ApplicationStatus
@@ -1560,12 +1560,13 @@ async def open_vehicle_by_id(
     try:
         cmd = await send_open(car.gps_imei, AUTH_TOKEN)
         
-        # Записываем действие в rental_actions если есть активная аренда
+       
         if rental:
             action = RentalAction(
                 rental_id=rental.id,
                 user_id=current_user.id,
-                action_type=ActionType.OPEN_VEHICLE
+                action_type=ActionType.OPEN_VEHICLE,
+                status=ActionStatus.SUCCESS
             )
             db.add(action)
             db.commit()
@@ -1583,6 +1584,15 @@ async def open_vehicle_by_id(
         
         return {"message": "Команда открытия отправлена", "car_name": car.name, "result": cmd}
     except Exception as e:
+        if rental:
+            action = RentalAction(
+                rental_id=rental.id,
+                user_id=current_user.id,
+                action_type=ActionType.OPEN_VEHICLE,
+                status=ActionStatus.FAILED
+            )
+            db.add(action)
+            db.commit()
         raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
 
 
@@ -1619,12 +1629,13 @@ async def close_vehicle_by_id(
     try:
         cmd = await send_close(car.gps_imei, AUTH_TOKEN)
         
-        # Записываем действие в rental_actions если есть активная аренда
+        # Записываем успешное действие в rental_actions если есть активная аренда
         if rental:
             action = RentalAction(
                 rental_id=rental.id,
                 user_id=current_user.id,
-                action_type=ActionType.CLOSE_VEHICLE
+                action_type=ActionType.CLOSE_VEHICLE,
+                status=ActionStatus.SUCCESS
             )
             db.add(action)
             db.commit()
@@ -1642,6 +1653,16 @@ async def close_vehicle_by_id(
         
         return {"message": "Команда закрытия отправлена", "car_name": car.name, "result": cmd}
     except Exception as e:
+        # Записываем неуспешное действие
+        if rental:
+            action = RentalAction(
+                rental_id=rental.id,
+                user_id=current_user.id,
+                action_type=ActionType.CLOSE_VEHICLE,
+                status=ActionStatus.FAILED
+            )
+            db.add(action)
+            db.commit()
         raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
 
 
@@ -1678,12 +1699,12 @@ async def lock_engine_by_id(
     try:
         cmd = await send_lock_engine(car.gps_imei, AUTH_TOKEN)
         
-        # Записываем действие в rental_actions если есть активная аренда
         if rental:
             action = RentalAction(
                 rental_id=rental.id,
                 user_id=current_user.id,
-                action_type=ActionType.LOCK_ENGINE
+                action_type=ActionType.LOCK_ENGINE,
+                status=ActionStatus.SUCCESS
             )
             db.add(action)
             db.commit()
@@ -1701,6 +1722,15 @@ async def lock_engine_by_id(
         
         return {"message": "Команда блокировки двигателя отправлена", "car_name": car.name, "result": cmd}
     except Exception as e:
+        if rental:
+            action = RentalAction(
+                rental_id=rental.id,
+                user_id=current_user.id,
+                action_type=ActionType.LOCK_ENGINE,
+                status=ActionStatus.FAILED
+            )
+            db.add(action)
+            db.commit()
         raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
 
 
@@ -1737,12 +1767,12 @@ async def unlock_engine_by_id(
     try:
         cmd = await send_unlock_engine(car.gps_imei, AUTH_TOKEN)
         
-        # Записываем действие в rental_actions если есть активная аренда
         if rental:
             action = RentalAction(
                 rental_id=rental.id,
                 user_id=current_user.id,
-                action_type=ActionType.UNLOCK_ENGINE
+                action_type=ActionType.UNLOCK_ENGINE,
+                status=ActionStatus.SUCCESS
             )
             db.add(action)
             db.commit()
@@ -1760,6 +1790,15 @@ async def unlock_engine_by_id(
         
         return {"message": "Команда разблокировки двигателя отправлена", "car_name": car.name, "result": cmd}
     except Exception as e:
+        if rental:
+            action = RentalAction(
+                rental_id=rental.id,
+                user_id=current_user.id,
+                action_type=ActionType.UNLOCK_ENGINE,
+                status=ActionStatus.FAILED
+            )
+            db.add(action)
+            db.commit()
         raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
 
 
@@ -1796,12 +1835,12 @@ async def give_key_by_id(
     try:
         cmd = await send_give_key(car.gps_imei, AUTH_TOKEN)
         
-        # Записываем действие в rental_actions если есть активная аренда
         if rental:
             action = RentalAction(
                 rental_id=rental.id,
                 user_id=current_user.id,
-                action_type=ActionType.GIVE_KEY
+                action_type=ActionType.GIVE_KEY,
+                status=ActionStatus.SUCCESS
             )
             db.add(action)
             db.commit()
@@ -1819,6 +1858,15 @@ async def give_key_by_id(
         
         return {"message": "Команда выдачи ключа отправлена", "car_name": car.name, "result": cmd}
     except Exception as e:
+        if rental:
+            action = RentalAction(
+                rental_id=rental.id,
+                user_id=current_user.id,
+                action_type=ActionType.GIVE_KEY,
+                status=ActionStatus.FAILED
+            )
+            db.add(action)
+            db.commit()
         raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
 
 
@@ -1878,12 +1926,12 @@ async def take_key_by_id(
         # Забираем ключ
         cmd = await send_take_key(car.gps_imei, AUTH_TOKEN)
         
-        # Записываем действие в rental_actions если есть активная аренда
         if rental:
             action = RentalAction(
                 rental_id=rental.id,
                 user_id=current_user.id,
-                action_type=ActionType.TAKE_KEY
+                action_type=ActionType.TAKE_KEY,
+                status=ActionStatus.SUCCESS
             )
             db.add(action)
             db.commit()
@@ -1901,6 +1949,15 @@ async def take_key_by_id(
         
         return {"message": "Команда забора ключа отправлена", "car_name": car.name, "result": cmd}
     except Exception as e:
+        if rental:
+            action = RentalAction(
+                rental_id=rental.id,
+                user_id=current_user.id,
+                action_type=ActionType.TAKE_KEY,
+                status=ActionStatus.FAILED
+            )
+            db.add(action)
+            db.commit()
         raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
 
 
