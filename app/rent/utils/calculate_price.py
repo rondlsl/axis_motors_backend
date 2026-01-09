@@ -110,11 +110,11 @@ def calc_required_balance(
             price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
         else:
             price_per_liter = FUEL_PRICE_PER_LITER
-        # Для Tucson (IMEI 860803068146253, vehicle_id 800339176) используем 20 литров вместо 100
-        # Для Hongqi (IMEI 860803068139548, vehicle_id 800283232) используем 50 литров вместо 100
-        if car.gps_imei == "860803068146253":
+        # Для Tucson (IMEI 860803068146253) и Camry (IMEI 860803068151071) используем 20 литров
+        # Для Hongqi (IMEI 860803068139548) используем 50 литров
+        if car.gps_imei in ("860803068146253", "860803068151071"):  # Tucson, Camry
             tank_liters = 20
-        elif car.gps_imei == "860803068139548":
+        elif car.gps_imei == "860803068139548":  # Hongqi
             tank_liters = 50
         else:
             tank_liters = FULL_TANK_LITERS
@@ -148,11 +148,11 @@ def calc_required_balance(
             price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
         else:
             price_per_liter = FUEL_PRICE_PER_LITER
-        # Для Tucson (IMEI 860803068146253, vehicle_id 800339176) используем 20 литров вместо 100
-        # Для Hongqi (IMEI 860803068139548, vehicle_id 800283232) используем 50 литров вместо 100
-        if car.gps_imei == "860803068146253":
+        # Для Tucson (IMEI 860803068146253) и Camry (IMEI 860803068151071) используем 20 литров
+        # Для Hongqi (IMEI 860803068139548) используем 50 литров
+        if car.gps_imei in ("860803068146253", "860803068151071"):  # Tucson, Camry
             tank_liters = 20
-        elif car.gps_imei == "860803068139548":
+        elif car.gps_imei == "860803068139548":  # Hongqi
             tank_liters = 50
         else:
             tank_liters = FULL_TANK_LITERS
