@@ -557,6 +557,35 @@ async def health_check():
     }
 
 
+@app.get("/health/cars")
+async def health_check_cars():
+    """Check if cars service is healthy and send alert if down"""
+    cars_url = "http://195.93.152.69:8667/health"
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(cars_url)
+            response.raise_for_status()
+            data = response.json()
+            return {
+                "status": "ok",
+                "cars_service": data,
+                "checked_at": datetime.now().isoformat()
+            }
+    except Exception as e:
+        # Send Telegram alert
+        try:
+            alert_message = f"🚨 <b>Cars Service is DOWN!</b>\n\nError: {str(e)}\nURL: {cars_url}\nTime: {datetime.now().isoformat()}"
+            await send_telegram_message(alert_message, TELEGRAM_BOT_TOKEN_2)
+        except:
+            pass
+        
+        raise HTTPException(
+            status_code=503,
+            detail=f"Cars service is unavailable: {str(e)}"
+        )
+
+
 
 @app.get("/test-websocket")
 async def test_websocket():
