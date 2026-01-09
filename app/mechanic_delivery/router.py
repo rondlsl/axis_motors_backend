@@ -22,7 +22,7 @@ from app.utils.telegram_logger import log_error_to_telegram
 from app.utils.time_utils import get_local_time
 from app.models.history_model import RentalStatus, RentalHistory, RentalReview
 from app.models.car_model import Car, CarStatus
-from app.models.rental_actions_model import ActionType, RentalAction
+from app.models.rental_actions_model import ActionType, ActionStatus, RentalAction
 from app.models.user_model import User
 from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user, send_localized_notification_to_user_async, user_has_push_tokens
 from app.wallet.utils import record_wallet_transaction
@@ -617,14 +617,14 @@ async def open_vehicle_delivery(
     if not car or not car.gps_imei:
         raise HTTPException(404, "Автомобиль или GPS IMEI не найдены")
 
-    # логируем действие механика
     action = RentalAction(
         rental_id=rental.id,
         user_id=current_mechanic.id,
-        action_type=ActionType.OPEN_VEHICLE
+        action_type=ActionType.OPEN_VEHICLE,
+        status=ActionStatus.PENDING
     )
     db.add(action)
-    db.commit()
+    db.flush()
 
     # Проверяем и обновляем токен если необходимо
     token = AUTH_TOKEN
@@ -632,11 +632,20 @@ async def open_vehicle_delivery(
         try:
             token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
         except Exception as e:
+            action.status = ActionStatus.FAILED
+            db.commit()
             raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
     
     # отправка команды
-    result = await send_open(car.gps_imei, token)
-    return {"message": "Команда для открытия автомобиля отправлена", "result": result}
+    try:
+        result = await send_open(car.gps_imei, token)
+        action.status = ActionStatus.SUCCESS
+        db.commit()
+        return {"message": "Команда для открытия автомобиля отправлена", "result": result}
+    except Exception as e:
+        action.status = ActionStatus.FAILED
+        db.commit()
+        raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
 
 
 @MechanicDeliveryRouter.post("/close", summary="Закрыть автомобиль (доставка)")
@@ -652,10 +661,11 @@ async def close_vehicle_delivery(
     action = RentalAction(
         rental_id=rental.id,
         user_id=current_mechanic.id,
-        action_type=ActionType.CLOSE_VEHICLE
+        action_type=ActionType.CLOSE_VEHICLE,
+        status=ActionStatus.PENDING
     )
     db.add(action)
-    db.commit()
+    db.flush()
 
     # Проверяем и обновляем токен если необходимо
     token = AUTH_TOKEN
@@ -663,10 +673,19 @@ async def close_vehicle_delivery(
         try:
             token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
         except Exception as e:
+            action.status = ActionStatus.FAILED
+            db.commit()
             raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
     
-    result = await send_close(car.gps_imei, token)
-    return {"message": "Команда для закрытия автомобиля отправлена", "result": result}
+    try:
+        result = await send_close(car.gps_imei, token)
+        action.status = ActionStatus.SUCCESS
+        db.commit()
+        return {"message": "Команда для закрытия автомобиля отправлена", "result": result}
+    except Exception as e:
+        action.status = ActionStatus.FAILED
+        db.commit()
+        raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
 
 
 @MechanicDeliveryRouter.post("/give-key", summary="Передать ключ (доставка)")
@@ -682,10 +701,11 @@ async def give_key_delivery(
     action = RentalAction(
         rental_id=rental.id,
         user_id=current_mechanic.id,
-        action_type=ActionType.GIVE_KEY
+        action_type=ActionType.GIVE_KEY,
+        status=ActionStatus.PENDING
     )
     db.add(action)
-    db.commit()
+    db.flush()
 
     # Проверяем и обновляем токен если необходимо
     token = AUTH_TOKEN
@@ -693,10 +713,19 @@ async def give_key_delivery(
         try:
             token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
         except Exception as e:
+            action.status = ActionStatus.FAILED
+            db.commit()
             raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
     
-    result = await send_give_key(car.gps_imei, token)
-    return {"message": "Команда передачи ключа отправлена", "result": result}
+    try:
+        result = await send_give_key(car.gps_imei, token)
+        action.status = ActionStatus.SUCCESS
+        db.commit()
+        return {"message": "Команда передачи ключа отправлена", "result": result}
+    except Exception as e:
+        action.status = ActionStatus.FAILED
+        db.commit()
+        raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
 
 
 @MechanicDeliveryRouter.post("/take-key", summary="Получить ключ (доставка)")
@@ -712,13 +741,21 @@ async def take_key_delivery(
     action = RentalAction(
         rental_id=rental.id,
         user_id=current_mechanic.id,
-        action_type=ActionType.TAKE_KEY
+        action_type=ActionType.TAKE_KEY,
+        status=ActionStatus.PENDING
     )
     db.add(action)
-    db.commit()
+    db.flush()
 
-    result = await send_take_key(car.gps_imei, AUTH_TOKEN)
-    return {"message": "Команда получения ключа отправлена", "result": result}
+    try:
+        result = await send_take_key(car.gps_imei, AUTH_TOKEN)
+        action.status = ActionStatus.SUCCESS
+        db.commit()
+        return {"message": "Команда получения ключа отправлена", "result": result}
+    except Exception as e:
+        action.status = ActionStatus.FAILED
+        db.commit()
+        raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
 
 
 @MechanicDeliveryRouter.post("/upload-delivery-photos-before")

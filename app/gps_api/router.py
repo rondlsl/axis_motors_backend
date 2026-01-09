@@ -861,21 +861,24 @@ async def open_vehicle(
                 pass
             raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
     
-    # логируем действие
     action = RentalAction(
         rental_id=rental.id,
         user_id=current_user.id,
-        action_type=ActionType.OPEN_VEHICLE
+        action_type=ActionType.OPEN_VEHICLE,
+        status=ActionStatus.PENDING
     )
     db.add(action)
+    db.flush()
     
     try:
         # отправляем команду
         cmd = await send_open(car.gps_imei, AUTH_TOKEN)
+        action.status = ActionStatus.SUCCESS
         db.commit()
         return cmd
     except Exception as e:
-        db.rollback()
+        action.status = ActionStatus.FAILED
+        db.commit() 
         try:
             await log_error_to_telegram(
                 error=e,
@@ -930,16 +933,20 @@ async def close_vehicle(
     action = RentalAction(
         rental_id=rental.id,
         user_id=current_user.id,
-        action_type=ActionType.CLOSE_VEHICLE
+        action_type=ActionType.CLOSE_VEHICLE,
+        status=ActionStatus.PENDING
     )
     db.add(action)
+    db.flush()
     
     try:
         cmd = await send_close(car.gps_imei, AUTH_TOKEN)
+        action.status = ActionStatus.SUCCESS
         db.commit()
         return cmd
     except Exception as e:
-        db.rollback()
+        action.status = ActionStatus.FAILED
+        db.commit()
         try:
             await log_error_to_telegram(
                 error=e,
@@ -980,15 +987,18 @@ async def give_key(
                 pass
             raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
     
-    action = RentalAction(rental_id=rental.id, user_id=current_user.id, action_type=ActionType.GIVE_KEY)
+    action = RentalAction(rental_id=rental.id, user_id=current_user.id, action_type=ActionType.GIVE_KEY, status=ActionStatus.PENDING)
     db.add(action)
+    db.flush()
     
     try:
         cmd = await send_give_key(car.gps_imei, AUTH_TOKEN)
+        action.status = ActionStatus.SUCCESS
         db.commit()
         return cmd
     except Exception as e:
-        db.rollback()
+        action.status = ActionStatus.FAILED
+        db.commit()
         try:
             await log_error_to_telegram(error=e, request=None, user=current_user, additional_context={"action": "give_key_send_command", "car_id": str(car.id), "car_name": car.name, "gps_imei": car.gps_imei, "rental_id": str(rental.id), "command": "give_key"})
         except:
@@ -1017,15 +1027,18 @@ async def take_key(
                 pass
             raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
     
-    action = RentalAction(rental_id=rental.id, user_id=current_user.id, action_type=ActionType.TAKE_KEY)
+    action = RentalAction(rental_id=rental.id, user_id=current_user.id, action_type=ActionType.TAKE_KEY, status=ActionStatus.PENDING)
     db.add(action)
+    db.flush()
     
     try:
         cmd = await send_take_key(car.gps_imei, AUTH_TOKEN)
+        action.status = ActionStatus.SUCCESS
         db.commit()
         return cmd
     except Exception as e:
-        db.rollback()
+        action.status = ActionStatus.FAILED
+        db.commit()
         try:
             await log_error_to_telegram(error=e, request=None, user=current_user, additional_context={"action": "take_key_send_command", "car_id": str(car.id), "car_name": car.name, "gps_imei": car.gps_imei, "rental_id": str(rental.id), "command": "take_key"})
         except:
@@ -1055,15 +1068,18 @@ async def lock_engine(
                 pass
             raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
     
-    action = RentalAction(rental_id=rental.id, user_id=current_user.id, action_type=ActionType.LOCK_ENGINE)
+    action = RentalAction(rental_id=rental.id, user_id=current_user.id, action_type=ActionType.LOCK_ENGINE, status=ActionStatus.PENDING)
     db.add(action)
+    db.flush()
     
     try:
         cmd = await send_lock_engine(car.gps_imei, AUTH_TOKEN)
+        action.status = ActionStatus.SUCCESS
         db.commit()
         return cmd
     except Exception as e:
-        db.rollback()
+        action.status = ActionStatus.FAILED
+        db.commit()
         try:
             await log_error_to_telegram(error=e, request=None, user=current_user, additional_context={"action": "lock_engine_send_command", "car_id": str(car.id), "car_name": car.name, "gps_imei": car.gps_imei, "rental_id": str(rental.id), "command": "lock_engine"})
         except:
@@ -1093,15 +1109,18 @@ async def unlock_engine(
                 pass
             raise HTTPException(status_code=500, detail=f"Ошибка получения токена: {e}")
     
-    action = RentalAction(rental_id=rental.id, user_id=current_user.id, action_type=ActionType.UNLOCK_ENGINE)
+    action = RentalAction(rental_id=rental.id, user_id=current_user.id, action_type=ActionType.UNLOCK_ENGINE, status=ActionStatus.PENDING)
     db.add(action)
+    db.flush()
     
     try:
         cmd = await send_unlock_engine(car.gps_imei, AUTH_TOKEN)
+        action.status = ActionStatus.SUCCESS
         db.commit()
         return cmd
     except Exception as e:
-        db.rollback()
+        action.status = ActionStatus.FAILED
+        db.commit()
         try:
             await log_error_to_telegram(error=e, request=None, user=current_user, additional_context={"action": "unlock_engine_send_command", "car_id": str(car.id), "car_name": car.name, "gps_imei": car.gps_imei, "rental_id": str(rental.id), "command": "unlock_engine"})
         except:
