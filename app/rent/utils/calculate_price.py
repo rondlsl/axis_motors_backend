@@ -105,19 +105,13 @@ def calc_required_balance(
         base_price = car.price_per_hour * duration
         one_hour_minute_cost = car.price_per_minute * 60
         
-        # Топливо
+        # Топливо: электрички 50л, бензиновые 20л
         if car.body_type == CarBodyType.ELECTRIC:
             price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
-        else:
-            price_per_liter = FUEL_PRICE_PER_LITER
-        # Для Tucson, Camry, Maserati, Range Rover используем 20 литров
-        # Для Hongqi используем 50 литров
-        if car.gps_imei in ("860803068146253", "860803068151071", "860803068139613", "860803068151105"):  # Tucson, Camry, Maserati, Range Rover
-            tank_liters = 20
-        elif car.gps_imei == "860803068139548":  # Hongqi
             tank_liters = 50
         else:
-            tank_liters = FULL_TANK_LITERS
+            price_per_liter = FUEL_PRICE_PER_LITER
+            tank_liters = 20
         full_tank_cost = tank_liters * price_per_liter
         
         driver_fee = DRIVER_FEE_PER_HOUR * duration if with_driver else 0
@@ -143,19 +137,13 @@ def calc_required_balance(
         
         one_hour_minute_cost = car.price_per_minute * 60
         
-        # Топливо
+        # Топливо: электрички 50л, бензиновые 20л
         if car.body_type == CarBodyType.ELECTRIC:
             price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
-        else:
-            price_per_liter = FUEL_PRICE_PER_LITER
-        # Для Tucson, Camry, Maserati, Range Rover используем 20 литров
-        # Для Hongqi используем 50 литров
-        if car.gps_imei in ("860803068146253", "860803068151071", "860803068139613", "860803068151105"):  # Tucson, Camry, Maserati, Range Rover
-            tank_liters = 20
-        elif car.gps_imei == "860803068139548":  # Hongqi
             tank_liters = 50
         else:
-            tank_liters = FULL_TANK_LITERS
+            price_per_liter = FUEL_PRICE_PER_LITER
+            tank_liters = 20
         full_tank_cost = tank_liters * price_per_liter
         
         driver_fee = DRIVER_FEE_PER_DAY * duration if with_driver else 0
