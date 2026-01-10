@@ -6,7 +6,7 @@ set -e
 
 # Настройки
 BASE_URL="http://localhost:7139"
-CHECK_INTERVAL=30          # Проверка каждые 30 секунд
+CHECK_INTERVAL=5           # Проверка каждые 5 секунд
 TIMEOUT=10                 # Таймаут запроса 10 секунд
 MAX_FAILURES=2             # Перезапуск после 2 неудачных проверок подряд
 RESTART_COOLDOWN=120       # Ждать 2 минуты после рестарта
