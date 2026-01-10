@@ -304,6 +304,12 @@ async def get_vehicle_info(
         for i in range(30):
             almaty_coordinates.append(generate_coordinate_inside_polygon())
         
+        # Получаем активную аренду пользователя 
+        user_active_rental = db.query(RentalHistory).filter(
+            RentalHistory.user_id == current_user.id,
+            RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
+        ).first()
+        
         occupied_cars_index = 0
         for car in cars:
             # Проверяем статус загрузки фотографий для текущего пользователя
@@ -314,15 +320,7 @@ async def get_vehicle_info(
             photo_after_car_uploaded = False
             photo_after_interior_uploaded = False
             
-            # Ищем активную аренду для текущего пользователя
-            active_rental = db.query(RentalHistory).filter(
-                RentalHistory.user_id == current_user.id,
-                RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
-            ).first()
-            
-            # Проверяем, что активная аренда относится к текущей машине
-            if active_rental and active_rental.car_id != car.id:
-                active_rental = None
+            active_rental = user_active_rental if user_active_rental and user_active_rental.car_id == car.id else None
             
             if active_rental and active_rental.photos_before:
                 # Проверяем наличие разных типов фотографий
