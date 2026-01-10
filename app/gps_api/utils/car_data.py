@@ -99,6 +99,7 @@ def get_vehicle_id_by_imei(imei: str) -> int:
         "860803068139613": 800406786,  # Maserati Ghibli
         "860803068151071": 800408106,  # Toyota Camry
         "860803068151105": 800409927,  # Range Rover Sport Supercharged
+        "860803068133343": 800410477,  # Li L7 Ultra
     }
     vehicle_id = imei_to_vehicle_id.get(imei)
     if vehicle_id is None:
@@ -174,6 +175,15 @@ def get_commands_by_imei(imei: str) -> dict:
             "lock_engine": "OUTPUT0 1",
             "unlock_engine": "OUTPUT0 0",
             "requires_double_send": True  # Флаг для двойной отправки open/close
+        },
+        "860803068133343": {  # Li L7 Ultra - vehicle_id 800410477
+            "open": "OUTPUT1 1|OUTPUT3 0|OUTPUT3 0|OUTPUT3 0|OUTPUT2 1|OUTPUT3 0|OUTPUT3 0|OUTPUT3 0|OUTPUT2 0|OUTPUT1 0",
+            "close": "OUTPUT1 1|OUTPUT2 0|OUTPUT2 0|OUTPUT2 0|OUTPUT3 1|OUTPUT2 0|OUTPUT2 0|OUTPUT2 0|OUTPUT3 0|OUTPUT1 0",
+            "give_key": "OUTPUT1 1",
+            "take_key": "OUTPUT1 0",
+            "lock_engine": "OUTPUT0 1",
+            "unlock_engine": "OUTPUT0 0",
+            "requires_double_send": True  # Закрыть отправляется 2 раза
         }
     }
     commands = commands_map.get(imei)
