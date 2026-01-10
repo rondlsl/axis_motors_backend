@@ -7,7 +7,7 @@ from math import ceil, floor
 
 import httpx
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.dependencies.database.database import SessionLocal
 from app.models.car_model import Car, CarBodyType, CarStatus
@@ -266,6 +266,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
     
     rentals = (
         db.query(RentalHistory)
+        .options(joinedload(RentalHistory.user), joinedload(RentalHistory.car))
         .join(User, RentalHistory.user_id == User.id)
         .join(Car, RentalHistory.car_id == Car.id)
         .filter(

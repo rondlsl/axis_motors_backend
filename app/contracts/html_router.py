@@ -3,9 +3,18 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from typing import Optional
 import os
+import asyncio
 from datetime import datetime
 
 from app.dependencies.database.database import get_db
+
+
+async def async_read_file(file_path: str, encoding: str = "utf-8") -> str:
+    """Async file read using thread pool to avoid blocking event loop"""
+    def _read():
+        with open(file_path, "r", encoding=encoding) as f:
+            return f.read()
+    return await asyncio.to_thread(_read)
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User
 from app.models.history_model import RentalHistory
@@ -220,9 +229,7 @@ async def get_rental_main_contract(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Файл контракта не найден"
         )
-    
-    with open(file_path, "r", encoding="utf-8") as f:
-        html = f.read()
+    html = await async_read_file(file_path)
     
     if rental_id:
         try:
@@ -300,9 +307,7 @@ async def get_acceptance_certificate(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Файл контракта не найден"
         )
-    
-    with open(file_path, "r", encoding="utf-8") as f:
-        html = f.read()
+    html = await async_read_file(file_path)
     
     if rental_id:
         try:
@@ -380,9 +385,7 @@ async def get_return_certificate(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Файл контракта не найден"
         )
-    
-    with open(file_path, "r", encoding="utf-8") as f:
-        html = f.read()
+    html = await async_read_file(file_path)
     
     if rental_id:
         try:
@@ -451,9 +454,7 @@ async def get_main_contract(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Файл контракта не найден"
         )
-    
-    with open(file_path, "r", encoding="utf-8") as f:
-        html = f.read()
+    html = await async_read_file(file_path)
     
     html = process_html_placeholders(
         html,
@@ -490,9 +491,7 @@ async def get_user_agreement(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Файл контракта не найден"
         )
-    
-    with open(file_path, "r", encoding="utf-8") as f:
-        html = f.read()
+    html = await async_read_file(file_path)
     
     html = process_html_placeholders(
         html,
@@ -529,9 +528,7 @@ async def get_consent_to_data_processing(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Файл контракта не найден"
         )
-    
-    with open(file_path, "r", encoding="utf-8") as f:
-        html = f.read()
+    html = await async_read_file(file_path)
     
     html = process_html_placeholders(
         html,
@@ -578,9 +575,7 @@ async def get_main_contract_for_guarantee(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Файл контракта не найден"
         )
-    
-    with open(file_path, "r", encoding="utf-8") as f:
-        html = f.read()
+    html = await async_read_file(file_path)
     
     html = html.replace("{_____guarantor_fullname_______}", format_car_data(guarantor_fullname))
     html = html.replace("{____guarantor_iin________}", format_car_data(guarantor_iin))
