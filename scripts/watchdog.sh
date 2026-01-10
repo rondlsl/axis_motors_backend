@@ -124,7 +124,7 @@ main() {
                 LAST_CLEANUP=$now
             fi
         else
-            ((FAIL_COUNT++))
+            FAIL_COUNT=$((FAIL_COUNT + 1))
             log "Неудачная проверка ($FAIL_COUNT/$MAX_FAILURES)"
             
             if [ $FAIL_COUNT -ge $MAX_FAILURES ]; then
