@@ -45,7 +45,15 @@ class ErrorStatsSchema(BaseModel):
     day: List[dict]
 
 
-@router.get("/list", response_model=List[ErrorLogSchema])
+class ErrorLogPaginatedResponse(BaseModel):
+    data: List[ErrorLogSchema]
+    total: int
+    page: int
+    per_page: int
+    total_pages: int
+
+
+@router.get("/list", response_model=ErrorLogPaginatedResponse)
 async def get_error_logs(
     period: str = Query("day", regex="^(day|week|month|all)$"),
     error_type: Optional[str] = None,
@@ -57,7 +65,7 @@ async def get_error_logs(
 ):
     """Get error logs with filtering by period"""
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        return []
+        return {"data": [], "total": 0, "page": 1, "per_page": per_page, "total_pages": 0}
     
     query = db.query(ErrorLog)
     
@@ -78,11 +86,21 @@ async def get_error_logs(
     if endpoint:
         query = query.filter(ErrorLog.endpoint.ilike(f"%{endpoint}%"))
     
+    # Get total count
+    total = query.count()
+    total_pages = (total + per_page - 1) // per_page
+    
     # Paginate
     offset = (page - 1) * per_page
     logs = query.order_by(desc(ErrorLog.created_at)).offset(offset).limit(per_page).all()
     
-    return logs
+    return {
+        "data": logs,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": total_pages
+    }
 
 
 @router.get("/stats", response_model=ErrorStatsSchema)
