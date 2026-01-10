@@ -263,7 +263,7 @@ def create_cars(db: Session, owner: User) -> None:
             "transmission_type": "automatic",
             "price_per_minute": 190,
             "price_per_hour": 7500,
-            "price_per_day": 120000,
+            "price_per_day": 100000,
             "plate_number": "737BDG02",
             "latitude": 43.224048,
             "longitude": 76.961871,
