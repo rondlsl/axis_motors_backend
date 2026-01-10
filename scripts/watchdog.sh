@@ -15,7 +15,6 @@ LOG_FILE="/var/log/azv_watchdog.log"
 
 ENDPOINTS=(
     "/health"
-    "/vehicles/get_vehicles"
 )
 
 FAIL_COUNT=0
