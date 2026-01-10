@@ -112,7 +112,7 @@ class SupportNotificationService:
                     "disable_web_page_preview": True
                 }
                 
-                async with httpx.AsyncClient() as client:
+                async with httpx.AsyncClient(timeout=10.0) as client:
                     response = await client.post(url, json=payload)
                     response.raise_for_status()
                     
@@ -139,7 +139,7 @@ class SupportNotificationService:
                 if current_part:
                     parts.append(current_part.strip())
                 
-                async with httpx.AsyncClient() as client:
+                async with httpx.AsyncClient(timeout=10.0) as client:
                     for i, part in enumerate(parts):
                         part_text = part
                         if len(parts) > 1:

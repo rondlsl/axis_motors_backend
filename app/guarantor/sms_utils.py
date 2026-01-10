@@ -10,7 +10,7 @@ async def send_sms_mobizon(recipient: str, sms_text: str, api_key: str):
         "text": sms_text,
         "apiKey": api_key
     }
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=10.0) as client:
         response = await client.get(url, params=params)
         return response.text
 

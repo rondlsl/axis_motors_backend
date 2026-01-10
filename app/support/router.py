@@ -347,7 +347,7 @@ async def send_message_to_client(telegram_id: int, message_text: str):
         MAX_MESSAGE_LENGTH = 4096
         
         if len(full_text) <= MAX_MESSAGE_LENGTH:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.post(
                     f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN_2}/sendMessage",
                     json={
@@ -379,7 +379,7 @@ async def send_message_to_client(telegram_id: int, message_text: str):
             if current_part:
                 parts.append(current_part.strip())
             
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 for i, part in enumerate(parts):
                     part_text = part
                     if len(parts) > 1:
@@ -446,7 +446,7 @@ async def send_status_change_notification_to_client(telegram_id: int, new_status
         if not message_text:
             return
             
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
                 f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN_2}/sendMessage",
                 json={

@@ -500,7 +500,7 @@ class SupportBot:
                 download_url = file_info.file_path
             else:
                 download_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN_2}/{file_info.file_path}"
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 try:
                     response = await client.get(download_url, timeout=30.0)
                     response.raise_for_status()
@@ -698,7 +698,7 @@ class SupportBot:
                 payload["reply_markup"] = keyboard_json
             
             if len(text) <= MAX_MESSAGE_LENGTH:
-                async with httpx.AsyncClient() as client:
+                async with httpx.AsyncClient(timeout=10.0) as client:
                     response = await client.post(
                         f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN_2}/sendMessage",
                         json=payload
@@ -726,7 +726,7 @@ class SupportBot:
                 if current_part:
                     parts.append(current_part.strip())
                 
-                async with httpx.AsyncClient() as client:
+                async with httpx.AsyncClient(timeout=10.0) as client:
                     for i, part in enumerate(parts):
                         part_text = part
                         if len(parts) > 1:
@@ -782,7 +782,7 @@ class SupportBot:
                     f"❌ Для отмены отправьте /cancel"
                 )
                 
-                async with httpx.AsyncClient() as client:
+                async with httpx.AsyncClient(timeout=10.0) as client:
                     await client.post(
                         f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN_2}/sendMessage",
                         json={
@@ -815,7 +815,7 @@ class SupportBot:
             # Отправляем сообщение клиенту
             full_text = f"📞 Поддержка:\n\n{message_text}"
             
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.post(
                     f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN_2}/sendMessage",
                     json={
