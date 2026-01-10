@@ -162,7 +162,7 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
             engine_hours = parse_numeric(hours_value)
             break
     
-    is_engine_on = engine_rpm is not None and engine_rpm > 0
+    is_engine_on = False
     
     # Топливо и пробег
     fuel_level = None
@@ -421,12 +421,13 @@ def process_glonassoft_data(glonassoft_data: Dict[str, Any], car_name: str = "")
             if ignition_unreg:
                 ignition_on = ignition_unreg.lower() == "true"
 
+    is_engine_on = ignition_on
+
     # Применяем param64, если он присутствует (param64 имеет приоритет над другими источниками)
     if param64_flags:
         # Зажигание: bit1 (128) = 1 → зажигание включено
         ignition_on = param64_flags["ignition"]
-        if ignition_on and not is_engine_on:
-            is_engine_on = True
+        is_engine_on = ignition_on 
 
         # Двери и замки: bit2 (64) = 1 → двери открыты, замки открыты
         doors_open = param64_flags["doors"]
