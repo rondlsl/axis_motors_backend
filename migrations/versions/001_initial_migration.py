@@ -46,6 +46,7 @@ def upgrade() -> None:
     create_support_messages_table()
     create_app_versions_table()
     create_car_availability_history_table()
+    create_error_logs_table()
 
 
 def create_enums():
@@ -794,9 +795,29 @@ def create_car_availability_history_table():
     )
 
 
+def create_error_logs_table():
+    """Create error_logs table for storing errors sent to Telegram"""
+    op.create_table('error_logs',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, default=sa.text('gen_random_uuid()')),
+        sa.Column('error_type', sa.String(255), nullable=False),
+        sa.Column('message', sa.Text(), nullable=True),
+        sa.Column('endpoint', sa.String(500), nullable=True),
+        sa.Column('method', sa.String(10), nullable=True),
+        sa.Column('user_id', postgresql.UUID(as_uuid=True), nullable=True),
+        sa.Column('user_phone', sa.String(50), nullable=True),
+        sa.Column('traceback', sa.Text(), nullable=True),
+        sa.Column('context', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column('source', sa.String(50), nullable=False, server_default='BACKEND'),
+        sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now())
+    )
+    op.create_index('ix_error_logs_created_at', 'error_logs', ['created_at'])
+    op.create_index('ix_error_logs_error_type', 'error_logs', ['error_type'])
+
+
 def downgrade() -> None:
     # Drop all tables in reverse order
     # Drop indexes first (with existence check)
+    op.drop_table('error_logs')
     op.drop_table('car_availability_history')
     op.drop_table('action_logs')
     op.execute("""

@@ -100,9 +100,58 @@ class TelegramErrorLogger:
             # Разбиваем на части, если превышает лимит Telegram
             await self._send_message_parts(full_message)
             
+            await self._save_error_to_db(
+                error=error,
+                user_info=user_info,
+                request_info=request_info,
+                additional_context=additional_context
+            )
+            
         except Exception as e:
             logger.error(f"Ошибка отправки в Telegram: {e}")
             logger.error(traceback.format_exc())
+    
+    async def _save_error_to_db(
+        self,
+        error: Exception,
+        user_info: Optional[Dict[str, Any]] = None,
+        request_info: Optional[Dict[str, Any]] = None,
+        additional_context: Optional[Dict[str, Any]] = None
+    ):
+        """Сохранить ошибку в БД для аналитики"""
+        try:
+            from app.dependencies.database.database import SessionLocal
+            from app.models.error_log_model import ErrorLog
+            import asyncio
+            
+            def _save():
+                db = SessionLocal()
+                try:
+                    tb_lines = traceback.format_exception(type(error), error, error.__traceback__)
+                    tb_text = "".join(tb_lines)
+                    
+                    error_log = ErrorLog(
+                        error_type=type(error).__name__,
+                        message=str(error)[:1000] if error else None,
+                        endpoint=request_info.get("endpoint") if request_info else None,
+                        method=request_info.get("method") if request_info else None,
+                        user_id=user_info.get("id") if user_info and user_info.get("id") else None,
+                        user_phone=user_info.get("phone") if user_info else None,
+                        traceback=tb_text[:5000] if tb_text else None,
+                        context=additional_context,
+                        source="BACKEND"
+                    )
+                    db.add(error_log)
+                    db.commit()
+                except Exception as e:
+                    logger.error(f"Ошибка сохранения в БД: {e}")
+                    db.rollback()
+                finally:
+                    db.close()
+            
+            await asyncio.to_thread(_save)
+        except Exception as e:
+            logger.error(f"Ошибка при сохранении ошибки в БД: {e}")
     
     async def _send_message_parts(self, message: str):
         """Разбить и отправить длинное сообщение частями"""
