@@ -537,6 +537,8 @@ async def get_users_list(
     is_blocked: Optional[bool] = Query(None, description="Фильтр по заблокированным пользователям"),
     mvd_approved: Optional[bool] = Query(None, description="Фильтр по МВД одобрению"),
     car_status: Optional[str] = Query(None, description="Фильтр по статусу авто"),
+    auto_class: Optional[str] = Query(None, description="Фильтр по классу авто (A, B, C)"),
+    balance_filter: Optional[str] = Query(None, description="Фильтр по балансу (positive, negative)"),
 
     page: int = Query(1, ge=1, description="Номер страницы"),
     limit: int = Query(50, ge=1, le=200, description="Количество элементов на странице"),
@@ -607,6 +609,16 @@ async def get_users_list(
     
     if is_blocked is not None:
         query = query.filter(User.is_blocked == is_blocked)
+
+    if auto_class:
+        # Для массива строк в PostgreSQL
+        query = query.filter(User.auto_class.contains([auto_class]))
+
+    if balance_filter:
+        if balance_filter == "positive":
+            query = query.filter(User.wallet_balance > 0)
+        elif balance_filter == "negative":
+            query = query.filter(User.wallet_balance < 0)
     
     query = query.filter(User.is_deleted == False)
     
@@ -635,6 +647,15 @@ async def get_users_list(
             pass
     if is_blocked is not None:
         count_query = count_query.filter(User.is_blocked == is_blocked)
+    
+    if auto_class:
+        count_query = count_query.filter(User.auto_class.contains([auto_class]))
+
+    if balance_filter:
+        if balance_filter == "positive":
+            count_query = count_query.filter(User.wallet_balance > 0)
+        elif balance_filter == "negative":
+            count_query = count_query.filter(User.wallet_balance < 0)
     
     count_query = count_query.filter(User.is_deleted == False)
     
