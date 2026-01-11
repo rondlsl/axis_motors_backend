@@ -2854,6 +2854,10 @@ async def check_vehicle_status_for_completion(vehicle_imei: str, plate_number: O
             if vehicle.get("is_hood_open", False):
                 errors.append("Капот открыт! Категорически запрещено открывать капот. Штраф 1,000,000 тг")
             
+            # Проверка зажигания (двигатель должен быть заглушен)
+            if vehicle.get("is_ignition_on", False):
+                errors.append("Для завершения аренды пожалуйста выключите зажигание (заглушите двигатель)")
+
             # Проверка багажника
             if vehicle.get("is_trunk_open", False):
                 errors.append("Для завершения аренды пожалуйста закройте багажник")
