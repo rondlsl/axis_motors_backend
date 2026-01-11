@@ -1448,6 +1448,48 @@ async def get_trip_detail(
     return result
 
 
+@cars_router.get("/{car_id}/history/trips/{rental_id}/get_maps")
+async def get_trip_maps(
+    car_id: str,
+    rental_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Получение координат маршрута поездки для отображения на карте"""
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+
+    rental_uuid = safe_sid_to_uuid(rental_id)
+    car = get_car_by_id(db, car_id)
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.id == rental_uuid,
+        RentalHistory.car_id == car.id
+    ).first()
+
+    if not rental:
+        raise HTTPException(status_code=404, detail="Поездка не найдена")
+
+    route_data = None
+    try:
+        if car.gps_id and rental.start_time and rental.end_time:
+            route = await get_gps_route_data(
+                device_id=car.gps_id,
+                start_date=rental.start_time.isoformat(),
+                end_date=rental.end_time.isoformat()
+            )
+            route_data = route.dict() if route else None
+    except Exception:
+        route_data = None
+
+    return {
+        "start_latitude": rental.start_latitude,
+        "start_longitude": rental.start_longitude,
+        "end_latitude": rental.end_latitude,
+        "end_longitude": rental.end_longitude,
+        "route_data": route_data
+    }
+
+
 @cars_router.get("/map", response_model=CarMapResponseSchema)
 async def get_cars_map(
     status: Optional[CarStatus] = None,
