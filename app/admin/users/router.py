@@ -537,7 +537,7 @@ async def get_users_list(
     is_blocked: Optional[bool] = Query(None, description="Фильтр по заблокированным пользователям"),
     mvd_approved: Optional[bool] = Query(None, description="Фильтр по МВД одобрению"),
     car_status: Optional[str] = Query(None, description="Фильтр по статусу авто"),
-    auto_class: Optional[str] = Query(None, description="Фильтр по классу авто (A, B, C)"),
+    auto_class: Optional[List[str]] = Query(None, description="Фильтр по классу авто (A, B, C)"),
     balance_filter: Optional[str] = Query(None, description="Фильтр по балансу (positive, negative)"),
 
     page: int = Query(1, ge=1, description="Номер страницы"),
@@ -611,8 +611,7 @@ async def get_users_list(
         query = query.filter(User.is_blocked == is_blocked)
 
     if auto_class:
-        # Для массива строк в PostgreSQL
-        query = query.filter(User.auto_class.contains([auto_class]))
+        query = query.filter(User.auto_class.overlap(auto_class))
 
     if balance_filter:
         if balance_filter == "positive":
@@ -649,7 +648,7 @@ async def get_users_list(
         count_query = count_query.filter(User.is_blocked == is_blocked)
     
     if auto_class:
-        count_query = count_query.filter(User.auto_class.contains([auto_class]))
+        count_query = count_query.filter(User.auto_class.overlap(auto_class))
 
     if balance_filter:
         if balance_filter == "positive":
