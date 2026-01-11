@@ -16,17 +16,23 @@ from app.admin.cars.schemas import (
 )
 
 async def get_admin_cars_list_data(
-    db: Session, 
-    status: Optional[str] = None, 
+    db: Session,
+    status: Optional[str] = None,
     search_query: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Get admin cars list data, mirroring the logic of GET /admin/cars/list
     """
     query = db.query(Car)
-    
-    if status is not None:
-        query = query.filter(Car.status == status)
+
+    # Фильтр по статусу - конвертируем строку в enum для корректного сравнения
+    if status is not None and status.strip():
+        try:
+            status_enum = CarStatus(status)
+            query = query.filter(Car.status == status_enum)
+        except ValueError:
+            # Неизвестный статус - пропускаем фильтр
+            pass
         
     if search_query:
         search_query = search_query.strip()
