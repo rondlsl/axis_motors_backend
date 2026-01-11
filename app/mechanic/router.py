@@ -1345,15 +1345,15 @@ async def upload_photos_after_car(
     car = db.query(Car).filter(Car.id == rental.car_id).first()
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
-    try:
-        from app.rent.router import check_vehicle_status_for_completion
-        vehicle_status = await check_vehicle_status_for_completion(car.gps_imei)
-        if vehicle_status.get("errors"):
-            doors_errors = [e for e in vehicle_status["errors"] if "двер" in e.lower() or "door" in e.lower()]
-            if doors_errors:
-                raise HTTPException(status_code=400, detail="Перед внешними фото закройте двери")
-    except Exception:
-        pass
+    # try:
+    #     from app.rent.router import check_vehicle_status_for_completion
+    #     vehicle_status = await check_vehicle_status_for_completion(car.gps_imei)
+    #     if vehicle_status.get("errors"):
+    #         doors_errors = [e for e in vehicle_status["errors"] if "двер" in e.lower() or "door" in e.lower()]
+    #         if doors_errors:
+    #             raise HTTPException(status_code=400, detail="Перед внешними фото закройте двери")
+    # except Exception:
+    #     pass
 
     validate_photos(car_photos, "car_photos")
 
