@@ -100,7 +100,8 @@ class UserListSchema(SidMixin):
     is_blocked: bool = False
     carStatus: str = "FREE"
     current_rental_car: Optional[Dict[str, Any]] = None
-    rating: Optional[float] = None 
+    rating: Optional[float] = None
+    wallet_balance: float = 0.0 
 
 
 class UserPaginatedResponse(BaseModel):

@@ -763,7 +763,8 @@ async def get_users_list(
             "is_blocked": user.is_blocked,
             "current_rental_car": current_car,
             "rating": float(user.rating) if user.rating else None,
-            "carStatus": car_status_value
+            "carStatus": car_status_value,
+            "wallet_balance": float(user.wallet_balance) if user.wallet_balance is not None else 0.0
         }
         
         converted_data = convert_uuid_response_to_sid(user_data, ["id"])
