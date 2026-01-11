@@ -1198,19 +1198,6 @@ async def get_trip_detail(
 
     review = db.query(RentalReview).filter(RentalReview.rental_id == rental.id).first()
 
-    # Данные маршрута (если доступны gps_id и времена)
-    route_data = None
-    try:
-        if car and car.gps_id and rental.start_time and rental.end_time:
-            route = await get_gps_route_data(
-                device_id=car.gps_id,
-                start_date=rental.start_time.isoformat() if rental.start_time else None,
-                end_date=rental.end_time.isoformat() if rental.end_time else None
-            )
-            route_data = route.dict() if route else None
-    except Exception:
-        route_data = None
-
     from app.rent.utils.calculate_price import FUEL_PRICE_PER_LITER, ELECTRIC_FUEL_PRICE_PER_LITER
     
     fuel_fee = 0
@@ -1328,13 +1315,6 @@ async def get_trip_detail(
         "mechanic_rating": review.mechanic_rating if review else None,
         "mechanic_comment": review.mechanic_comment if review else None,
         "rating": rental.rating,
-        "route_map": {
-            "start_latitude": rental.start_latitude,
-            "start_longitude": rental.start_longitude,
-            "end_latitude": rental.end_latitude,
-            "end_longitude": rental.end_longitude,
-            "route_data": route_data
-        },
         "delivery_route": {
             "start_latitude": rental.delivery_start_latitude,
             "start_longitude": rental.delivery_start_longitude,
