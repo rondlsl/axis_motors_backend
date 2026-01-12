@@ -2318,20 +2318,10 @@ async def upload_photos_after(
     if "error" in vehicle_status:
         raise HTTPException(status_code=400, detail=vehicle_status["error"])
     
+    # Проверка состояния автомобиля (включая is_ignition_on) для всех машин перед загрузкой фото (селфи + салон)
     if vehicle_status.get("errors"):
         error_message = "Перед завершением аренды:\n" + "\n".join(vehicle_status["errors"])
         raise HTTPException(status_code=400, detail=error_message)
-    
-    # Доп. проверка для MERCEDES и MASERATI: зажигание должно быть выключено
-    try:
-        if car and car.plate_number in ['666AZV02', '195BGY02']:
-            vehicle = vehicle_status.get("vehicle") or {}
-            if vehicle.get("is_ignition_on", False):
-                raise HTTPException(status_code=400, detail="Для завершения аренды пожалуйста выключите зажигание")
-    except HTTPException:
-        raise
-    except Exception:
-        pass
 
     uploaded_files = []
     
