@@ -1231,16 +1231,18 @@ async def upload_photos_after(
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
     
-    # Проверяем состояние автомобиля перед блокировкой
-    # from app.rent.router import check_vehicle_status_for_completion
-    # vehicle_status = await check_vehicle_status_for_completion(car.gps_imei)
-    # 
-    # if "error" in vehicle_status:
-    #     raise HTTPException(status_code=400, detail=vehicle_status["error"])
-    # 
-    # if vehicle_status.get("errors"):
-    #     error_message = "Перед завершением осмотра:\n" + "\n".join(vehicle_status["errors"])
-    #     raise HTTPException(status_code=400, detail=error_message)
+    # Проверяем состояние автомобиля перед блокировкой (игнорируем для Range Rover 860803068151105)
+    if car.gps_imei != "860803068151105":
+        from app.rent.router import check_vehicle_status_for_completion
+        vehicle_status = await check_vehicle_status_for_completion(car.gps_imei, car.plate_number)
+        
+        if "error" in vehicle_status:
+            raise HTTPException(status_code=400, detail=vehicle_status["error"])
+        
+        # Проверка состояния автомобиля (включая is_ignition_on) для всех машин перед загрузкой фото (селфи + салон)
+        if vehicle_status.get("errors"):
+            error_message = "Перед завершением осмотра:\n" + "\n".join(vehicle_status["errors"])
+            raise HTTPException(status_code=400, detail=error_message)
 
     validate_photos([selfie], "selfie")
     # try:
