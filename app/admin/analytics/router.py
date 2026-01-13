@@ -305,6 +305,23 @@ async def get_all_transactions(
             "rental_id": uuid_to_sid(rental.id) if rental else None,
             "tracking_id": tx.tracking_id
         }
+        
+        # Добавляем информацию об аренде, если она есть
+        if rental:
+            total_price_without_fuel = (
+                (rental.base_price or 0) +
+                (rental.open_fee or 0) +
+                (rental.delivery_fee or 0) +
+                (rental.waiting_fee or 0) +
+                (rental.overtime_fee or 0) +
+                (rental.distance_fee or 0) +
+                (rental.driver_fee or 0)
+            )
+            tx_data["rental"] = {
+                "total_price": float(rental.total_price or 0),
+                "total_price_without_fuel": float(total_price_without_fuel)
+            }
+        
         transactions_by_type[tx.transaction_type.value].append(tx_data)
     
     # Вычисляем summary: общая сумма пополнений и сумма пополнений без tracking_id
