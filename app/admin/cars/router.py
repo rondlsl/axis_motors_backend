@@ -1580,6 +1580,202 @@ async def update_rental_time(
     }
 
 
+@cars_router.patch("/{car_id}/history/trips/{rental_id}/price", summary="Исправить сумму аренды")
+async def update_rental_price(
+    car_id: str,
+    rental_id: str,
+    base_price: Optional[int] = Query(None, description="Базовая цена"),
+    open_fee: Optional[int] = Query(None, description="Плата за открытие"),
+    delivery_fee: Optional[int] = Query(None, description="Плата за доставку"),
+    waiting_fee: Optional[int] = Query(None, description="Плата за ожидание"),
+    overtime_fee: Optional[int] = Query(None, description="Плата за перерасход времени"),
+    distance_fee: Optional[int] = Query(None, description="Плата за расстояние"),
+    driver_fee: Optional[int] = Query(None, description="Плата за водителя"),
+    rebooking_fee: Optional[int] = Query(None, description="Плата за повторное бронирование"),
+    already_payed: Optional[int] = Query(None, description="Уже оплачено"),
+    total_price: Optional[int] = Query(None, description="Общая сумма"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Исправить сумму аренды (base_price, open_fee, delivery_fee, waiting_fee, overtime_fee, distance_fee, driver_fee, rebooking_fee, already_payed, total_price) с логированием в БД"""
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    rental_uuid = safe_sid_to_uuid(rental_id)
+    car = get_car_by_id(db, car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.id == rental_uuid,
+        RentalHistory.car_id == car.id
+    ).first()
+    
+    if not rental:
+        raise HTTPException(status_code=404, detail="Поездка не найдена")
+    
+    # Сохраняем старые значения для логирования
+    old_values = {
+        "base_price": rental.base_price,
+        "open_fee": rental.open_fee,
+        "delivery_fee": rental.delivery_fee,
+        "waiting_fee": rental.waiting_fee,
+        "overtime_fee": rental.overtime_fee,
+        "distance_fee": rental.distance_fee,
+        "driver_fee": rental.driver_fee,
+        "rebooking_fee": rental.rebooking_fee,
+        "already_payed": rental.already_payed,
+        "total_price": rental.total_price
+    }
+    
+    # Обновляем поля
+    changes = {}
+    
+    if base_price is not None:
+        if rental.base_price != base_price:
+            changes["base_price"] = {
+                "old": old_values["base_price"],
+                "new": base_price
+            }
+            rental.base_price = base_price
+    
+    if open_fee is not None:
+        if rental.open_fee != open_fee:
+            changes["open_fee"] = {
+                "old": old_values["open_fee"],
+                "new": open_fee
+            }
+            rental.open_fee = open_fee
+    
+    if delivery_fee is not None:
+        if rental.delivery_fee != delivery_fee:
+            changes["delivery_fee"] = {
+                "old": old_values["delivery_fee"],
+                "new": delivery_fee
+            }
+            rental.delivery_fee = delivery_fee
+    
+    if waiting_fee is not None:
+        if rental.waiting_fee != waiting_fee:
+            changes["waiting_fee"] = {
+                "old": old_values["waiting_fee"],
+                "new": waiting_fee
+            }
+            rental.waiting_fee = waiting_fee
+    
+    if overtime_fee is not None:
+        if rental.overtime_fee != overtime_fee:
+            changes["overtime_fee"] = {
+                "old": old_values["overtime_fee"],
+                "new": overtime_fee
+            }
+            rental.overtime_fee = overtime_fee
+    
+    if distance_fee is not None:
+        if rental.distance_fee != distance_fee:
+            changes["distance_fee"] = {
+                "old": old_values["distance_fee"],
+                "new": distance_fee
+            }
+            rental.distance_fee = distance_fee
+    
+    if driver_fee is not None:
+        if rental.driver_fee != driver_fee:
+            changes["driver_fee"] = {
+                "old": old_values["driver_fee"],
+                "new": driver_fee
+            }
+            rental.driver_fee = driver_fee
+    
+    if rebooking_fee is not None:
+        if rental.rebooking_fee != rebooking_fee:
+            changes["rebooking_fee"] = {
+                "old": old_values["rebooking_fee"],
+                "new": rebooking_fee
+            }
+            rental.rebooking_fee = rebooking_fee
+    
+    if already_payed is not None:
+        if rental.already_payed != already_payed:
+            changes["already_payed"] = {
+                "old": old_values["already_payed"],
+                "new": already_payed
+            }
+            rental.already_payed = already_payed
+    
+    if total_price is not None:
+        if rental.total_price != total_price:
+            changes["total_price"] = {
+                "old": old_values["total_price"],
+                "new": total_price
+            }
+            rental.total_price = total_price
+    
+    if not changes:
+        raise HTTPException(status_code=400, detail="Не было указано ни одного поля для обновления")
+    
+    # Логируем изменения
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="update_rental_price",
+        entity_type="rental",
+        entity_id=rental.id,
+        details={
+            "rental_id": rental_id,
+            "car_id": car_id,
+            "car_name": car.name,
+            "changes": changes,
+            "updated_by": {
+                "user_id": uuid_to_sid(current_user.id),
+                "user_name": f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.phone_number,
+                "role": current_user.role.value
+            }
+        }
+    )
+    
+    db.commit()
+    db.refresh(rental)
+    
+    # Вычисляем total_price_without_fuel для ответа
+    total_price_without_fuel = (
+        (rental.base_price or 0) +
+        (rental.open_fee or 0) +
+        (rental.delivery_fee or 0) +
+        (rental.waiting_fee or 0) +
+        (rental.overtime_fee or 0) +
+        (rental.distance_fee or 0) +
+        (rental.driver_fee or 0) +
+        (rental.rebooking_fee or 0)
+    )
+    
+    return {
+        "message": "Сумма аренды успешно обновлена",
+        "rental_id": rental_id,
+        "car_id": car_id,
+        "car_name": car.name,
+        "changes": changes,
+        "updated_by": {
+            "user_id": uuid_to_sid(current_user.id),
+            "user_name": f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.phone_number,
+            "role": current_user.role.value
+        },
+        "current_values": {
+            "base_price": rental.base_price,
+            "open_fee": rental.open_fee,
+            "delivery_fee": rental.delivery_fee,
+            "waiting_fee": rental.waiting_fee,
+            "overtime_fee": rental.overtime_fee,
+            "distance_fee": rental.distance_fee,
+            "driver_fee": rental.driver_fee,
+            "rebooking_fee": rental.rebooking_fee,
+            "already_payed": rental.already_payed,
+            "total_price": rental.total_price,
+            "total_price_without_fuel": total_price_without_fuel
+        }
+    }
+
+
 @cars_router.get("/{car_id}/history/trips/{rental_id}/get_maps")
 async def get_trip_maps(
     car_id: str,
