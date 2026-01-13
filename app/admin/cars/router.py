@@ -1300,6 +1300,8 @@ async def get_trip_detail(
         "fuel_before": rental.fuel_before,
         "fuel_after": rental.fuel_after,
         "fuel_after_main_tariff": rental.fuel_after_main_tariff,
+        "mileage_before": rental.mileage_before,
+        "mileage_after": rental.mileage_after,
         
         "renter": {
             "id": uuid_to_sid(renter.id),
