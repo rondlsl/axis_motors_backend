@@ -100,6 +100,7 @@ def get_vehicle_id_by_imei(imei: str) -> int:
         "860803068151071": 800408106,  # Toyota Camry
         "860803068151105": 800409927,  # Range Rover Sport Supercharged
         "860803068133343": 800410477,  # Li L7 Ultra
+        "860803068133152": 800412252,  # Mercedes W222
     }
     vehicle_id = imei_to_vehicle_id.get(imei)
     if vehicle_id is None:
@@ -184,6 +185,14 @@ def get_commands_by_imei(imei: str) -> dict:
             "lock_engine": "OUTPUT0 1",
             "unlock_engine": "OUTPUT0 0",
             "requires_double_send": True  # Закрыть отправляется 2 раза
+        },
+        "860803068133152": {  # Mercedes W222 - vehicle_id 800412252
+            "open": "chat OPEN|OUTPUT1 1|OUTPUT3 1|OUTPUT2 0|OUTPUT2 0|OUTPUT2 0|OUTPUT2 0|OUTPUT3 0|OUTPUT1 0",
+            "close": "chat CLOSE",
+            "give_key": "OUTPUT1 1",
+            "take_key": "OUTPUT1 0",
+            "lock_engine": "OUTPUT0 1",
+            "unlock_engine": "OUTPUT0 0"
         }
     }
     commands = commands_map.get(imei)
