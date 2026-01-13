@@ -189,7 +189,7 @@ def get_commands_by_imei(imei: str) -> dict:
         "860803068133152": {  # Mercedes W222 - vehicle_id 800412252
             "open": "OUTPUT1 1|OUTPUT3 0|OUTPUT3 0|OUTPUT3 0|OUTPUT2 1|OUTPUT3 0|OUTPUT3 0|OUTPUT3 0|OUTPUT2 0|OUTPUT1 0",
             "close": "OUTPUT1 1|OUTPUT2 0|OUTPUT2 0|OUTPUT2 0|OUTPUT3 1|OUTPUT2 0|OUTPUT2 0|OUTPUT2 0|OUTPUT3 0|OUTPUT1 0",
-            "give_key": "OUTPUT1 1",
+            "give_key": "OUTPUT1 1|OUTPUT3 0|OUTPUT3 0|OUTPUT3 0|OUTPUT2 1|OUTPUT3 0|OUTPUT3 0|OUTPUT3 0|OUTPUT2 0",
             "take_key": "OUTPUT1 0",
             "lock_engine": "OUTPUT0 1",
             "unlock_engine": "OUTPUT0 0"
