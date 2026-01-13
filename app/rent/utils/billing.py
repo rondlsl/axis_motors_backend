@@ -747,14 +747,20 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                         prev_minutes_charged = int(abs(float(existing_tx.amount)) / car.price_per_minute)
                     
                     # Рассчитываем прошедшее время от start_time
-                    elapsed_min = math.ceil(elapsed)
+                    # Используем floor вместо ceil, чтобы списание происходило только после полной минуты
+                    # Например, если прошло 61 секунда (1.0167 мин), то floor(1.0167) = 1 минута
+                    elapsed_min = math.floor(elapsed)
                     new_minutes = elapsed_min - prev_minutes_charged
                     
+                    # Списываем только если прошла полная минута (не раньше)
                     if new_minutes > 0:
                         balance_before_charge = user.wallet_balance
                         charge_per_minute = car.price_per_minute
-                        user.wallet_balance -= charge_per_minute
-                        new_minutes_charged = prev_minutes_charged + 1
+                        
+                        # Списываем за все новые минуты (если прошло несколько минут между запусками)
+                        total_charge = new_minutes * charge_per_minute
+                        user.wallet_balance -= total_charge
+                        new_minutes_charged = prev_minutes_charged + new_minutes
                         flags["minutes_charged"] = new_minutes_charged
                         due = new_minutes_charged * car.price_per_minute
                         rental.overtime_fee = due
@@ -912,15 +918,21 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
 
                     overtime = max(0, elapsed - planned_minutes)
                     if overtime > 0:
-                        extra_minutes = math.ceil(overtime)
+                        # Используем floor вместо ceil, чтобы списание происходило только после полной минуты
+                        # Например, если прошло 6 секунд сверх тарифа (0.1 мин), то floor(0.1) = 0, списание не произойдет
+                        extra_minutes = math.floor(overtime)
                         prev_ov_minutes_charged = flags.get("overtime_minutes_charged", 0)
                         new_ov_minutes = extra_minutes - prev_ov_minutes_charged
                         
+                        # Списываем только если прошла полная минута сверх тарифа
                         if new_ov_minutes > 0:
                             balance_before_charge = user.wallet_balance
                             charge_ov_per_minute = car.price_per_minute
-                            user.wallet_balance -= charge_ov_per_minute
-                            new_ov_minutes_charged = prev_ov_minutes_charged + 1
+                            
+                            # Списываем за все новые минуты (если прошло несколько минут между запусками)
+                            total_charge = new_ov_minutes * charge_ov_per_minute
+                            user.wallet_balance -= total_charge
+                            new_ov_minutes_charged = prev_ov_minutes_charged + new_ov_minutes
                             flags["overtime_minutes_charged"] = new_ov_minutes_charged
                             fee_total_ov = new_ov_minutes_charged * car.price_per_minute
                             rental.overtime_fee = fee_total_ov
