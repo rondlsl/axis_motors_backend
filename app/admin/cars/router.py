@@ -1448,6 +1448,138 @@ async def get_trip_detail(
     return result
 
 
+@cars_router.patch("/{car_id}/history/trips/{rental_id}/time", summary="Исправить время аренды")
+async def update_rental_time(
+    car_id: str,
+    rental_id: str,
+    reservation_time: Optional[str] = Query(None, description="Время бронирования (ISO format)"),
+    start_time: Optional[str] = Query(None, description="Время начала (ISO format)"),
+    end_time: Optional[str] = Query(None, description="Время окончания (ISO format)"),
+    duration: Optional[int] = Query(None, description="Длительность аренды в минутах"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Исправить время аренды (reservation_time, start_time, end_time, duration) с логированием в БД"""
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    rental_uuid = safe_sid_to_uuid(rental_id)
+    car = get_car_by_id(db, car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.id == rental_uuid,
+        RentalHistory.car_id == car.id
+    ).first()
+    
+    if not rental:
+        raise HTTPException(status_code=404, detail="Поездка не найдена")
+    
+    # Сохраняем старые значения для логирования
+    old_values = {
+        "reservation_time": rental.reservation_time.isoformat() if rental.reservation_time else None,
+        "start_time": rental.start_time.isoformat() if rental.start_time else None,
+        "end_time": rental.end_time.isoformat() if rental.end_time else None,
+        "duration": rental.duration
+    }
+    
+    # Обновляем поля
+    changes = {}
+    
+    if reservation_time is not None:
+        try:
+            new_reservation_time = datetime.fromisoformat(reservation_time.replace("Z", "+00:00"))
+            if (rental.reservation_time is None and new_reservation_time is not None) or \
+               (rental.reservation_time is not None and new_reservation_time != rental.reservation_time):
+                changes["reservation_time"] = {
+                    "old": old_values["reservation_time"],
+                    "new": new_reservation_time.isoformat()
+                }
+                rental.reservation_time = new_reservation_time
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Неверный формат reservation_time (ожидается ISO format)")
+    
+    if start_time is not None:
+        try:
+            new_start_time = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+            if (rental.start_time is None and new_start_time is not None) or \
+               (rental.start_time is not None and new_start_time != rental.start_time):
+                changes["start_time"] = {
+                    "old": old_values["start_time"],
+                    "new": new_start_time.isoformat()
+                }
+                rental.start_time = new_start_time
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Неверный формат start_time (ожидается ISO format)")
+    
+    if end_time is not None:
+        try:
+            new_end_time = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+            if (rental.end_time is None and new_end_time is not None) or \
+               (rental.end_time is not None and new_end_time != rental.end_time):
+                changes["end_time"] = {
+                    "old": old_values["end_time"],
+                    "new": new_end_time.isoformat()
+                }
+                rental.end_time = new_end_time
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Неверный формат end_time (ожидается ISO format)")
+    
+    if duration is not None:
+        if rental.duration != duration:
+            changes["duration"] = {
+                "old": old_values["duration"],
+                "new": duration
+            }
+            rental.duration = duration
+    
+    if not changes:
+        raise HTTPException(status_code=400, detail="Не было указано ни одного поля для обновления")
+    
+    # Логируем изменения
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="update_rental_time",
+        entity_type="rental",
+        entity_id=rental.id,
+        details={
+            "rental_id": rental_id,
+            "car_id": car_id,
+            "car_name": car.name,
+            "changes": changes,
+            "updated_by": {
+                "user_id": uuid_to_sid(current_user.id),
+                "user_name": f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.phone_number,
+                "role": current_user.role.value
+            }
+        }
+    )
+    
+    db.commit()
+    db.refresh(rental)
+    
+    return {
+        "message": "Время аренды успешно обновлено",
+        "rental_id": rental_id,
+        "car_id": car_id,
+        "car_name": car.name,
+        "changes": changes,
+        "updated_by": {
+            "user_id": uuid_to_sid(current_user.id),
+            "user_name": f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.phone_number,
+            "role": current_user.role.value
+        },
+        "current_values": {
+            "reservation_time": rental.reservation_time.isoformat() if rental.reservation_time else None,
+            "start_time": rental.start_time.isoformat() if rental.start_time else None,
+            "end_time": rental.end_time.isoformat() if rental.end_time else None,
+            "duration": rental.duration
+        }
+    }
+
+
 @cars_router.get("/{car_id}/history/trips/{rental_id}/get_maps")
 async def get_trip_maps(
     car_id: str,
