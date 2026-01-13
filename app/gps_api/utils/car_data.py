@@ -187,8 +187,8 @@ def get_commands_by_imei(imei: str) -> dict:
             "requires_double_send": True  # Закрыть отправляется 2 раза
         },
         "860803068133152": {  # Mercedes W222 - vehicle_id 800412252
-            "open": "chat OPEN|OUTPUT1 1|OUTPUT3 1|OUTPUT2 0|OUTPUT2 0|OUTPUT2 0|OUTPUT2 0|OUTPUT3 0|OUTPUT1 0",
-            "close": "chat CLOSE",
+            "open": "OUTPUT1 1|OUTPUT3 0|OUTPUT3 0|OUTPUT3 0|OUTPUT2 1|OUTPUT3 0|OUTPUT3 0|OUTPUT3 0|OUTPUT2 0|OUTPUT1 0",
+            "close": "OUTPUT1 1|OUTPUT2 0|OUTPUT2 0|OUTPUT2 0|OUTPUT3 1|OUTPUT2 0|OUTPUT2 0|OUTPUT2 0|OUTPUT3 0|OUTPUT1 0",
             "give_key": "OUTPUT1 1",
             "take_key": "OUTPUT1 0",
             "lock_engine": "OUTPUT0 1",
