@@ -752,6 +752,10 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                     elapsed_min = math.floor(elapsed)
                     new_minutes = elapsed_min - prev_minutes_charged
                     
+                    # Ограничиваем списание максимум 1 минутой за один запуск billing job
+                    # Это предотвращает массовое списание при пропусках billing job
+                    new_minutes = min(new_minutes, 1)
+                    
                     # Списываем только если прошла полная минута (не раньше)
                     if new_minutes > 0:
                         balance_before_charge = user.wallet_balance
@@ -923,6 +927,10 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                         extra_minutes = math.floor(overtime)
                         prev_ov_minutes_charged = flags.get("overtime_minutes_charged", 0)
                         new_ov_minutes = extra_minutes - prev_ov_minutes_charged
+                        
+                        # Ограничиваем списание максимум 1 минутой за один запуск billing job
+                        # Это предотвращает массовое списание при первом превышении тарифа
+                        new_ov_minutes = min(new_ov_minutes, 1)
                         
                         # Списываем только если прошла полная минута сверх тарифа
                         if new_ov_minutes > 0:

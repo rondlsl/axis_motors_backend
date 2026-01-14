@@ -247,7 +247,7 @@ def init_app(app: FastAPI):
         scheduler.add_job(
             billing_job,
             trigger="interval",
-            seconds=10,
+            seconds=60,  # Запуск каждую минуту (оптимально для поминутного биллинга)
             max_instances=1,  # не запустит новую итерацию, пока старая не завершилась
             coalesce=True  # если промедлили — слить «пропущенные» вызовы в один
         )
