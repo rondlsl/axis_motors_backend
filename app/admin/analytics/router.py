@@ -208,7 +208,7 @@ async def get_all_transactions(
     page: int = Query(1, ge=1, description="Страница"),
     limit: int = Query(50, ge=1, le=200, description="Записей на странице"),
     transaction_type: Optional[str] = Query(None, description="Фильтр по типу транзакции"),
-    filter_type: Optional[str] = Query(None, description="Фильтр: deposits, expenses, deposits_with_tracking_id"),
+    filter_type: Optional[str] = Query(None, description="Фильтр: deposits, expenses, deposits_with_tracking_id, deposits_without_tracking_id"),
     user_phone: Optional[str] = Query(None, description="Фильтр по номеру телефона"),
     date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
     date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
@@ -222,6 +222,7 @@ async def get_all_transactions(
     - deposits: только пополнения
     - expenses: только траты
     - deposits_with_tracking_id: только пополнения с tracking_id
+    - deposits_without_tracking_id: только пополнения без tracking_id
     """
     from collections import defaultdict
     
@@ -246,8 +247,13 @@ async def get_all_transactions(
                 WalletTransaction.transaction_type.in_(DEPOSIT_TYPES),
                 WalletTransaction.tracking_id.isnot(None)
             )
+        elif filter_type == "deposits_without_tracking_id":
+            query = query.filter(
+                WalletTransaction.transaction_type.in_(DEPOSIT_TYPES),
+                (WalletTransaction.tracking_id.is_(None)) | (WalletTransaction.tracking_id == "")
+            )
         else:
-            raise HTTPException(status_code=400, detail=f"Неизвестный тип фильтра: {filter_type}. Доступные: deposits, expenses, deposits_with_tracking_id")
+            raise HTTPException(status_code=400, detail=f"Неизвестный тип фильтра: {filter_type}. Доступные: deposits, expenses, deposits_with_tracking_id, deposits_without_tracking_id")
     
     if transaction_type:
         try:
