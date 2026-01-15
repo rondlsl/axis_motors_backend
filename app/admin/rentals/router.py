@@ -13,7 +13,7 @@ from app.models.user_model import User, UserRole
 from app.models.history_model import RentalHistory, RentalStatus
 from app.models.car_model import Car, CarBodyType
 from app.models.wallet_transaction_model import WalletTransaction
-from app.utils.short_id import uuid_to_sid
+from app.utils.short_id import uuid_to_sid, safe_sid_to_uuid
 from app.admin.cars.utils import sort_car_photos
 from app.rent.utils.calculate_price import FUEL_PRICE_PER_LITER, ELECTRIC_FUEL_PRICE_PER_LITER
 
@@ -115,6 +115,7 @@ def _build_transactions(transactions: List[WalletTransaction]) -> List[Dict[str,
 async def get_completed_rentals(
     page: int = Query(1, ge=1, description="Номер страницы"),
     limit: int = Query(50, ge=1, le=200, description="Количество элементов на странице"),
+    rental_id: Optional[str] = Query(None, description="ID аренды для фильтрации"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
@@ -131,7 +132,17 @@ async def get_completed_rentals(
     # Получаем все завершённые аренды
     query = db.query(RentalHistory).filter(
         RentalHistory.rental_status == RentalStatus.COMPLETED
-    ).options(
+    )
+    
+    # Фильтруем по rental_id если передан
+    if rental_id:
+        try:
+            rental_uuid = safe_sid_to_uuid(rental_id)
+            query = query.filter(RentalHistory.id == rental_uuid)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Некорректный ID аренды")
+    
+    query = query.options(
         joinedload(RentalHistory.car),
         joinedload(RentalHistory.user)
     ).order_by(desc(RentalHistory.end_time))
@@ -187,6 +198,9 @@ async def get_completed_rentals(
         
         # Формируем объект аренды
         rental_data = {
+            # ID аренды
+            "rental_id": uuid_to_sid(rental.id),
+            
             # Информация о машине
             "car": car_info,
             
