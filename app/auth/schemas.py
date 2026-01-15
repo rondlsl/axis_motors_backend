@@ -48,6 +48,7 @@ class VerifySmsResponse(BaseModel):
     digital_signature: Optional[str] = Field(None, description="Цифровая подпись пользователя")
     client_info: ClientInfoResponse = Field(..., description="Информация о клиенте")
     fcm_token: Optional[str] = Field(None, description="FCM token пользователя")
+    role: str = Field(..., description="Роль пользователя")
 
 
 class SendSmsRequest(BaseModel):

@@ -51,7 +51,8 @@ from app.owner.availability import update_cars_availability_job, backfill_availa
 from app.guarantor.router import guarantor_router
 from app.admin.router import admin_router
 from app.financier.router import FinancierRouter
-from app.mvd.router import MvdRouter  
+from app.mvd.router import MvdRouter
+from app.accountant.router import accountant_router  
 from app.wallet.router import WalletRouter
 from app.contracts.router import ContractsRouter
 from app.contracts.html_router import HTMLContractsRouter
@@ -538,7 +539,8 @@ app.include_router(OwnerRouter)
 app.include_router(guarantor_router)
 app.include_router(admin_router)
 app.include_router(FinancierRouter)
-app.include_router(MvdRouter) 
+app.include_router(MvdRouter)
+app.include_router(accountant_router) 
 app.include_router(WalletRouter)
 app.include_router(ContractsRouter)
 app.include_router(HTMLContractsRouter)

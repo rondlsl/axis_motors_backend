@@ -805,7 +805,8 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
             "user_id": uuid_to_sid(user.id),
             "digital_signature": user.digital_signature
         },
-        fcm_token=fcm_token
+        fcm_token=fcm_token,
+        role=user.role.value
     )
 
 
