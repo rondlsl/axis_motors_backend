@@ -142,10 +142,14 @@ async def get_completed_rentals(
         except Exception:
             raise HTTPException(status_code=400, detail="Некорректный ID аренды")
     
+    # Сортируем по end_time по убыванию (самые новые сначала)
+    query = query.order_by(desc(RentalHistory.end_time))
+    
+    # Применяем eager loading для связанных объектов
     query = query.options(
         joinedload(RentalHistory.car),
         joinedload(RentalHistory.user)
-    ).order_by(desc(RentalHistory.end_time))
+    )
     
     # Подсчитываем общее количество
     total = query.count()
