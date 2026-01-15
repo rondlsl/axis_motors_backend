@@ -63,3 +63,25 @@ async def get_current_mechanic(
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
     return user
+
+
+async def get_current_accountant(
+        db: Session = Depends(get_db),
+        token: str = Depends(JWTBearer(expected_token_type="access"))
+):
+    """Проверяет, что текущий пользователь - бухгалтер"""
+    phone_number: str = token.get("sub")
+    if phone_number is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Could not validate credentials"
+        )
+    # Ищем активного пользователя с заданным номером
+    user = db.query(User).filter(User.phone_number == phone_number, User.is_active == True).first()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found or inactive")
+
+    if user.role != UserRole.ACCOUNTANT:
+        raise HTTPException(status_code=403, detail="Access denied. Accountant role required.")
+
+    return user

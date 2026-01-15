@@ -20,6 +20,7 @@ class UserRole(enum.Enum):
     MVD = "mvd"
     SUPPORT = "SUPPORT"                        # Служба поддержки
     DRIVER = "DRIVER"                          # Водитель для аренды с водителем
+    ACCOUNTANT = "ACCOUNTANT"                  # Бухгалтер
     PENDINGTOFIRST = "PENDINGTOFIRST"          # Загрузил документы, ждёт финансиста
     PENDINGTOSECOND = "PENDINGTOSECOND"        # Одобрен финансистом, ждёт МВД
     REJECTFIRSTDOC = "REJECTFIRSTDOC"          # Отказ финансиста: неверные документы
