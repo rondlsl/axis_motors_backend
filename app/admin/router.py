@@ -7,6 +7,7 @@ from app.admin.sms.router import sms_router
 from app.admin.auth.router import admin_auth_router
 from app.admin.app_versions.router import router as app_versions_admin_router
 from app.admin.analytics.router import analytics_router
+from app.admin.rentals.router import rentals_router
 
 admin_router = APIRouter(prefix="/admin")
 
@@ -18,6 +19,7 @@ admin_router.include_router(sms_router, prefix="/sms")
 admin_router.include_router(admin_auth_router, prefix="/auth")
 admin_router.include_router(app_versions_admin_router, prefix="/app-versions")
 admin_router.include_router(analytics_router)
+admin_router.include_router(rentals_router, prefix="/rentals")
 
 router = admin_router
 
