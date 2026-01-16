@@ -20,6 +20,9 @@ from math import ceil
 
 analytics_router = APIRouter(prefix="/analytics", tags=["Admin Analytics"])
 
+# Создаем отдельный роутер для transactions без префикса /analytics
+transactions_router = APIRouter(tags=["Admin Transactions"])
+
 
 DEPOSIT_TYPES = [
     WalletTransactionType.DEPOSIT,
@@ -203,7 +206,7 @@ async def get_expenses_analytics(
     }
 
 
-@analytics_router.get("/transactions", summary="Полная история транзакций")
+@transactions_router.get("/transactions", summary="Полная история транзакций")
 async def get_all_transactions(
     page: int = Query(1, ge=1, description="Страница"),
     limit: int = Query(50, ge=1, le=200, description="Записей на странице"),

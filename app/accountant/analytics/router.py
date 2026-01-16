@@ -19,6 +19,9 @@ from app.utils.short_id import uuid_to_sid
 
 accountant_analytics_router = APIRouter(prefix="/analytics", tags=["Accountant Analytics"])
 
+# Создаем отдельный роутер для transactions без префикса /analytics
+accountant_transactions_router = APIRouter(tags=["Accountant Transactions"])
+
 
 DEPOSIT_TYPES = [
     WalletTransactionType.DEPOSIT,
@@ -47,7 +50,7 @@ EXPENSE_TYPES = [
 ]
 
 
-@accountant_analytics_router.get("/transactions", summary="Полная история транзакций")
+@accountant_transactions_router.get("/transactions", summary="Полная история транзакций")
 async def get_all_transactions(
     page: int = Query(1, ge=1, description="Страница"),
     limit: int = Query(50, ge=1, le=200, description="Записей на странице"),
