@@ -281,6 +281,24 @@ class WalletTransactionPaginationSchema(BaseModel):
     wallet_balance: float
 
 
+class GroupedTransactionItemSchema(BaseModel):
+    """Схема для одного элемента в группированном списке (может быть транзакцией или арендой)"""
+    type: str  # "transaction" или "rental"
+    created_at: datetime  # Для сортировки
+    transaction: Optional[WalletTransactionSchema] = None  # Если type == "transaction"
+    rental: Optional[Dict[str, Any]] = None  # Если type == "rental"
+
+
+class GroupedTransactionsPaginationSchema(BaseModel):
+    """Схема для пагинированного списка группированных транзакций и аренд"""
+    items: List[GroupedTransactionItemSchema]
+    total: int
+    page: int
+    limit: int
+    pages: int
+    wallet_balance: float
+
+
 class RentalHistoryUpdateSchema(BaseModel):
     """Схема для обновления данных поездки"""
     car_id: Optional[str] = None

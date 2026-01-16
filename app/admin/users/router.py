@@ -39,9 +39,10 @@ from app.admin.users.schemas import (
     MechanicStartInspectionResponse, MechanicPhotoUploadResponse, MechanicCompleteInspectionResponse,
     AdminMechanicCompleteRequest, AdminAssignMechanicRequest,
     AssignMechanicResponse, UnassignMechanicResponse,
-    AdminDeleteUserRequest, AdminDeleteUserResponse
+    AdminDeleteUserRequest, AdminDeleteUserResponse,
+    GroupedTransactionsPaginationSchema, GroupedTransactionItemSchema
 )
-from math import ceil
+from math import ceil, floor
 from app.owner.router import calculate_owner_earnings
 from app.admin.cars.utils import sort_car_photos
 from app.utils.telegram_logger import log_error_to_telegram
@@ -972,6 +973,251 @@ async def get_user_transactions(
         "page": page,
         "limit": limit,
         "pages": ceil(total_count / limit),
+        "wallet_balance": float(user.wallet_balance) if user.wallet_balance else 0.0
+    }
+
+
+@users_router.get("/{user_id}/transactions-grouped", response_model=GroupedTransactionsPaginationSchema)
+async def get_user_transactions_grouped(
+    user_id: str,
+    page: int = Query(1, ge=1, description="Номер страницы"),
+    limit: int = Query(50, ge=1, le=200, description="Количество элементов на странице"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Получение истории транзакций пользователя с группировкой по аренде.
+    
+    Транзакции с одинаковым rental_id группируются в одну аренду (как в /admin/rentals/completed),
+    а транзакции без rental_id или с уникальным rental_id показываются отдельно.
+    """
+    from sqlalchemy.orm import joinedload
+    from app.models.history_model import RentalHistory, RentalStatus
+    from app.models.car_model import Car, CarBodyType
+    from app.admin.cars.utils import sort_car_photos
+    from app.rent.utils.calculate_price import FUEL_PRICE_PER_LITER, ELECTRIC_FUEL_PRICE_PER_LITER
+    
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.FINANCIER]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    # Получаем все транзакции пользователя
+    all_transactions = (
+        db.query(WalletTransaction)
+        .filter(WalletTransaction.user_id == user.id)
+        .order_by(desc(WalletTransaction.created_at))
+        .all()
+    )
+    
+    # Группируем транзакции по rental_id
+    from collections import defaultdict
+    rental_transactions = defaultdict(list)
+    standalone_transactions = []
+    
+    for tx in all_transactions:
+        if tx.related_rental_id:
+            rental_transactions[tx.related_rental_id].append(tx)
+        else:
+            standalone_transactions.append(tx)
+    
+    # Создаем список всех элементов (аренды и отдельные транзакции)
+    all_items = []
+    
+    # Добавляем аренды
+    for rental_id, transactions in rental_transactions.items():
+        rental = (
+            db.query(RentalHistory)
+            .options(joinedload(RentalHistory.car), joinedload(RentalHistory.user))
+            .filter(RentalHistory.id == rental_id)
+            .first()
+        )
+        
+        if rental:
+            car = rental.car
+            renter = rental.user
+            
+            # Рассчитываем fuel_fee
+            fuel_fee = 0
+            if rental.fuel_before is not None and rental.fuel_after is not None:
+                if rental.fuel_after < rental.fuel_before:
+                    fuel_consumed = ceil(rental.fuel_before) - floor(rental.fuel_after)
+                    if fuel_consumed > 0 and car:
+                        fuel_price = ELECTRIC_FUEL_PRICE_PER_LITER if car.body_type == CarBodyType.ELECTRIC else FUEL_PRICE_PER_LITER
+                        fuel_fee = int(fuel_consumed * fuel_price)
+            
+            # Рассчитываем total_price_without_fuel
+            total_price_without_fuel = (
+                (rental.base_price or 0) +
+                (rental.open_fee or 0) +
+                (rental.delivery_fee or 0) +
+                (rental.waiting_fee or 0) +
+                (rental.overtime_fee or 0) +
+                (rental.distance_fee or 0) +
+                (rental.driver_fee or 0)
+            )
+            
+            # Строим информацию о машине
+            car_info = {}
+            if car:
+                car_info = {
+                    "id": uuid_to_sid(car.id),
+                    "name": car.name,
+                    "plate_number": car.plate_number,
+                    "engine_volume": car.engine_volume,
+                    "year": car.year,
+                    "drive_type": car.drive_type,
+                    "transmission_type": car.transmission_type.value if car.transmission_type else None,
+                    "body_type": car.body_type.value if car.body_type else None,
+                    "auto_class": car.auto_class.value if car.auto_class else None,
+                    "price_per_minute": car.price_per_minute,
+                    "price_per_hour": car.price_per_hour,
+                    "price_per_day": car.price_per_day,
+                    "latitude": car.latitude,
+                    "longitude": car.longitude,
+                    "fuel_level": car.fuel_level,
+                    "mileage": car.mileage,
+                    "course": car.course,
+                    "photos": sort_car_photos(car.photos or []),
+                    "description": car.description,
+                    "vin": car.vin,
+                    "color": car.color,
+                    "gps_id": car.gps_id,
+                    "gps_imei": car.gps_imei,
+                    "status": car.status.value if car.status else None,
+                }
+            
+            # Строим информацию об арендаторе
+            renter_info = {}
+            if renter:
+                is_owner = False
+                if car and car.owner_id:
+                    is_owner = renter.id == car.owner_id
+                
+                renter_info = {
+                    "id": uuid_to_sid(renter.id),
+                    "first_name": renter.first_name,
+                    "last_name": renter.last_name,
+                    "phone_number": renter.phone_number,
+                    "selfie": renter.selfie_url,
+                    "is_owner": is_owner
+                }
+            
+            # Получаем tariff_display
+            tariff_value = rental.rental_type.value if hasattr(rental.rental_type, 'value') else str(rental.rental_type)
+            tariff_map = {
+                "minutes": "Минутный",
+                "hours": "Часовой",
+                "days": "Суточный"
+            }
+            tariff_display = tariff_map.get(tariff_value, tariff_value)
+            
+            # Рассчитываем заработок владельца
+            base_price_owner = int((rental.base_price or 0) * 0.5 * 0.97)
+            waiting_fee_owner = int((rental.waiting_fee or 0) * 0.5 * 0.97)
+            overtime_fee_owner = int((rental.overtime_fee or 0) * 0.5 * 0.97)
+            total_owner_earnings = int(((rental.base_price or 0) + (rental.waiting_fee or 0) + (rental.overtime_fee or 0)) * 0.5 * 0.97)
+            
+            # Строим список транзакций
+            transactions_list = []
+            for tx in sorted(transactions, key=lambda x: x.created_at):
+                transactions_list.append({
+                    "id": uuid_to_sid(tx.id),
+                    "amount": float(tx.amount),
+                    "transaction_type": tx.transaction_type.value if hasattr(tx.transaction_type, 'value') else str(tx.transaction_type),
+                    "description": tx.description,
+                    "balance_before": float(tx.balance_before),
+                    "balance_after": float(tx.balance_after),
+                    "tracking_id": tx.tracking_id,
+                    "created_at": tx.created_at.isoformat() if tx.created_at else None,
+                    "related_rental_id": uuid_to_sid(tx.related_rental_id) if tx.related_rental_id else None,
+                })
+            
+            # Формируем объект аренды
+            rental_data = {
+                "rental_id": uuid_to_sid(rental.id),
+                "car": car_info,
+                "reservation_time": rental.reservation_time.isoformat() if rental.reservation_time else None,
+                "start_time": rental.start_time.isoformat() if rental.start_time else None,
+                "end_time": rental.end_time.isoformat() if rental.end_time else None,
+                "duration": rental.duration,
+                "already_payed": rental.already_payed or 0,
+                "total_price": rental.total_price or 0,
+                "total_price_without_fuel": total_price_without_fuel,
+                "tariff": tariff_value,
+                "tariff_display": tariff_display,
+                "base_price": rental.base_price or 0,
+                "open_fee": rental.open_fee or 0,
+                "delivery_fee": rental.delivery_fee or 0,
+                "fuel_fee": fuel_fee,
+                "waiting_fee": rental.waiting_fee or 0,
+                "overtime_fee": rental.overtime_fee or 0,
+                "distance_fee": rental.distance_fee or 0,
+                "with_driver": rental.with_driver or False,
+                "driver_fee": rental.driver_fee or 0,
+                "rebooking_fee": rental.rebooking_fee or 0,
+                "base_price_owner": base_price_owner,
+                "waiting_fee_owner": waiting_fee_owner,
+                "overtime_fee_owner": overtime_fee_owner,
+                "total_owner_earnings": total_owner_earnings,
+                "fuel_before": float(rental.fuel_before) if rental.fuel_before is not None else None,
+                "fuel_after": float(rental.fuel_after) if rental.fuel_after is not None else None,
+                "renter": renter_info,
+                "transactions": transactions_list,
+            }
+            
+            # Используем самую раннюю дату транзакции аренды для сортировки
+            earliest_tx = min(transactions, key=lambda x: x.created_at)
+            all_items.append({
+                "type": "rental",
+                "created_at": earliest_tx.created_at,
+                "rental": rental_data,
+                "transaction": None
+            })
+    
+    # Добавляем отдельные транзакции
+    for tx in standalone_transactions:
+        tx_data = {
+            "id": uuid_to_sid(tx.id),
+            "amount": float(tx.amount),
+            "transaction_type": tx.transaction_type.value if hasattr(tx.transaction_type, "value") else str(tx.transaction_type),
+            "description": tx.description,
+            "balance_before": float(tx.balance_before),
+            "balance_after": float(tx.balance_after),
+            "tracking_id": tx.tracking_id,
+            "created_at": tx.created_at,
+            "related_rental_id": uuid_to_sid(tx.related_rental_id) if tx.related_rental_id else None
+        }
+        all_items.append({
+            "type": "transaction",
+            "created_at": tx.created_at,
+            "transaction": WalletTransactionSchema(**tx_data),
+            "rental": None
+        })
+    
+    # Сортируем все элементы по дате (самые новые сначала)
+    all_items.sort(key=lambda x: x["created_at"], reverse=True)
+    
+    # Применяем пагинацию
+    total_count = len(all_items)
+    start_idx = (page - 1) * limit
+    end_idx = start_idx + limit
+    paginated_items = all_items[start_idx:end_idx]
+    
+    # Формируем финальный список
+    result_items = []
+    for item in paginated_items:
+        result_items.append(GroupedTransactionItemSchema(**item))
+    
+    return {
+        "items": result_items,
+        "total": total_count,
+        "page": page,
+        "limit": limit,
+        "pages": ceil(total_count / limit) if limit > 0 else 0,
         "wallet_balance": float(user.wallet_balance) if user.wallet_balance else 0.0
     }
 
