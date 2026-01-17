@@ -1,11 +1,20 @@
 import asyncio
 import base64
 import os
+import faulthandler
+import sys
 from typing import Dict, Any
 from datetime import datetime
 
 import anyio
 import httpx
+
+# Включаем faulthandler для получения stack traces при критических ошибках
+# Это поможет получить информацию о зависаниях даже если event loop заблокирован
+faulthandler.enable()
+# Также пишем в stderr для Docker логов
+if hasattr(sys.stderr, 'isatty') and sys.stderr.isatty():
+    faulthandler.enable(file=sys.stderr, all_threads=True)
 
 from alembic import command
 from alembic.config import Config
@@ -25,6 +34,8 @@ from app.core.config import logger, TELEGRAM_BOT_TOKEN_2
 from app.dependencies.database.database import get_db
 from app.middleware.error_logger_middleware import ErrorLoggerMiddleware
 from app.middleware.request_logger_middleware import RequestLoggerMiddleware
+from app.middleware.hang_detector_middleware import HangDetectorMiddleware, set_hang_detector_instance
+from app.utils.hang_watchdog import HangWatchdog, set_hang_watchdog
 import logging
 
 # Настройка логирования для вывода в консоль Docker
@@ -424,10 +435,39 @@ def init_app(app: FastAPI):
             print(f"Ошибка запуска системы поддержки: {e}")
             import traceback
             print(f"Traceback: {traceback.format_exc()}")
+        
+        # Запускаем HangWatchdog для детектирования зависаний
+        try:
+            # Настройки можно вынести в переменные окружения
+            import os
+            check_interval = float(os.getenv("HANG_WATCHDOG_CHECK_INTERVAL", "5.0"))  # Проверка каждые 5 секунд
+            hang_threshold = float(os.getenv("HANG_WATCHDOG_THRESHOLD", "10.0"))  # Порог зависания 10 секунд
+            
+            hang_watchdog = HangWatchdog(
+                check_interval=check_interval,
+                hang_threshold=hang_threshold
+            )
+            set_hang_watchdog(hang_watchdog)
+            await hang_watchdog.start()
+            logger.info("✅ HangWatchdog запущен для детектирования зависаний")
+        except Exception as e:
+            logger.error(f"❌ Ошибка запуска HangWatchdog: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
 
     @app.on_event("shutdown")
     async def shutdown_event():
         print("Приложение остановлено")
+        
+        # Останавливаем HangWatchdog
+        try:
+            from app.utils.hang_watchdog import get_hang_watchdog
+            hang_watchdog = get_hang_watchdog()
+            if hang_watchdog:
+                await hang_watchdog.stop()
+        except Exception as e:
+            logger.error(f"Ошибка остановки HangWatchdog: {e}")
+        
         try:
             scheduler.shutdown()
         except Exception as e:
@@ -511,6 +551,11 @@ app.add_middleware(
 
 # RequestLoggerMiddleware - логирует все запросы (добавляем перед CORS)
 app.add_middleware(RequestLoggerMiddleware)
+
+# HangDetectorMiddleware - отслеживает активные запросы для детектирования зависаний
+# Должен быть после RequestLoggerMiddleware, чтобы иметь доступ к trace_id
+# Middleware автоматически сохранит ссылку на себя при инициализации
+app.add_middleware(HangDetectorMiddleware)
 
 # ErrorLoggerMiddleware - обрабатывает ошибки
 app.add_middleware(ErrorLoggerMiddleware)
