@@ -24,6 +24,7 @@ from app.auth.router import Auth_router
 from app.core.config import logger, TELEGRAM_BOT_TOKEN_2
 from app.dependencies.database.database import get_db
 from app.middleware.error_logger_middleware import ErrorLoggerMiddleware
+from app.middleware.request_logger_middleware import RequestLoggerMiddleware
 import logging
 
 # Настройка логирования для вывода в консоль Docker
@@ -496,9 +497,10 @@ class SwaggerAuthMiddleware(BaseHTTPMiddleware):
 
 from app.middleware.performance_monitor import PerformanceMonitoringMiddleware
 
-app.add_middleware(PerformanceMonitoringMiddleware, slow_threshold=3.0, alert_threshold=10.0)
-app.add_middleware(SwaggerAuthMiddleware)
-app.add_middleware(ErrorLoggerMiddleware)
+# Порядок важен: middleware выполняются в обратном порядке добавления
+# (последний добавленный выполняется первым)
+
+# CORS должен быть самым внешним (добавляем последним)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -506,6 +508,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# RequestLoggerMiddleware - логирует все запросы (добавляем перед CORS)
+app.add_middleware(RequestLoggerMiddleware)
+
+# ErrorLoggerMiddleware - обрабатывает ошибки
+app.add_middleware(ErrorLoggerMiddleware)
+
+# SwaggerAuthMiddleware - защита Swagger UI
+app.add_middleware(SwaggerAuthMiddleware)
+
+# PerformanceMonitoringMiddleware - мониторинг производительности
+app.add_middleware(PerformanceMonitoringMiddleware, slow_threshold=3.0, alert_threshold=10.0)
 
 async def log_exception_handler(request: Request, exc: Exception):
 	logger.exception(f"Unhandled exception at {request.url}: {exc}")
