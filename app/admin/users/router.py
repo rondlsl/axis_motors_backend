@@ -991,6 +991,7 @@ async def get_user_transactions_grouped(
     Транзакции с одинаковым rental_id группируются в одну аренду (как в /admin/rentals/completed),
     а транзакции без rental_id или с уникальным rental_id показываются отдельно.
     """
+    from datetime import datetime
     from sqlalchemy.orm import joinedload
     from app.models.history_model import RentalHistory, RentalStatus
     from app.models.car_model import Car, CarBodyType
@@ -1005,11 +1006,11 @@ async def get_user_transactions_grouped(
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
-    # Получаем все транзакции пользователя
+    # Получаем все транзакции пользователя с сортировкой по created_at и id для стабильности
     all_transactions = (
         db.query(WalletTransaction)
         .filter(WalletTransaction.user_id == user.id)
-        .order_by(desc(WalletTransaction.created_at))
+        .order_by(desc(WalletTransaction.created_at), desc(WalletTransaction.id))
         .all()
     )
     
@@ -1209,9 +1210,12 @@ async def get_user_transactions_grouped(
             overtime_fee_owner = int((rental.overtime_fee or 0) * 0.5 * 0.97)
             total_owner_earnings = int(((rental.base_price or 0) + (rental.waiting_fee or 0) + (rental.overtime_fee or 0)) * 0.5 * 0.97)
             
-            # Строим список транзакций
+            # Строим список транзакций с правильной сортировкой по created_at и id
             transactions_list = []
-            sorted_transactions = sorted(transactions, key=lambda x: x.created_at)
+            sorted_transactions = sorted(
+                transactions, 
+                key=lambda x: (x.created_at or datetime.min, x.id or '')
+            )
             for tx in sorted_transactions:
                 transactions_list.append({
                     "id": uuid_to_sid(tx.id),
@@ -1268,8 +1272,12 @@ async def get_user_transactions_grouped(
             
             # Используем самую раннюю дату транзакции аренды для сортировки
             # Если нет транзакций, используем reservation_time или start_time аренды
+            # Сортируем по created_at и id для стабильности при одинаковых временах
             if transactions:
-                earliest_tx = min(transactions, key=lambda x: x.created_at)
+                earliest_tx = min(
+                    transactions, 
+                    key=lambda x: (x.created_at or datetime.max, x.id or '')
+                )
                 sort_date = earliest_tx.created_at
             else:
                 sort_date = rental.reservation_time if rental.reservation_time else rental.start_time
@@ -1278,7 +1286,8 @@ async def get_user_transactions_grouped(
                 "type": "rental",
                 "created_at": sort_date,
                 "rental": rental_data,
-                "transaction": None
+                "transaction": None,
+                "sort_id": rental.id
             })
     
     # Добавляем отдельные транзакции
@@ -1298,11 +1307,16 @@ async def get_user_transactions_grouped(
             "type": "transaction",
             "created_at": tx.created_at,
             "transaction": WalletTransactionSchema(**tx_data),
-            "rental": None
+            "rental": None,
+            "sort_id": tx.id
         })
     
-    # Сортируем все элементы по дате (самые новые сначала)
-    all_items.sort(key=lambda x: x["created_at"], reverse=True)
+    # Сортируем все элементы по дате (самые новые сначала) с учетом id для стабильности
+    # Используем кортеж (created_at, sort_id) для стабильной сортировки при одинаковых временах
+    all_items.sort(key=lambda x: (
+        x["created_at"] if x["created_at"] else datetime.min,
+        x.get("sort_id", "")
+    ), reverse=True)
     
     # Применяем пагинацию
     total_count = len(all_items)
@@ -1310,10 +1324,11 @@ async def get_user_transactions_grouped(
     end_idx = start_idx + limit
     paginated_items = all_items[start_idx:end_idx]
     
-    # Формируем финальный список
+    # Формируем финальный список (удаляем sort_id перед созданием схемы)
     result_items = []
     for item in paginated_items:
-        result_items.append(GroupedTransactionItemSchema(**item))
+        item_copy = {k: v for k, v in item.items() if k != "sort_id"}
+        result_items.append(GroupedTransactionItemSchema(**item_copy))
     
     return {
         "items": result_items,
