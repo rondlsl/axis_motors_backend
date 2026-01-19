@@ -1123,7 +1123,8 @@ async def get_user_transactions_grouped(
             
             # Строим список транзакций
             transactions_list = []
-            for tx in sorted(transactions, key=lambda x: x.created_at):
+            sorted_transactions = sorted(transactions, key=lambda x: x.created_at)
+            for tx in sorted_transactions:
                 transactions_list.append({
                     "id": uuid_to_sid(tx.id),
                     "amount": float(tx.amount),
@@ -1135,6 +1136,12 @@ async def get_user_transactions_grouped(
                     "created_at": tx.created_at.isoformat() if tx.created_at else None,
                     "related_rental_id": uuid_to_sid(tx.related_rental_id) if tx.related_rental_id else None,
                 })
+            
+            # Получаем balance_before из первой транзакции и balance_after из последней
+            first_tx = sorted_transactions[0] if sorted_transactions else None
+            last_tx = sorted_transactions[-1] if sorted_transactions else None
+            rental_balance_before = float(first_tx.balance_before) if first_tx and first_tx.balance_before is not None else 0.0
+            rental_balance_after = float(last_tx.balance_after) if last_tx and last_tx.balance_after is not None else 0.0
             
             # Формируем объект аренды
             rental_data = {
@@ -1167,6 +1174,8 @@ async def get_user_transactions_grouped(
                 "fuel_after": float(rental.fuel_after) if rental.fuel_after is not None else None,
                 "renter": renter_info,
                 "transactions": transactions_list,
+                "balance_before": rental_balance_before,
+                "balance_after": rental_balance_after,
             }
             
             # Используем самую раннюю дату транзакции аренды для сортировки
