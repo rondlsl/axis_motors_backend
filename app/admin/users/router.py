@@ -1048,43 +1048,55 @@ async def get_user_transactions_grouped(
                 if tx.created_at and start_bound <= tx.created_at <= end_bound:
                     transactions_in_range.append(tx)
             
-            # Если есть транзакции в диапазоне, проверяем цепочку балансов
-            if transactions_in_range and rental_transactions[rental.id]:
-                # Сортируем все транзакции аренды по времени
-                all_rental_txs = sorted(rental_transactions[rental.id], key=lambda x: x.created_at)
-                
-                for tx in transactions_in_range:
-                    # Проверяем, вписывается ли транзакция в цепочку балансов
-                    can_add = False
+            # Если есть транзакции в диапазоне
+            if transactions_in_range:
+                # Если у аренды уже есть транзакции, проверяем цепочку балансов
+                if rental_transactions[rental.id]:
+                    # Сортируем все транзакции аренды по времени
+                    all_rental_txs = sorted(rental_transactions[rental.id], key=lambda x: x.created_at)
                     
-                    # Ищем место, куда можно вставить транзакцию
-                    for i, existing_tx in enumerate(all_rental_txs):
-                        # Проверяем, может ли tx идти перед existing_tx
-                        if tx.created_at <= existing_tx.created_at:
-                            if i == 0:
-                                # tx будет первой - проверяем только balance_after tx == balance_before existing_tx
-                                if abs(tx.balance_after - existing_tx.balance_before) < 0.01:
+                    for tx in transactions_in_range:
+                        # Проверяем, вписывается ли транзакция в цепочку балансов
+                        can_add = False
+                        
+                        # Проверяем наличие balance_before и balance_after
+                        if tx.balance_before is None or tx.balance_after is None:
+                            continue
+                        
+                        # Ищем место, куда можно вставить транзакцию
+                        for i, existing_tx in enumerate(all_rental_txs):
+                            if existing_tx.balance_before is None or existing_tx.balance_after is None:
+                                continue
+                            
+                            # Проверяем, может ли tx идти перед existing_tx
+                            if tx.created_at and existing_tx.created_at and tx.created_at <= existing_tx.created_at:
+                                if i == 0:
+                                    # tx будет первой - проверяем только balance_after tx == balance_before existing_tx
+                                    if abs(float(tx.balance_after) - float(existing_tx.balance_before)) < 0.01:
+                                        can_add = True
+                                        break
+                                else:
+                                    # tx между предыдущей и текущей
+                                    prev_tx = all_rental_txs[i - 1]
+                                    if prev_tx.balance_after is not None and prev_tx.balance_before is not None:
+                                        if (abs(float(prev_tx.balance_after) - float(tx.balance_before)) < 0.01 and 
+                                            abs(float(tx.balance_after) - float(existing_tx.balance_before)) < 0.01):
+                                            can_add = True
+                                            break
+                        
+                        # Или tx может быть последней
+                        if not can_add and all_rental_txs:
+                            last_tx = all_rental_txs[-1]
+                            if (last_tx.balance_after is not None and 
+                                tx.created_at and last_tx.created_at and 
+                                tx.created_at >= last_tx.created_at):
+                                if abs(float(last_tx.balance_after) - float(tx.balance_before)) < 0.01:
                                     can_add = True
-                                    break
-                            else:
-                                # tx между предыдущей и текущей
-                                prev_tx = all_rental_txs[i - 1]
-                                if (abs(prev_tx.balance_after - tx.balance_before) < 0.01 and 
-                                    abs(tx.balance_after - existing_tx.balance_before) < 0.01):
-                                    can_add = True
-                                    break
-                    
-                    # Или tx может быть последней
-                    if not can_add and all_rental_txs:
-                        last_tx = all_rental_txs[-1]
-                        if tx.created_at >= last_tx.created_at:
-                            if abs(last_tx.balance_after - tx.balance_before) < 0.01:
-                                can_add = True
-                    
-                    # Если транзакция вписывается в цепочку, добавляем её
-                    if can_add:
-                        rental_transactions[rental.id].append(tx)
-                        all_rental_txs = sorted(rental_transactions[rental.id], key=lambda x: x.created_at)
+                        
+                        # Если транзакция вписывается в цепочку, добавляем её
+                        if can_add:
+                            rental_transactions[rental.id].append(tx)
+                            all_rental_txs = sorted(rental_transactions[rental.id], key=lambda x: x.created_at)
     
     # Убираем из standalone те транзакции, которые были добавлены к арендам
     used_tx_ids = set()
