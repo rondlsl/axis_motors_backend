@@ -1013,6 +1013,14 @@ async def get_user_transactions_grouped(
         .all()
     )
     
+    # Получаем все аренды пользователя
+    all_user_rentals = (
+        db.query(RentalHistory)
+        .options(joinedload(RentalHistory.car), joinedload(RentalHistory.user))
+        .filter(RentalHistory.user_id == user.id)
+        .all()
+    )
+    
     # Группируем транзакции по rental_id
     from collections import defaultdict
     rental_transactions = defaultdict(list)
@@ -1024,19 +1032,53 @@ async def get_user_transactions_grouped(
         else:
             standalone_transactions.append(tx)
     
+    # Для каждой standalone транзакции проверяем, попадает ли она во временной диапазон аренды
+    remaining_standalone = []
+    for tx in standalone_transactions:
+        matched = False
+        tx_time = tx.created_at
+        
+        for rental in all_user_rentals:
+            # Проверяем, попадает ли транзакция в диапазон аренды
+            # Используем reservation_time как начало и end_time как конец
+            start_bound = rental.reservation_time if rental.reservation_time else rental.start_time
+            end_bound = rental.end_time
+            
+            if start_bound and end_bound and tx_time:
+                if start_bound <= tx_time <= end_bound:
+                    # Транзакция попадает в диапазон этой аренды
+                    rental_transactions[rental.id].append(tx)
+                    matched = True
+                    break
+        
+        if not matched:
+            remaining_standalone.append(tx)
+    
+    # Обновляем список standalone транзакций
+    standalone_transactions = remaining_standalone
+    
     # Создаем список всех элементов (аренды и отдельные транзакции)
     all_items = []
     
-    # Добавляем аренды
+    # Добавляем аренды (теперь включая те, у которых транзакции были добавлены по времени)
+    processed_rental_ids = set()
     for rental_id, transactions in rental_transactions.items():
-        rental = (
-            db.query(RentalHistory)
-            .options(joinedload(RentalHistory.car), joinedload(RentalHistory.user))
-            .filter(RentalHistory.id == rental_id)
-            .first()
-        )
+        # Ищем rental в уже загруженных арендах или загружаем из БД
+        rental = None
+        for r in all_user_rentals:
+            if r.id == rental_id:
+                rental = r
+                break
         
-        if rental:
+        if not rental:
+            rental = (
+                db.query(RentalHistory)
+                .options(joinedload(RentalHistory.car), joinedload(RentalHistory.user))
+                .filter(RentalHistory.id == rental_id)
+                .first()
+            )
+        
+        if rental and transactions:
             car = rental.car
             renter = rental.user
             
@@ -1179,13 +1221,21 @@ async def get_user_transactions_grouped(
             }
             
             # Используем самую раннюю дату транзакции аренды для сортировки
-            earliest_tx = min(transactions, key=lambda x: x.created_at)
+            # Если нет транзакций, используем reservation_time или start_time аренды
+            if transactions:
+                earliest_tx = min(transactions, key=lambda x: x.created_at)
+                sort_date = earliest_tx.created_at
+            else:
+                sort_date = rental.reservation_time if rental.reservation_time else rental.start_time
+            
             all_items.append({
                 "type": "rental",
-                "created_at": earliest_tx.created_at,
+                "created_at": sort_date,
                 "rental": rental_data,
                 "transaction": None
             })
+            
+            processed_rental_ids.add(rental.id)
     
     # Добавляем отдельные транзакции
     for tx in standalone_transactions:

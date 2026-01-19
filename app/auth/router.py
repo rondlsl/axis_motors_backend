@@ -441,10 +441,8 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
     if not full_name:
         full_name = "Не указано"
     
-    sms_text = f"""{sms_code} - Ваш код подтверждения AZV Motors
+    sms_text = f"""{sms_code}
 
-Данные клиента:
-ФИО клиента: {full_name}
 Логин клиента: {phone_number}
 ID клиента: {user.id}
 Электронная подпись: {user.digital_signature}"""
