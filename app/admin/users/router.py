@@ -1052,8 +1052,7 @@ async def get_user_transactions_grouped(
             if transactions_in_range:
                 # Если у аренды уже есть транзакции, проверяем цепочку балансов
                 if rental_transactions[rental.id]:
-                    # Сортируем все транзакции аренды по времени
-                    # all_rental_txs = sorted(rental_transactions[rental.id], key=lambda x: x.created_at)
+                    all_rental_txs = list(rental_transactions[rental.id])
                     
                     for tx in transactions_in_range:
                         # Проверяем, вписывается ли транзакция в цепочку балансов
@@ -1096,7 +1095,7 @@ async def get_user_transactions_grouped(
                         # Если транзакция вписывается в цепочку, добавляем её
                         if can_add:
                             rental_transactions[rental.id].append(tx)
-                            all_rental_txs = sorted(rental_transactions[rental.id], key=lambda x: x.created_at)
+                            all_rental_txs = list(rental_transactions[rental.id])
     
     # Убираем из standalone те транзакции, которые были добавлены к арендам
     used_tx_ids = set()
