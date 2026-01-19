@@ -1281,8 +1281,6 @@ async def get_user_transactions_grouped(
                 "rental": rental_data,
                 "transaction": None
             })
-            
-            processed_rental_ids.add(rental.id)
     
     # Добавляем отдельные транзакции
     for tx in standalone_transactions:
