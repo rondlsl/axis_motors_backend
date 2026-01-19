@@ -1032,38 +1032,73 @@ async def get_user_transactions_grouped(
         else:
             standalone_transactions.append(tx)
     
-    # Для каждой standalone транзакции проверяем, попадает ли она во временной диапазон аренды
-    remaining_standalone = []
-    for tx in standalone_transactions:
-        matched = False
-        tx_time = tx.created_at
+    # Для каждой аренды добавляем транзакции по временному диапазону с проверкой цепочки балансов
+    for rental in all_user_rentals:
+        if rental.id not in rental_transactions:
+            rental_transactions[rental.id] = []
         
-        for rental in all_user_rentals:
-            # Проверяем, попадает ли транзакция в диапазон аренды
-            # Используем reservation_time как начало и end_time как конец
-            start_bound = rental.reservation_time if rental.reservation_time else rental.start_time
-            end_bound = rental.end_time
+        # Определяем временной диапазон аренды
+        start_bound = rental.reservation_time if rental.reservation_time else rental.start_time
+        end_bound = rental.end_time
+        
+        if start_bound and end_bound:
+            # Ищем транзакции в этом диапазоне
+            transactions_in_range = []
+            for tx in standalone_transactions:
+                if tx.created_at and start_bound <= tx.created_at <= end_bound:
+                    transactions_in_range.append(tx)
             
-            if start_bound and end_bound and tx_time:
-                if start_bound <= tx_time <= end_bound:
-                    # Транзакция попадает в диапазон этой аренды
-                    rental_transactions[rental.id].append(tx)
-                    matched = True
-                    break
-        
-        if not matched:
-            remaining_standalone.append(tx)
+            # Если есть транзакции в диапазоне, проверяем цепочку балансов
+            if transactions_in_range and rental_transactions[rental.id]:
+                # Сортируем все транзакции аренды по времени
+                all_rental_txs = sorted(rental_transactions[rental.id], key=lambda x: x.created_at)
+                
+                for tx in transactions_in_range:
+                    # Проверяем, вписывается ли транзакция в цепочку балансов
+                    can_add = False
+                    
+                    # Ищем место, куда можно вставить транзакцию
+                    for i, existing_tx in enumerate(all_rental_txs):
+                        # Проверяем, может ли tx идти перед existing_tx
+                        if tx.created_at <= existing_tx.created_at:
+                            if i == 0:
+                                # tx будет первой - проверяем только balance_after tx == balance_before existing_tx
+                                if abs(tx.balance_after - existing_tx.balance_before) < 0.01:
+                                    can_add = True
+                                    break
+                            else:
+                                # tx между предыдущей и текущей
+                                prev_tx = all_rental_txs[i - 1]
+                                if (abs(prev_tx.balance_after - tx.balance_before) < 0.01 and 
+                                    abs(tx.balance_after - existing_tx.balance_before) < 0.01):
+                                    can_add = True
+                                    break
+                    
+                    # Или tx может быть последней
+                    if not can_add and all_rental_txs:
+                        last_tx = all_rental_txs[-1]
+                        if tx.created_at >= last_tx.created_at:
+                            if abs(last_tx.balance_after - tx.balance_before) < 0.01:
+                                can_add = True
+                    
+                    # Если транзакция вписывается в цепочку, добавляем её
+                    if can_add:
+                        rental_transactions[rental.id].append(tx)
+                        all_rental_txs = sorted(rental_transactions[rental.id], key=lambda x: x.created_at)
     
-    # Обновляем список standalone транзакций
-    standalone_transactions = remaining_standalone
+    # Убираем из standalone те транзакции, которые были добавлены к арендам
+    used_tx_ids = set()
+    for transactions in rental_transactions.values():
+        for tx in transactions:
+            used_tx_ids.add(tx.id)
+    
+    standalone_transactions = [tx for tx in standalone_transactions if tx.id not in used_tx_ids]
     
     # Создаем список всех элементов (аренды и отдельные транзакции)
     all_items = []
     
-    # Добавляем аренды (теперь включая те, у которых транзакции были добавлены по времени)
-    processed_rental_ids = set()
+    # Добавляем аренды
     for rental_id, transactions in rental_transactions.items():
-        # Ищем rental в уже загруженных арендах или загружаем из БД
         rental = None
         for r in all_user_rentals:
             if r.id == rental_id:
