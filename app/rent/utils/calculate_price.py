@@ -22,7 +22,7 @@ def get_open_price(car: Car) -> int:
     if car.gps_imei == "860803068151105":
         return 6000
     # Li L7 Ultra - 6000₸
-    if car.gps_imei == "860803068133343":
+    if car.gps_imei == "860803068133657":
         return 6000
     
     if car.car_class == 1:
