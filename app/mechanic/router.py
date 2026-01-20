@@ -1052,6 +1052,8 @@ async def upload_photos_before(
             uploaded_files.append(car_photo_url)
         
         rental.mechanic_photos_before = urls
+        db.commit()
+        # Закрываем транзакцию перед GPS операциями, чтобы не блокировать БД
         
         # Универсальная GPS последовательность после загрузки селфи+кузов
         car = db.query(Car).get(rental.car_id)
@@ -1070,8 +1072,6 @@ async def upload_photos_before(
             logger.info(f"GPS последовательность 'selfie_exterior' успешно выполнена для механика {current_mechanic.id}, авто {car.id}")
         else:
             logger.info(f"Пропускаем GPS последовательность в upload-photos-before: car_id={car.id if car else 'None'}, gps_imei={car.gps_imei if car else 'None'}")
-        
-        db.commit()
         
         # Обновляем все данные из БД для получения свежих данных
         db.expire_all()
@@ -1165,6 +1165,7 @@ async def upload_photos_before_interior(
             uploaded_files.append(interior_url)
         rental.mechanic_photos_before = urls
         db.commit()
+        # Закрываем транзакцию перед долгими операциями, чтобы не блокировать БД
         
         # Обновляем все данные из БД для получения свежих данных
         db.expire_all()

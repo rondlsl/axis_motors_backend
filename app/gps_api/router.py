@@ -866,17 +866,25 @@ async def open_vehicle(
         status=ActionStatus.PENDING
     )
     db.add(action)
-    db.flush()
+    db.commit()
+    # Закрываем транзакцию перед отправкой команды, чтобы не блокировать БД
+    action_id = action.id
     
     try:
-        # отправляем команду
+        # отправляем команду (транзакция уже закрыта)
         cmd = await send_open(car.gps_imei, AUTH_TOKEN)
-        action.status = ActionStatus.SUCCESS
-        db.commit()
+        # Обновляем статус через новый запрос
+        action = db.query(RentalAction).filter(RentalAction.id == action_id).first()
+        if action:
+            action.status = ActionStatus.SUCCESS
+            db.commit()
         return cmd
     except Exception as e:
-        action.status = ActionStatus.FAILED
-        db.commit() 
+        # Обновляем статус через новый запрос
+        action = db.query(RentalAction).filter(RentalAction.id == action_id).first()
+        if action:
+            action.status = ActionStatus.FAILED
+            db.commit()
         try:
             await log_error_to_telegram(
                 error=e,
@@ -935,16 +943,25 @@ async def close_vehicle(
         status=ActionStatus.PENDING
     )
     db.add(action)
-    db.flush()
+    db.commit()
+    # Закрываем транзакцию перед отправкой команды, чтобы не блокировать БД
+    action_id = action.id
     
     try:
+        # отправляем команду (транзакция уже закрыта)
         cmd = await send_close(car.gps_imei, AUTH_TOKEN)
-        action.status = ActionStatus.SUCCESS
-        db.commit()
+        # Обновляем статус через новый запрос
+        action = db.query(RentalAction).filter(RentalAction.id == action_id).first()
+        if action:
+            action.status = ActionStatus.SUCCESS
+            db.commit()
         return cmd
     except Exception as e:
-        action.status = ActionStatus.FAILED
-        db.commit()
+        # Обновляем статус через новый запрос
+        action = db.query(RentalAction).filter(RentalAction.id == action_id).first()
+        if action:
+            action.status = ActionStatus.FAILED
+            db.commit()
         try:
             await log_error_to_telegram(
                 error=e,
@@ -987,16 +1004,25 @@ async def give_key(
     
     action = RentalAction(rental_id=rental.id, user_id=current_user.id, action_type=ActionType.GIVE_KEY, status=ActionStatus.PENDING)
     db.add(action)
-    db.flush()
+    db.commit()
+    # Закрываем транзакцию перед отправкой команды, чтобы не блокировать БД
+    action_id = action.id
     
     try:
+        # отправляем команду (транзакция уже закрыта)
         cmd = await send_give_key(car.gps_imei, AUTH_TOKEN)
-        action.status = ActionStatus.SUCCESS
-        db.commit()
+        # Обновляем статус через новый запрос
+        action = db.query(RentalAction).filter(RentalAction.id == action_id).first()
+        if action:
+            action.status = ActionStatus.SUCCESS
+            db.commit()
         return cmd
     except Exception as e:
-        action.status = ActionStatus.FAILED
-        db.commit()
+        # Обновляем статус через новый запрос
+        action = db.query(RentalAction).filter(RentalAction.id == action_id).first()
+        if action:
+            action.status = ActionStatus.FAILED
+            db.commit()
         try:
             await log_error_to_telegram(error=e, request=None, user=current_user, additional_context={"action": "give_key_send_command", "car_id": str(car.id), "car_name": car.name, "gps_imei": car.gps_imei, "rental_id": str(rental.id), "command": "give_key"})
         except:

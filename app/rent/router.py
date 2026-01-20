@@ -2432,6 +2432,8 @@ async def upload_photos_after(
             uploaded_files.append(interior_url)
 
         rental.photos_after = urls
+        db.commit()
+        # Закрываем транзакцию перед GPS операциями, чтобы не блокировать БД
         
         # После загрузки селфи+салона: заблокировать двигатель → забрать ключ → закрыть замки
         car = db.query(Car).get(rental.car_id)
@@ -2447,8 +2449,6 @@ async def upload_photos_after(
                 raise Exception(f"GPS sequence failed: {error_msg}")
         else:
             print(f"[DEBUG] Skipping GPS sequence - no car or no IMEI")
-        
-        db.commit()
         
         # Обновляем все данные из БД для получения свежих данных (после всех операций)
         db.expire_all()
@@ -2657,6 +2657,8 @@ async def upload_photos_before_owner(
             uploaded_files.append(car_url)
 
         rental.photos_before = urls
+        db.commit()
+        # Закрываем транзакцию перед GPS операциями, чтобы не блокировать БД
         
         # Открываем замки после успешной загрузки фото
         if car and car.gps_imei:
@@ -2688,8 +2690,6 @@ async def upload_photos_before_owner(
                     )
                 except:
                     pass
-        
-        db.commit()
         
         return {"message": "Owner photos before (car) uploaded", "photo_count": len(car_photos)}
     except Exception as e:
