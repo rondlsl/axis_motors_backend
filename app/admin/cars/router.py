@@ -13,7 +13,7 @@ from app.auth.dependencies.save_documents import save_file
 from app.models.user_model import User, UserRole
 from app.models.car_model import Car, CarStatus, CarBodyType, TransmissionType
 from app.models.car_comment_model import CarComment
-from app.models.history_model import RentalHistory, RentalStatus, RentalReview
+from app.models.history_model import RentalHistory, RentalStatus, RentalReview, RentalType
 from app.models.rental_actions_model import RentalAction
 from app.models.contract_model import UserContractSignature
 from app.models.wallet_transaction_model import WalletTransaction
@@ -1775,6 +1775,155 @@ async def update_rental_price(
             "total_price": rental.total_price,
             "total_price_without_fuel": total_price_without_fuel
         }
+    }
+
+
+п@cars_router.patch("/{car_id}/history/trips/{rental_id}/fuel", summary="Исправить топливо аренды")
+async def update_rental_fuel(
+    car_id: str,
+    rental_id: str,
+    fuel_before: Optional[float] = Query(None, description="Топливо до аренды"),
+    fuel_after: Optional[float] = Query(None, description="Топливо после аренды"),
+    fuel_after_main_tariff: Optional[float] = Query(None, description="Топливо после основного тарифа (только для почасового/посуточного)"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Исправить топливо аренды с логированием в БД.
+    
+    Для поминутного тарифа (MINUTES): доступны только fuel_before и fuel_after (2 атрибута).
+    Для почасового/посуточного тарифа (HOURS/DAYS): доступны fuel_before, fuel_after и fuel_after_main_tariff (3 атрибута).
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    rental_uuid = safe_sid_to_uuid(rental_id)
+    car = get_car_by_id(db, car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.id == rental_uuid,
+        RentalHistory.car_id == car.id
+    ).first()
+    
+    if not rental:
+        raise HTTPException(status_code=404, detail="Поездка не найдена")
+    
+    # Проверяем тип аренды и валидируем параметры
+    is_minute_rental = rental.rental_type == RentalType.MINUTES
+    is_hourly_or_daily = rental.rental_type in (RentalType.HOURS, RentalType.DAYS)
+    
+    # Для поминутного тарифа не должно быть fuel_after_main_tariff
+    if is_minute_rental and fuel_after_main_tariff is not None:
+        raise HTTPException(
+            status_code=400, 
+            detail="Для поминутного тарифа параметр fuel_after_main_tariff не используется. Используйте только fuel_before и fuel_after."
+        )
+    
+    # Для почасового/посуточного тарифа можно использовать все три параметра
+    if not is_hourly_or_daily and not is_minute_rental:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Неизвестный тип аренды: {rental.rental_type}"
+        )
+    
+    # Сохраняем старые значения для логирования
+    old_values = {
+        "fuel_before": rental.fuel_before,
+        "fuel_after": rental.fuel_after,
+        "fuel_after_main_tariff": rental.fuel_after_main_tariff
+    }
+    
+    # Обновляем поля
+    changes = {}
+    
+    if fuel_before is not None:
+        # Проверяем, что значение изменилось (с учетом возможного None)
+        if (rental.fuel_before is None and fuel_before is not None) or \
+           (rental.fuel_before is not None and fuel_before is not None and abs(rental.fuel_before - fuel_before) > 0.001):
+            changes["fuel_before"] = {
+                "old": old_values["fuel_before"],
+                "new": fuel_before
+            }
+            rental.fuel_before = fuel_before
+    
+    if fuel_after is not None:
+        # Проверяем, что значение изменилось (с учетом возможного None)
+        if (rental.fuel_after is None and fuel_after is not None) or \
+           (rental.fuel_after is not None and fuel_after is not None and abs(rental.fuel_after - fuel_after) > 0.001):
+            changes["fuel_after"] = {
+                "old": old_values["fuel_after"],
+                "new": fuel_after
+            }
+            rental.fuel_after = fuel_after
+    
+    if fuel_after_main_tariff is not None:
+        # Этот параметр доступен только для почасового/посуточного тарифа
+        if is_minute_rental:
+            raise HTTPException(
+                status_code=400,
+                detail="Параметр fuel_after_main_tariff доступен только для почасового/посуточного тарифа"
+            )
+        
+        # Проверяем, что значение изменилось (с учетом возможного None)
+        if (rental.fuel_after_main_tariff is None and fuel_after_main_tariff is not None) or \
+           (rental.fuel_after_main_tariff is not None and fuel_after_main_tariff is not None and abs(rental.fuel_after_main_tariff - fuel_after_main_tariff) > 0.001):
+            changes["fuel_after_main_tariff"] = {
+                "old": old_values["fuel_after_main_tariff"],
+                "new": fuel_after_main_tariff
+            }
+            rental.fuel_after_main_tariff = fuel_after_main_tariff
+    
+    if not changes:
+        raise HTTPException(status_code=400, detail="Не было указано ни одного поля для обновления или значения не изменились")
+    
+    # Логируем изменения
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="update_rental_fuel",
+        entity_type="rental",
+        entity_id=rental.id,
+        details={
+            "rental_id": rental_id,
+            "car_id": car_id,
+            "car_name": car.name,
+            "rental_type": rental.rental_type.value,
+            "changes": changes,
+            "updated_by": {
+                "user_id": uuid_to_sid(current_user.id),
+                "user_name": f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.phone_number,
+                "role": current_user.role.value
+            }
+        }
+    )
+    
+    db.commit()
+    db.refresh(rental)
+    
+    # Формируем ответ в зависимости от типа аренды
+    current_values = {
+        "fuel_before": rental.fuel_before,
+        "fuel_after": rental.fuel_after
+    }
+    
+    if is_hourly_or_daily:
+        current_values["fuel_after_main_tariff"] = rental.fuel_after_main_tariff
+    
+    return {
+        "message": "Топливо аренды успешно обновлено",
+        "rental_id": rental_id,
+        "car_id": car_id,
+        "car_name": car.name,
+        "rental_type": rental.rental_type.value,
+        "changes": changes,
+        "updated_by": {
+            "user_id": uuid_to_sid(current_user.id),
+            "user_name": f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.phone_number,
+            "role": current_user.role.value
+        },
+        "current_values": current_values
     }
 
 
