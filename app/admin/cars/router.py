@@ -35,7 +35,7 @@ from app.models.support_action_model import SupportAction
 from app.utils.plate_normalizer import normalize_plate_number
 from app.utils.telegram_logger import log_error_to_telegram
 from app.websocket.notifications import notify_vehicles_list_update, notify_user_status_update
-from app.utils.time_utils import get_local_time
+from app.utils.time_utils import get_local_time, parse_datetime_to_local
 from app.owner.availability import update_car_availability_snapshot
 from app.owner.router import calculate_owner_earnings, calculate_fuel_cost, calculate_delivery_cost
 import asyncio
@@ -1491,7 +1491,7 @@ async def update_rental_time(
     
     if reservation_time is not None:
         try:
-            new_reservation_time = datetime.fromisoformat(reservation_time.replace("Z", "+00:00"))
+            new_reservation_time = parse_datetime_to_local(reservation_time)
             if (rental.reservation_time is None and new_reservation_time is not None) or \
                (rental.reservation_time is not None and new_reservation_time != rental.reservation_time):
                 changes["reservation_time"] = {
@@ -1499,12 +1499,12 @@ async def update_rental_time(
                     "new": new_reservation_time.isoformat()
                 }
                 rental.reservation_time = new_reservation_time
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Неверный формат reservation_time (ожидается ISO format)")
+        except (ValueError, Exception) as e:
+            raise HTTPException(status_code=400, detail=f"Неверный формат reservation_time (ожидается ISO format): {str(e)}")
     
     if start_time is not None:
         try:
-            new_start_time = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+            new_start_time = parse_datetime_to_local(start_time)
             if (rental.start_time is None and new_start_time is not None) or \
                (rental.start_time is not None and new_start_time != rental.start_time):
                 changes["start_time"] = {
@@ -1512,12 +1512,12 @@ async def update_rental_time(
                     "new": new_start_time.isoformat()
                 }
                 rental.start_time = new_start_time
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Неверный формат start_time (ожидается ISO format)")
+        except (ValueError, Exception) as e:
+            raise HTTPException(status_code=400, detail=f"Неверный формат start_time (ожидается ISO format): {str(e)}")
     
     if end_time is not None:
         try:
-            new_end_time = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+            new_end_time = parse_datetime_to_local(end_time)
             if (rental.end_time is None and new_end_time is not None) or \
                (rental.end_time is not None and new_end_time != rental.end_time):
                 changes["end_time"] = {
@@ -1525,8 +1525,8 @@ async def update_rental_time(
                     "new": new_end_time.isoformat()
                 }
                 rental.end_time = new_end_time
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Неверный формат end_time (ожидается ISO format)")
+        except (ValueError, Exception) as e:
+            raise HTTPException(status_code=400, detail=f"Неверный формат end_time (ожидается ISO format): {str(e)}")
     
     if duration is not None:
         if rental.duration != duration:

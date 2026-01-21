@@ -48,7 +48,7 @@ from app.admin.cars.utils import sort_car_photos
 from app.utils.telegram_logger import log_error_to_telegram
 from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user, send_localized_notification_to_user_async, user_has_push_tokens, send_localized_notification_to_all_mechanics
 from app.websocket.notifications import notify_user_status_update
-from app.utils.time_utils import get_local_time
+from app.utils.time_utils import get_local_time, parse_datetime_to_local
 import asyncio
 from app.wallet.utils import record_wallet_transaction
 from app.rent.utils.calculate_price import get_open_price, calc_required_balance
@@ -1709,7 +1709,7 @@ async def update_trip_details(
     def set_datetime(field_name: str, value: Optional[str]):
         if value and value.strip():
             try:
-                update_data[field_name] = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+                update_data[field_name] = parse_datetime_to_local(value.strip())
             except ValueError:
                 pass
     
