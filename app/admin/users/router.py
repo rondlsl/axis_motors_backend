@@ -3151,6 +3151,97 @@ async def set_user_balance(
     }
 
 
+@users_router.post("/{user_id}/balance/recalculate")
+async def recalculate_user_balance(
+    user_id: str,
+    initial_balance: Optional[float] = Form(0.0, description="Начальный баланс перед первой транзакцией (по умолчанию 0)"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Пересчёт балансов всех транзакций пользователя.
+    
+    Пересчитывает balance_before и balance_after для всех транзакций пользователя,
+    начиная с первой транзакции. Устанавливает правильную последовательность балансов.
+    После пересчёта обновляет финальный баланс пользователя.
+    
+    Алгоритм:
+    1. Получает все транзакции пользователя, отсортированные по created_at
+    2. Начинает с initial_balance (по умолчанию 0)
+    3. Для каждой транзакции:
+       - balance_before = баланс после предыдущей транзакции (или initial_balance для первой)
+       - balance_after = balance_before + amount
+    4. Обновляет все транзакции
+    5. Обновляет wallet_balance пользователя на balance_after последней транзакции
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав. Только ADMIN может пересчитывать балансы.")
+    
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    # Получаем все транзакции пользователя, отсортированные по времени создания
+    all_transactions = (
+        db.query(WalletTransaction)
+        .filter(WalletTransaction.user_id == user_uuid)
+        .order_by(WalletTransaction.created_at.asc())
+        .all()
+    )
+    
+    if not all_transactions:
+        raise HTTPException(status_code=400, detail="У пользователя нет транзакций для пересчёта")
+    
+    # Сохраняем старый баланс для логирования
+    old_balance = float(user.wallet_balance or 0)
+    
+    # Начинаем пересчёт с начального баланса
+    running_balance = float(initial_balance or 0)
+    
+    # Пересчитываем каждую транзакцию
+    updated_count = 0
+    for tx in all_transactions:
+        tx.balance_before = running_balance
+        tx.balance_after = running_balance + float(tx.amount)
+        running_balance = tx.balance_after
+        updated_count += 1
+    
+    # Обновляем финальный баланс пользователя
+    new_balance = running_balance
+    user.wallet_balance = new_balance
+    
+    # Логируем действие
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="balance_recalculate",
+        entity_type="user",
+        entity_id=user.id,
+        details={
+            "user_id": user_id,
+            "initial_balance": initial_balance,
+            "old_balance": old_balance,
+            "new_balance": new_balance,
+            "transactions_count": updated_count,
+            "balance_difference": new_balance - old_balance
+        }
+    )
+    
+    db.commit()
+    
+    return {
+        "success": True,
+        "message": "Балансы транзакций успешно пересчитаны",
+        "user_id": uuid_to_sid(user_uuid),
+        "initial_balance": initial_balance,
+        "old_balance": old_balance,
+        "new_balance": new_balance,
+        "balance_difference": new_balance - old_balance,
+        "transactions_updated": updated_count
+    }
+
+
 @users_router.patch("/{user_id}/auto_class")
 
 
