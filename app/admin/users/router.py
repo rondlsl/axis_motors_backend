@@ -538,8 +538,11 @@ async def get_users_list(
     is_blocked: Optional[bool] = Query(None, description="Фильтр по заблокированным пользователям"),
     mvd_approved: Optional[bool] = Query(None, description="Фильтр по МВД одобрению"),
     car_status: Optional[str] = Query(None, description="Фильтр по статусу авто"),
-    auto_class: Optional[List[str]] = Query(None, description="Фильтр по классу авто (A, B, C)"),
-    balance_filter: Optional[str] = Query(None, description="Фильтр по балансу (positive, negative)"),
+    auto_class: Optional[List[str]] = Query(None, description="Фильтр по классу авто (A, B, C, AB, ABC)"),
+    balance_filter: Optional[str] = Query(None, description="Фильтр по балансу (positive - все у кого есть деньги, negative - все у кого долг)"),
+    documents_verified: Optional[bool] = Query(None, description="Фильтр по проверке документов"),
+    is_active: Optional[bool] = Query(None, description="Фильтр по активности пользователя"),
+    is_verified_email: Optional[bool] = Query(None, description="Фильтр по подтверждению email"),
 
     page: int = Query(1, ge=1, description="Номер страницы"),
     limit: int = Query(50, ge=1, le=200, description="Количество элементов на странице"),
@@ -612,13 +615,60 @@ async def get_users_list(
         query = query.filter(User.is_blocked == is_blocked)
 
     if auto_class:
-        query = query.filter(User.auto_class.overlap(auto_class))
+        # Обработка комбинаций типа AB, ABC
+        # Если передано ["AB"], разбиваем на ["A", "B"]
+        # Если передано ["A", "B"], ищем пользователей, у которых есть все указанные классы
+        processed_classes = []
+        for class_item in auto_class:
+            if len(class_item) > 1:  # Комбинация типа AB, ABC
+                processed_classes.extend(list(class_item))
+            else:
+                processed_classes.append(class_item)
+        
+        # Убираем дубликаты и приводим к верхнему регистру
+        processed_classes = list(set(c.upper() for c in processed_classes))
+        
+        # Фильтруем пользователей, у которых есть все указанные классы
+        for class_name in processed_classes:
+            query = query.filter(User.auto_class.contains([class_name]))
 
     if balance_filter:
         if balance_filter == "positive":
             query = query.filter(User.wallet_balance > 0)
         elif balance_filter == "negative":
             query = query.filter(User.wallet_balance < 0)
+    
+    if documents_verified is not None:
+        query = query.filter(User.documents_verified == documents_verified)
+    
+    if is_active is not None:
+        query = query.filter(User.is_active == is_active)
+    
+    if is_verified_email is not None:
+        query = query.filter(User.is_verified_email == is_verified_email)
+    
+    # Фильтр по МВД одобрению
+    if mvd_approved is not None:
+        if mvd_approved:
+            # Одобренные: либо роль USER, либо есть Application с APPROVED статусом
+            mvd_approved_condition = or_(
+                User.role == UserRole.USER,
+                and_(
+                    Application.user_id == User.id,
+                    Application.mvd_status == ApplicationStatus.APPROVED
+                )
+            )
+            query = query.outerjoin(Application, Application.user_id == User.id).filter(mvd_approved_condition)
+        else:
+            # Не одобренные: роль не USER и нет Application с APPROVED статусом
+            mvd_not_approved_condition = and_(
+                User.role != UserRole.USER,
+                or_(
+                    Application.id.is_(None),
+                    Application.mvd_status != ApplicationStatus.APPROVED
+                )
+            )
+            query = query.outerjoin(Application, Application.user_id == User.id).filter(mvd_not_approved_condition)
     
     query = query.filter(User.is_deleted == False)
     
@@ -649,13 +699,58 @@ async def get_users_list(
         count_query = count_query.filter(User.is_blocked == is_blocked)
     
     if auto_class:
-        count_query = count_query.filter(User.auto_class.overlap(auto_class))
+        # Обработка комбинаций типа AB, ABC (та же логика, что и в query)
+        processed_classes = []
+        for class_item in auto_class:
+            if len(class_item) > 1:  # Комбинация типа AB, ABC
+                processed_classes.extend(list(class_item))
+            else:
+                processed_classes.append(class_item)
+        
+        # Убираем дубликаты и приводим к верхнему регистру
+        processed_classes = list(set(c.upper() for c in processed_classes))
+        
+        # Фильтруем пользователей, у которых есть все указанные классы
+        for class_name in processed_classes:
+            count_query = count_query.filter(User.auto_class.contains([class_name]))
 
     if balance_filter:
         if balance_filter == "positive":
             count_query = count_query.filter(User.wallet_balance > 0)
         elif balance_filter == "negative":
             count_query = count_query.filter(User.wallet_balance < 0)
+    
+    if documents_verified is not None:
+        count_query = count_query.filter(User.documents_verified == documents_verified)
+    
+    if is_active is not None:
+        count_query = count_query.filter(User.is_active == is_active)
+    
+    if is_verified_email is not None:
+        count_query = count_query.filter(User.is_verified_email == is_verified_email)
+    
+    # Фильтр по МВД одобрению для count_query
+    if mvd_approved is not None:
+        if mvd_approved:
+            # Одобренные: либо роль USER, либо есть Application с APPROVED статусом
+            mvd_approved_condition = or_(
+                User.role == UserRole.USER,
+                and_(
+                    Application.user_id == User.id,
+                    Application.mvd_status == ApplicationStatus.APPROVED
+                )
+            )
+            count_query = count_query.outerjoin(Application, Application.user_id == User.id).filter(mvd_approved_condition)
+        else:
+            # Не одобренные: роль не USER и нет Application с APPROVED статусом
+            mvd_not_approved_condition = and_(
+                User.role != UserRole.USER,
+                or_(
+                    Application.id.is_(None),
+                    Application.mvd_status != ApplicationStatus.APPROVED
+                )
+            )
+            count_query = count_query.outerjoin(Application, Application.user_id == User.id).filter(mvd_not_approved_condition)
     
     count_query = count_query.filter(User.is_deleted == False)
     
@@ -695,15 +790,7 @@ async def get_users_list(
             continue
         seen_user_ids.add(user.id)
         
-        if mvd_approved is not None:
-            if user.role == UserRole.USER:
-                user_mvd_approved = True
-            else:
-                application = db.query(Application).filter(Application.user_id == user.id).first()
-                user_mvd_approved = application and application.mvd_status == ApplicationStatus.APPROVED
-            
-            if user_mvd_approved != mvd_approved:
-                continue
+        # Фильтр mvd_approved теперь применяется в query, поэтому здесь не нужен
         
         current_car = None
         if car_id and car_name:
