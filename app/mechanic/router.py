@@ -323,6 +323,33 @@ def get_all_vehicles_plain(
                         }
                     }
 
+            # Получаем статус последней аренды для этой машины
+            # Ищем последнюю аренду по приоритету: start_time > end_time > reservation_time > id
+            from sqlalchemy import func
+            
+            # Используем COALESCE для объединения временных полей
+            last_rental = (
+                db.query(RentalHistory)
+                .filter(RentalHistory.car_id == car.id)
+                .order_by(
+                    func.coalesce(
+                        RentalHistory.start_time,
+                        RentalHistory.end_time,
+                        RentalHistory.reservation_time
+                    ).desc(),
+                    RentalHistory.id.desc()  # Дополнительная сортировка по ID для стабильности
+                )
+                .first()
+            )
+            
+            if last_rental and last_rental.rental_status:
+                # Преобразуем статус аренды в нижний регистр для соответствия формату
+                rental_status_value = last_rental.rental_status.value.lower()
+                car_dict["rental_status"] = rental_status_value
+            else:
+                # Если аренды нет, можно не добавлять поле или добавить null
+                car_dict["rental_status"] = None
+
             vehicles_data.append(car_dict)
 
         return {"vehicles": vehicles_data}
