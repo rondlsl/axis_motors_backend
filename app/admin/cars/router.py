@@ -1778,7 +1778,7 @@ async def update_rental_price(
     }
 
 
-п@cars_router.patch("/{car_id}/history/trips/{rental_id}/fuel", summary="Исправить топливо аренды")
+@cars_router.patch("/{car_id}/history/trips/{rental_id}/fuel", summary="Исправить топливо аренды")
 async def update_rental_fuel(
     car_id: str,
     rental_id: str,
