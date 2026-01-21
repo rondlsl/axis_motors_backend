@@ -1270,6 +1270,8 @@ async def upload_photos_after(
             uploaded_files.append(interior_url)
         
         rental.mechanic_photos_after = urls
+        db.commit()
+        # Закрываем транзакцию перед GPS операциями, чтобы не блокировать БД
         
         # После загрузки селфи+салона механиком: заблокировать двигатель → забрать ключ → закрыть замки
         car = db.query(Car).get(rental.car_id)
@@ -1282,8 +1284,6 @@ async def upload_photos_after(
                 error_msg = result.get('error', 'Unknown error')
                 print(f"Ошибка GPS последовательности для завершения селфи+салон механиком: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
-        
-        db.commit()
         
         # Обновляем все данные из БД для получения свежих данных (после всех операций)
         db.expire_all()
@@ -1370,6 +1370,8 @@ async def upload_photos_after_car(
             uploaded_files.append(car_url)
         
         rental.mechanic_photos_after = urls
+        db.commit()
+        # Закрываем транзакцию перед GPS операциями, чтобы не блокировать БД
         
         # После загрузки кузова механиком: заблокировать двигатель → забрать ключ → закрыть замки
         if car and car.gps_imei:
@@ -1381,8 +1383,6 @@ async def upload_photos_after_car(
                 error_msg = result.get('error', 'Unknown error')
                 print(f"Ошибка GPS последовательности для завершения кузова механиком: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
-        
-        db.commit()
         
         # Обновляем все данные из БД для получения свежих данных (после всех операций)
         db.expire_all()
@@ -1477,21 +1477,22 @@ async def complete_rental(
     car.status = CarStatus.FREE
     add_review_if_exists(db, rental.id, review_input)
     
-    # Окончательная блокировка двигателя при завершении проверки механиком
-    try:
-        if car and car.gps_imei:
-            auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-            # Универсальная последовательность: заблокировать двигатель
-            result = await execute_gps_sequence(car.gps_imei, auth_token, "final_lock")
-            if result["success"]:
-                logger.info(f"Двигатель автомобиля {car.name} окончательно заблокирован после завершения проверки механиком")
-            else:
-                logger.error(f"Ошибка GPS последовательности при окончательной блокировке механиком: {result.get('error', 'Unknown error')}")
-    except Exception as e:
-        logger.error(f"Ошибка GPS команд при окончательной блокировке механиком: {e}")
-    
     try:
         db.commit()
+        # Закрываем транзакцию перед GPS операциями, чтобы не блокировать БД
+        
+        # Окончательная блокировка двигателя при завершении проверки механиком
+        try:
+            if car and car.gps_imei:
+                auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                # Универсальная последовательность: заблокировать двигатель
+                result = await execute_gps_sequence(car.gps_imei, auth_token, "final_lock")
+                if result["success"]:
+                    logger.info(f"Двигатель автомобиля {car.name} окончательно заблокирован после завершения проверки механиком")
+                else:
+                    logger.error(f"Ошибка GPS последовательности при окончательной блокировке механиком: {result.get('error', 'Unknown error')}")
+        except Exception as e:
+            logger.error(f"Ошибка GPS команд при окончательной блокировке механиком: {e}")
         
         # Обновляем все данные из БД для получения свежих данных
         db.expire_all()
