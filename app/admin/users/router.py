@@ -3461,7 +3461,7 @@ async def set_user_balance(
             user_id=user_uuid,
             amount=diff,
             transaction_type=WalletTransactionType.MANUAL_ADJUSTMENT,
-            description=description or f"Корректировка баланса администратором ({current_user.phone_number})",
+            description=description or f"Пересчёт",
             balance_before=old_balance,
             balance_after=new_balance
         )
