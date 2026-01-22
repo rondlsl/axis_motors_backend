@@ -50,8 +50,10 @@ from app.push.utils import send_push_to_user_by_id, send_localized_notification_
 from app.websocket.notifications import notify_user_status_update
 from app.utils.time_utils import get_local_time, parse_datetime_to_local
 import asyncio
+import httpx
 from app.wallet.utils import record_wallet_transaction
-from app.rent.utils.calculate_price import get_open_price, calc_required_balance
+from app.rent.utils.calculate_price import get_open_price, calc_required_balance, calculate_total_price
+from app.core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2
 from app.models.application_model import Application
 from app.models.history_model import RentalHistory
 from app.models.wallet_transaction_model import WalletTransaction
@@ -2228,6 +2230,23 @@ async def admin_start_rental(
         
         if active_rental.rental_status == RentalStatus.RESERVED and active_rental.car_id == car_uuid:
             is_owner = (car.owner_id == target_user_uuid)
+            
+            # Рассчитываем base_price для часового/суточного тарифа
+            base_price = 0
+            if rental_type_enum == RentalType.MINUTES:
+                base_price = 0
+            elif rental_type_enum == RentalType.HOURS:
+                if parsed_duration is None:
+                    raise HTTPException(status_code=400, detail="Duration обязателен для аренды по часам")
+                base_price = calculate_total_price(rental_type_enum, parsed_duration, car.price_per_hour or 0, car.price_per_day or 0)
+            elif rental_type_enum == RentalType.DAYS:
+                if parsed_duration is None:
+                    raise HTTPException(status_code=400, detail="Duration обязателен для посуточной аренды")
+                base_price = calculate_total_price(rental_type_enum, parsed_duration, car.price_per_hour or 0, car.price_per_day or 0)
+            
+            # Рассчитываем open_fee используя get_open_price
+            open_fee_value = get_open_price(car) if rental_type_enum in [RentalType.MINUTES, RentalType.HOURS] else 0
+            
             required_balance = calc_required_balance(
                 rental_type=rental_type_enum,
                 duration=parsed_duration,
@@ -2253,6 +2272,9 @@ async def admin_start_rental(
             existing_rental.start_time = get_local_time()
             existing_rental.start_latitude = car.latitude
             existing_rental.start_longitude = car.longitude
+            existing_rental.base_price = base_price
+            existing_rental.open_fee = open_fee_value
+            existing_rental.total_price = base_price + open_fee_value + (existing_rental.delivery_fee or 0)
             
             photos_before = list(existing_rental.photos_before or [])
             if filtered_selfie:
@@ -2265,6 +2287,69 @@ async def admin_start_rental(
                 interior_url = await save_file(photo, existing_rental.id, f"uploads/rents/{existing_rental.id}/before/interior/")
                 photos_before.append(interior_url)
             existing_rental.photos_before = photos_before
+            existing_rental.fuel_before = car.fuel_level
+            existing_rental.mileage_before = car.mileage
+            
+            # Списываем деньги с кошелька пользователя
+            total_charged = 0
+            balance_before = float(target_user.wallet_balance or 0)
+            
+            if not is_owner:
+                if rental_type_enum in [RentalType.HOURS, RentalType.DAYS]:
+                    # 1. Базовая стоимость аренды
+                    if base_price > 0:
+                        record_wallet_transaction(
+                            db,
+                            user=target_user,
+                            amount=-base_price,
+                            ttype=WalletTransactionType.RENT_BASE_CHARGE,
+                            description=f"Оплата аренды: {parsed_duration} {'час(ов)' if rental_type_enum == RentalType.HOURS else 'день(дней)'}",
+                            related_rental=existing_rental,
+                            balance_before_override=balance_before
+                        )
+                        target_user.wallet_balance -= base_price
+                        total_charged += base_price
+                        balance_before = float(target_user.wallet_balance)
+                    
+                    # 2. Открытие дверей (только для часового тарифа)
+                    if open_fee_value > 0:
+                        record_wallet_transaction(
+                            db,
+                            user=target_user,
+                            amount=-open_fee_value,
+                            ttype=WalletTransactionType.RENT_BASE_CHARGE,
+                            description="Оплата открытия дверей",
+                            related_rental=existing_rental,
+                            balance_before_override=balance_before
+                        )
+                        target_user.wallet_balance -= open_fee_value
+                        total_charged += open_fee_value
+                elif rental_type_enum == RentalType.MINUTES:
+                    # Для поминутного тарифа списываем только open_fee
+                    if open_fee_value > 0:
+                        record_wallet_transaction(
+                            db,
+                            user=target_user,
+                            amount=-open_fee_value,
+                            ttype=WalletTransactionType.RENT_BASE_CHARGE,
+                            description="Оплата открытия дверей",
+                            related_rental=existing_rental,
+                            balance_before_override=balance_before
+                        )
+                        target_user.wallet_balance -= open_fee_value
+                        total_charged += open_fee_value
+                
+                # Обновляем already_payed
+                if target_user.wallet_balance >= 0:
+                    existing_rental.already_payed = total_charged + (existing_rental.already_payed or 0)
+                else:
+                    existing_rental.already_payed = existing_rental.already_payed or 0
+            else:
+                # Для владельца все бесплатно
+                existing_rental.base_price = 0
+                existing_rental.open_fee = 0
+                existing_rental.total_price = 0
+                existing_rental.already_payed = 0
             
             car.status = CarStatus.IN_USE
             car.current_renter_id = target_user_uuid
@@ -2272,6 +2357,52 @@ async def admin_start_rental(
             
             db.commit()
             db.refresh(existing_rental)
+            
+            # Отправляем уведомление в Telegram на оба бота о начале аренды
+            try:
+                name_parts = []
+                if target_user.first_name:
+                    name_parts.append(target_user.first_name)
+                if target_user.middle_name:
+                    name_parts.append(target_user.middle_name)
+                if target_user.last_name:
+                    name_parts.append(target_user.last_name)
+                full_name = " ".join(name_parts) if name_parts else "Не указано"
+                
+                notification_text = (
+                    f"Начало аренды\n\n"
+                    f"Клиент: {full_name}\n"
+                    f"Телефон: {target_user.phone_number or 'Не указан'}\n"
+                    f"Машина: {car.name}\n"
+                    f"Гос. номер: {car.plate_number or 'Не указан'}\n"
+                    f"Тип аренды: {rental_type_enum.value}\n"
+                    f"ID аренды: {uuid_to_sid(existing_rental.id)}\n"
+                    f"Запущено администратором: {current_user.first_name or 'Admin'}"
+                )
+                
+                async def _send_telegram_notification(text: str, chat_id: int, bot_token: str):
+                    try:
+                        async with httpx.AsyncClient() as client:
+                            await client.post(
+                                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                                json={"chat_id": chat_id, "text": text}
+                            )
+                    except Exception as e:
+                        print(f"Ошибка отправки Telegram уведомления в {chat_id}: {e}")
+                
+                # Список чатов для уведомлений
+                chat_ids = [965048905, 5941825713, 860991388, 1594112444, 808277096, 7656716395, 964255811, 8522837235, 797693964]
+                
+                if TELEGRAM_BOT_TOKEN:
+                    for chat_id in chat_ids:
+                        asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN))
+                
+                if TELEGRAM_BOT_TOKEN_2:
+                    for chat_id in chat_ids:
+                        asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN_2))
+                        
+            except Exception as e:
+                print(f"Не удалось отправить Telegram уведомление о начале аренды: {e}")
             
             asyncio.create_task(notify_user_status_update(str(target_user.id)))
             
@@ -2284,7 +2415,11 @@ async def admin_start_rental(
                 "rental_type": existing_rental.rental_type.value,
                 "rental_status": existing_rental.rental_status.value,
                 "start_time": existing_rental.start_time.isoformat(),
+                "open_fee": open_fee_value,
+                "base_price": base_price,
+                "total_charged": total_charged,
                 "photos_count": len(photos_before),
+                "new_balance": float(target_user.wallet_balance),
                 "started_by_admin": uuid_to_sid(current_user.id)
             }
         
@@ -2292,9 +2427,23 @@ async def admin_start_rental(
             active_rental.rental_status = RentalStatus.CANCELLED
             active_rental.end_time = get_local_time()
     
-    open_fee = get_open_price(car)
-    
     is_owner = (car.owner_id == target_user_uuid)
+    
+    # Рассчитываем base_price для часового/суточного тарифа
+    base_price = 0
+    if rental_type_enum == RentalType.MINUTES:
+        base_price = 0  # Для поминутного тарифа base_price = 0
+    elif rental_type_enum == RentalType.HOURS:
+        if parsed_duration is None:
+            raise HTTPException(status_code=400, detail="Duration обязателен для аренды по часам")
+        base_price = calculate_total_price(rental_type_enum, parsed_duration, car.price_per_hour or 0, car.price_per_day or 0)
+    elif rental_type_enum == RentalType.DAYS:
+        if parsed_duration is None:
+            raise HTTPException(status_code=400, detail="Duration обязателен для посуточной аренды")
+        base_price = calculate_total_price(rental_type_enum, parsed_duration, car.price_per_hour or 0, car.price_per_day or 0)
+    
+    # Рассчитываем open_fee используя get_open_price
+    open_fee_value = get_open_price(car) if rental_type_enum in [RentalType.MINUTES, RentalType.HOURS] else 0
     
     required_balance = calc_required_balance(
         rental_type=rental_type_enum,
@@ -2323,10 +2472,14 @@ async def admin_start_rental(
         start_time=get_local_time(),
         start_latitude=car.latitude,
         start_longitude=car.longitude,
-        open_fee=open_fee,
-        already_payed=open_fee,
-        base_price=0,
-        total_price=open_fee
+        open_fee=open_fee_value,
+        base_price=base_price,
+        delivery_fee=0,
+        waiting_fee=0,
+        overtime_fee=0,
+        distance_fee=0,
+        total_price=base_price + open_fee_value,
+        already_payed=0
     )
     db.add(new_rental)
     db.flush()
@@ -2346,19 +2499,70 @@ async def admin_start_rental(
         photos_before.append(interior_url)
     
     new_rental.photos_before = photos_before
+    new_rental.fuel_before = car.fuel_level
+    new_rental.mileage_before = car.mileage
     
+    # Списываем деньги с кошелька пользователя
+    total_charged = 0
     balance_before = float(target_user.wallet_balance or 0)
-    target_user.wallet_balance = balance_before - open_fee
     
-    record_wallet_transaction(
-        db,
-        user=target_user,
-        amount=-open_fee,
-        ttype=WalletTransactionType.RENT_OPEN_FEE,
-        description=f"Открытие авто",
-        related_rental=new_rental,
-        balance_before_override=balance_before
-    )
+    if not is_owner:
+        # Для владельца ничего не списываем
+        if rental_type_enum in [RentalType.HOURS, RentalType.DAYS]:
+            # 1. Базовая стоимость аренды
+            if base_price > 0:
+                record_wallet_transaction(
+                    db,
+                    user=target_user,
+                    amount=-base_price,
+                    ttype=WalletTransactionType.RENT_BASE_CHARGE,
+                    description=f"Оплата аренды: {parsed_duration} {'час(ов)' if rental_type_enum == RentalType.HOURS else 'день(дней)'}",
+                    related_rental=new_rental,
+                    balance_before_override=balance_before
+                )
+                target_user.wallet_balance -= base_price
+                total_charged += base_price
+                balance_before = float(target_user.wallet_balance)
+            
+            # 2. Открытие дверей (только для часового тарифа)
+            if open_fee_value > 0:
+                record_wallet_transaction(
+                    db,
+                    user=target_user,
+                    amount=-open_fee_value,
+                    ttype=WalletTransactionType.RENT_BASE_CHARGE,
+                    description="Оплата открытия дверей",
+                    related_rental=new_rental,
+                    balance_before_override=balance_before
+                )
+                target_user.wallet_balance -= open_fee_value
+                total_charged += open_fee_value
+        elif rental_type_enum == RentalType.MINUTES:
+            # Для поминутного тарифа списываем только open_fee
+            if open_fee_value > 0:
+                record_wallet_transaction(
+                    db,
+                    user=target_user,
+                    amount=-open_fee_value,
+                    ttype=WalletTransactionType.RENT_BASE_CHARGE,
+                    description="Оплата открытия дверей",
+                    related_rental=new_rental,
+                    balance_before_override=balance_before
+                )
+                target_user.wallet_balance -= open_fee_value
+                total_charged += open_fee_value
+        
+        # Обновляем already_payed
+        if target_user.wallet_balance >= 0:
+            new_rental.already_payed = total_charged
+        else:
+            new_rental.already_payed = 0
+    else:
+        # Для владельца все бесплатно
+        new_rental.base_price = 0
+        new_rental.open_fee = 0
+        new_rental.total_price = 0
+        new_rental.already_payed = 0
     
     car.status = CarStatus.IN_USE
     car.current_renter_id = target_user_uuid
@@ -2376,12 +2580,59 @@ async def admin_start_rental(
         details={
             "user_id": target_user_uuid,
             "car_id": car_uuid,
-            "open_fee": open_fee,
+            "open_fee": open_fee_value,
+            "base_price": base_price,
             "rental_type": new_rental.rental_type.value
         }
     )
     db.commit()
     db.refresh(new_rental)
+    
+    # Отправляем уведомление в Telegram на оба бота о начале аренды
+    try:
+        name_parts = []
+        if target_user.first_name:
+            name_parts.append(target_user.first_name)
+        if target_user.middle_name:
+            name_parts.append(target_user.middle_name)
+        if target_user.last_name:
+            name_parts.append(target_user.last_name)
+        full_name = " ".join(name_parts) if name_parts else "Не указано"
+        
+        notification_text = (
+            f"Начало аренды\n\n"
+            f"Клиент: {full_name}\n"
+            f"Телефон: {target_user.phone_number or 'Не указан'}\n"
+            f"Машина: {car.name}\n"
+            f"Гос. номер: {car.plate_number or 'Не указан'}\n"
+            f"Тип аренды: {rental_type_enum.value}\n"
+            f"ID аренды: {uuid_to_sid(new_rental.id)}\n"
+            f"Запущено администратором: {current_user.first_name or 'Admin'}"
+        )
+        
+        async def _send_telegram_notification(text: str, chat_id: int, bot_token: str):
+            try:
+                async with httpx.AsyncClient() as client:
+                    await client.post(
+                        f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                        json={"chat_id": chat_id, "text": text}
+                    )
+            except Exception as e:
+                print(f"Ошибка отправки Telegram уведомления в {chat_id}: {e}")
+        
+        # Список чатов для уведомлений
+        chat_ids = [965048905, 5941825713, 860991388, 1594112444, 808277096, 7656716395, 964255811, 8522837235, 797693964]
+        
+        if TELEGRAM_BOT_TOKEN:
+            for chat_id in chat_ids:
+                asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN))
+        
+        if TELEGRAM_BOT_TOKEN_2:
+            for chat_id in chat_ids:
+                asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN_2))
+                
+    except Exception as e:
+        print(f"Не удалось отправить Telegram уведомление о начале аренды: {e}")
     
     asyncio.create_task(notify_user_status_update(str(target_user.id)))
     
@@ -2393,7 +2644,9 @@ async def admin_start_rental(
         "rental_type": new_rental.rental_type.value,
         "rental_status": new_rental.rental_status.value,
         "start_time": new_rental.start_time.isoformat(),
-        "open_fee": open_fee,
+        "open_fee": open_fee_value,
+        "base_price": base_price,
+        "total_charged": total_charged,
         "photos_count": len(photos_before),
         "new_balance": float(target_user.wallet_balance),
         "started_by_admin": uuid_to_sid(current_user.id)
