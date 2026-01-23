@@ -2234,7 +2234,9 @@ async def upload_car_photos(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Загрузка фотографий автомобиля (append к существующим car.photos)"""
+    """Загрузка фотографий автомобиля в MinIO (append к существующим car.photos)"""
+    from app.services.minio_service import get_minio_service
+    
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
@@ -2242,41 +2244,20 @@ async def upload_car_photos(
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
-    saved_paths: List[str] = []
-    # Используем plate_number для создания директории (как в файловой системе)
+    saved_urls: List[str] = []
+    # Используем plate_number для создания папки в MinIO
     normalized_plate = normalize_plate_number(car.plate_number) if car.plate_number else str(car.id)
-    base_dir = os.path.join("uploads", "cars", normalized_plate)
-    os.makedirs(base_dir, exist_ok=True)
+    folder = f"cars/{normalized_plate}"
+    
+    minio = get_minio_service()
 
     for f in photos:
-        # Получаем оригинальное имя файла
-        original_filename = f.filename or "photo.jpg"
-        # Обрабатываем имя файла для предотвращения конфликтов
-        filename = original_filename
-        file_path = os.path.join(base_dir, filename)
-        
-        # Если файл уже существует, добавляем номер к имени
-        counter = 1
-        while os.path.exists(file_path):
-            name, ext = os.path.splitext(original_filename)
-            filename = f"{name}_{counter}{ext}"
-            file_path = os.path.join(base_dir, filename)
-            counter += 1
-        
-        # Сохраняем файл
-        with open(file_path, "wb") as buffer:
-            content = await f.read()
-            buffer.write(content)
-        
-        # Нормализуем путь для сохранения в БД
-        normalized = file_path.replace("\\", "/")
-        if not normalized.startswith("/"):
-            normalized = "/" + normalized.lstrip("/")
-        saved_paths.append(normalized)
+        # Загружаем файл в MinIO
+        url = await minio.upload_file(f, car.id, folder)
+        saved_urls.append(url)
 
     existing = car.photos or []
-    car.photos = existing + saved_paths
-    car.photos = existing + saved_paths
+    car.photos = existing + saved_urls
     
     log_action(
         db,
@@ -2284,7 +2265,7 @@ async def upload_car_photos(
         action="upload_car_photos",
         entity_type="car",
         entity_id=car.id,
-        details={"added_count": len(saved_paths), "total_count": len(car.photos)}
+        details={"added_count": len(saved_urls), "total_count": len(car.photos)}
     )
 
     db.commit()
@@ -2293,7 +2274,7 @@ async def upload_car_photos(
     return {
         "message": "Фотографии добавлены",
         "car_id": uuid_to_sid(car.id),
-        "added": saved_paths,
+        "added": saved_urls,
         "total_photos": len(car.photos or [])
     }
 
@@ -2304,7 +2285,9 @@ async def delete_car_photos(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Удалить все фотографии автомобиля из базы данных и с файловой системы"""
+    """Удалить все фотографии автомобиля из базы данных и MinIO"""
+    from app.services.minio_service import get_minio_service
+    
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
@@ -2313,31 +2296,18 @@ async def delete_car_photos(
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
     try:
-        # Путь к директории с фотографиями автомобиля (используем plate_number)
-        normalized_plate = normalize_plate_number(car.plate_number) if car.plate_number else str(car.id)
-        photos_dir = os.path.join("uploads", "cars", normalized_plate)
-        
+        minio = get_minio_service()
         deleted_files = []
         
-        # Удаляем только файлы из директории
-        if os.path.exists(photos_dir):
-            for filename in os.listdir(photos_dir):
-                file_path = os.path.join(photos_dir, filename)
-                if os.path.isfile(file_path):
-                    os.remove(file_path)
-                    deleted_files.append(filename)
-        
-        # Также удаляем файлы, на которые есть ссылки в car.photos (на случай если пути отличаются)
+        # Удаляем файлы из MinIO по URL
         if car.photos:
-            for photo_path in car.photos:
-                # Убираем ведущий слеш если есть
-                photo_path_clean = photo_path.lstrip("/").lstrip("\\")
-                if os.path.exists(photo_path_clean):
-                    try:
-                        os.remove(photo_path_clean)
-                        deleted_files.append(os.path.basename(photo_path_clean))
-                    except OSError:
-                        pass
+            minio.delete_files(car.photos)
+            deleted_files = [url.split("/")[-1] for url in car.photos]
+        
+        # Также удаляем всю папку с фотографиями автомобиля в MinIO
+        normalized_plate = normalize_plate_number(car.plate_number) if car.plate_number else str(car.id)
+        folder = f"cars/{normalized_plate}"
+        minio.delete_folder(folder)
         
         # Очищаем поле photos в базе данных
         deleted_count = len(car.photos or [])

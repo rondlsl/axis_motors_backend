@@ -38,6 +38,15 @@ SMS_TOKEN = getenv('SMS_TOKEN')
 FORTE_SHOP_ID = getenv('FORTE_SHOP_ID')
 FORTE_SECRET_KEY = getenv('FORTE_SECRET_KEY')
 
+# === MINIO / S3 ===
+MINIO_ENDPOINT = getenv('MINIO_ENDPOINT', 'https://msmain.azvmotors.kz')
+MINIO_ACCESS_KEY = getenv('MINIO_ACCESS_KEY', 'minio_admin')
+MINIO_SECRET_KEY = getenv('MINIO_SECRET_KEY', 'jdYu69ih4ErCc+fLEaiz22x6/EplIEmii/DslBYnxvdoXDrb0GDLdQLkBvbjQJwS')
+MINIO_BUCKET_UPLOADS = getenv('MINIO_BUCKET_UPLOADS', 'uploads')
+MINIO_BUCKET_BACKUPS = getenv('MINIO_BUCKET_BACKUPS', 'backups')
+MINIO_PUBLIC_URL = getenv('MINIO_PUBLIC_URL', 'https://msmain.azvmotors.kz')
+MINIO_USE_SSL = getenv('MINIO_USE_SSL', 'true').lower() == 'true'
+
 # === LOGGING ===
 logging.basicConfig(level=logging.ERROR, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)

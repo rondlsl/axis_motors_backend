@@ -20,7 +20,6 @@ from alembic import command
 from alembic.config import Config
 from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Form, status
 from fastapi.responses import ORJSONResponse, Response
-from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import pytz
 from starlette.middleware.cors import CORSMiddleware
@@ -86,11 +85,17 @@ app = FastAPI(
 almaty_tz = pytz.FixedOffset(300)  # GMT+5 = 300 минут
 scheduler = AsyncIOScheduler(timezone=almaty_tz)
 
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+# Файлы теперь хранятся в MinIO (S3)
+# URL формат: https://msmain.azvmotors.kz/uploads/...
+# StaticFiles mount больше не нужен
 
-# Создаем папку contracts если не существует
-import os
-os.makedirs("contracts", exist_ok=True)
+# Инициализируем MinIO сервис при старте
+from app.services.minio_service import get_minio_service
+try:
+    _minio = get_minio_service()
+    print("✅ MinIO service initialized")
+except Exception as e:
+    print(f"⚠️ MinIO service initialization warning: {e}")
 
 
 def run_migrations():

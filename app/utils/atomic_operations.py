@@ -1,37 +1,26 @@
 """
 Утилиты для атомарных операций с автоматическим откатом
 """
-import os
 from typing import List, Optional, Callable, Any
 from sqlalchemy.orm import Session
 from contextlib import contextmanager
 
 
-def delete_uploaded_files(file_paths: List[str]) -> None:
+def delete_uploaded_files(file_urls: List[str]) -> None:
     """
-    Удаляет загруженные файлы из файловой системы.
+    Удаляет загруженные файлы из MinIO.
     
     Args:
-        file_paths: Список путей к файлам для удаления (относительные или абсолютные)
+        file_urls: Список URL файлов для удаления
     """
-    for file_path in file_paths:
-        try:
-            # Если путь относительный, делаем его абсолютным относительно текущей директории
-            abs_path = os.path.abspath(file_path)
-            
-            if os.path.exists(abs_path):
-                os.remove(abs_path)
-                print(f"Deleted file: {abs_path}")
-            else:
-                print(f"File not found (skipping): {abs_path}")
-        except Exception as e:
-            print(f"Error deleting file {file_path}: {e}")
+    from app.services.minio_service import delete_minio_files
+    delete_minio_files(file_urls)
 
 
 @contextmanager
 def atomic_upload_transaction(db: Session, uploaded_files: Optional[List[str]] = None):
     """
-    Context manager для атомарных операций с загрузкой файлов.
+    Context manager для атомарных операций с загрузкой файлов в MinIO.
     При ошибке автоматически удаляет загруженные файлы и откатывает транзакцию БД.
     
     Usage:
@@ -75,7 +64,7 @@ async def atomic_operation_with_gps(
     cleanup_on_error: bool = True
 ) -> dict:
     """
-    Выполняет атомарную операцию: сохранение файлов → обновление БД → GPS команды.
+    Выполняет атомарную операцию: сохранение файлов в MinIO → обновление БД → GPS команды.
     При ошибке откатывает все изменения.
     
     Args:
@@ -115,4 +104,3 @@ async def atomic_operation_with_gps(
             delete_uploaded_files(uploaded_files)
         
         raise
-

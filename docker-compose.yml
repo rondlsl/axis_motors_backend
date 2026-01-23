@@ -18,10 +18,7 @@ services:
     depends_on:
       - db
     command: /bin/sh -c "uvicorn main:app --host 0.0.0.0 --port 7139 --ws auto"
-    volumes:
-      - ./uploads:/app/uploads # Монтируем всю директорию uploads
-      - ./contracts:/app/contracts # Монтируем папку contracts
-      - ./backups:/app/backups # Монтируем директорию для backup'ов
+    # Все файлы теперь хранятся в MinIO (S3) - volumes не нужны
 
   db:
     image: postgres:15

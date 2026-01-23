@@ -14,6 +14,7 @@ from app.utils.sid_converter import convert_uuid_response_to_sid
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.auth.dependencies.save_documents import save_file, validate_photos
+from app.utils.atomic_operations import delete_uploaded_files
 from app.models.user_model import User, UserRole
 from app.models.application_model import Application, ApplicationStatus
 from app.models.history_model import RentalHistory, RentalStatus, RentalReview, RentalType
@@ -4821,21 +4822,13 @@ async def admin_upload_photos_before(
         }
     except HTTPException:
         db.rollback()
-        for f in uploaded_files:
-            try:
-                if os.path.exists(f):
-                    os.remove(f)
-            except:
-                pass
+        # Удаляем загруженные файлы из MinIO
+        delete_uploaded_files(uploaded_files)
         raise
     except Exception as e:
         db.rollback()
-        for f in uploaded_files:
-            try:
-                if os.path.exists(f):
-                    os.remove(f)
-            except:
-                pass
+        # Удаляем загруженные файлы из MinIO
+        delete_uploaded_files(uploaded_files)
         raise HTTPException(status_code=500, detail=f"Ошибка при загрузке фотографий: {str(e)}")
 
 
@@ -4901,21 +4894,13 @@ async def admin_upload_photos_before_interior(
         }
     except HTTPException:
         db.rollback()
-        for f in uploaded_files:
-            try:
-                if os.path.exists(f):
-                    os.remove(f)
-            except:
-                pass
+        # Удаляем загруженные файлы из MinIO
+        delete_uploaded_files(uploaded_files)
         raise
     except Exception as e:
         db.rollback()
-        for f in uploaded_files:
-            try:
-                if os.path.exists(f):
-                    os.remove(f)
-            except:
-                pass
+        # Удаляем загруженные файлы из MinIO
+        delete_uploaded_files(uploaded_files)
         raise HTTPException(status_code=500, detail=f"Ошибка при загрузке фотографий салона: {str(e)}")
 
 
@@ -4989,21 +4974,13 @@ async def admin_upload_photos_after(
         }
     except HTTPException:
         db.rollback()
-        for f in uploaded_files:
-            try:
-                if os.path.exists(f):
-                    os.remove(f)
-            except:
-                pass
+        # Удаляем загруженные файлы из MinIO
+        delete_uploaded_files(uploaded_files)
         raise
     except Exception as e:
         db.rollback()
-        for f in uploaded_files:
-            try:
-                if os.path.exists(f):
-                    os.remove(f)
-            except:
-                pass
+        # Удаляем загруженные файлы из MinIO
+        delete_uploaded_files(uploaded_files)
         raise HTTPException(status_code=500, detail=f"Ошибка при загрузке фотографий: {str(e)}")
 
 
@@ -5067,21 +5044,13 @@ async def admin_upload_photos_after_car(
         }
     except HTTPException:
         db.rollback()
-        for f in uploaded_files:
-            try:
-                if os.path.exists(f):
-                    os.remove(f)
-            except:
-                pass
+        # Удаляем загруженные файлы из MinIO
+        delete_uploaded_files(uploaded_files)
         raise
     except Exception as e:
         db.rollback()
-        for f in uploaded_files:
-            try:
-                if os.path.exists(f):
-                    os.remove(f)
-            except:
-                pass
+        # Удаляем загруженные файлы из MinIO
+        delete_uploaded_files(uploaded_files)
         raise HTTPException(status_code=500, detail=f"Ошибка при загрузке фотографий кузова: {str(e)}")
 
 
