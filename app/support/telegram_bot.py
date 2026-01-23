@@ -450,8 +450,9 @@ class SupportBot:
             await update.message.reply_text("❌ Ошибка при обработке медиа файла")
 
     async def download_telegram_file(self, file_obj, media_type: str) -> Optional[str]:
-        """Скачать файл из Telegram и сохранить локально"""
+        """Скачать файл из Telegram и загрузить в MinIO"""
         try:
+            from app.services.minio_service import get_minio_service
             
             # Получаем информацию о файле
             file_info = await self.application.bot.get_file(file_obj.file_id)
@@ -467,14 +468,6 @@ class SupportBot:
                     file_info.file_path = f"photos/{file_obj.file_id}.jpg"
                 else:
                     return None
-            
-            # Создаем директорию для медиа поддержки
-            upload_dir = Path("uploads/support")
-            try:
-                upload_dir.mkdir(parents=True, exist_ok=True)
-            except Exception as e:
-                logger.error(f"Ошибка создания директории {upload_dir}: {e}")
-                return None
             
             file_path_str = file_info.file_path
             if file_path_str.startswith("http"):
@@ -494,12 +487,22 @@ class SupportBot:
                 file_extension = extensions.get(media_type, ".bin")
             
             unique_filename = f"{uuid.uuid4()}{file_extension}"
-            file_path = upload_dir / unique_filename
+            
+            # Определяем content type
+            content_types = {
+                "photo": "image/jpeg",
+                "document": "application/octet-stream",
+                "video": "video/mp4",
+                "audio": "audio/mpeg",
+                "voice": "audio/ogg"
+            }
+            content_type = content_types.get(media_type, "application/octet-stream")
             
             if file_info.file_path.startswith("http"):
                 download_url = file_info.file_path
             else:
                 download_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN_2}/{file_info.file_path}"
+            
             async with httpx.AsyncClient(timeout=10.0) as client:
                 try:
                     response = await client.get(download_url, timeout=30.0)
@@ -508,21 +511,20 @@ class SupportBot:
                     logger.error(f"Ошибка скачивания файла с URL {download_url}: {e}")
                     return None
                 
-                # Сохраняем файл
+                # Загружаем в MinIO
                 try:
-                    with open(file_path, "wb") as f:
-                        f.write(response.content)
-                    # Проверяем, что файл действительно создан
-                    if not file_path.exists():
-                        logger.error(f"Файл не найден после сохранения: {file_path}")
-                        return None
+                    minio = get_minio_service()
+                    file_url = minio.upload_file_sync(
+                        content=response.content,
+                        filename=unique_filename,
+                        folder="support",
+                        content_type=content_type
+                    )
+                    logger.info(f"Файл загружен в MinIO: {file_url}")
+                    return file_url
                 except Exception as e:
-                    logger.error(f"Ошибка сохранения файла {file_path}: {e}")
+                    logger.error(f"Ошибка загрузки файла в MinIO: {e}")
                     return None
-            
-            # Возвращаем относительный путь
-            result_path = str(file_path)
-            return result_path
             
         except Exception as e:
             logger.error(f"Error downloading Telegram file: {e}")

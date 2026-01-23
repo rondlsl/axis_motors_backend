@@ -38,9 +38,11 @@ async def process_upload_photos(
         rental_id: uuid.UUID,
         subfolder: str
 ) -> List[str]:
+    """Загрузка фотографий в MinIO"""
     photo_urls = []
     for photo in photos:
-        url = await save_file(photo, rental_id, f"uploads/rents/{rental_id}/{subfolder}/")
+        # save_file теперь автоматически убирает "uploads/" и загружает в MinIO
+        url = await save_file(photo, rental_id, f"rents/{rental_id}/{subfolder}")
         photo_urls.append(url)
     return photo_urls
 
@@ -78,28 +80,29 @@ async def _handle_photos(
         rental_id: uuid.UUID,
         when: str
 ) -> List[str]:
+    """Обработка и загрузка фотографий в MinIO"""
     # валидация
     validate_photos([selfie], "selfie")
     validate_photos(car_photos, "car_photos")
     validate_photos(interior_photos, "interior_photos")
 
-    # Определяем базовую папку в зависимости от типа загрузки
+    # Определяем базовую папку в MinIO (без "uploads/" - это bucket)
     if when.startswith("mechanic_"):
-        base_dir = f"uploads/rents/{rental_id}/mechanic/{when.replace('mechanic_', '')}"
+        base_dir = f"rents/{rental_id}/mechanic/{when.replace('mechanic_', '')}"
     else:
-        base_dir = f"uploads/rents/{rental_id}/{when}"
+        base_dir = f"rents/{rental_id}/{when}"
     
     urls: List[str] = []
 
     # сохраняем селфи
-    urls.append(await save_file(selfie, rental_id, f"{base_dir}/selfie/"))
+    urls.append(await save_file(selfie, rental_id, f"{base_dir}/selfie"))
 
     # сохраняем внешние фото
     for p in car_photos:
-        urls.append(await save_file(p, rental_id, f"{base_dir}/car/"))
+        urls.append(await save_file(p, rental_id, f"{base_dir}/car"))
 
     # сохраняем фото салона
     for p in interior_photos:
-        urls.append(await save_file(p, rental_id, f"{base_dir}/interior/"))
+        urls.append(await save_file(p, rental_id, f"{base_dir}/interior"))
 
     return urls
