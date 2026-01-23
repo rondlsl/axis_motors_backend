@@ -1,27 +1,56 @@
-requests~=2.32.3
+# Core FastAPI
 fastapi~=0.115.6
-pydantic~=2.10.3
-python-dotenv~=1.0.1
-PyJWT~=2.10.1
-cryptography~=44.0.0
+uvicorn
 starlette~=0.41.3
+pydantic~=2.10.3
+python-multipart~=0.0.20
+
+# Database
 SQLAlchemy~=2.0.36
 alembic~=1.14.0
-pyotp~=2.9.0
-httpx~=0.25.2
-python-multipart~=0.0.20
-telebot~=0.0.5
-python-telegram-bot~=20.7
-APScheduler~=3.11.0
-uvicorn
-websockets~=13.1
 psycopg2-binary
-firebase-admin~=6.8.0
+
+# Authentication & Security
+PyJWT~=2.10.1
+cryptography~=44.0.0
+pyotp~=2.9.0
+
+# HTTP Clients
+httpx~=0.25.2
+requests~=2.32.3
+
+# Async & Concurrency
 anyio~=4.7.0
+
+# Scheduler
+APScheduler~=3.11.0
+
+# WebSocket
+websockets~=13.1
+
+# MinIO / S3 Storage
+boto3~=1.35.0
+
+# Telegram Bot
+python-telegram-bot~=20.7
+
+# Firebase Push Notifications
+firebase-admin~=6.8.0
+
+# JSON Serialization
 orjson~=3.10.18
-deepface~=0.0.91
-opencv-python-headless~=4.10.0.84
-tf-keras~=2.20.0
+
+# Environment Variables
+python-dotenv~=1.0.1
+
+# Document Processing
 python-docx~=1.1.2
-beautifulsoup4~=4.12.3
+
+# Version Comparison
 packaging~=24.2
+pytz
+# Face Verification (currently disabled - code exists but always returns True)
+# Uncomment if you want to enable face verification:
+# deepface~=0.0.91
+# opencv-python-headless~=4.10.0.84
+# tf-keras~=2.20.0

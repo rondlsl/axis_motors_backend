@@ -2134,6 +2134,13 @@ async def upload_photos_before(
         rental.photos_before = urls
         print(f"[UPLOAD_PHOTOS_BEFORE] Total photos_before after save: {len(urls)}")
         
+        # DB commit - закрываем транзакцию перед GPS операциями, чтобы не блокировать БД
+        commit_start = time.time()
+        print(f"[UPLOAD_PHOTOS_BEFORE] Committing DB changes...")
+        db.commit()
+        commit_duration = time.time() - commit_start
+        print(f"[UPLOAD_PHOTOS_BEFORE] DB commit took {commit_duration:.3f}s")
+        
         # Получаем car из БД
         car_query_start = time.time()
         car = db.query(Car).get(rental.car_id)
@@ -2167,13 +2174,6 @@ async def upload_photos_before(
                 logger.info(f"GPS последовательность 'selfie_exterior' успешно выполнена для авто {car.id}")
         else:
             print(f"[UPLOAD_PHOTOS_BEFORE] Skipping GPS sequence (car={car is not None}, gps_imei={car.gps_imei if car else 'None'})")
-        
-        # DB commit
-        commit_start = time.time()
-        print(f"[UPLOAD_PHOTOS_BEFORE] Committing DB changes...")
-        db.commit()
-        commit_duration = time.time() - commit_start
-        print(f"[UPLOAD_PHOTOS_BEFORE] DB commit took {commit_duration:.3f}s")
         
         # Обновляем все данные из БД для получения свежих данных (после всех операций)
         refresh_start = time.time()
@@ -2432,6 +2432,8 @@ async def upload_photos_after(
             uploaded_files.append(interior_url)
 
         rental.photos_after = urls
+        db.commit()
+        # Закрываем транзакцию перед GPS операциями, чтобы не блокировать БД
         
         # После загрузки селфи+салона: заблокировать двигатель → забрать ключ → закрыть замки
         car = db.query(Car).get(rental.car_id)
@@ -2447,8 +2449,6 @@ async def upload_photos_after(
                 raise Exception(f"GPS sequence failed: {error_msg}")
         else:
             print(f"[DEBUG] Skipping GPS sequence - no car or no IMEI")
-        
-        db.commit()
         
         # Обновляем все данные из БД для получения свежих данных (после всех операций)
         db.expire_all()
@@ -2569,6 +2569,8 @@ async def upload_photos_after_car(
             uploaded_files.append(car_url)
         
         rental.photos_after = urls
+        db.commit()
+        # Закрываем транзакцию перед GPS операциями, чтобы не блокировать БД
         
         # После загрузки кузова: заблокировать двигатель → забрать ключ → закрыть замки
         if car and car.gps_imei:
@@ -2580,8 +2582,6 @@ async def upload_photos_after_car(
                 error_msg = result.get('error', 'Unknown error')
                 print(f"Ошибка GPS последовательности для завершения кузова: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
-        
-        db.commit()
         
         # Обновляем все данные из БД для получения свежих данных (после всех операций)
         db.expire_all()
@@ -2657,6 +2657,8 @@ async def upload_photos_before_owner(
             uploaded_files.append(car_url)
 
         rental.photos_before = urls
+        db.commit()
+        # Закрываем транзакцию перед GPS операциями, чтобы не блокировать БД
         
         # Открываем замки после успешной загрузки фото
         if car and car.gps_imei:
@@ -2688,8 +2690,6 @@ async def upload_photos_before_owner(
                     )
                 except:
                     pass
-        
-        db.commit()
         
         return {"message": "Owner photos before (car) uploaded", "photo_count": len(car_photos)}
     except Exception as e:
@@ -2815,6 +2815,8 @@ async def upload_photos_after_owner(
             uploaded_files.append(interior_url)
         
         rental.photos_after = urls
+        db.commit()
+        # Закрываем транзакцию перед GPS операциями, чтобы не блокировать БД
         
         # После загрузки салона владельцем: заблокировать двигатель → забрать ключ → закрыть замки
         car = db.query(Car).get(rental.car_id)
@@ -2827,8 +2829,6 @@ async def upload_photos_after_owner(
                 error_msg = result.get('error', 'Unknown error')
                 print(f"Ошибка GPS последовательности для завершения салона владельцем: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
-        
-        db.commit()
         
         return {"message": "Owner photos after (interior) uploaded", "photo_count": len(interior_photos)}
     except Exception as e:
@@ -3259,11 +3259,34 @@ async def complete_rental(
     rental.end_latitude = car.latitude
     rental.end_longitude = car.longitude
 
-    if rental.rental_type in (RentalType.HOURS, RentalType.DAYS) and rental.overtime_fee and rental.overtime_fee > 0:
-        rental.fuel_after_main_tariff = car.fuel_level
+    # Для часового/суточного тарифа: сохраняем уровень топлива на момент окончания основного тарифа
+    # если аренда вышла за пределы основного тарифа
+    if rental.rental_type in (RentalType.HOURS, RentalType.DAYS):
+        # Рассчитываем запланированное время в минутах
+        planned_minutes = (
+            rental.duration * 60
+            if rental.rental_type == RentalType.HOURS
+            else rental.duration * 24 * 60
+        )
+        # Рассчитываем фактическое время
+        total_seconds_temp = (now - rental.start_time).total_seconds()
+        actual_minutes_temp = total_seconds_temp / 60
+        
+        if actual_minutes_temp > planned_minutes:
+            # Аренда вышла за пределы основного тарифа
+            # Сохраняем уровень топлива на момент окончания основного тарифа
+            # (это значение должно было быть установлено ранее, если нет - используем текущий)
+            if not hasattr(rental, 'fuel_after_main_tariff') or rental.fuel_after_main_tariff is None:
+                rental.fuel_after_main_tariff = car.fuel_level
+        else:
+            # Аренда завершилась в пределах основного тарифа
+            if rental.fuel_after is None:
+                rental.fuel_after = car.fuel_level
     else:
+        # Для поминутного тарифа просто сохраняем текущий уровень
         if rental.fuel_after is None:
             rental.fuel_after = car.fuel_level
+    
     rental.mileage_after = car.mileage
     rental.rental_status = RentalStatus.COMPLETED
     
@@ -3296,53 +3319,192 @@ async def complete_rental(
     total_seconds = (now - rental.start_time).total_seconds()
     actual_minutes = total_seconds / 60
     rounded_minutes = ceil(actual_minutes)
+    
+    # Сохраняем оригинальное значение duration (часы/дни) до перезаписи
+    original_duration = rental.duration
 
     # 7) Базовая плата по типу аренды
     if rental.rental_type == RentalType.MINUTES:
+        # Поминутный тариф: считаем по фактическому времени
         rental.base_price = rounded_minutes * car.price_per_minute
     elif rental.rental_type == RentalType.HOURS:
-        rental.base_price = rental.duration * car.price_per_hour
+        # Часовой тариф: базовая плата по заказанному количеству часов
+        rental.base_price = original_duration * car.price_per_hour
     else:  # DAYS
-        rental.base_price = rental.duration * car.price_per_day
+        # Суточный тариф: базовая плата по заказанному количеству дней
+        rental.base_price = original_duration * car.price_per_day
 
-    # 8) Переработка для часов/дней
+    # 8) Переработка (сверхтариф) для часов/дней
     if rental.rental_type in (RentalType.HOURS, RentalType.DAYS):
         planned_minutes = (
-            rental.duration * 60
+            original_duration * 60
             if rental.rental_type == RentalType.HOURS
-            else rental.duration * 24 * 60
+            else original_duration * 24 * 60
         )
         overtime_mins = max(0, rounded_minutes - planned_minutes)
         rental.overtime_fee = overtime_mins * car.price_per_minute
     else:
         rental.overtime_fee = 0
 
-    # 9) Убедиться, что все сборы не None
+    # 9) Расчет платного ожидания (waiting_fee)
+    # Платное ожидание рассчитывается на основе времени между reservation_time и start_time
+    # Первые 15 минут бесплатные, далее за каждую минуту: price_per_minute * 0.5
+    waiting_fee = 0
+    waiting_minutes = 0
+    extra_minutes = 0
+    
+    if rental.reservation_time and rental.start_time:
+        waiting_seconds = (rental.start_time - rental.reservation_time).total_seconds()
+        waiting_minutes = waiting_seconds / 60
+        
+        if waiting_minutes > 15:
+            # Платное ожидание: минуты сверх 15 минут
+            extra_minutes = ceil(waiting_minutes - 15)
+            waiting_fee = int(extra_minutes * car.price_per_minute * 0.5)
+    
+    # Проверяем, была ли уже создана транзакция для waiting_fee
+    existing_waiting_tx = db.query(WalletTransaction).filter(
+        WalletTransaction.related_rental_id == rental.id,
+        WalletTransaction.transaction_type == WalletTransactionType.RENT_WAITING_FEE
+    ).first()
+    
+    if waiting_fee > 0:
+        # Нужно обновить или создать транзакцию
+        if existing_waiting_tx:
+            # Обновляем существующую транзакцию
+            already_charged = abs(existing_waiting_tx.amount) if existing_waiting_tx.amount else 0
+            difference = waiting_fee - already_charged
+            
+            if abs(difference) > 0.01:  # Есть разница
+                if difference > 0:
+                    # Нужно доплатить
+                    if current_user.wallet_balance >= difference:
+                        balance_before = float(current_user.wallet_balance)
+                        current_user.wallet_balance -= difference
+                        
+                        existing_waiting_tx.amount = -waiting_fee
+                        existing_waiting_tx.description = f"Платное ожидание {int(extra_minutes)} мин"
+                        existing_waiting_tx.balance_before = balance_before
+                        existing_waiting_tx.balance_after = float(current_user.wallet_balance)
+                    else:
+                        logger.warning(
+                            f"⚠️ Недостаточно средств для доплаты платного ожидания аренды {rental.id}: "
+                            f"требуется {difference}₸, баланс {current_user.wallet_balance}₸"
+                        )
+                        waiting_fee = already_charged  # Используем уже списанную сумму
+                else:
+                    # Переплата - возвращаем разницу (в теории не должно быть, но на всякий случай)
+                    refund = abs(difference)
+                    balance_before = float(current_user.wallet_balance)
+                    current_user.wallet_balance += refund
+                    
+                    existing_waiting_tx.amount = -waiting_fee
+                    existing_waiting_tx.description = f"Платное ожидание {int(extra_minutes)} мин (перерасчёт)"
+                    existing_waiting_tx.balance_before = balance_before
+                    existing_waiting_tx.balance_after = float(current_user.wallet_balance)
+        else:
+            # Создаём новую транзакцию
+            if current_user.wallet_balance >= waiting_fee:
+                balance_before = float(current_user.wallet_balance)
+                current_user.wallet_balance -= waiting_fee
+                
+                waiting_tx = WalletTransaction(
+                    user_id=current_user.id,
+                    amount=-waiting_fee,
+                    transaction_type=WalletTransactionType.RENT_WAITING_FEE,
+                    description=f"Платное ожидание {int(extra_minutes)} мин",
+                    balance_before=balance_before,
+                    balance_after=float(current_user.wallet_balance),
+                    related_rental_id=rental.id,
+                    created_at=get_local_time()
+                )
+                db.add(waiting_tx)
+            else:
+                logger.warning(
+                    f"⚠️ Недостаточно средств для списания платного ожидания аренды {rental.id}: "
+                    f"требуется {waiting_fee}₸, баланс {current_user.wallet_balance}₸"
+                )
+                waiting_fee = 0  # Не списываем, если недостаточно средств
+    
+    rental.waiting_fee = waiting_fee
+
+    # 10) Убедиться, что все остальные сборы не None
     rental.open_fee = rental.open_fee or 0
     rental.delivery_fee = rental.delivery_fee or 0
-    rental.waiting_fee = rental.waiting_fee or 0
     rental.distance_fee = rental.distance_fee or 0
 
+    # 10) Расчет топлива
     fuel_fee = 0
     fuel_consumed = 0
     
     if rental.rental_type == RentalType.MINUTES:
+        # Поминутный тариф: бензин НЕ считаем
         fuel_fee = 0
     elif rental.rental_type in (RentalType.HOURS, RentalType.DAYS):
+        # Часовой/суточный тариф: бензин считаем ТОЛЬКО после основного тарифа
         existing_fuel_tx = db.query(WalletTransaction).filter(
             WalletTransaction.related_rental_id == rental.id,
             WalletTransaction.transaction_type == WalletTransactionType.RENT_FUEL_FEE
         ).first()
         
         if existing_fuel_tx:
+            # Топливо уже было списано ранее
             fuel_fee = abs(existing_fuel_tx.amount)
         else:
-            if rental.rental_type == RentalType.HOURS:
-                planned_minutes = rental.duration * 60
-            else:
-                planned_minutes = rental.duration * 24 * 60
+            # Рассчитываем топливо только после основного тарифа
+            # Топливо считается только за период основного тарифа, не за овертайм
+            planned_minutes = (
+                original_duration * 60
+                if rental.rental_type == RentalType.HOURS
+                else original_duration * 24 * 60
+            )
             
-            if actual_minutes <= planned_minutes:
+            if rounded_minutes > planned_minutes:
+                # Аренда вышла за пределы основного тарифа
+                # Топливо считаем только за период основного тарифа (до fuel_after_main_tariff)
+                fuel_after_main = rental.fuel_after_main_tariff if hasattr(rental, 'fuel_after_main_tariff') and rental.fuel_after_main_tariff is not None else None
+                
+                if fuel_after_main is None:
+                    # Если fuel_after_main_tariff не был установлен, используем текущий уровень
+                    # (это может произойти, если аренда только что завершилась)
+                    fuel_after_main = car.fuel_level
+                
+                if rental.fuel_before is not None and fuel_after_main is not None:
+                    if fuel_after_main < rental.fuel_before:
+                        fuel_before_rounded = ceil(rental.fuel_before)
+                        fuel_after_rounded = floor(fuel_after_main)
+                        fuel_consumed = fuel_before_rounded - fuel_after_rounded
+                        if fuel_consumed > 0:
+                            if car.body_type == CarBodyType.ELECTRIC:
+                                price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
+                            else:
+                                price_per_liter = FUEL_PRICE_PER_LITER
+                            fuel_fee = int(fuel_consumed * price_per_liter)
+                            
+                            # Проверяем баланс перед списанием
+                            if current_user.wallet_balance >= fuel_fee:
+                                balance_before_fuel = float(current_user.wallet_balance)
+                                current_user.wallet_balance -= fuel_fee
+                                tx = WalletTransaction(
+                                    user_id=current_user.id,
+                                    amount=-fuel_fee,
+                                    transaction_type=WalletTransactionType.RENT_FUEL_FEE,
+                                    description=f"Оплата топлива: {int(fuel_consumed)} л × {price_per_liter}₸ = {fuel_fee:,}₸" if car.body_type != CarBodyType.ELECTRIC else f"Оплата заряда: {int(fuel_consumed)}% × {price_per_liter}₸ = {fuel_fee:,}₸",
+                                    balance_before=balance_before_fuel,
+                                    balance_after=float(current_user.wallet_balance),
+                                    related_rental_id=rental.id,
+                                    created_at=get_local_time()
+                                )
+                                db.add(tx)
+                            else:
+                                logger.warning(
+                                    f"Недостаточно средств для списания топлива: "
+                                    f"требуется {fuel_fee}₸, баланс {current_user.wallet_balance}₸"
+                                )
+                                fuel_fee = 0
+            else:
+                # Аренда завершилась в пределах основного тарифа
+                # Топливо считаем по разнице fuel_before и fuel_after
                 if rental.fuel_before is not None and rental.fuel_after is not None:
                     if rental.fuel_after < rental.fuel_before:
                         fuel_before_rounded = ceil(rental.fuel_before)
@@ -3354,46 +3516,28 @@ async def complete_rental(
                             else:
                                 price_per_liter = FUEL_PRICE_PER_LITER
                             fuel_fee = int(fuel_consumed * price_per_liter)
-                            current_user.wallet_balance -= fuel_fee
-                            tx = WalletTransaction(
-                                user_id=current_user.id,
-                                amount=-fuel_fee,
-                                transaction_type=WalletTransactionType.RENT_FUEL_FEE,
-                                description=f"Оплата топлива: {int(fuel_consumed)} л × {price_per_liter}₸ = {fuel_fee:,}₸" if car.body_type != CarBodyType.ELECTRIC else f"Оплата заряда: {int(fuel_consumed)}% × {price_per_liter}₸ = {fuel_fee:,}₸",
-                                balance_before=float(current_user.wallet_balance) + fuel_fee,
-                                balance_after=float(current_user.wallet_balance),
-                                related_rental_id=rental.id,
-                                created_at=get_local_time()
-                            )
-                            db.add(tx)
-            else:
-                end_main_tariff_time = rental.start_time + timedelta(minutes=planned_minutes)
-                time_since_main_end = (now - end_main_tariff_time).total_seconds() / 60
-                
-                if time_since_main_end <= 0.5 and rental.fuel_before is not None and car.fuel_level is not None:
-                    if car.fuel_level < rental.fuel_before:
-                        fuel_before_rounded = ceil(rental.fuel_before)
-                        fuel_at_end_main_rounded = floor(car.fuel_level)
-                        fuel_consumed_main = fuel_before_rounded - fuel_at_end_main_rounded
-                        
-                        if fuel_consumed_main > 0:
-                            if car.body_type == CarBodyType.ELECTRIC:
-                                price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
+                            
+                            # Проверяем баланс перед списанием
+                            if current_user.wallet_balance >= fuel_fee:
+                                balance_before_fuel = float(current_user.wallet_balance)
+                                current_user.wallet_balance -= fuel_fee
+                                tx = WalletTransaction(
+                                    user_id=current_user.id,
+                                    amount=-fuel_fee,
+                                    transaction_type=WalletTransactionType.RENT_FUEL_FEE,
+                                    description=f"Оплата топлива: {int(fuel_consumed)} л × {price_per_liter}₸ = {fuel_fee:,}₸" if car.body_type != CarBodyType.ELECTRIC else f"Оплата заряда: {int(fuel_consumed)}% × {price_per_liter}₸ = {fuel_fee:,}₸",
+                                    balance_before=balance_before_fuel,
+                                    balance_after=float(current_user.wallet_balance),
+                                    related_rental_id=rental.id,
+                                    created_at=get_local_time()
+                                )
+                                db.add(tx)
                             else:
-                                price_per_liter = FUEL_PRICE_PER_LITER
-                            fuel_fee = int(fuel_consumed_main * price_per_liter)
-                            current_user.wallet_balance -= fuel_fee
-                            tx = WalletTransaction(
-                                user_id=current_user.id,
-                                amount=-fuel_fee,
-                                transaction_type=WalletTransactionType.RENT_FUEL_FEE,
-                                description=f"Оплата топлива: {int(fuel_consumed_main)} л × {price_per_liter}₸ = {fuel_fee:,}₸" if car.body_type != CarBodyType.ELECTRIC else f"Оплата заряда: {int(fuel_consumed_main)}% × {price_per_liter}₸ = {fuel_fee:,}₸",
-                                balance_before=float(current_user.wallet_balance) + fuel_fee,
-                                balance_after=float(current_user.wallet_balance),
-                                related_rental_id=rental.id,
-                                created_at=get_local_time()
-                            )
-                            db.add(tx)
+                                logger.warning(
+                                    f"Недостаточно средств для списания топлива: "
+                                    f"требуется {fuel_fee}₸, баланс {current_user.wallet_balance}₸"
+                                )
+                                fuel_fee = 0
 
     if car.owner_id == current_user.id:
         rental.base_price = 0
@@ -3425,10 +3569,14 @@ async def complete_rental(
                     fuel_fee
                 )
             elif rental.rental_type == RentalType.MINUTES:
+                # Для поминутного тарифа: base_price уже включает все поминутные списания
                 rental.already_payed = (
+                    (rental.base_price or 0) +
                     (rental.open_fee or 0) +
                     (rental.delivery_fee or 0) +
-                    (rental.overtime_fee or 0)
+                    (rental.waiting_fee or 0) +
+                    (rental.distance_fee or 0) +
+                    (rental.driver_fee or 0)
                 )
             else:
                 rental.already_payed = 0
@@ -3494,6 +3642,316 @@ async def complete_rental(
             logger.warning(f"Cannot get EcoDriving rating: gps_id={car.gps_id}, start_time={rental.start_time}")
     except Exception as e:
         logger.error(f"Error getting EcoDriving rating: {e}", exc_info=True)
+
+    # ========== ФИНАЛЬНЫЙ ПЕРЕРАСЧЁТ АРЕНДЫ ==========
+    # Выполняем контрольный перерасчёт и сверяем суммы между:
+    # 1) Аренда (rental.base_price, rental.overtime_fee)
+    # 2) Транзакции (WalletTransaction)
+    # 3) Баланс пользователя
+    
+    if not (car.owner_id == current_user.id):  # Для владельца автомобиля перерасчёт не нужен
+        if rental.rental_type == RentalType.MINUTES:
+            # ========== ПОМИНУТНЫЙ ТАРИФ ==========
+            # 1) Рассчитать правильную итоговую стоимость по формуле: минуты × цена_за_минуту
+            expected_total_cost = rounded_minutes * car.price_per_minute
+            
+            # 2) Найти транзакцию поминутного списания
+            minute_charge_tx = db.query(WalletTransaction).filter(
+                WalletTransaction.related_rental_id == rental.id,
+                WalletTransaction.transaction_type == WalletTransactionType.RENT_MINUTE_CHARGE
+            ).order_by(WalletTransaction.created_at.desc()).first()
+            
+            # 3) Сверить суммы
+            actual_charged = abs(minute_charge_tx.amount) if minute_charge_tx and minute_charge_tx.amount else 0
+            
+            # 4) Проверяем, нужен ли перерасчёт
+            if abs(actual_charged - expected_total_cost) > 0.01 or minute_charge_tx is None:  # Допускаем погрешность в 1 копейку
+                # НЕСОВПАДЕНИЕ или транзакция отсутствует! Выполняем перерасчёт
+                difference = expected_total_cost - actual_charged
+                
+                if difference != 0:
+                    logger.info(
+                        f"🔄 Финальный перерасчёт поминутной аренды {rental.id}: "
+                        f"ожидалось {expected_total_cost}₸, списано {actual_charged}₸, "
+                        f"разница {difference}₸"
+                    )
+                
+                # Откорректировать транзакцию
+                if minute_charge_tx:
+                    # Обновляем существующую транзакцию
+                    # Возвращаем старую сумму в баланс
+                    balance_before_correction = current_user.wallet_balance + abs(minute_charge_tx.amount)
+                    
+                    # Проверяем баланс перед корректировкой
+                    if balance_before_correction >= expected_total_cost:
+                        current_user.wallet_balance = balance_before_correction - expected_total_cost
+                        
+                        minute_charge_tx.amount = -expected_total_cost
+                        minute_charge_tx.description = f"Поминутное списание {rounded_minutes} мин"
+                        minute_charge_tx.balance_before = balance_before_correction
+                        minute_charge_tx.balance_after = float(current_user.wallet_balance)
+                    else:
+                        logger.warning(
+                            f"⚠️ Недостаточно средств для корректировки поминутной аренды {rental.id}: "
+                            f"требуется {expected_total_cost}₸, баланс {balance_before_correction}₸"
+                        )
+                        # Используем уже списанную сумму
+                        expected_total_cost = actual_charged
+                        rental.base_price = expected_total_cost
+                else:
+                    # Создаём новую транзакцию, если её не было
+                    balance_before_correction = float(current_user.wallet_balance)
+                    
+                    if balance_before_correction >= expected_total_cost:
+                        current_user.wallet_balance -= expected_total_cost
+                        
+                        minute_charge_tx = WalletTransaction(
+                            user_id=current_user.id,
+                            amount=-expected_total_cost,
+                            transaction_type=WalletTransactionType.RENT_MINUTE_CHARGE,
+                            description=f"Поминутное списание {rounded_minutes} мин",
+                            balance_before=balance_before_correction,
+                            balance_after=float(current_user.wallet_balance),
+                            related_rental_id=rental.id,
+                            created_at=get_local_time()
+                        )
+                        db.add(minute_charge_tx)
+                    else:
+                        logger.warning(
+                            f"⚠️ Недостаточно средств для создания транзакции поминутной аренды {rental.id}: "
+                            f"требуется {expected_total_cost}₸, баланс {balance_before_correction}₸"
+                        )
+                        # Не списываем, если недостаточно средств
+                        expected_total_cost = 0
+                        rental.base_price = 0
+                
+                # Обновить аренду
+                if expected_total_cost > 0:
+                    rental.base_price = expected_total_cost
+                rental.overtime_fee = 0  # Для поминутного тарифа овертайм не применяется
+                
+                # Пересчитать total_price и already_payed
+                rental.total_price = (
+                    rental.base_price +
+                    (rental.open_fee or 0) +
+                    (rental.delivery_fee or 0) +
+                    (rental.waiting_fee or 0) +
+                    (rental.distance_fee or 0) +
+                    (rental.driver_fee or 0)
+                )
+                
+                if current_user.wallet_balance >= 0:
+                    rental.already_payed = (
+                        (rental.open_fee or 0) +
+                        (rental.delivery_fee or 0) +
+                        (rental.waiting_fee or 0) +
+                        rental.base_price
+                    )
+                
+                logger.info(
+                    f"✅ Перерасчёт поминутной аренды завершён: base_price={rental.base_price}₸, "
+                    f"total_price={rental.total_price}₸, баланс={current_user.wallet_balance}₸"
+                )
+        
+        elif rental.rental_type in (RentalType.HOURS, RentalType.DAYS):
+            # ========== ЧАСОВОЙ/ДНЕВНОЙ ТАРИФ С ОВЕРТАЙМОМ ==========
+            # Проверяем, вышла ли аренда за пределы основного тарифа
+            # Используем оригинальное значение duration (количество часов/дней из бронирования)
+            planned_minutes = (
+                original_duration * 60 if rental.rental_type == RentalType.HOURS
+                else original_duration * 24 * 60
+            )
+            
+            # Проверка base_price: сравниваем рассчитанное значение с суммой в транзакции
+            expected_base_price = rental.base_price  # Уже рассчитан выше
+            
+            # Ищем транзакцию с base_price (может быть несколько транзакций RENT_BASE_CHARGE)
+            # Проверяем описание, чтобы найти именно транзакцию за аренду, а не за открытие дверей или доставку
+            base_charge_tx = None
+            actual_base_charged = 0
+            
+            for tx in db.query(WalletTransaction).filter(
+                WalletTransaction.related_rental_id == rental.id,
+                WalletTransaction.transaction_type == WalletTransactionType.RENT_BASE_CHARGE
+            ).all():
+                desc = tx.description or ""
+                # Транзакция base_price содержит "Оплата аренды" и количество часов/дней
+                if "оплат" in desc.lower() and "аренд" in desc.lower() and ("час" in desc.lower() or "день" in desc.lower()):
+                    actual_base_charged = abs(tx.amount) if tx.amount else 0
+                    base_charge_tx = tx
+                    break
+            
+            # Если есть несовпадение или транзакция отсутствует (но base_price должен быть), исправляем
+            # Для владельца base_price = 0, так что проверку не делаем
+            if expected_base_price > 0 and abs(actual_base_charged - expected_base_price) > 0.01:
+                difference = expected_base_price - actual_base_charged
+                
+                if base_charge_tx:
+                    logger.warning(
+                        f"⚠️ Финальный перерасчёт base_price аренды {rental.id}: "
+                        f"ожидалось {expected_base_price}₸, списано {actual_base_charged}₸, "
+                        f"разница {difference}₸"
+                    )
+                else:
+                    logger.warning(
+                        f"⚠️ Транзакция base_price не найдена для аренды {rental.id}, "
+                        f"но ожидается {expected_base_price}₸. Создаём транзакцию."
+                    )
+                
+                if base_charge_tx:
+                    # Обновляем существующую транзакцию
+                    balance_before_correction = current_user.wallet_balance + abs(base_charge_tx.amount)
+                    
+                    if balance_before_correction >= expected_base_price:
+                        current_user.wallet_balance = balance_before_correction - expected_base_price
+                        
+                        base_charge_tx.amount = -expected_base_price
+                        base_charge_tx.description = f"Оплата аренды: {original_duration} {'час(ов)' if rental.rental_type == RentalType.HOURS else 'день(дней)'} (перерасчёт)"
+                        base_charge_tx.balance_before = balance_before_correction
+                        base_charge_tx.balance_after = float(current_user.wallet_balance)
+                    else:
+                        logger.warning(
+                            f"⚠️ Недостаточно средств для корректировки base_price аренды {rental.id}: "
+                            f"требуется {expected_base_price}₸, баланс {balance_before_correction}₸"
+                        )
+                        expected_base_price = actual_base_charged
+                        rental.base_price = expected_base_price
+                else:
+                    # Создаём новую транзакцию, если её не было
+                    balance_before_correction = float(current_user.wallet_balance)
+                    
+                    if balance_before_correction >= expected_base_price:
+                        current_user.wallet_balance -= expected_base_price
+                        
+                        base_charge_tx = WalletTransaction(
+                            user_id=current_user.id,
+                            amount=-expected_base_price,
+                            transaction_type=WalletTransactionType.RENT_BASE_CHARGE,
+                            description=f"Оплата аренды: {original_duration} {'час(ов)' if rental.rental_type == RentalType.HOURS else 'день(дней)'}",
+                            balance_before=balance_before_correction,
+                            balance_after=float(current_user.wallet_balance),
+                            related_rental_id=rental.id,
+                            created_at=get_local_time()
+                        )
+                        db.add(base_charge_tx)
+                    else:
+                        logger.warning(
+                            f"⚠️ Недостаточно средств для создания транзакции base_price аренды {rental.id}: "
+                            f"требуется {expected_base_price}₸, баланс {balance_before_correction}₸"
+                        )
+                        expected_base_price = 0
+                        rental.base_price = 0
+                
+                # Обновляем base_price в аренде
+                rental.base_price = expected_base_price
+                
+                # Пересчитываем total_price и already_payed
+                rental.total_price = (
+                    (rental.base_price or 0) +
+                    (rental.open_fee or 0) +
+                    (rental.delivery_fee or 0) +
+                    (rental.waiting_fee or 0) +
+                    (rental.overtime_fee or 0) +
+                    (rental.distance_fee or 0) +
+                    (rental.driver_fee or 0) +
+                    fuel_fee
+                )
+                
+                if current_user.wallet_balance >= 0:
+                    rental.already_payed = (
+                        (rental.base_price or 0) +
+                        (rental.open_fee or 0) +
+                        (rental.delivery_fee or 0) +
+                        (rental.waiting_fee or 0) +
+                        (rental.overtime_fee or 0) +
+                        fuel_fee
+                    )
+                
+                logger.info(
+                    f"✅ Перерасчёт base_price завершён: base_price={rental.base_price}₸, "
+                    f"total_price={rental.total_price}₸, баланс={current_user.wallet_balance}₸"
+                )
+            
+            if rounded_minutes > planned_minutes:
+                # Есть овертайм - нужен перерасчёт
+                expected_overtime_minutes = int(rounded_minutes - planned_minutes)
+                expected_overtime_cost = expected_overtime_minutes * car.price_per_minute
+                
+                # Найти транзакцию овертайма
+                overtime_tx = db.query(WalletTransaction).filter(
+                    WalletTransaction.related_rental_id == rental.id,
+                    WalletTransaction.transaction_type == WalletTransactionType.RENT_OVERTIME_FEE
+                ).order_by(WalletTransaction.created_at.desc()).first()
+                
+                # Сверить суммы
+                actual_overtime_charged = abs(overtime_tx.amount) if overtime_tx and overtime_tx.amount else 0
+                
+                if abs(actual_overtime_charged - expected_overtime_cost) > 0.01:
+                    # НЕСОВПАДЕНИЕ! Выполняем перерасчёт
+                    difference = expected_overtime_cost - actual_overtime_charged
+                    
+                    logger.warning(
+                        f"⚠️ Финальный перерасчёт овертайма аренды {rental.id}: "
+                        f"ожидалось {expected_overtime_cost}₸, списано {actual_overtime_charged}₸, "
+                        f"разница {difference}₸"
+                    )
+                    
+                    # Откорректировать транзакцию
+                    if overtime_tx:
+                        balance_before_correction = current_user.wallet_balance + overtime_tx.amount
+                        current_user.wallet_balance = balance_before_correction - expected_overtime_cost
+                        
+                        overtime_tx.amount = -expected_overtime_cost
+                        overtime_tx.description = f"Сверхтариф {expected_overtime_minutes} мин (перерасчёт)"
+                        overtime_tx.balance_before = balance_before_correction
+                        overtime_tx.balance_after = current_user.wallet_balance
+                    else:
+                        balance_before_correction = current_user.wallet_balance
+                        current_user.wallet_balance -= expected_overtime_cost
+                        
+                        overtime_tx = WalletTransaction(
+                            user_id=current_user.id,
+                            amount=-expected_overtime_cost,
+                            transaction_type=WalletTransactionType.RENT_OVERTIME_FEE,
+                            description=f"Сверхтариф {expected_overtime_minutes} мин",
+                            balance_before=balance_before_correction,
+                            balance_after=current_user.wallet_balance,
+                            related_rental_id=rental.id,
+                            created_at=get_local_time()
+                        )
+                        db.add(overtime_tx)
+                    
+                    # Обновить аренду
+                    rental.overtime_fee = expected_overtime_cost
+                    
+                    # Пересчитать total_price и already_payed
+                    rental.total_price = (
+                        (rental.base_price or 0) +
+                        (rental.open_fee or 0) +
+                        (rental.delivery_fee or 0) +
+                        (rental.waiting_fee or 0) +
+                        rental.overtime_fee +
+                        (rental.distance_fee or 0) +
+                        (rental.driver_fee or 0) +
+                        fuel_fee
+                    )
+                    
+                    if current_user.wallet_balance >= 0:
+                        rental.already_payed = (
+                            (rental.base_price or 0) +
+                            (rental.open_fee or 0) +
+                            (rental.delivery_fee or 0) +
+                            (rental.waiting_fee or 0) +
+                            rental.overtime_fee +
+                            fuel_fee
+                        )
+                    
+                    logger.info(
+                        f"✅ Перерасчёт овертайма завершён: overtime_fee={rental.overtime_fee}₸, "
+                        f"total_price={rental.total_price}₸, баланс={current_user.wallet_balance}₸"
+                    )
+    
+    # ========== КОНЕЦ ПЕРЕРАСЧЁТА ==========
 
     db.commit()
     

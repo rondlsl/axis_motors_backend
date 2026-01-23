@@ -14,10 +14,11 @@ from app.utils.sid_converter import convert_uuid_response_to_sid
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.auth.dependencies.save_documents import save_file, validate_photos
+from app.utils.atomic_operations import delete_uploaded_files
 from app.models.user_model import User, UserRole
 from app.models.application_model import Application, ApplicationStatus
 from app.models.history_model import RentalHistory, RentalStatus, RentalReview, RentalType
-from app.models.car_model import Car, CarStatus
+from app.models.car_model import Car, CarStatus, CarBodyType
 from app.models.guarantor_model import GuarantorRequest
 from app.models.wallet_transaction_model import WalletTransaction, WalletTransactionType
 from app.models.rental_actions_model import RentalAction
@@ -48,10 +49,12 @@ from app.admin.cars.utils import sort_car_photos
 from app.utils.telegram_logger import log_error_to_telegram
 from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user, send_localized_notification_to_user_async, user_has_push_tokens, send_localized_notification_to_all_mechanics
 from app.websocket.notifications import notify_user_status_update
-from app.utils.time_utils import get_local_time
+from app.utils.time_utils import get_local_time, parse_datetime_to_local
 import asyncio
+import httpx
 from app.wallet.utils import record_wallet_transaction
-from app.rent.utils.calculate_price import get_open_price, calc_required_balance
+from app.rent.utils.calculate_price import get_open_price, calc_required_balance, calculate_total_price
+from app.core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2
 from app.models.application_model import Application
 from app.models.history_model import RentalHistory
 from app.models.wallet_transaction_model import WalletTransaction
@@ -62,6 +65,10 @@ from app.utils.action_logger import log_action
 from app.models.action_log_model import ActionLog
 
 users_router = APIRouter(tags=["Admin Users"])
+
+# Константы для расчета топлива
+FUEL_PRICE_PER_LITER = 400
+ELECTRIC_FUEL_PRICE_PER_LITER = 100
 
 
 def recalculate_transactions_after(
@@ -538,8 +545,11 @@ async def get_users_list(
     is_blocked: Optional[bool] = Query(None, description="Фильтр по заблокированным пользователям"),
     mvd_approved: Optional[bool] = Query(None, description="Фильтр по МВД одобрению"),
     car_status: Optional[str] = Query(None, description="Фильтр по статусу авто"),
-    auto_class: Optional[List[str]] = Query(None, description="Фильтр по классу авто (A, B, C)"),
-    balance_filter: Optional[str] = Query(None, description="Фильтр по балансу (positive, negative)"),
+    auto_class: Optional[List[str]] = Query(None, description="Фильтр по классу авто (A, B, C, AB, ABC)"),
+    balance_filter: Optional[str] = Query(None, description="Фильтр по балансу (positive - все у кого есть деньги, negative - все у кого долг)"),
+    documents_verified: Optional[bool] = Query(None, description="Фильтр по проверке документов"),
+    is_active: Optional[bool] = Query(None, description="Фильтр по активности пользователя"),
+    is_verified_email: Optional[bool] = Query(None, description="Фильтр по подтверждению email"),
 
     page: int = Query(1, ge=1, description="Номер страницы"),
     limit: int = Query(50, ge=1, le=200, description="Количество элементов на странице"),
@@ -612,13 +622,60 @@ async def get_users_list(
         query = query.filter(User.is_blocked == is_blocked)
 
     if auto_class:
-        query = query.filter(User.auto_class.overlap(auto_class))
+        # Обработка комбинаций типа AB, ABC
+        # Если передано ["AB"], разбиваем на ["A", "B"]
+        # Если передано ["A", "B"], ищем пользователей, у которых есть все указанные классы
+        processed_classes = []
+        for class_item in auto_class:
+            if len(class_item) > 1:  # Комбинация типа AB, ABC
+                processed_classes.extend(list(class_item))
+            else:
+                processed_classes.append(class_item)
+        
+        # Убираем дубликаты и приводим к верхнему регистру
+        processed_classes = list(set(c.upper() for c in processed_classes))
+        
+        # Фильтруем пользователей, у которых есть все указанные классы
+        for class_name in processed_classes:
+            query = query.filter(User.auto_class.contains([class_name]))
 
     if balance_filter:
         if balance_filter == "positive":
             query = query.filter(User.wallet_balance > 0)
         elif balance_filter == "negative":
             query = query.filter(User.wallet_balance < 0)
+    
+    if documents_verified is not None:
+        query = query.filter(User.documents_verified == documents_verified)
+    
+    if is_active is not None:
+        query = query.filter(User.is_active == is_active)
+    
+    if is_verified_email is not None:
+        query = query.filter(User.is_verified_email == is_verified_email)
+    
+    # Фильтр по МВД одобрению
+    if mvd_approved is not None:
+        if mvd_approved:
+            # Одобренные: либо роль USER, либо есть Application с APPROVED статусом
+            mvd_approved_condition = or_(
+                User.role == UserRole.USER,
+                and_(
+                    Application.user_id == User.id,
+                    Application.mvd_status == ApplicationStatus.APPROVED
+                )
+            )
+            query = query.outerjoin(Application, Application.user_id == User.id).filter(mvd_approved_condition)
+        else:
+            # Не одобренные: роль не USER и нет Application с APPROVED статусом
+            mvd_not_approved_condition = and_(
+                User.role != UserRole.USER,
+                or_(
+                    Application.id.is_(None),
+                    Application.mvd_status != ApplicationStatus.APPROVED
+                )
+            )
+            query = query.outerjoin(Application, Application.user_id == User.id).filter(mvd_not_approved_condition)
     
     query = query.filter(User.is_deleted == False)
     
@@ -649,13 +706,58 @@ async def get_users_list(
         count_query = count_query.filter(User.is_blocked == is_blocked)
     
     if auto_class:
-        count_query = count_query.filter(User.auto_class.overlap(auto_class))
+        # Обработка комбинаций типа AB, ABC (та же логика, что и в query)
+        processed_classes = []
+        for class_item in auto_class:
+            if len(class_item) > 1:  # Комбинация типа AB, ABC
+                processed_classes.extend(list(class_item))
+            else:
+                processed_classes.append(class_item)
+        
+        # Убираем дубликаты и приводим к верхнему регистру
+        processed_classes = list(set(c.upper() for c in processed_classes))
+        
+        # Фильтруем пользователей, у которых есть все указанные классы
+        for class_name in processed_classes:
+            count_query = count_query.filter(User.auto_class.contains([class_name]))
 
     if balance_filter:
         if balance_filter == "positive":
             count_query = count_query.filter(User.wallet_balance > 0)
         elif balance_filter == "negative":
             count_query = count_query.filter(User.wallet_balance < 0)
+    
+    if documents_verified is not None:
+        count_query = count_query.filter(User.documents_verified == documents_verified)
+    
+    if is_active is not None:
+        count_query = count_query.filter(User.is_active == is_active)
+    
+    if is_verified_email is not None:
+        count_query = count_query.filter(User.is_verified_email == is_verified_email)
+    
+    # Фильтр по МВД одобрению для count_query
+    if mvd_approved is not None:
+        if mvd_approved:
+            # Одобренные: либо роль USER, либо есть Application с APPROVED статусом
+            mvd_approved_condition = or_(
+                User.role == UserRole.USER,
+                and_(
+                    Application.user_id == User.id,
+                    Application.mvd_status == ApplicationStatus.APPROVED
+                )
+            )
+            count_query = count_query.outerjoin(Application, Application.user_id == User.id).filter(mvd_approved_condition)
+        else:
+            # Не одобренные: роль не USER и нет Application с APPROVED статусом
+            mvd_not_approved_condition = and_(
+                User.role != UserRole.USER,
+                or_(
+                    Application.id.is_(None),
+                    Application.mvd_status != ApplicationStatus.APPROVED
+                )
+            )
+            count_query = count_query.outerjoin(Application, Application.user_id == User.id).filter(mvd_not_approved_condition)
     
     count_query = count_query.filter(User.is_deleted == False)
     
@@ -695,15 +797,7 @@ async def get_users_list(
             continue
         seen_user_ids.add(user.id)
         
-        if mvd_approved is not None:
-            if user.role == UserRole.USER:
-                user_mvd_approved = True
-            else:
-                application = db.query(Application).filter(Application.user_id == user.id).first()
-                user_mvd_approved = application and application.mvd_status == ApplicationStatus.APPROVED
-            
-            if user_mvd_approved != mvd_approved:
-                continue
+        # Фильтр mvd_approved теперь применяется в query, поэтому здесь не нужен
         
         current_car = None
         if car_id and car_name:
@@ -991,6 +1085,7 @@ async def get_user_transactions_grouped(
     Транзакции с одинаковым rental_id группируются в одну аренду (как в /admin/rentals/completed),
     а транзакции без rental_id или с уникальным rental_id показываются отдельно.
     """
+    from datetime import datetime
     from sqlalchemy.orm import joinedload
     from app.models.history_model import RentalHistory, RentalStatus
     from app.models.car_model import Car, CarBodyType
@@ -1005,11 +1100,19 @@ async def get_user_transactions_grouped(
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
-    # Получаем все транзакции пользователя
+    # Получаем все транзакции пользователя с сортировкой по created_at и id для стабильности
     all_transactions = (
         db.query(WalletTransaction)
         .filter(WalletTransaction.user_id == user.id)
-        .order_by(desc(WalletTransaction.created_at))
+        .order_by(desc(WalletTransaction.created_at), desc(WalletTransaction.id))
+        .all()
+    )
+    
+    # Получаем все аренды пользователя
+    all_user_rentals = (
+        db.query(RentalHistory)
+        .options(joinedload(RentalHistory.car), joinedload(RentalHistory.user))
+        .filter(RentalHistory.user_id == user.id)
         .all()
     )
     
@@ -1024,19 +1127,99 @@ async def get_user_transactions_grouped(
         else:
             standalone_transactions.append(tx)
     
+    # Для каждой аренды добавляем транзакции по временному диапазону с проверкой цепочки балансов
+    for rental in all_user_rentals:
+        if rental.id not in rental_transactions:
+            rental_transactions[rental.id] = []
+        
+        # Определяем временной диапазон аренды
+        start_bound = rental.reservation_time if rental.reservation_time else rental.start_time
+        end_bound = rental.end_time
+        
+        if start_bound and end_bound:
+            # Ищем транзакции в этом диапазоне
+            transactions_in_range = []
+            for tx in standalone_transactions:
+                if tx.created_at and start_bound <= tx.created_at <= end_bound:
+                    transactions_in_range.append(tx)
+            
+            # Если есть транзакции в диапазоне
+            if transactions_in_range:
+                # Если у аренды уже есть транзакции, проверяем цепочку балансов
+                if rental_transactions[rental.id]:
+                    all_rental_txs = list(rental_transactions[rental.id])
+                    
+                    for tx in transactions_in_range:
+                        # Проверяем, вписывается ли транзакция в цепочку балансов
+                        can_add = False
+                        
+                        # Проверяем наличие balance_before и balance_after
+                        if tx.balance_before is None or tx.balance_after is None:
+                            continue
+                        
+                        # Ищем место, куда можно вставить транзакцию
+                        for i, existing_tx in enumerate(all_rental_txs):
+                            if existing_tx.balance_before is None or existing_tx.balance_after is None:
+                                continue
+                            
+                            # Проверяем, может ли tx идти перед existing_tx
+                            if tx.created_at and existing_tx.created_at and tx.created_at <= existing_tx.created_at:
+                                if i == 0:
+                                    # tx будет первой - проверяем только balance_after tx == balance_before existing_tx
+                                    if abs(float(tx.balance_after) - float(existing_tx.balance_before)) < 0.01:
+                                        can_add = True
+                                        break
+                                else:
+                                    # tx между предыдущей и текущей
+                                    prev_tx = all_rental_txs[i - 1]
+                                    if prev_tx.balance_after is not None and prev_tx.balance_before is not None:
+                                        if (abs(float(prev_tx.balance_after) - float(tx.balance_before)) < 0.01 and 
+                                            abs(float(tx.balance_after) - float(existing_tx.balance_before)) < 0.01):
+                                            can_add = True
+                                            break
+                        
+                        # Или tx может быть последней
+                        if not can_add and all_rental_txs:
+                            last_tx = all_rental_txs[-1]
+                            if (last_tx.balance_after is not None and 
+                                tx.created_at and last_tx.created_at and 
+                                tx.created_at >= last_tx.created_at):
+                                if abs(float(last_tx.balance_after) - float(tx.balance_before)) < 0.01:
+                                    can_add = True
+                        
+                        # Если транзакция вписывается в цепочку, добавляем её
+                        if can_add:
+                            rental_transactions[rental.id].append(tx)
+                            all_rental_txs = list(rental_transactions[rental.id])
+    
+    # Убираем из standalone те транзакции, которые были добавлены к арендам
+    used_tx_ids = set()
+    for transactions in rental_transactions.values():
+        for tx in transactions:
+            used_tx_ids.add(tx.id)
+    
+    standalone_transactions = [tx for tx in standalone_transactions if tx.id not in used_tx_ids]
+    
     # Создаем список всех элементов (аренды и отдельные транзакции)
     all_items = []
     
     # Добавляем аренды
     for rental_id, transactions in rental_transactions.items():
-        rental = (
-            db.query(RentalHistory)
-            .options(joinedload(RentalHistory.car), joinedload(RentalHistory.user))
-            .filter(RentalHistory.id == rental_id)
-            .first()
-        )
+        rental = None
+        for r in all_user_rentals:
+            if r.id == rental_id:
+                rental = r
+                break
         
-        if rental:
+        if not rental:
+            rental = (
+                db.query(RentalHistory)
+                .options(joinedload(RentalHistory.car), joinedload(RentalHistory.user))
+                .filter(RentalHistory.id == rental_id)
+                .first()
+            )
+        
+        if rental and transactions:
             car = rental.car
             renter = rental.user
             
@@ -1121,9 +1304,13 @@ async def get_user_transactions_grouped(
             overtime_fee_owner = int((rental.overtime_fee or 0) * 0.5 * 0.97)
             total_owner_earnings = int(((rental.base_price or 0) + (rental.waiting_fee or 0) + (rental.overtime_fee or 0)) * 0.5 * 0.97)
             
-            # Строим список транзакций
+            # Строим список транзакций с правильной сортировкой по created_at и id
             transactions_list = []
-            for tx in sorted(transactions, key=lambda x: x.created_at):
+            sorted_transactions = sorted(
+                transactions, 
+                key=lambda x: (x.created_at or datetime.min, x.id or '')
+            )
+            for tx in sorted_transactions:
                 transactions_list.append({
                     "id": uuid_to_sid(tx.id),
                     "amount": float(tx.amount),
@@ -1135,6 +1322,12 @@ async def get_user_transactions_grouped(
                     "created_at": tx.created_at.isoformat() if tx.created_at else None,
                     "related_rental_id": uuid_to_sid(tx.related_rental_id) if tx.related_rental_id else None,
                 })
+            
+            # Получаем balance_before из первой транзакции и balance_after из последней
+            first_tx = sorted_transactions[0] if sorted_transactions else None
+            last_tx = sorted_transactions[-1] if sorted_transactions else None
+            rental_balance_before = float(first_tx.balance_before) if first_tx and first_tx.balance_before is not None else 0.0
+            rental_balance_after = float(last_tx.balance_after) if last_tx and last_tx.balance_after is not None else 0.0
             
             # Формируем объект аренды
             rental_data = {
@@ -1167,15 +1360,28 @@ async def get_user_transactions_grouped(
                 "fuel_after": float(rental.fuel_after) if rental.fuel_after is not None else None,
                 "renter": renter_info,
                 "transactions": transactions_list,
+                "balance_before": rental_balance_before,
+                "balance_after": rental_balance_after,
             }
             
             # Используем самую раннюю дату транзакции аренды для сортировки
-            earliest_tx = min(transactions, key=lambda x: x.created_at)
+            # Если нет транзакций, используем reservation_time или start_time аренды
+            # Сортируем по created_at и id для стабильности при одинаковых временах
+            if transactions:
+                earliest_tx = min(
+                    transactions, 
+                    key=lambda x: (x.created_at or datetime.max, x.id or '')
+                )
+                sort_date = earliest_tx.created_at
+            else:
+                sort_date = rental.reservation_time if rental.reservation_time else rental.start_time
+            
             all_items.append({
                 "type": "rental",
-                "created_at": earliest_tx.created_at,
+                "created_at": sort_date,
                 "rental": rental_data,
-                "transaction": None
+                "transaction": None,
+                "sort_id": rental.id
             })
     
     # Добавляем отдельные транзакции
@@ -1195,11 +1401,16 @@ async def get_user_transactions_grouped(
             "type": "transaction",
             "created_at": tx.created_at,
             "transaction": WalletTransactionSchema(**tx_data),
-            "rental": None
+            "rental": None,
+            "sort_id": tx.id
         })
     
-    # Сортируем все элементы по дате (самые новые сначала)
-    all_items.sort(key=lambda x: x["created_at"], reverse=True)
+    # Сортируем все элементы по дате (самые новые сначала) с учетом id для стабильности
+    # Используем кортеж (created_at, sort_id) для стабильной сортировки при одинаковых временах
+    all_items.sort(key=lambda x: (
+        x["created_at"] if x["created_at"] else datetime.min,
+        x.get("sort_id", "")
+    ), reverse=True)
     
     # Применяем пагинацию
     total_count = len(all_items)
@@ -1207,10 +1418,11 @@ async def get_user_transactions_grouped(
     end_idx = start_idx + limit
     paginated_items = all_items[start_idx:end_idx]
     
-    # Формируем финальный список
+    # Формируем финальный список (удаляем sort_id перед созданием схемы)
     result_items = []
     for item in paginated_items:
-        result_items.append(GroupedTransactionItemSchema(**item))
+        item_copy = {k: v for k, v in item.items() if k != "sort_id"}
+        result_items.append(GroupedTransactionItemSchema(**item_copy))
     
     return {
         "items": result_items,
@@ -1591,7 +1803,7 @@ async def update_trip_details(
     def set_datetime(field_name: str, value: Optional[str]):
         if value and value.strip():
             try:
-                update_data[field_name] = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+                update_data[field_name] = parse_datetime_to_local(value.strip())
             except ValueError:
                 pass
     
@@ -2019,6 +2231,23 @@ async def admin_start_rental(
         
         if active_rental.rental_status == RentalStatus.RESERVED and active_rental.car_id == car_uuid:
             is_owner = (car.owner_id == target_user_uuid)
+            
+            # Рассчитываем base_price для часового/суточного тарифа
+            base_price = 0
+            if rental_type_enum == RentalType.MINUTES:
+                base_price = 0
+            elif rental_type_enum == RentalType.HOURS:
+                if parsed_duration is None:
+                    raise HTTPException(status_code=400, detail="Duration обязателен для аренды по часам")
+                base_price = calculate_total_price(rental_type_enum, parsed_duration, car.price_per_hour or 0, car.price_per_day or 0)
+            elif rental_type_enum == RentalType.DAYS:
+                if parsed_duration is None:
+                    raise HTTPException(status_code=400, detail="Duration обязателен для посуточной аренды")
+                base_price = calculate_total_price(rental_type_enum, parsed_duration, car.price_per_hour or 0, car.price_per_day or 0)
+            
+            # Рассчитываем open_fee используя get_open_price
+            open_fee_value = get_open_price(car) if rental_type_enum in [RentalType.MINUTES, RentalType.HOURS] else 0
+            
             required_balance = calc_required_balance(
                 rental_type=rental_type_enum,
                 duration=parsed_duration,
@@ -2044,6 +2273,9 @@ async def admin_start_rental(
             existing_rental.start_time = get_local_time()
             existing_rental.start_latitude = car.latitude
             existing_rental.start_longitude = car.longitude
+            existing_rental.base_price = base_price
+            existing_rental.open_fee = open_fee_value
+            existing_rental.total_price = base_price + open_fee_value + (existing_rental.delivery_fee or 0)
             
             photos_before = list(existing_rental.photos_before or [])
             if filtered_selfie:
@@ -2056,6 +2288,69 @@ async def admin_start_rental(
                 interior_url = await save_file(photo, existing_rental.id, f"uploads/rents/{existing_rental.id}/before/interior/")
                 photos_before.append(interior_url)
             existing_rental.photos_before = photos_before
+            existing_rental.fuel_before = car.fuel_level
+            existing_rental.mileage_before = car.mileage
+            
+            # Списываем деньги с кошелька пользователя
+            total_charged = 0
+            balance_before = float(target_user.wallet_balance or 0)
+            
+            if not is_owner:
+                if rental_type_enum in [RentalType.HOURS, RentalType.DAYS]:
+                    # 1. Базовая стоимость аренды
+                    if base_price > 0:
+                        record_wallet_transaction(
+                            db,
+                            user=target_user,
+                            amount=-base_price,
+                            ttype=WalletTransactionType.RENT_BASE_CHARGE,
+                            description=f"Оплата аренды: {parsed_duration} {'час(ов)' if rental_type_enum == RentalType.HOURS else 'день(дней)'}",
+                            related_rental=existing_rental,
+                            balance_before_override=balance_before
+                        )
+                        target_user.wallet_balance -= base_price
+                        total_charged += base_price
+                        balance_before = float(target_user.wallet_balance)
+                    
+                    # 2. Открытие дверей (только для часового тарифа)
+                    if open_fee_value > 0:
+                        record_wallet_transaction(
+                            db,
+                            user=target_user,
+                            amount=-open_fee_value,
+                            ttype=WalletTransactionType.RENT_BASE_CHARGE,
+                            description="Оплата открытия дверей",
+                            related_rental=existing_rental,
+                            balance_before_override=balance_before
+                        )
+                        target_user.wallet_balance -= open_fee_value
+                        total_charged += open_fee_value
+                elif rental_type_enum == RentalType.MINUTES:
+                    # Для поминутного тарифа списываем только open_fee
+                    if open_fee_value > 0:
+                        record_wallet_transaction(
+                            db,
+                            user=target_user,
+                            amount=-open_fee_value,
+                            ttype=WalletTransactionType.RENT_BASE_CHARGE,
+                            description="Оплата открытия дверей",
+                            related_rental=existing_rental,
+                            balance_before_override=balance_before
+                        )
+                        target_user.wallet_balance -= open_fee_value
+                        total_charged += open_fee_value
+                
+                # Обновляем already_payed
+                if target_user.wallet_balance >= 0:
+                    existing_rental.already_payed = total_charged + (existing_rental.already_payed or 0)
+                else:
+                    existing_rental.already_payed = existing_rental.already_payed or 0
+            else:
+                # Для владельца все бесплатно
+                existing_rental.base_price = 0
+                existing_rental.open_fee = 0
+                existing_rental.total_price = 0
+                existing_rental.already_payed = 0
             
             car.status = CarStatus.IN_USE
             car.current_renter_id = target_user_uuid
@@ -2063,6 +2358,52 @@ async def admin_start_rental(
             
             db.commit()
             db.refresh(existing_rental)
+            
+            # Отправляем уведомление в Telegram на оба бота о начале аренды
+            try:
+                name_parts = []
+                if target_user.first_name:
+                    name_parts.append(target_user.first_name)
+                if target_user.middle_name:
+                    name_parts.append(target_user.middle_name)
+                if target_user.last_name:
+                    name_parts.append(target_user.last_name)
+                full_name = " ".join(name_parts) if name_parts else "Не указано"
+                
+                notification_text = (
+                    f"Начало аренды\n\n"
+                    f"Клиент: {full_name}\n"
+                    f"Телефон: {target_user.phone_number or 'Не указан'}\n"
+                    f"Машина: {car.name}\n"
+                    f"Гос. номер: {car.plate_number or 'Не указан'}\n"
+                    f"Тип аренды: {rental_type_enum.value}\n"
+                    f"ID аренды: {uuid_to_sid(existing_rental.id)}\n"
+                    f"Запущено администратором: {current_user.first_name or 'Admin'}"
+                )
+                
+                async def _send_telegram_notification(text: str, chat_id: int, bot_token: str):
+                    try:
+                        async with httpx.AsyncClient() as client:
+                            await client.post(
+                                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                                json={"chat_id": chat_id, "text": text}
+                            )
+                    except Exception as e:
+                        print(f"Ошибка отправки Telegram уведомления в {chat_id}: {e}")
+                
+                # Список чатов для уведомлений
+                chat_ids = [965048905, 5941825713, 860991388, 1594112444, 808277096, 7656716395, 964255811, 8522837235, 797693964]
+                
+                if TELEGRAM_BOT_TOKEN:
+                    for chat_id in chat_ids:
+                        asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN))
+                
+                if TELEGRAM_BOT_TOKEN_2:
+                    for chat_id in chat_ids:
+                        asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN_2))
+                        
+            except Exception as e:
+                print(f"Не удалось отправить Telegram уведомление о начале аренды: {e}")
             
             asyncio.create_task(notify_user_status_update(str(target_user.id)))
             
@@ -2075,7 +2416,11 @@ async def admin_start_rental(
                 "rental_type": existing_rental.rental_type.value,
                 "rental_status": existing_rental.rental_status.value,
                 "start_time": existing_rental.start_time.isoformat(),
+                "open_fee": open_fee_value,
+                "base_price": base_price,
+                "total_charged": total_charged,
                 "photos_count": len(photos_before),
+                "new_balance": float(target_user.wallet_balance),
                 "started_by_admin": uuid_to_sid(current_user.id)
             }
         
@@ -2083,9 +2428,23 @@ async def admin_start_rental(
             active_rental.rental_status = RentalStatus.CANCELLED
             active_rental.end_time = get_local_time()
     
-    open_fee = get_open_price(car)
-    
     is_owner = (car.owner_id == target_user_uuid)
+    
+    # Рассчитываем base_price для часового/суточного тарифа
+    base_price = 0
+    if rental_type_enum == RentalType.MINUTES:
+        base_price = 0  # Для поминутного тарифа base_price = 0
+    elif rental_type_enum == RentalType.HOURS:
+        if parsed_duration is None:
+            raise HTTPException(status_code=400, detail="Duration обязателен для аренды по часам")
+        base_price = calculate_total_price(rental_type_enum, parsed_duration, car.price_per_hour or 0, car.price_per_day or 0)
+    elif rental_type_enum == RentalType.DAYS:
+        if parsed_duration is None:
+            raise HTTPException(status_code=400, detail="Duration обязателен для посуточной аренды")
+        base_price = calculate_total_price(rental_type_enum, parsed_duration, car.price_per_hour or 0, car.price_per_day or 0)
+    
+    # Рассчитываем open_fee используя get_open_price
+    open_fee_value = get_open_price(car) if rental_type_enum in [RentalType.MINUTES, RentalType.HOURS] else 0
     
     required_balance = calc_required_balance(
         rental_type=rental_type_enum,
@@ -2114,10 +2473,14 @@ async def admin_start_rental(
         start_time=get_local_time(),
         start_latitude=car.latitude,
         start_longitude=car.longitude,
-        open_fee=open_fee,
-        already_payed=open_fee,
-        base_price=0,
-        total_price=open_fee
+        open_fee=open_fee_value,
+        base_price=base_price,
+        delivery_fee=0,
+        waiting_fee=0,
+        overtime_fee=0,
+        distance_fee=0,
+        total_price=base_price + open_fee_value,
+        already_payed=0
     )
     db.add(new_rental)
     db.flush()
@@ -2137,19 +2500,70 @@ async def admin_start_rental(
         photos_before.append(interior_url)
     
     new_rental.photos_before = photos_before
+    new_rental.fuel_before = car.fuel_level
+    new_rental.mileage_before = car.mileage
     
+    # Списываем деньги с кошелька пользователя
+    total_charged = 0
     balance_before = float(target_user.wallet_balance or 0)
-    target_user.wallet_balance = balance_before - open_fee
     
-    record_wallet_transaction(
-        db,
-        user=target_user,
-        amount=-open_fee,
-        ttype=WalletTransactionType.RENT_OPEN_FEE,
-        description=f"Открытие авто",
-        related_rental=new_rental,
-        balance_before_override=balance_before
-    )
+    if not is_owner:
+        # Для владельца ничего не списываем
+        if rental_type_enum in [RentalType.HOURS, RentalType.DAYS]:
+            # 1. Базовая стоимость аренды
+            if base_price > 0:
+                record_wallet_transaction(
+                    db,
+                    user=target_user,
+                    amount=-base_price,
+                    ttype=WalletTransactionType.RENT_BASE_CHARGE,
+                    description=f"Оплата аренды: {parsed_duration} {'час(ов)' if rental_type_enum == RentalType.HOURS else 'день(дней)'}",
+                    related_rental=new_rental,
+                    balance_before_override=balance_before
+                )
+                target_user.wallet_balance -= base_price
+                total_charged += base_price
+                balance_before = float(target_user.wallet_balance)
+            
+            # 2. Открытие дверей (только для часового тарифа)
+            if open_fee_value > 0:
+                record_wallet_transaction(
+                    db,
+                    user=target_user,
+                    amount=-open_fee_value,
+                    ttype=WalletTransactionType.RENT_BASE_CHARGE,
+                    description="Оплата открытия дверей",
+                    related_rental=new_rental,
+                    balance_before_override=balance_before
+                )
+                target_user.wallet_balance -= open_fee_value
+                total_charged += open_fee_value
+        elif rental_type_enum == RentalType.MINUTES:
+            # Для поминутного тарифа списываем только open_fee
+            if open_fee_value > 0:
+                record_wallet_transaction(
+                    db,
+                    user=target_user,
+                    amount=-open_fee_value,
+                    ttype=WalletTransactionType.RENT_BASE_CHARGE,
+                    description="Оплата открытия дверей",
+                    related_rental=new_rental,
+                    balance_before_override=balance_before
+                )
+                target_user.wallet_balance -= open_fee_value
+                total_charged += open_fee_value
+        
+        # Обновляем already_payed
+        if target_user.wallet_balance >= 0:
+            new_rental.already_payed = total_charged
+        else:
+            new_rental.already_payed = 0
+    else:
+        # Для владельца все бесплатно
+        new_rental.base_price = 0
+        new_rental.open_fee = 0
+        new_rental.total_price = 0
+        new_rental.already_payed = 0
     
     car.status = CarStatus.IN_USE
     car.current_renter_id = target_user_uuid
@@ -2167,12 +2581,59 @@ async def admin_start_rental(
         details={
             "user_id": target_user_uuid,
             "car_id": car_uuid,
-            "open_fee": open_fee,
+            "open_fee": open_fee_value,
+            "base_price": base_price,
             "rental_type": new_rental.rental_type.value
         }
     )
     db.commit()
     db.refresh(new_rental)
+    
+    # Отправляем уведомление в Telegram на оба бота о начале аренды
+    try:
+        name_parts = []
+        if target_user.first_name:
+            name_parts.append(target_user.first_name)
+        if target_user.middle_name:
+            name_parts.append(target_user.middle_name)
+        if target_user.last_name:
+            name_parts.append(target_user.last_name)
+        full_name = " ".join(name_parts) if name_parts else "Не указано"
+        
+        notification_text = (
+            f"Начало аренды\n\n"
+            f"Клиент: {full_name}\n"
+            f"Телефон: {target_user.phone_number or 'Не указан'}\n"
+            f"Машина: {car.name}\n"
+            f"Гос. номер: {car.plate_number or 'Не указан'}\n"
+            f"Тип аренды: {rental_type_enum.value}\n"
+            f"ID аренды: {uuid_to_sid(new_rental.id)}\n"
+            f"Запущено администратором: {current_user.first_name or 'Admin'}"
+        )
+        
+        async def _send_telegram_notification(text: str, chat_id: int, bot_token: str):
+            try:
+                async with httpx.AsyncClient() as client:
+                    await client.post(
+                        f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                        json={"chat_id": chat_id, "text": text}
+                    )
+            except Exception as e:
+                print(f"Ошибка отправки Telegram уведомления в {chat_id}: {e}")
+        
+        # Список чатов для уведомлений
+        chat_ids = [965048905, 5941825713, 860991388, 1594112444, 808277096, 7656716395, 964255811, 8522837235, 797693964]
+        
+        if TELEGRAM_BOT_TOKEN:
+            for chat_id in chat_ids:
+                asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN))
+        
+        if TELEGRAM_BOT_TOKEN_2:
+            for chat_id in chat_ids:
+                asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN_2))
+                
+    except Exception as e:
+        print(f"Не удалось отправить Telegram уведомление о начале аренды: {e}")
     
     asyncio.create_task(notify_user_status_update(str(target_user.id)))
     
@@ -2184,7 +2645,9 @@ async def admin_start_rental(
         "rental_type": new_rental.rental_type.value,
         "rental_status": new_rental.rental_status.value,
         "start_time": new_rental.start_time.isoformat(),
-        "open_fee": open_fee,
+        "open_fee": open_fee_value,
+        "base_price": base_price,
+        "total_charged": total_charged,
         "photos_count": len(photos_before),
         "new_balance": float(target_user.wallet_balance),
         "started_by_admin": uuid_to_sid(current_user.id)
@@ -2999,7 +3462,7 @@ async def set_user_balance(
             user_id=user_uuid,
             amount=diff,
             transaction_type=WalletTransactionType.MANUAL_ADJUSTMENT,
-            description=description or f"Корректировка баланса администратором ({current_user.phone_number})",
+            description=description or f"Пересчёт",
             balance_before=old_balance,
             balance_after=new_balance
         )
@@ -3030,6 +3493,97 @@ async def set_user_balance(
         "new_balance": new_balance,
         "difference": diff,
         "description": description
+    }
+
+
+@users_router.post("/{user_id}/balance/recalculate")
+async def recalculate_user_balance(
+    user_id: str,
+    initial_balance: Optional[float] = Form(0.0, description="Начальный баланс перед первой транзакцией (по умолчанию 0)"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Пересчёт балансов всех транзакций пользователя.
+    
+    Пересчитывает balance_before и balance_after для всех транзакций пользователя,
+    начиная с первой транзакции. Устанавливает правильную последовательность балансов.
+    После пересчёта обновляет финальный баланс пользователя.
+    
+    Алгоритм:
+    1. Получает все транзакции пользователя, отсортированные по created_at
+    2. Начинает с initial_balance (по умолчанию 0)
+    3. Для каждой транзакции:
+       - balance_before = баланс после предыдущей транзакции (или initial_balance для первой)
+       - balance_after = balance_before + amount
+    4. Обновляет все транзакции
+    5. Обновляет wallet_balance пользователя на balance_after последней транзакции
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав. Только ADMIN может пересчитывать балансы.")
+    
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    # Получаем все транзакции пользователя, отсортированные по времени создания
+    all_transactions = (
+        db.query(WalletTransaction)
+        .filter(WalletTransaction.user_id == user_uuid)
+        .order_by(WalletTransaction.created_at.asc())
+        .all()
+    )
+    
+    if not all_transactions:
+        raise HTTPException(status_code=400, detail="У пользователя нет транзакций для пересчёта")
+    
+    # Сохраняем старый баланс для логирования
+    old_balance = float(user.wallet_balance or 0)
+    
+    # Начинаем пересчёт с начального баланса
+    running_balance = float(initial_balance or 0)
+    
+    # Пересчитываем каждую транзакцию
+    updated_count = 0
+    for tx in all_transactions:
+        tx.balance_before = running_balance
+        tx.balance_after = running_balance + float(tx.amount)
+        running_balance = tx.balance_after
+        updated_count += 1
+    
+    # Обновляем финальный баланс пользователя
+    new_balance = running_balance
+    user.wallet_balance = new_balance
+    
+    # Логируем действие
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="balance_recalculate",
+        entity_type="user",
+        entity_id=user.id,
+        details={
+            "user_id": user_id,
+            "initial_balance": initial_balance,
+            "old_balance": old_balance,
+            "new_balance": new_balance,
+            "transactions_count": updated_count,
+            "balance_difference": new_balance - old_balance
+        }
+    )
+    
+    db.commit()
+    
+    return {
+        "success": True,
+        "message": "Балансы транзакций успешно пересчитаны",
+        "user_id": uuid_to_sid(user_uuid),
+        "initial_balance": initial_balance,
+        "old_balance": old_balance,
+        "new_balance": new_balance,
+        "balance_difference": new_balance - old_balance,
+        "transactions_updated": updated_count
     }
 
 
@@ -4268,21 +4822,13 @@ async def admin_upload_photos_before(
         }
     except HTTPException:
         db.rollback()
-        for f in uploaded_files:
-            try:
-                if os.path.exists(f):
-                    os.remove(f)
-            except:
-                pass
+        # Удаляем загруженные файлы из MinIO
+        delete_uploaded_files(uploaded_files)
         raise
     except Exception as e:
         db.rollback()
-        for f in uploaded_files:
-            try:
-                if os.path.exists(f):
-                    os.remove(f)
-            except:
-                pass
+        # Удаляем загруженные файлы из MinIO
+        delete_uploaded_files(uploaded_files)
         raise HTTPException(status_code=500, detail=f"Ошибка при загрузке фотографий: {str(e)}")
 
 
@@ -4348,21 +4894,13 @@ async def admin_upload_photos_before_interior(
         }
     except HTTPException:
         db.rollback()
-        for f in uploaded_files:
-            try:
-                if os.path.exists(f):
-                    os.remove(f)
-            except:
-                pass
+        # Удаляем загруженные файлы из MinIO
+        delete_uploaded_files(uploaded_files)
         raise
     except Exception as e:
         db.rollback()
-        for f in uploaded_files:
-            try:
-                if os.path.exists(f):
-                    os.remove(f)
-            except:
-                pass
+        # Удаляем загруженные файлы из MinIO
+        delete_uploaded_files(uploaded_files)
         raise HTTPException(status_code=500, detail=f"Ошибка при загрузке фотографий салона: {str(e)}")
 
 
@@ -4436,21 +4974,13 @@ async def admin_upload_photos_after(
         }
     except HTTPException:
         db.rollback()
-        for f in uploaded_files:
-            try:
-                if os.path.exists(f):
-                    os.remove(f)
-            except:
-                pass
+        # Удаляем загруженные файлы из MinIO
+        delete_uploaded_files(uploaded_files)
         raise
     except Exception as e:
         db.rollback()
-        for f in uploaded_files:
-            try:
-                if os.path.exists(f):
-                    os.remove(f)
-            except:
-                pass
+        # Удаляем загруженные файлы из MinIO
+        delete_uploaded_files(uploaded_files)
         raise HTTPException(status_code=500, detail=f"Ошибка при загрузке фотографий: {str(e)}")
 
 
@@ -4514,21 +5044,13 @@ async def admin_upload_photos_after_car(
         }
     except HTTPException:
         db.rollback()
-        for f in uploaded_files:
-            try:
-                if os.path.exists(f):
-                    os.remove(f)
-            except:
-                pass
+        # Удаляем загруженные файлы из MinIO
+        delete_uploaded_files(uploaded_files)
         raise
     except Exception as e:
         db.rollback()
-        for f in uploaded_files:
-            try:
-                if os.path.exists(f):
-                    os.remove(f)
-            except:
-                pass
+        # Удаляем загруженные файлы из MinIO
+        delete_uploaded_files(uploaded_files)
         raise HTTPException(status_code=500, detail=f"Ошибка при загрузке фотографий кузова: {str(e)}")
 
 
@@ -4588,61 +5110,292 @@ async def admin_submit_rental_review(
             now = get_local_time()
             start_time = rental.start_time or rental.reservation_time
             
-            # Рассчитываем стоимость
+            # Рассчитываем фактическую длительность в минутах
             if start_time:
-                duration_minutes = int((now - start_time).total_seconds() / 60)
+                total_seconds = (now - start_time).total_seconds()
+                actual_minutes = total_seconds / 60
+                rounded_minutes = ceil(actual_minutes)
             else:
-                duration_minutes = 0
+                rounded_minutes = 0
+                actual_minutes = 0
+            
+            # Сохраняем оригинальное значение duration (часы/дни) до перезаписи
+            original_duration = rental.duration
             
             price_per_minute = car.price_per_minute or 0
             price_per_hour = car.price_per_hour or 0
             price_per_day = car.price_per_day or 0
             
-            rental_cost = 0
+            # Базовая плата по типу аренды
             if rental.rental_type == RentalType.MINUTES:
-                rental_cost = duration_minutes * price_per_minute
+                rental.base_price = rounded_minutes * price_per_minute
             elif rental.rental_type == RentalType.HOURS:
-                hours = max(1, (duration_minutes + 59) // 60)
-                rental_cost = hours * price_per_hour
-            elif rental.rental_type == RentalType.DAYS:
-                days = max(1, (duration_minutes + 1439) // 1440)
-                rental_cost = days * price_per_day
+                rental.base_price = original_duration * price_per_hour
+            else:  # DAYS
+                rental.base_price = original_duration * price_per_day
             
-            already_payed = float(rental.already_payed or 0)
-            open_fee = float(rental.open_fee or 0)
+            # Переработка (сверхтариф) для часов/дней
+            if rental.rental_type in (RentalType.HOURS, RentalType.DAYS):
+                planned_minutes = (
+                    original_duration * 60
+                    if rental.rental_type == RentalType.HOURS
+                    else original_duration * 24 * 60
+                )
+                overtime_mins = max(0, rounded_minutes - planned_minutes)
+                rental.overtime_fee = overtime_mins * price_per_minute
+            else:
+                rental.overtime_fee = 0
             
-            total_to_charge = max(0, rental_cost - already_payed + open_fee)
+            # Расчет платного ожидания (waiting_fee)
+            waiting_fee = 0
+            waiting_minutes = 0
+            extra_minutes = 0
             
-            # Списываем деньги с баланса
-            balance_before = float(user.wallet_balance or 0)
-            if total_to_charge > 0 and balance_before >= total_to_charge:
-                user.wallet_balance = balance_before - total_to_charge
+            if rental.reservation_time and rental.start_time:
+                waiting_seconds = (rental.start_time - rental.reservation_time).total_seconds()
+                waiting_minutes = waiting_seconds / 60
                 
-                record_wallet_transaction(
-                    db,
-                    user=user,
-                    amount=-total_to_charge,
-                    ttype=WalletTransactionType.RENT_BASE_CHARGE,
-                    description=f"Завершение аренды с отзывом",
-                    related_rental=rental,
-                    balance_before_override=balance_before
+                if waiting_minutes > 15:
+                    extra_minutes = ceil(waiting_minutes - 15)
+                    waiting_fee = int(extra_minutes * price_per_minute * 0.5)
+            
+            # Проверяем существующую транзакцию waiting_fee
+            existing_waiting_tx = db.query(WalletTransaction).filter(
+                WalletTransaction.related_rental_id == rental.id,
+                WalletTransaction.transaction_type == WalletTransactionType.RENT_WAITING_FEE
+            ).first()
+            
+            if waiting_fee > 0:
+                if existing_waiting_tx:
+                    already_charged_waiting = abs(existing_waiting_tx.amount) if existing_waiting_tx.amount else 0
+                    difference_waiting = waiting_fee - already_charged_waiting
+                    
+                    if abs(difference_waiting) > 0.01:
+                        if difference_waiting > 0 and user.wallet_balance >= difference_waiting:
+                            balance_before_waiting = float(user.wallet_balance)
+                            user.wallet_balance -= difference_waiting
+                            existing_waiting_tx.amount = -waiting_fee
+                            existing_waiting_tx.description = f"Платное ожидание {int(extra_minutes)} мин"
+                            existing_waiting_tx.balance_before = balance_before_waiting
+                            existing_waiting_tx.balance_after = float(user.wallet_balance)
+                        elif difference_waiting < 0:
+                            refund = abs(difference_waiting)
+                            balance_before_waiting = float(user.wallet_balance)
+                            user.wallet_balance += refund
+                            existing_waiting_tx.amount = -waiting_fee
+                            existing_waiting_tx.description = f"Платное ожидание {int(extra_minutes)} мин (перерасчёт)"
+                            existing_waiting_tx.balance_before = balance_before_waiting
+                            existing_waiting_tx.balance_after = float(user.wallet_balance)
+                else:
+                    if user.wallet_balance >= waiting_fee:
+                        balance_before_waiting = float(user.wallet_balance)
+                        user.wallet_balance -= waiting_fee
+                        waiting_tx = WalletTransaction(
+                            user_id=user.id,
+                            amount=-waiting_fee,
+                            transaction_type=WalletTransactionType.RENT_WAITING_FEE,
+                            description=f"Платное ожидание {int(extra_minutes)} мин",
+                            balance_before=balance_before_waiting,
+                            balance_after=float(user.wallet_balance),
+                            related_rental_id=rental.id,
+                            created_at=get_local_time()
+                        )
+                        db.add(waiting_tx)
+            
+            rental.waiting_fee = waiting_fee
+            
+            # Убедиться, что все сборы не None
+            rental.open_fee = rental.open_fee or 0
+            rental.delivery_fee = rental.delivery_fee or 0
+            rental.distance_fee = rental.distance_fee or 0
+            
+            # Расчет топлива (только для часового/суточного тарифа)
+            fuel_fee = 0
+            if rental.rental_type in (RentalType.HOURS, RentalType.DAYS):
+                existing_fuel_tx = db.query(WalletTransaction).filter(
+                    WalletTransaction.related_rental_id == rental.id,
+                    WalletTransaction.transaction_type == WalletTransactionType.RENT_FUEL_FEE
+                ).first()
+                
+                if existing_fuel_tx:
+                    fuel_fee = abs(existing_fuel_tx.amount)
+                elif rental.fuel_before is not None and rental.fuel_after is not None:
+                    if rental.fuel_after < rental.fuel_before:
+                        fuel_before_rounded = ceil(rental.fuel_before)
+                        fuel_after_rounded = floor(rental.fuel_after)
+                        fuel_consumed = fuel_before_rounded - fuel_after_rounded
+                        if fuel_consumed > 0:
+                            if car.body_type == CarBodyType.ELECTRIC:
+                                price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
+                            else:
+                                price_per_liter = FUEL_PRICE_PER_LITER
+                            fuel_fee = int(fuel_consumed * price_per_liter)
+                            
+                            if user.wallet_balance >= fuel_fee:
+                                balance_before_fuel = float(user.wallet_balance)
+                                user.wallet_balance -= fuel_fee
+                                fuel_tx = WalletTransaction(
+                                    user_id=user.id,
+                                    amount=-fuel_fee,
+                                    transaction_type=WalletTransactionType.RENT_FUEL_FEE,
+                                    description=f"Оплата топлива: {int(fuel_consumed)} л × {price_per_liter}₸ = {fuel_fee:,}₸" if car.body_type != CarBodyType.ELECTRIC else f"Оплата заряда: {int(fuel_consumed)}% × {price_per_liter}₸ = {fuel_fee:,}₸",
+                                    balance_before=balance_before_fuel,
+                                    balance_after=float(user.wallet_balance),
+                                    related_rental_id=rental.id,
+                                    created_at=get_local_time()
+                                )
+                                db.add(fuel_tx)
+            
+            # Проверка base_price для часового/суточного тарифа
+            if rental.rental_type in (RentalType.HOURS, RentalType.DAYS) and not (car.owner_id == user.id):
+                expected_base_price = rental.base_price
+                
+                # Ищем транзакцию base_price
+                base_charge_tx = None
+                actual_base_charged = 0
+                
+                for tx in db.query(WalletTransaction).filter(
+                    WalletTransaction.related_rental_id == rental.id,
+                    WalletTransaction.transaction_type == WalletTransactionType.RENT_BASE_CHARGE
+                ).all():
+                    desc = tx.description or ""
+                    if "оплат" in desc.lower() and "аренд" in desc.lower() and ("час" in desc.lower() or "день" in desc.lower()):
+                        actual_base_charged = abs(tx.amount) if tx.amount else 0
+                        base_charge_tx = tx
+                        break
+                
+                if abs(actual_base_charged - expected_base_price) > 0.01:
+                    difference_base = expected_base_price - actual_base_charged
+                    
+                    if base_charge_tx:
+                        balance_before_base = float(user.wallet_balance) + abs(base_charge_tx.amount)
+                        if balance_before_base >= expected_base_price:
+                            user.wallet_balance = balance_before_base - expected_base_price
+                            base_charge_tx.amount = -expected_base_price
+                            base_charge_tx.description = f"Оплата аренды: {original_duration} {'час(ов)' if rental.rental_type == RentalType.HOURS else 'день(дней)'} (перерасчёт)"
+                            base_charge_tx.balance_before = balance_before_base
+                            base_charge_tx.balance_after = float(user.wallet_balance)
+                    else:
+                        balance_before_base = float(user.wallet_balance)
+                        if balance_before_base >= expected_base_price:
+                            user.wallet_balance -= expected_base_price
+                            base_charge_tx = WalletTransaction(
+                                user_id=user.id,
+                                amount=-expected_base_price,
+                                transaction_type=WalletTransactionType.RENT_BASE_CHARGE,
+                                description=f"Оплата аренды: {original_duration} {'час(ов)' if rental.rental_type == RentalType.HOURS else 'день(дней)'}",
+                                balance_before=balance_before_base,
+                                balance_after=float(user.wallet_balance),
+                                related_rental_id=rental.id,
+                                created_at=get_local_time()
+                            )
+                            db.add(base_charge_tx)
+                    
+                    rental.base_price = expected_base_price
+            
+            # Проверка overtime_fee
+            if rental.rental_type in (RentalType.HOURS, RentalType.DAYS):
+                planned_minutes = (
+                    original_duration * 60 if rental.rental_type == RentalType.HOURS
+                    else original_duration * 24 * 60
                 )
                 
-                total_charged = total_to_charge
+                if rounded_minutes > planned_minutes:
+                    expected_overtime_minutes = int(rounded_minutes - planned_minutes)
+                    expected_overtime_cost = expected_overtime_minutes * price_per_minute
+                    
+                    overtime_tx = db.query(WalletTransaction).filter(
+                        WalletTransaction.related_rental_id == rental.id,
+                        WalletTransaction.transaction_type == WalletTransactionType.RENT_OVERTIME_FEE
+                    ).order_by(WalletTransaction.created_at.desc()).first()
+                    
+                    actual_overtime_charged = abs(overtime_tx.amount) if overtime_tx and overtime_tx.amount else 0
+                    
+                    if abs(actual_overtime_charged - expected_overtime_cost) > 0.01:
+                        difference_overtime = expected_overtime_cost - actual_overtime_charged
+                        
+                        if overtime_tx:
+                            balance_before_overtime = float(user.wallet_balance) + abs(overtime_tx.amount)
+                            if balance_before_overtime >= expected_overtime_cost:
+                                user.wallet_balance = balance_before_overtime - expected_overtime_cost
+                                overtime_tx.amount = -expected_overtime_cost
+                                overtime_tx.description = f"Сверхтариф {expected_overtime_minutes} мин (перерасчёт)"
+                                overtime_tx.balance_before = balance_before_overtime
+                                overtime_tx.balance_after = float(user.wallet_balance)
+                        else:
+                            balance_before_overtime = float(user.wallet_balance)
+                            if balance_before_overtime >= expected_overtime_cost:
+                                user.wallet_balance -= expected_overtime_cost
+                                overtime_tx = WalletTransaction(
+                                    user_id=user.id,
+                                    amount=-expected_overtime_cost,
+                                    transaction_type=WalletTransactionType.RENT_OVERTIME_FEE,
+                                    description=f"Сверхтариф {expected_overtime_minutes} мин",
+                                    balance_before=balance_before_overtime,
+                                    balance_after=float(user.wallet_balance),
+                                    related_rental_id=rental.id,
+                                    created_at=get_local_time()
+                                )
+                                db.add(overtime_tx)
+                        
+                        rental.overtime_fee = expected_overtime_cost
             
             # Обновляем статус аренды
             rental.end_time = now
             rental.end_latitude = car.latitude
             rental.end_longitude = car.longitude
             rental.rental_status = RentalStatus.COMPLETED
-            rental.total_price = int(rental_cost + open_fee)
-            rental.already_payed = already_payed + total_to_charge
+            rental.duration = rounded_minutes
+            
+            # Рассчитываем total_price и already_payed
+            if car.owner_id == user.id:
+                rental.base_price = 0
+                rental.open_fee = 0
+                rental.waiting_fee = 0
+                rental.overtime_fee = 0
+                rental.distance_fee = 0
+                rental.total_price = fuel_fee
+                rental.already_payed = 0
+            else:
+                total_price_without_fuel = (
+                    (rental.base_price or 0) +
+                    (rental.open_fee or 0) +
+                    (rental.delivery_fee or 0) +
+                    (rental.waiting_fee or 0) +
+                    (rental.overtime_fee or 0) +
+                    (rental.distance_fee or 0)
+                )
+                rental.total_price = total_price_without_fuel + fuel_fee
+                
+                if user.wallet_balance >= 0:
+                    if rental.rental_type in [RentalType.HOURS, RentalType.DAYS]:
+                        rental.already_payed = (
+                            (rental.base_price or 0) +
+                            (rental.open_fee or 0) +
+                            (rental.delivery_fee or 0) +
+                            (rental.waiting_fee or 0) +
+                            (rental.overtime_fee or 0) +
+                            fuel_fee
+                        )
+                    elif rental.rental_type == RentalType.MINUTES:
+                        rental.already_payed = (
+                            (rental.base_price or 0) +
+                            (rental.open_fee or 0) +
+                            (rental.delivery_fee or 0) +
+                            (rental.waiting_fee or 0) +
+                            (rental.distance_fee or 0) +
+                            (rental.driver_fee or 0)
+                        )
+                else:
+                    if rental.already_payed is None:
+                        rental.already_payed = 0
             
             # Машина переходит в статус PENDING (требуется проверка механиком)
             car.status = CarStatus.PENDING
             car.current_renter_id = None
             
             rental_completed = True
+            total_charged = rental.total_price  # Общая сумма аренды
             
             # Обновляем last_activity пользователя
             user.last_activity_at = now

@@ -279,7 +279,7 @@ def create_cars(db: Session, owner: User) -> None:
         {
             "name": "Li L7 Ultra",
             "gps_id": "800410477",
-            "gps_imei": "860803068133343",
+            "gps_imei": "860803068133657",
             "engine_volume": 0.0,
             "year": 2024,
             "drive_type": 3, 

@@ -13,7 +13,7 @@ from app.auth.dependencies.save_documents import save_file
 from app.models.user_model import User, UserRole
 from app.models.car_model import Car, CarStatus, CarBodyType, TransmissionType
 from app.models.car_comment_model import CarComment
-from app.models.history_model import RentalHistory, RentalStatus, RentalReview
+from app.models.history_model import RentalHistory, RentalStatus, RentalReview, RentalType
 from app.models.rental_actions_model import RentalAction
 from app.models.contract_model import UserContractSignature
 from app.models.wallet_transaction_model import WalletTransaction
@@ -35,7 +35,7 @@ from app.models.support_action_model import SupportAction
 from app.utils.plate_normalizer import normalize_plate_number
 from app.utils.telegram_logger import log_error_to_telegram
 from app.websocket.notifications import notify_vehicles_list_update, notify_user_status_update
-from app.utils.time_utils import get_local_time
+from app.utils.time_utils import get_local_time, parse_datetime_to_local
 from app.owner.availability import update_car_availability_snapshot
 from app.owner.router import calculate_owner_earnings, calculate_fuel_cost, calculate_delivery_cost
 import asyncio
@@ -1491,7 +1491,7 @@ async def update_rental_time(
     
     if reservation_time is not None:
         try:
-            new_reservation_time = datetime.fromisoformat(reservation_time.replace("Z", "+00:00"))
+            new_reservation_time = parse_datetime_to_local(reservation_time)
             if (rental.reservation_time is None and new_reservation_time is not None) or \
                (rental.reservation_time is not None and new_reservation_time != rental.reservation_time):
                 changes["reservation_time"] = {
@@ -1499,12 +1499,12 @@ async def update_rental_time(
                     "new": new_reservation_time.isoformat()
                 }
                 rental.reservation_time = new_reservation_time
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Неверный формат reservation_time (ожидается ISO format)")
+        except (ValueError, Exception) as e:
+            raise HTTPException(status_code=400, detail=f"Неверный формат reservation_time (ожидается ISO format): {str(e)}")
     
     if start_time is not None:
         try:
-            new_start_time = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+            new_start_time = parse_datetime_to_local(start_time)
             if (rental.start_time is None and new_start_time is not None) or \
                (rental.start_time is not None and new_start_time != rental.start_time):
                 changes["start_time"] = {
@@ -1512,12 +1512,12 @@ async def update_rental_time(
                     "new": new_start_time.isoformat()
                 }
                 rental.start_time = new_start_time
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Неверный формат start_time (ожидается ISO format)")
+        except (ValueError, Exception) as e:
+            raise HTTPException(status_code=400, detail=f"Неверный формат start_time (ожидается ISO format): {str(e)}")
     
     if end_time is not None:
         try:
-            new_end_time = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+            new_end_time = parse_datetime_to_local(end_time)
             if (rental.end_time is None and new_end_time is not None) or \
                (rental.end_time is not None and new_end_time != rental.end_time):
                 changes["end_time"] = {
@@ -1525,8 +1525,8 @@ async def update_rental_time(
                     "new": new_end_time.isoformat()
                 }
                 rental.end_time = new_end_time
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Неверный формат end_time (ожидается ISO format)")
+        except (ValueError, Exception) as e:
+            raise HTTPException(status_code=400, detail=f"Неверный формат end_time (ожидается ISO format): {str(e)}")
     
     if duration is not None:
         if rental.duration != duration:
@@ -1775,6 +1775,155 @@ async def update_rental_price(
             "total_price": rental.total_price,
             "total_price_without_fuel": total_price_without_fuel
         }
+    }
+
+
+@cars_router.patch("/{car_id}/history/trips/{rental_id}/fuel", summary="Исправить топливо аренды")
+async def update_rental_fuel(
+    car_id: str,
+    rental_id: str,
+    fuel_before: Optional[float] = Query(None, description="Топливо до аренды"),
+    fuel_after: Optional[float] = Query(None, description="Топливо после аренды"),
+    fuel_after_main_tariff: Optional[float] = Query(None, description="Топливо после основного тарифа (только для почасового/посуточного)"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Исправить топливо аренды с логированием в БД.
+    
+    Для поминутного тарифа (MINUTES): доступны только fuel_before и fuel_after (2 атрибута).
+    Для почасового/посуточного тарифа (HOURS/DAYS): доступны fuel_before, fuel_after и fuel_after_main_tariff (3 атрибута).
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    rental_uuid = safe_sid_to_uuid(rental_id)
+    car = get_car_by_id(db, car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    
+    rental = db.query(RentalHistory).filter(
+        RentalHistory.id == rental_uuid,
+        RentalHistory.car_id == car.id
+    ).first()
+    
+    if not rental:
+        raise HTTPException(status_code=404, detail="Поездка не найдена")
+    
+    # Проверяем тип аренды и валидируем параметры
+    is_minute_rental = rental.rental_type == RentalType.MINUTES
+    is_hourly_or_daily = rental.rental_type in (RentalType.HOURS, RentalType.DAYS)
+    
+    # Для поминутного тарифа не должно быть fuel_after_main_tariff
+    if is_minute_rental and fuel_after_main_tariff is not None:
+        raise HTTPException(
+            status_code=400, 
+            detail="Для поминутного тарифа параметр fuel_after_main_tariff не используется. Используйте только fuel_before и fuel_after."
+        )
+    
+    # Для почасового/посуточного тарифа можно использовать все три параметра
+    if not is_hourly_or_daily and not is_minute_rental:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Неизвестный тип аренды: {rental.rental_type}"
+        )
+    
+    # Сохраняем старые значения для логирования
+    old_values = {
+        "fuel_before": rental.fuel_before,
+        "fuel_after": rental.fuel_after,
+        "fuel_after_main_tariff": rental.fuel_after_main_tariff
+    }
+    
+    # Обновляем поля
+    changes = {}
+    
+    if fuel_before is not None:
+        # Проверяем, что значение изменилось (с учетом возможного None)
+        if (rental.fuel_before is None and fuel_before is not None) or \
+           (rental.fuel_before is not None and fuel_before is not None and abs(rental.fuel_before - fuel_before) > 0.001):
+            changes["fuel_before"] = {
+                "old": old_values["fuel_before"],
+                "new": fuel_before
+            }
+            rental.fuel_before = fuel_before
+    
+    if fuel_after is not None:
+        # Проверяем, что значение изменилось (с учетом возможного None)
+        if (rental.fuel_after is None and fuel_after is not None) or \
+           (rental.fuel_after is not None and fuel_after is not None and abs(rental.fuel_after - fuel_after) > 0.001):
+            changes["fuel_after"] = {
+                "old": old_values["fuel_after"],
+                "new": fuel_after
+            }
+            rental.fuel_after = fuel_after
+    
+    if fuel_after_main_tariff is not None:
+        # Этот параметр доступен только для почасового/посуточного тарифа
+        if is_minute_rental:
+            raise HTTPException(
+                status_code=400,
+                detail="Параметр fuel_after_main_tariff доступен только для почасового/посуточного тарифа"
+            )
+        
+        # Проверяем, что значение изменилось (с учетом возможного None)
+        if (rental.fuel_after_main_tariff is None and fuel_after_main_tariff is not None) or \
+           (rental.fuel_after_main_tariff is not None and fuel_after_main_tariff is not None and abs(rental.fuel_after_main_tariff - fuel_after_main_tariff) > 0.001):
+            changes["fuel_after_main_tariff"] = {
+                "old": old_values["fuel_after_main_tariff"],
+                "new": fuel_after_main_tariff
+            }
+            rental.fuel_after_main_tariff = fuel_after_main_tariff
+    
+    if not changes:
+        raise HTTPException(status_code=400, detail="Не было указано ни одного поля для обновления или значения не изменились")
+    
+    # Логируем изменения
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="update_rental_fuel",
+        entity_type="rental",
+        entity_id=rental.id,
+        details={
+            "rental_id": rental_id,
+            "car_id": car_id,
+            "car_name": car.name,
+            "rental_type": rental.rental_type.value,
+            "changes": changes,
+            "updated_by": {
+                "user_id": uuid_to_sid(current_user.id),
+                "user_name": f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.phone_number,
+                "role": current_user.role.value
+            }
+        }
+    )
+    
+    db.commit()
+    db.refresh(rental)
+    
+    # Формируем ответ в зависимости от типа аренды
+    current_values = {
+        "fuel_before": rental.fuel_before,
+        "fuel_after": rental.fuel_after
+    }
+    
+    if is_hourly_or_daily:
+        current_values["fuel_after_main_tariff"] = rental.fuel_after_main_tariff
+    
+    return {
+        "message": "Топливо аренды успешно обновлено",
+        "rental_id": rental_id,
+        "car_id": car_id,
+        "car_name": car.name,
+        "rental_type": rental.rental_type.value,
+        "changes": changes,
+        "updated_by": {
+            "user_id": uuid_to_sid(current_user.id),
+            "user_name": f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.phone_number,
+            "role": current_user.role.value
+        },
+        "current_values": current_values
     }
 
 
@@ -2085,7 +2234,9 @@ async def upload_car_photos(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Загрузка фотографий автомобиля (append к существующим car.photos)"""
+    """Загрузка фотографий автомобиля в MinIO (append к существующим car.photos)"""
+    from app.services.minio_service import get_minio_service
+    
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
@@ -2093,41 +2244,20 @@ async def upload_car_photos(
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
-    saved_paths: List[str] = []
-    # Используем plate_number для создания директории (как в файловой системе)
+    saved_urls: List[str] = []
+    # Используем plate_number для создания папки в MinIO
     normalized_plate = normalize_plate_number(car.plate_number) if car.plate_number else str(car.id)
-    base_dir = os.path.join("uploads", "cars", normalized_plate)
-    os.makedirs(base_dir, exist_ok=True)
+    folder = f"cars/{normalized_plate}"
+    
+    minio = get_minio_service()
 
     for f in photos:
-        # Получаем оригинальное имя файла
-        original_filename = f.filename or "photo.jpg"
-        # Обрабатываем имя файла для предотвращения конфликтов
-        filename = original_filename
-        file_path = os.path.join(base_dir, filename)
-        
-        # Если файл уже существует, добавляем номер к имени
-        counter = 1
-        while os.path.exists(file_path):
-            name, ext = os.path.splitext(original_filename)
-            filename = f"{name}_{counter}{ext}"
-            file_path = os.path.join(base_dir, filename)
-            counter += 1
-        
-        # Сохраняем файл
-        with open(file_path, "wb") as buffer:
-            content = await f.read()
-            buffer.write(content)
-        
-        # Нормализуем путь для сохранения в БД
-        normalized = file_path.replace("\\", "/")
-        if not normalized.startswith("/"):
-            normalized = "/" + normalized.lstrip("/")
-        saved_paths.append(normalized)
+        # Загружаем файл в MinIO
+        url = await minio.upload_file(f, car.id, folder)
+        saved_urls.append(url)
 
     existing = car.photos or []
-    car.photos = existing + saved_paths
-    car.photos = existing + saved_paths
+    car.photos = existing + saved_urls
     
     log_action(
         db,
@@ -2135,7 +2265,7 @@ async def upload_car_photos(
         action="upload_car_photos",
         entity_type="car",
         entity_id=car.id,
-        details={"added_count": len(saved_paths), "total_count": len(car.photos)}
+        details={"added_count": len(saved_urls), "total_count": len(car.photos)}
     )
 
     db.commit()
@@ -2144,7 +2274,7 @@ async def upload_car_photos(
     return {
         "message": "Фотографии добавлены",
         "car_id": uuid_to_sid(car.id),
-        "added": saved_paths,
+        "added": saved_urls,
         "total_photos": len(car.photos or [])
     }
 
@@ -2155,7 +2285,9 @@ async def delete_car_photos(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Удалить все фотографии автомобиля из базы данных и с файловой системы"""
+    """Удалить все фотографии автомобиля из базы данных и MinIO"""
+    from app.services.minio_service import get_minio_service
+    
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
@@ -2164,31 +2296,18 @@ async def delete_car_photos(
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
     try:
-        # Путь к директории с фотографиями автомобиля (используем plate_number)
-        normalized_plate = normalize_plate_number(car.plate_number) if car.plate_number else str(car.id)
-        photos_dir = os.path.join("uploads", "cars", normalized_plate)
-        
+        minio = get_minio_service()
         deleted_files = []
         
-        # Удаляем только файлы из директории
-        if os.path.exists(photos_dir):
-            for filename in os.listdir(photos_dir):
-                file_path = os.path.join(photos_dir, filename)
-                if os.path.isfile(file_path):
-                    os.remove(file_path)
-                    deleted_files.append(filename)
-        
-        # Также удаляем файлы, на которые есть ссылки в car.photos (на случай если пути отличаются)
+        # Удаляем файлы из MinIO по URL
         if car.photos:
-            for photo_path in car.photos:
-                # Убираем ведущий слеш если есть
-                photo_path_clean = photo_path.lstrip("/").lstrip("\\")
-                if os.path.exists(photo_path_clean):
-                    try:
-                        os.remove(photo_path_clean)
-                        deleted_files.append(os.path.basename(photo_path_clean))
-                    except OSError:
-                        pass
+            minio.delete_files(car.photos)
+            deleted_files = [url.split("/")[-1] for url in car.photos]
+        
+        # Также удаляем всю папку с фотографиями автомобиля в MinIO
+        normalized_plate = normalize_plate_number(car.plate_number) if car.plate_number else str(car.id)
+        folder = f"cars/{normalized_plate}"
+        minio.delete_folder(folder)
         
         # Очищаем поле photos в базе данных
         deleted_count = len(car.photos or [])

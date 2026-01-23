@@ -441,13 +441,8 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
     if not full_name:
         full_name = "Не указано"
     
-    sms_text = f"""{sms_code} - Ваш код подтверждения AZV Motors
-
-Данные клиента:
-ФИО клиента: {full_name}
-Логин клиента: {phone_number}
-ID клиента: {user.id}
-Электронная подпись: {user.digital_signature}"""
+    sms_text = f"""{sms_code}-Ваш код
+Электронная подпись:{user.digital_signature}"""
     try:
         if SMS_TOKEN:
             await send_sms_mobizon(phone_number, sms_text, f"{SMS_TOKEN}")

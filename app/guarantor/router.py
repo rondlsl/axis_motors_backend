@@ -718,7 +718,8 @@ async def upload_contract(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Загрузка договора (только для админа)"""
+    """Загрузка договора в MinIO (только для админа)"""
+    from app.services.minio_service import get_minio_service
     
     # Проверяем, что пользователь админ
     if current_user.role != UserRole.ADMIN:
@@ -738,6 +739,7 @@ async def upload_contract(
         # Обрабатываем data URL или обычный base64
         file_content_str = contract_data.file_content
         file_extension = ".pdf"  # По умолчанию
+        content_type = "application/pdf"
         
         if file_content_str.startswith("data:"):
             # Обрабатываем data URL: data:application/pdf;base64,...
@@ -746,42 +748,48 @@ async def upload_contract(
             # Извлекаем MIME type для определения расширения
             if "application/pdf" in header:
                 file_extension = ".pdf"
-            elif "application/msword" in header or "application/vnd.openxmlformats-officedocument.wordprocessingml.document" in header:
+                content_type = "application/pdf"
+            elif "application/msword" in header:
+                file_extension = ".doc"
+                content_type = "application/msword"
+            elif "application/vnd.openxmlformats-officedocument.wordprocessingml.document" in header:
                 file_extension = ".docx"
+                content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             elif "text/plain" in header:
                 file_extension = ".txt"
+                content_type = "text/plain"
             elif "image/jpeg" in header:
                 file_extension = ".jpg"
+                content_type = "image/jpeg"
             elif "image/png" in header:
                 file_extension = ".png"
+                content_type = "image/png"
             elif "image/gif" in header:
                 file_extension = ".gif"
-            else:
-                file_extension = ".pdf"  # По умолчанию
+                content_type = "image/gif"
             
             file_content = base64.b64decode(base64_data)
         else:
             # Обычный base64
             file_content = base64.b64decode(file_content_str)
         
-        # Создаем папку для договоров если не существует
-        contracts_dir = "contracts"
-        os.makedirs(contracts_dir, exist_ok=True)
-        
-        # Генерируем случайное имя файла с правильным расширением
+        # Загружаем в MinIO
+        minio = get_minio_service()
         unique_filename = f"{contract_data.contract_type}_{uuid.uuid4()}{file_extension}"
-        file_path = os.path.join(contracts_dir, unique_filename)
         
-        # Сохраняем файл
-        with open(file_path, "wb") as f:
-            f.write(file_content)
+        file_url = minio.upload_file_sync(
+            content=file_content,
+            filename=unique_filename,
+            folder="contracts",
+            content_type=content_type
+        )
         
         # Деактивируем старые договоры этого типа
         old_contracts = db.query(ContractFile).filter(
             ContractFile.contract_type == contract_data.contract_type,
             ContractFile.is_active == True
-    ).all()
-    
+        ).all()
+        
         for old_contract in old_contracts:
             old_contract.is_active = False
         
@@ -789,7 +797,7 @@ async def upload_contract(
         new_contract = ContractFile(
             contract_type=contract_data.contract_type,
             file_name=unique_filename,
-            file_path=file_path,
+            file_path=file_url,  # Теперь храним URL MinIO
             is_active=True
         )
         
@@ -803,13 +811,14 @@ async def upload_contract(
             entity_id=None, 
             details={
                 "contract_type": contract_data.contract_type,
-                "file_name": unique_filename
+                "file_name": unique_filename,
+                "file_url": file_url
             }
         )
         
         db.commit()
     
-        return {"message": f"Договор {contract_data.contract_type} успешно загружен"}
+        return {"message": f"Договор {contract_data.contract_type} успешно загружен", "file_url": file_url}
         
     except Exception as e:
         raise HTTPException(
@@ -876,14 +885,12 @@ async def get_guarantor_contract(
         )
     
     try:
-        # Формируем прямую ссылку на файл
-        file_url = f"https://api.azvmotors.kz/contracts/{contract.file_name}"
-        
+        # file_path теперь содержит полный URL MinIO
         return ContractDownloadSchema(
             id=contract.sid,
             contract_type=contract.contract_type,
             file_name=contract.file_name,
-            file_url=file_url,
+            file_url=contract.file_path,  # URL MinIO
             uploaded_at=contract.uploaded_at,
             is_active=contract.is_active
         )
@@ -953,14 +960,12 @@ async def get_guarantor_main_contract(
         )
     
     try:
-        # Формируем прямую ссылку на файл
-        file_url = f"https://api.azvmotors.kz/contracts/{contract.file_name}"
-        
+        # file_path теперь содержит полный URL MinIO
         return ContractDownloadSchema(
             id=contract.sid,
             contract_type=contract.contract_type,
             file_name=contract.file_name,
-            file_url=file_url,
+            file_url=contract.file_path,  # URL MinIO
             uploaded_at=contract.uploaded_at,
             is_active=contract.is_active
         )

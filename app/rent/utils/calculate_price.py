@@ -22,7 +22,7 @@ def get_open_price(car: Car) -> int:
     if car.gps_imei == "860803068151105":
         return 6000
     # Li L7 Ultra - 6000₸
-    if car.gps_imei == "860803068133343":
+    if car.gps_imei == "860803068133657":
         return 6000
     
     if car.car_class == 1:
@@ -204,16 +204,13 @@ def calculate_rental_cost_breakdown(
         base_price = car.price_per_hour * duration
         minute_cost_reserve = car.price_per_minute * 60 
         
+        # Топливо: электрички 50л, бензиновые 20л (синхронизировано с calc_required_balance)
         if car.body_type == CarBodyType.ELECTRIC:
             price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
-        else:
-            price_per_liter = FUEL_PRICE_PER_LITER
-        if car.gps_imei == "860803068146253":
-            tank_liters = 20
-        elif car.gps_imei == "860803068139548":
             tank_liters = 50
         else:
-            tank_liters = FULL_TANK_LITERS
+            price_per_liter = FUEL_PRICE_PER_LITER
+            tank_liters = 20
         fuel_cost = tank_liters * price_per_liter
         
         driver_fee = DRIVER_FEE_PER_HOUR * duration if with_driver else 0
@@ -224,16 +221,14 @@ def calculate_rental_cost_breakdown(
                                 detail="duration обязателен для посуточной аренды.")
         base_price = car.price_per_day * duration
         minute_cost_reserve = car.price_per_minute * 60 
+        
+        # Топливо: электрички 50л, бензиновые 20л (синхронизировано с calc_required_balance)
         if car.body_type == CarBodyType.ELECTRIC:
             price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
-        else:
-            price_per_liter = FUEL_PRICE_PER_LITER
-        if car.gps_imei == "860803068146253":
-            tank_liters = 20
-        elif car.gps_imei == "860803068139548":
             tank_liters = 50
         else:
-            tank_liters = FULL_TANK_LITERS
+            price_per_liter = FUEL_PRICE_PER_LITER
+            tank_liters = 20
         fuel_cost = tank_liters * price_per_liter
         
         driver_fee = DRIVER_FEE_PER_DAY * duration if with_driver else 0

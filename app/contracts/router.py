@@ -80,8 +80,10 @@ async def upload_contract(
     db: Session = Depends(get_db)
 ):
     """
-    Загрузить договор (только для админа)
+    Загрузить договор в MinIO (только для админа)
     """
+    from app.services.minio_service import get_minio_service
+    
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -101,22 +103,19 @@ async def upload_contract(
             detail="Поддерживаются только файлы PDF, DOC, DOCX"
         )
     
-    contracts_dir = "uploads/contracts"
-    os.makedirs(contracts_dir, exist_ok=True)
+    # Загружаем в MinIO
+    minio = get_minio_service()
+    unique_filename = f"{contract_type.value}_{uuid.uuid4()}{file_extension}"
     
     file_content = await file.read()
-    unique_filename = f"{contract_type.value}_{uuid.uuid4()}{file_extension}"
-    file_path = os.path.join(contracts_dir, unique_filename)
+    file_url = minio.upload_file_sync(
+        content=file_content,
+        filename=unique_filename,
+        folder="contracts",
+        content_type=file.content_type or 'application/octet-stream'
+    )
     
-    with open(file_path, "wb") as f:
-        f.write(file_content)
-    
-    if not os.path.exists(file_path):
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Ошибка сохранения файла"
-        )
-    
+    # Деактивируем старые договоры этого типа
     db.query(ContractFile).filter(
         ContractFile.contract_type == contract_type,
         ContractFile.is_active == True
@@ -124,7 +123,7 @@ async def upload_contract(
     
     contract_file = ContractFile(
         contract_type=contract_type,
-        file_path=file_path,
+        file_path=file_url,  # Теперь храним URL вместо локального пути
         file_name=unique_filename
     )
     db.add(contract_file)
@@ -137,7 +136,8 @@ async def upload_contract(
         entity_id=contract_file.id,
         details={
             "contract_type": contract_type.value,
-            "filename": unique_filename
+            "filename": unique_filename,
+            "file_url": file_url
         }
     )
     
@@ -150,7 +150,7 @@ async def upload_contract(
         file_name=contract_file.file_name,
         is_active=contract_file.is_active,
         uploaded_at=contract_file.uploaded_at,
-        file_url=f"/uploads/contracts/{contract_file.file_name}"
+        file_url=file_url
     )
 
 
@@ -179,7 +179,7 @@ async def get_available_contracts(
             file_name=contract.file_name,
             is_active=contract.is_active,
             uploaded_at=contract.uploaded_at,
-            file_url=f"/uploads/contracts/{contract.file_name}"
+            file_url=contract.file_path  # Теперь file_path хранит полный URL MinIO
         )
         for contract in contracts
     ]
@@ -192,8 +192,10 @@ async def download_contract(
     db: Session = Depends(get_db)
 ):
     """
-    Скачать договор
+    Скачать договор из MinIO
     """
+    from app.services.minio_service import get_minio_service
+    
     contract_uuid = safe_sid_to_uuid(contract_id)
     contract = db.query(ContractFile).filter(ContractFile.id == contract_uuid).first()
     
@@ -203,22 +205,31 @@ async def download_contract(
             detail="Договор не найден"
         )
     
-    if not os.path.exists(contract.file_path):
+    # Получаем файл из MinIO
+    minio = get_minio_service()
+    file_content = minio.get_file(contract.file_path)
+    
+    if file_content is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Файл договора не найден"
+            detail="Файл договора не найден в хранилище"
         )
-    
-    with open(contract.file_path, "rb") as f:
-        file_content = f.read()
     
     # Возвращаем base64
     file_base64 = base64.b64encode(file_content).decode()
     
+    # Определяем MIME тип
+    mime_type = "application/pdf"
+    if contract.file_name.endswith('.docx'):
+        mime_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    elif contract.file_name.endswith('.doc'):
+        mime_type = "application/msword"
+    
     return {
         "file_name": contract.file_name,
         "contract_type": contract.contract_type,
-        "file_content": f"data:application/pdf;base64,{file_base64}"
+        "file_content": f"data:{mime_type};base64,{file_base64}",
+        "file_url": contract.file_path
     }
 
 
