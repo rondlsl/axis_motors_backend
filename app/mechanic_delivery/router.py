@@ -392,6 +392,11 @@ async def complete_delivery(
             )
             db.add(review)
 
+    # Фиксируем все изменения в БД
+    db.flush()
+    db.commit()
+    # Закрываем транзакцию перед GPS операциями, чтобы не блокировать БД
+    
     # Окончательная блокировка двигателя при завершении доставки
     try:
         if car and car.gps_imei:
@@ -420,10 +425,6 @@ async def complete_delivery(
             )
         except:
             pass
-
-    # Фиксируем все изменения в БД
-    db.flush()
-    db.commit()
     
     # Обновляем все данные из БД для получения свежих данных (после всех операций)
     db.expire_all()
@@ -801,6 +802,8 @@ async def upload_delivery_photos_before(
             uploaded_files.append(car_url)
         
         rental.delivery_photos_before = urls
+        db.commit()
+        # Закрываем транзакцию перед GPS операциями, чтобы не блокировать БД
         
         # Универсальная GPS последовательность после загрузки селфи+кузов
         car = db.query(Car).get(rental.car_id)
@@ -813,8 +816,6 @@ async def upload_delivery_photos_before(
                 error_msg = result.get('error', 'Unknown error')
                 print(f"Ошибка GPS последовательности для селфи+кузов доставщика: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
-        
-        db.commit()
         
         # Обновляем все данные из БД для получения свежих данных (после всех операций)
         db.expire_all()
@@ -965,6 +966,8 @@ async def upload_delivery_photos_after(
             uploaded_files.append(interior_url)
         
         rental.delivery_photos_after = urls
+        db.commit()
+        # Закрываем транзакцию перед GPS операциями, чтобы не блокировать БД
         
         # После загрузки селфи+салона доставщиком: заблокировать двигатель → забрать ключ → закрыть замки
         car = db.query(Car).get(rental.car_id)
@@ -977,8 +980,6 @@ async def upload_delivery_photos_after(
                 error_msg = result.get('error', 'Unknown error')
                 print(f"Ошибка GPS последовательности для завершения селфи+салон доставщиком: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
-        
-        db.commit()
         
         # Обновляем все данные из БД для получения свежих данных (после всех операций)
         db.expire_all()
@@ -1059,6 +1060,8 @@ async def upload_delivery_photos_after_car(
             uploaded_files.append(car_url)
         
         rental.delivery_photos_after = urls
+        db.commit()
+        # Закрываем транзакцию перед GPS операциями, чтобы не блокировать БД
         
         # После загрузки кузова доставщиком: заблокировать двигатель → забрать ключ → закрыть замки
         if car and car.gps_imei:
@@ -1070,8 +1073,6 @@ async def upload_delivery_photos_after_car(
                 error_msg = result.get('error', 'Unknown error')
                 print(f"Ошибка GPS последовательности для завершения кузова доставщиком: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
-        
-        db.commit()
         
         # Обновляем все данные из БД для получения свежих данных (после всех операций)
         db.expire_all()

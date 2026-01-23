@@ -297,7 +297,8 @@ async def get_admin_users_list_data(
             "longitude": last_lng,
             "is_blocked": user.is_blocked,
             "selfie_url": user.selfie_url,
-            "carStatus": car_status
+            "carStatus": car_status,
+            "wallet_balance": float(user.wallet_balance) if user.wallet_balance is not None else 0.0,
         }
         
         result.append(user_data)
