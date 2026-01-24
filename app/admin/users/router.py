@@ -53,6 +53,7 @@ import asyncio
 import httpx
 from app.wallet.utils import record_wallet_transaction
 from app.rent.utils.calculate_price import get_open_price, calc_required_balance, calculate_total_price
+from app.rent.utils.balance_utils import verify_and_fix_rental_balance
 from app.core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2
 from app.models.application_model import Application
 from app.models.history_model import RentalHistory
@@ -2787,6 +2788,48 @@ async def admin_end_rental(
     
     db.commit()
 
+    # ========== ВЕРИФИКАЦИЯ И ИСПРАВЛЕНИЕ БАЛАНСА ==========
+    # Пересчитываем все транзакции, синхронизируем поля аренды и исправляем баланс
+    is_owner = car.owner_id == target_user.id
+    if not is_owner:
+        try:
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            verification_result = verify_and_fix_rental_balance(
+                user=target_user,
+                rental=active_rental,
+                car=car,
+                db=db
+            )
+            
+            if verification_result.get("corrected"):
+                logger.info(
+                    f"🔧 Admin end rental - verification applied for user {target_user.id}: "
+                    f"balance_before_rental={verification_result.get('balance_before_rental')}, "
+                    f"old_balance={verification_result.get('old_balance')}, "
+                    f"new_balance={verification_result.get('new_balance')}, "
+                    f"rental_fields_updated={verification_result.get('rental_fields_updated')}"
+                )
+            elif verification_result.get("success"):
+                logger.info(
+                    f"✅ Admin end rental - balance verified for user {target_user.id}: "
+                    f"balance_before_rental={verification_result.get('balance_before_rental')}, "
+                    f"tx_sums={verification_result.get('tx_sums')}"
+                )
+            else:
+                logger.warning(
+                    f"⚠️ Admin end rental - balance verification failed for user {target_user.id}: "
+                    f"{verification_result.get('error')}"
+                )
+            
+            db.commit()
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error during balance verification in admin_end_rental: {e}", exc_info=True)
+    # ========== КОНЕЦ ВЕРИФИКАЦИИ БАЛАНСА ==========
+
     log_action(
         db,
         actor_id=current_user.id,
@@ -2820,6 +2863,10 @@ async def admin_end_rental(
     except Exception as e:
         print(f"Error sending notification to mechanics: {e}")
     
+    # Обновляем данные из БД после верификации
+    db.refresh(active_rental)
+    db.refresh(target_user)
+    
     return {
         "success": True,
         "rental_id": uuid_to_sid(active_rental.id),
@@ -2829,9 +2876,14 @@ async def admin_end_rental(
         "start_time": start_time.isoformat() if start_time else None,
         "end_time": active_rental.end_time.isoformat(),
         "duration_minutes": duration_minutes,
-        "rental_cost": rental_cost,
-        "open_fee": open_fee,
-        "total_charged": total_to_charge,
+        # Берём значения из пересчитанной аренды (после verify_and_fix_rental_balance)
+        "base_price": active_rental.base_price or 0,
+        "open_fee": active_rental.open_fee or 0,
+        "delivery_fee": active_rental.delivery_fee or 0,
+        "waiting_fee": active_rental.waiting_fee or 0,
+        "overtime_fee": active_rental.overtime_fee or 0,
+        "total_price": active_rental.total_price or 0,
+        "already_payed": active_rental.already_payed or 0,
         "photos_after_count": len(photos_after),
         "new_balance": float(target_user.wallet_balance),
         "ended_by_admin": uuid_to_sid(current_user.id)
