@@ -1,6 +1,6 @@
 #!/bin/bash
 # AZV Motors Backend Watchdog
-# Проверяет критичные эндпойнты и перезапускает Docker если они не отвечают
+# Проверяет критичные эндпойнты и логирует проблемы (без автоматического перезапуска)
 
 set -e
 
@@ -60,22 +60,11 @@ cleanup_docker() {
 }
 
 restart_docker() {
-    local now=$(date +%s)
-    local since_last=$((now - LAST_RESTART))
-    
-    if [ $since_last -lt $RESTART_COOLDOWN ]; then
-        log "Cooldown активен, до следующего возможного рестарта: $((RESTART_COOLDOWN - since_last)) сек"
-        return
-    fi
-    
-    log "Перезапуск Docker контейнера..."
-    cd "$DOCKER_COMPOSE_DIR"
-    docker compose restart back
+    # Функция отключена - перезапуск не выполняется автоматически
+    log "⚠️  Перезапуск отключен. Требуется ручное вмешательство для перезапуска контейнера."
+    log "   Для ручного перезапуска выполните: cd $DOCKER_COMPOSE_DIR && docker compose restart back"
     LAST_RESTART=$(date +%s)
     FAIL_COUNT=0
-    log "Docker контейнер перезапущен"
-    
-    sleep 30
 }
 
 check_memory() {
@@ -89,8 +78,8 @@ check_memory() {
         
         mem_pct=$(get_container_memory)
         if [ "$mem_pct" -ge "$MEMORY_THRESHOLD" ]; then
-            log "Память все еще высокая: ${mem_pct}%, перезапуск контейнера..."
-            restart_docker
+            log "⚠️  Память все еще высокая: ${mem_pct}% (перезапуск отключен, требуется ручное вмешательство)"
+            # restart_docker  # Отключено - перезапуск не выполняется
         else
             log "Память после очистки: ${mem_pct}%"
         fi
@@ -128,8 +117,8 @@ main() {
             log "Неудачная проверка ($FAIL_COUNT/$MAX_FAILURES)"
             
             if [ $FAIL_COUNT -ge $MAX_FAILURES ]; then
-                log "Достигнут лимит неудачных проверок!"
-                restart_docker
+                log "⚠️  Достигнут лимит неудачных проверок! (перезапуск отключен, требуется ручное вмешательство)"
+                # restart_docker  # Отключено - перезапуск не выполняется
             fi
         fi
         
