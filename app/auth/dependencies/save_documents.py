@@ -1,57 +1,54 @@
-import os
 import uuid
 import time
-from uuid import uuid4
+from typing import List
 
 from fastapi import UploadFile, HTTPException
 
+from app.services.minio_service import save_file_to_minio
 
-async def save_file(file: UploadFile, user_id: uuid.UUID, UPLOAD_DIR: str) -> str:
+
+async def save_file(file: UploadFile, user_id: uuid.UUID, folder: str) -> str:
     """
-    Сохраняет файл и возвращает путь к нему
+    Сохраняет файл в MinIO и возвращает URL.
+    
+    Args:
+        file: FastAPI UploadFile объект
+        user_id: UUID пользователя или объекта
+        folder: Папка для сохранения (например: "documents", "cars/ABC123")
+        
+    Returns:
+        str: Публичный URL файла в MinIO
     """
     save_file_start = time.time()
-    print(f"[SAVE_FILE] START: filename={file.filename}, user_id={user_id}, dir={UPLOAD_DIR}")
+    print(f"[SAVE_FILE] START: filename={file.filename}, user_id={user_id}, folder={folder}")
     
-    # Создаем директорию для документов если её нет
-    mkdir_start = time.time()
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    print(f"[SAVE_FILE] mkdir took {time.time() - mkdir_start:.3f}s")
-
-    # Генерируем уникальное имя файла
-    file_extension = os.path.splitext(file.filename)[1]
-    unique_filename = f"{user_id}_{uuid4()}{file_extension}"
-    file_path = os.path.join(UPLOAD_DIR, unique_filename)
-    print(f"[SAVE_FILE] Generated file_path: {file_path}")
-
-    # Сохраняем файл
-    read_start = time.time()
-    content = await file.read()
-    read_duration = time.time() - read_start
-    print(f"[SAVE_FILE] File read took {read_duration:.3f}s, size={len(content)} bytes")
+    # Нормализуем путь папки (убираем "uploads/" если есть, так как bucket уже называется "uploads")
+    normalized_folder = folder
+    if normalized_folder.startswith("uploads/"):
+        normalized_folder = normalized_folder[8:]  # убираем "uploads/"
+    normalized_folder = normalized_folder.strip("/")
     
-    write_start = time.time()
-    with open(file_path, "wb") as buffer:
-        buffer.write(content)
-    write_duration = time.time() - write_start
-    print(f"[SAVE_FILE] File write took {write_duration:.3f}s")
-
+    # Загружаем в MinIO
+    url = await save_file_to_minio(file, user_id, normalized_folder)
+    
     total_duration = time.time() - save_file_start
-    print(f"[SAVE_FILE] TOTAL took {total_duration:.3f}s")
-
-    return file_path
+    print(f"[SAVE_FILE] TOTAL took {total_duration:.3f}s, URL: {url}")
+    
+    return url
 
 
 PHOTO_COUNT_RULE = (1, 10)  # min, max
 ALLOWED_TYPES = ["image/jpeg", "image/png"]
 
 
-def validate_photos(photos: list, field_name: str):
+def validate_photos(photos: List[UploadFile], field_name: str):
+    """Валидация списка фотографий"""
     min_c, max_c = PHOTO_COUNT_RULE
     if len(photos) < min_c or len(photos) > max_c:
-        raise HTTPException(status_code=400,
-                            detail=f"You must provide between {min_c} and {max_c} files for '{field_name}'"
-                            )
+        raise HTTPException(
+            status_code=400,
+            detail=f"You must provide between {min_c} and {max_c} files for '{field_name}'"
+        )
     for p in photos:
         if p.content_type not in ALLOWED_TYPES:
             raise HTTPException(

@@ -24,3 +24,12 @@ SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=team.azvmotors@gmail.com
 SMTP_PASSWORD=rdvh aqra ufqh pbop
+
+# MinIO / S3 Configuration
+MINIO_ENDPOINT=https://msmain.azvmotors.kz
+MINIO_ACCESS_KEY=minio_admin
+MINIO_SECRET_KEY=jdYu69ih4ErCc+fLEaiz22x6/EplIEmii/DslBYnxvdoXDrb0GDLdQLkBvbjQJwS
+MINIO_BUCKET_UPLOADS=uploads
+MINIO_BUCKET_BACKUPS=backups
+MINIO_PUBLIC_URL=https://msmain.azvmotors.kz
+MINIO_USE_SSL=true
