@@ -342,7 +342,7 @@ def create_cars(db: Session, owner: User) -> None:
             "course": 0,
             "description": "Премиальный седан BMW G30. Комплект: 1) Запасное колесо 2) Домкрат 3) Аптечка 4) Крюк для буксировки 5) Огнетушитель 6) Аварийный знак",
             "photos": get_car_photos("096ADC10"),
-            "vin": "",
+            "vin": "JTJBT20X6820AAD",
             "color": "Черный",
         },
     ]
