@@ -3373,7 +3373,7 @@ async def complete_rental(
         # Нужно обновить или создать транзакцию
         if existing_waiting_tx:
             # Обновляем существующую транзакцию
-            already_charged = abs(existing_waiting_tx.amount) if existing_waiting_tx.amount else 0
+            already_charged = float(abs(existing_waiting_tx.amount)) if existing_waiting_tx.amount else 0
             difference = waiting_fee - already_charged
             
             if abs(difference) > 0.01:  # Есть разница
@@ -3450,7 +3450,7 @@ async def complete_rental(
         
         if existing_fuel_tx:
             # Топливо уже было списано ранее
-            fuel_fee = abs(existing_fuel_tx.amount)
+            fuel_fee = float(abs(existing_fuel_tx.amount)) if existing_fuel_tx.amount else 0
         else:
             # Рассчитываем топливо только после основного тарифа
             # Топливо считается только за период основного тарифа, не за овертайм
@@ -3663,7 +3663,7 @@ async def complete_rental(
             ).order_by(WalletTransaction.created_at.desc()).first()
             
             # 3) Сверить суммы
-            actual_charged = abs(minute_charge_tx.amount) if minute_charge_tx and minute_charge_tx.amount else 0
+            actual_charged = float(abs(minute_charge_tx.amount)) if minute_charge_tx and minute_charge_tx.amount else 0
             
             # 4) Проверяем, нужен ли перерасчёт
             if abs(actual_charged - expected_total_cost) > 0.01 or minute_charge_tx is None:  # Допускаем погрешность в 1 копейку
@@ -3681,7 +3681,7 @@ async def complete_rental(
                 if minute_charge_tx:
                     # Обновляем существующую транзакцию
                     # Возвращаем старую сумму в баланс
-                    balance_before_correction = current_user.wallet_balance + abs(minute_charge_tx.amount)
+                    balance_before_correction = float(current_user.wallet_balance or 0) + float(abs(minute_charge_tx.amount) if minute_charge_tx.amount else 0)
                     
                     # Проверяем баланс перед корректировкой
                     if balance_before_correction >= expected_total_cost:
@@ -3778,7 +3778,7 @@ async def complete_rental(
                 desc = tx.description or ""
                 # Транзакция base_price содержит "Оплата аренды" и количество часов/дней
                 if "оплат" in desc.lower() and "аренд" in desc.lower() and ("час" in desc.lower() or "день" in desc.lower()):
-                    actual_base_charged = abs(tx.amount) if tx.amount else 0
+                    actual_base_charged = float(abs(tx.amount)) if tx.amount else 0
                     base_charge_tx = tx
                     break
             
@@ -3801,7 +3801,7 @@ async def complete_rental(
                 
                 if base_charge_tx:
                     # Обновляем существующую транзакцию
-                    balance_before_correction = current_user.wallet_balance + abs(base_charge_tx.amount)
+                    balance_before_correction = float(current_user.wallet_balance or 0) + float(abs(base_charge_tx.amount) if base_charge_tx.amount else 0)
                     
                     if balance_before_correction >= expected_base_price:
                         current_user.wallet_balance = balance_before_correction - expected_base_price
@@ -3885,7 +3885,7 @@ async def complete_rental(
                 ).order_by(WalletTransaction.created_at.desc()).first()
                 
                 # Сверить суммы
-                actual_overtime_charged = abs(overtime_tx.amount) if overtime_tx and overtime_tx.amount else 0
+                actual_overtime_charged = float(abs(overtime_tx.amount)) if overtime_tx and overtime_tx.amount else 0
                 
                 if abs(actual_overtime_charged - expected_overtime_cost) > 0.01:
                     # НЕСОВПАДЕНИЕ! Выполняем перерасчёт
@@ -3899,15 +3899,15 @@ async def complete_rental(
                     
                     # Откорректировать транзакцию
                     if overtime_tx:
-                        balance_before_correction = current_user.wallet_balance + overtime_tx.amount
+                        balance_before_correction = float(current_user.wallet_balance or 0) + float(overtime_tx.amount if overtime_tx.amount else 0)
                         current_user.wallet_balance = balance_before_correction - expected_overtime_cost
                         
                         overtime_tx.amount = -expected_overtime_cost
                         overtime_tx.description = f"Сверхтариф {expected_overtime_minutes} мин (перерасчёт)"
                         overtime_tx.balance_before = balance_before_correction
-                        overtime_tx.balance_after = current_user.wallet_balance
+                        overtime_tx.balance_after = float(current_user.wallet_balance or 0)
                     else:
-                        balance_before_correction = current_user.wallet_balance
+                        balance_before_correction = float(current_user.wallet_balance or 0)
                         current_user.wallet_balance -= expected_overtime_cost
                         
                         overtime_tx = WalletTransaction(

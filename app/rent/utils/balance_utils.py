@@ -8,6 +8,7 @@
 
 import logging
 from typing import Dict, Any
+from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.models.user_model import User
@@ -17,6 +18,15 @@ from app.models.wallet_transaction_model import WalletTransaction, WalletTransac
 from app.utils.time_utils import get_local_time
 
 logger = logging.getLogger(__name__)
+
+
+def to_float(value) -> float:
+    """Безопасное преобразование Decimal/float/int в float."""
+    if value is None:
+        return 0.0
+    if isinstance(value, Decimal):
+        return float(value)
+    return float(value)
 
 
 def recalculate_user_balance_before_rental(
@@ -50,7 +60,7 @@ def recalculate_user_balance_before_rental(
             return {
                 "success": False,
                 "error": "No rental start time",
-                "balance_before_rental": float(user.wallet_balance or 0)
+                "balance_before_rental": to_float(user.wallet_balance)
             }
         
         # Получаем ВСЕ транзакции пользователя, отсортированные по времени
@@ -85,7 +95,7 @@ def recalculate_user_balance_before_rental(
                 old_after = tx.balance_after
                 
                 tx.balance_before = running_balance
-                tx.balance_after = running_balance + float(tx.amount)
+                tx.balance_after = running_balance + to_float(tx.amount)
                 running_balance = tx.balance_after
                 transactions_before_rental += 1
                 
@@ -99,7 +109,7 @@ def recalculate_user_balance_before_rental(
                 # Транзакция после начала аренды, но не связанная с ней
                 # Тоже пересчитываем для консистентности
                 tx.balance_before = running_balance
-                tx.balance_after = running_balance + float(tx.amount)
+                tx.balance_after = running_balance + to_float(tx.amount)
                 running_balance = tx.balance_after
             # Транзакции текущей аренды пропускаем - они будут пересчитаны отдельно
         
@@ -119,7 +129,7 @@ def recalculate_user_balance_before_rental(
             for tx in all_transactions:
                 if tx.created_at < first_rental_tx.created_at and tx.related_rental_id != rental.id:
                     tx.balance_before = running_balance
-                    tx.balance_after = running_balance + float(tx.amount)
+                    tx.balance_after = running_balance + to_float(tx.amount)
                     running_balance = tx.balance_after
             
             balance_before_rental = running_balance
@@ -147,7 +157,7 @@ def recalculate_user_balance_before_rental(
         return {
             "success": False,
             "error": str(e),
-            "balance_before_rental": float(user.wallet_balance or 0)
+            "balance_before_rental": to_float(user.wallet_balance)
         }
 
 
@@ -214,7 +224,8 @@ def verify_and_fix_rental_balance(
         }
         
         for tx in rental_transactions:
-            amount = abs(float(tx.amount)) if float(tx.amount) < 0 else 0
+            tx_amount = to_float(tx.amount)
+            amount = abs(tx_amount) if tx_amount < 0 else 0
             tx_type = tx.transaction_type
             
             if tx_type == WalletTransactionType.RENT_BASE_CHARGE:
@@ -316,14 +327,14 @@ def verify_and_fix_rental_balance(
             old_after = tx.balance_after
             
             tx.balance_before = running_balance
-            tx.balance_after = running_balance + float(tx.amount)
+            tx.balance_after = running_balance + to_float(tx.amount)
             running_balance = tx.balance_after
             
-            if abs((old_before or 0) - tx.balance_before) > 0.01 or abs((old_after or 0) - tx.balance_after) > 0.01:
+            if abs(to_float(old_before) - tx.balance_before) > 0.01 or abs(to_float(old_after) - tx.balance_after) > 0.01:
                 tx_corrections.append({
                     "tx_id": str(tx.id),
                     "type": tx.transaction_type.value,
-                    "amount": float(tx.amount),
+                    "amount": to_float(tx.amount),
                     "old_before": old_before,
                     "new_before": tx.balance_before,
                     "old_after": old_after,
@@ -359,10 +370,10 @@ def verify_and_fix_rental_balance(
             old_after = tx.balance_after
             
             tx.balance_before = running_balance
-            tx.balance_after = running_balance + float(tx.amount)
+            tx.balance_after = running_balance + to_float(tx.amount)
             running_balance = tx.balance_after
             
-            if abs((old_before or 0) - tx.balance_before) > 0.01 or abs((old_after or 0) - tx.balance_after) > 0.01:
+            if abs(to_float(old_before) - tx.balance_before) > 0.01 or abs(to_float(old_after) - tx.balance_after) > 0.01:
                 logger.debug(
                     f"  Post-rental TX {tx.id} ({tx.transaction_type.value}): "
                     f"before {old_before} -> {tx.balance_before}, "
@@ -371,7 +382,7 @@ def verify_and_fix_rental_balance(
         
         # ========== 7. ИСПРАВЛЯЕМ БАЛАНС ПОЛЬЗОВАТЕЛЯ ==========
         expected_balance_after = running_balance
-        current_balance = float(user.wallet_balance or 0)
+        current_balance = to_float(user.wallet_balance)
         difference = expected_balance_after - current_balance
         
         if abs(difference) > 0.01:
