@@ -200,7 +200,9 @@ async def get_car_details(
 
     # Обновляем объект из БД, чтобы получить актуальные данные (включая open_fee)
     db.refresh(car)
-
+    print(car.open_fee)
+    print(car.open_fee is not None)
+    print(car.open_fee is not None)
     return CarDetailSchema(
         id=uuid_to_sid(car.id),
         name=car.name,
