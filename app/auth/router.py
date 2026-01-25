@@ -67,6 +67,20 @@ def check_sms_rate_limit(phone_number: str) -> tuple[bool, str]:
     Проверяет rate limit для SMS.
     Возвращает (can_send, error_message)
     """
+    # Системные номера телефонов, для которых не применяется rate limit
+    SYSTEM_PHONE_NUMBERS = [
+        "70000000000",   # админ
+        "71234567890",   # механик
+        "71234567898",   # МВД
+        "71234567899",   # финансист
+        "79999999999",   # бухгалтер
+        "71231111111",   # владелец автомобилей
+    ]
+    
+    # Для системных пользователей пропускаем rate limit
+    if phone_number in SYSTEM_PHONE_NUMBERS:
+        return True, ""
+    
     now = get_local_time()
     
     if phone_number not in sms_rate_limit_cache:
@@ -296,6 +310,26 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
     if not phone_number.isdigit():
         raise HTTPException(status_code=400, detail="Phone number must contain only digits.")
 
+    # Системные номера телефонов — сразу возвращаем успех без отправки SMS
+    SYSTEM_PHONE_NUMBERS = [
+        "70000000000",   # админ
+        "71234567890",   # механик
+        "71234567898",   # МВД
+        "71234567899",   # финансист
+        "79999999999",   # бухгалтер
+        "71231111111",   # владелец автомобилей
+    ]
+    
+    if phone_number in SYSTEM_PHONE_NUMBERS:
+        # Для системных пользователей сразу возвращаем успех без проверок
+        try:
+            system_user = db.query(User).filter(User.phone_number == phone_number, User.is_active == True).first()
+            fcm = system_user.fcm_token if system_user and system_user.fcm_token else None
+            return SendSmsResponse(message="SMS code sent successfully", fcm_token=fcm)
+        except Exception as e:
+            # Если что-то пошло не так, просто возвращаем успех
+            return SendSmsResponse(message="SMS code sent successfully", fcm_token=None)
+
     can_send, error_msg = check_sms_rate_limit(phone_number)
     if not can_send:
         raise HTTPException(status_code=429, detail=error_msg)
@@ -431,27 +465,42 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
     
     sms_text = f"""{sms_code}-Ваш код
 Электронная подпись:{user.digital_signature}"""
-    try:
-        if SMS_TOKEN:
-            await send_sms_mobizon(phone_number, sms_text, f"{SMS_TOKEN}", sender="AZV Motors")
-            update_sms_rate_limit(phone_number)
-        else:
-            logger.warning("SMS_TOKEN is not configured; skipping Mobizon send")
-    except Exception as e:
-        logger.error(f"Mobizon send error: {e}")
+    
+    # Системные номера телефонов, для которых не отправляем SMS (они используют фиксированные коды)
+    SYSTEM_PHONE_NUMBERS = [
+        "70000000000",   # админ
+        "71234567890",   # механик
+        "71234567898",   # МВД
+        "71234567899",   # финансист
+        "79999999999",   # бухгалтер
+        "71231111111",   # владелец автомобилей
+    ]
+    
+    # Для системных пользователей пропускаем отправку SMS
+    if phone_number in SYSTEM_PHONE_NUMBERS:
+        logger.info(f"Системный пользователь {phone_number}, SMS не отправляется. Код: {sms_code}")
+    else:
         try:
-            await log_error_to_telegram(
-                error=e,
-                request=None,
-                user=None,
-                additional_context={
-                    "action": "send_sms_mobizon",
-                    "phone_number": phone_number,
-                    "user_id": str(user.id) if user else None
-                }
-            )
-        except:
-            pass
+            if SMS_TOKEN:
+                await send_sms_mobizon(phone_number, sms_text, f"{SMS_TOKEN}", sender="AZV Motors")
+                update_sms_rate_limit(phone_number)
+            else:
+                logger.warning("SMS_TOKEN is not configured; skipping Mobizon send")
+        except Exception as e:
+            logger.error(f"Mobizon send error: {e}")
+            try:
+                await log_error_to_telegram(
+                    error=e,
+                    request=None,
+                    user=None,
+                    additional_context={
+                        "action": "send_sms_mobizon",
+                        "phone_number": phone_number,
+                        "user_id": str(user.id) if user else None
+                    }
+                )
+            except:
+                pass
 
     if request.email:
         email = request.email.strip().lower()
@@ -631,32 +680,34 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
     if not phone_number.isdigit():
         raise HTTPException(status_code=400, detail="Phone number must contain only digits.")
 
-    # Системные роли, для которых не проверяется время истечения кода
-    SYSTEM_ROLES = [UserRole.ADMIN, UserRole.MECHANIC, UserRole.FINANCIER, UserRole.MVD, UserRole.ACCOUNTANT]
+    # Системные номера телефонов, для которых не проверяется время истечения кода
+    SYSTEM_PHONE_NUMBERS = [
+        "70000000000",   # админ
+        "71234567890",   # механик
+        "71234567898",   # МВД
+        "71234567899",   # финансист
+        "79999999999",   # бухгалтер
+        "71231111111",   # владелец автомобилей
+    ]
 
     # При проверке пользуемся активными пользователями
     if sms_code == "1010":
         user = db.query(User).filter(User.phone_number == phone_number, User.is_active == True).first()
-    else:
-        # Сначала проверяем, является ли пользователь системным (по номеру телефона)
-        potential_system_user = db.query(User).filter(
+    elif phone_number in SYSTEM_PHONE_NUMBERS:
+        # Для системных пользователей не проверяем время истечения кода
+        user = db.query(User).filter(
             User.phone_number == phone_number,
             User.last_sms_code == sms_code,
-            User.is_active == True,
-            User.role.in_(SYSTEM_ROLES)
+            User.is_active == True
         ).first()
-        
-        if potential_system_user:
-            # Для системных пользователей не проверяем время истечения кода
-            user = potential_system_user
-        else:
-            # Для обычных пользователей проверяем время
-            user = db.query(User).filter(
-                User.phone_number == phone_number,
-                User.last_sms_code == sms_code,
-                User.sms_code_valid_until > get_local_time(),
-                User.is_active == True
-            ).first()
+    else:
+        # Для обычных пользователей проверяем время
+        user = db.query(User).filter(
+            User.phone_number == phone_number,
+            User.last_sms_code == sms_code,
+            User.sms_code_valid_until > get_local_time(),
+            User.is_active == True
+        ).first()
 
     if not user:
         raise HTTPException(status_code=401, detail="Invalid SMS code or code expired")

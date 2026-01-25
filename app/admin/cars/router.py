@@ -184,13 +184,17 @@ async def get_car_details(
     vehicle_status = {}
     if car.gps_imei:
         try:
-            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-                response = await client.get(CARS_V2_API_URL)
+            # Используем короткий timeout (3 сек) и запрашиваем конкретную машину по IMEI
+            async with httpx.AsyncClient(timeout=3.0, follow_redirects=True) as client:
+                # Используем оптимизированный эндпоинт для одной машины
+                single_vehicle_url = f"{CARS_V2_API_URL}/by-imei/{car.gps_imei}"
+                response = await client.get(single_vehicle_url)
                 if response.status_code == 200:
-                    for v in response.json():
-                        if v.get("vehicle_imei") == car.gps_imei:
-                            vehicle_status = {field: v.get(field) for field in VEHICLE_STATUS_FIELDS}
-                            break
+                    v = response.json()
+                    vehicle_status = {field: v.get(field) for field in VEHICLE_STATUS_FIELDS}
+        except httpx.TimeoutException:
+            # Timeout - продолжаем без данных GPS, не блокируем ответ
+            pass
         except Exception:
             pass
 
