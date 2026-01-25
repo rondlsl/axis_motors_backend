@@ -5244,7 +5244,7 @@ async def admin_submit_rental_review(
                         # Разрешаем списание даже при отрицательном балансе
                         if difference_waiting > 0:
                             balance_before_waiting = float(user.wallet_balance)
-                            user.wallet_balance -= difference_waiting
+                            user.wallet_balance -= Decimal(str(difference_waiting))
                             existing_waiting_tx.amount = -waiting_fee
                             existing_waiting_tx.description = f"Платное ожидание {int(extra_minutes)} мин"
                             existing_waiting_tx.balance_before = balance_before_waiting
@@ -5252,7 +5252,7 @@ async def admin_submit_rental_review(
                         elif difference_waiting < 0:
                             refund = abs(difference_waiting)
                             balance_before_waiting = float(user.wallet_balance)
-                            user.wallet_balance += refund
+                            user.wallet_balance += Decimal(str(refund))
                             existing_waiting_tx.amount = -waiting_fee
                             existing_waiting_tx.description = f"Платное ожидание {int(extra_minutes)} мин (перерасчёт)"
                             existing_waiting_tx.balance_before = balance_before_waiting
@@ -5260,7 +5260,7 @@ async def admin_submit_rental_review(
                 else:
                     # Разрешаем списание даже при отрицательном балансе
                     balance_before_waiting = float(user.wallet_balance)
-                    user.wallet_balance -= waiting_fee
+                    user.wallet_balance -= Decimal(str(waiting_fee))
                     waiting_tx = WalletTransaction(
                         user_id=user.id,
                         amount=-waiting_fee,
@@ -5304,7 +5304,7 @@ async def admin_submit_rental_review(
                             
                             # Разрешаем списание даже при отрицательном балансе
                             balance_before_fuel = float(user.wallet_balance)
-                            user.wallet_balance -= fuel_fee
+                            user.wallet_balance -= Decimal(str(fuel_fee))
                             fuel_tx = WalletTransaction(
                                 user_id=user.id,
                                 amount=-fuel_fee,
@@ -5341,14 +5341,14 @@ async def admin_submit_rental_review(
                     # Разрешаем списание даже при отрицательном балансе
                     if base_charge_tx:
                         balance_before_base = float(user.wallet_balance or 0) + float(abs(base_charge_tx.amount) if base_charge_tx.amount else 0)
-                        user.wallet_balance = balance_before_base - expected_base_price
+                        user.wallet_balance = Decimal(str(balance_before_base - expected_base_price))
                         base_charge_tx.amount = -expected_base_price
                         base_charge_tx.description = f"Оплата аренды: {original_duration} {'час(ов)' if rental.rental_type == RentalType.HOURS else 'день(дней)'} (перерасчёт)"
                         base_charge_tx.balance_before = balance_before_base
                         base_charge_tx.balance_after = float(user.wallet_balance or 0)
                     else:
                         balance_before_base = float(user.wallet_balance or 0)
-                        user.wallet_balance -= expected_base_price
+                        user.wallet_balance -= Decimal(str(expected_base_price))
                         base_charge_tx = WalletTransaction(
                             user_id=user.id,
                             amount=-expected_base_price,
@@ -5387,14 +5387,14 @@ async def admin_submit_rental_review(
                         # Разрешаем списание даже при отрицательном балансе
                         if overtime_tx:
                             balance_before_overtime = float(user.wallet_balance or 0) + float(abs(overtime_tx.amount) if overtime_tx.amount else 0)
-                            user.wallet_balance = balance_before_overtime - expected_overtime_cost
+                            user.wallet_balance = Decimal(str(balance_before_overtime - expected_overtime_cost))
                             overtime_tx.amount = -expected_overtime_cost
                             overtime_tx.description = f"Сверхтариф {expected_overtime_minutes} мин (перерасчёт)"
                             overtime_tx.balance_before = balance_before_overtime
                             overtime_tx.balance_after = float(user.wallet_balance or 0)
                         else:
                             balance_before_overtime = float(user.wallet_balance or 0)
-                            user.wallet_balance -= expected_overtime_cost
+                            user.wallet_balance -= Decimal(str(expected_overtime_cost))
                             overtime_tx = WalletTransaction(
                                 user_id=user.id,
                                 amount=-expected_overtime_cost,
