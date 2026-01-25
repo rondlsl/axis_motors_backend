@@ -5223,7 +5223,8 @@ async def admin_submit_rental_review(
                     difference_waiting = waiting_fee - already_charged_waiting
                     
                     if abs(difference_waiting) > 0.01:
-                        if difference_waiting > 0 and user.wallet_balance >= difference_waiting:
+                        # Разрешаем списание даже при отрицательном балансе
+                        if difference_waiting > 0:
                             balance_before_waiting = float(user.wallet_balance)
                             user.wallet_balance -= difference_waiting
                             existing_waiting_tx.amount = -waiting_fee
@@ -5239,20 +5240,20 @@ async def admin_submit_rental_review(
                             existing_waiting_tx.balance_before = balance_before_waiting
                             existing_waiting_tx.balance_after = float(user.wallet_balance)
                 else:
-                    if user.wallet_balance >= waiting_fee:
-                        balance_before_waiting = float(user.wallet_balance)
-                        user.wallet_balance -= waiting_fee
-                        waiting_tx = WalletTransaction(
-                            user_id=user.id,
-                            amount=-waiting_fee,
-                            transaction_type=WalletTransactionType.RENT_WAITING_FEE,
-                            description=f"Платное ожидание {int(extra_minutes)} мин",
-                            balance_before=balance_before_waiting,
-                            balance_after=float(user.wallet_balance),
-                            related_rental_id=rental.id,
-                            created_at=get_local_time()
-                        )
-                        db.add(waiting_tx)
+                    # Разрешаем списание даже при отрицательном балансе
+                    balance_before_waiting = float(user.wallet_balance)
+                    user.wallet_balance -= waiting_fee
+                    waiting_tx = WalletTransaction(
+                        user_id=user.id,
+                        amount=-waiting_fee,
+                        transaction_type=WalletTransactionType.RENT_WAITING_FEE,
+                        description=f"Платное ожидание {int(extra_minutes)} мин",
+                        balance_before=balance_before_waiting,
+                        balance_after=float(user.wallet_balance),
+                        related_rental_id=rental.id,
+                        created_at=get_local_time()
+                    )
+                    db.add(waiting_tx)
             
             rental.waiting_fee = waiting_fee
             
@@ -5283,20 +5284,20 @@ async def admin_submit_rental_review(
                                 price_per_liter = FUEL_PRICE_PER_LITER
                             fuel_fee = int(fuel_consumed * price_per_liter)
                             
-                            if user.wallet_balance >= fuel_fee:
-                                balance_before_fuel = float(user.wallet_balance)
-                                user.wallet_balance -= fuel_fee
-                                fuel_tx = WalletTransaction(
-                                    user_id=user.id,
-                                    amount=-fuel_fee,
-                                    transaction_type=WalletTransactionType.RENT_FUEL_FEE,
-                                    description=f"Оплата топлива: {int(fuel_consumed)} л × {price_per_liter}₸ = {fuel_fee:,}₸" if car.body_type != CarBodyType.ELECTRIC else f"Оплата заряда: {int(fuel_consumed)}% × {price_per_liter}₸ = {fuel_fee:,}₸",
-                                    balance_before=balance_before_fuel,
-                                    balance_after=float(user.wallet_balance),
-                                    related_rental_id=rental.id,
-                                    created_at=get_local_time()
-                                )
-                                db.add(fuel_tx)
+                            # Разрешаем списание даже при отрицательном балансе
+                            balance_before_fuel = float(user.wallet_balance)
+                            user.wallet_balance -= fuel_fee
+                            fuel_tx = WalletTransaction(
+                                user_id=user.id,
+                                amount=-fuel_fee,
+                                transaction_type=WalletTransactionType.RENT_FUEL_FEE,
+                                description=f"Оплата топлива: {int(fuel_consumed)} л × {price_per_liter}₸ = {fuel_fee:,}₸" if car.body_type != CarBodyType.ELECTRIC else f"Оплата заряда: {int(fuel_consumed)}% × {price_per_liter}₸ = {fuel_fee:,}₸",
+                                balance_before=balance_before_fuel,
+                                balance_after=float(user.wallet_balance),
+                                related_rental_id=rental.id,
+                                created_at=get_local_time()
+                            )
+                            db.add(fuel_tx)
             
             # Проверка base_price для часового/суточного тарифа
             if rental.rental_type in (RentalType.HOURS, RentalType.DAYS) and not (car.owner_id == user.id):
@@ -5319,29 +5320,28 @@ async def admin_submit_rental_review(
                 if abs(actual_base_charged - expected_base_price) > 0.01:
                     difference_base = expected_base_price - actual_base_charged
                     
+                    # Разрешаем списание даже при отрицательном балансе
                     if base_charge_tx:
                         balance_before_base = float(user.wallet_balance or 0) + float(abs(base_charge_tx.amount) if base_charge_tx.amount else 0)
-                        if balance_before_base >= expected_base_price:
-                            user.wallet_balance = balance_before_base - expected_base_price
-                            base_charge_tx.amount = -expected_base_price
-                            base_charge_tx.description = f"Оплата аренды: {original_duration} {'час(ов)' if rental.rental_type == RentalType.HOURS else 'день(дней)'} (перерасчёт)"
-                            base_charge_tx.balance_before = balance_before_base
-                            base_charge_tx.balance_after = float(user.wallet_balance or 0)
+                        user.wallet_balance = balance_before_base - expected_base_price
+                        base_charge_tx.amount = -expected_base_price
+                        base_charge_tx.description = f"Оплата аренды: {original_duration} {'час(ов)' if rental.rental_type == RentalType.HOURS else 'день(дней)'} (перерасчёт)"
+                        base_charge_tx.balance_before = balance_before_base
+                        base_charge_tx.balance_after = float(user.wallet_balance or 0)
                     else:
                         balance_before_base = float(user.wallet_balance or 0)
-                        if balance_before_base >= expected_base_price:
-                            user.wallet_balance -= expected_base_price
-                            base_charge_tx = WalletTransaction(
-                                user_id=user.id,
-                                amount=-expected_base_price,
-                                transaction_type=WalletTransactionType.RENT_BASE_CHARGE,
-                                description=f"Оплата аренды: {original_duration} {'час(ов)' if rental.rental_type == RentalType.HOURS else 'день(дней)'}",
-                                balance_before=balance_before_base,
-                                balance_after=float(user.wallet_balance or 0),
-                                related_rental_id=rental.id,
-                                created_at=get_local_time()
-                            )
-                            db.add(base_charge_tx)
+                        user.wallet_balance -= expected_base_price
+                        base_charge_tx = WalletTransaction(
+                            user_id=user.id,
+                            amount=-expected_base_price,
+                            transaction_type=WalletTransactionType.RENT_BASE_CHARGE,
+                            description=f"Оплата аренды: {original_duration} {'час(ов)' if rental.rental_type == RentalType.HOURS else 'день(дней)'}",
+                            balance_before=balance_before_base,
+                            balance_after=float(user.wallet_balance or 0),
+                            related_rental_id=rental.id,
+                            created_at=get_local_time()
+                        )
+                        db.add(base_charge_tx)
                     
                     rental.base_price = expected_base_price
             
@@ -5366,29 +5366,28 @@ async def admin_submit_rental_review(
                     if abs(actual_overtime_charged - expected_overtime_cost) > 0.01:
                         difference_overtime = expected_overtime_cost - actual_overtime_charged
                         
+                        # Разрешаем списание даже при отрицательном балансе
                         if overtime_tx:
                             balance_before_overtime = float(user.wallet_balance or 0) + float(abs(overtime_tx.amount) if overtime_tx.amount else 0)
-                            if balance_before_overtime >= expected_overtime_cost:
-                                user.wallet_balance = balance_before_overtime - expected_overtime_cost
-                                overtime_tx.amount = -expected_overtime_cost
-                                overtime_tx.description = f"Сверхтариф {expected_overtime_minutes} мин (перерасчёт)"
-                                overtime_tx.balance_before = balance_before_overtime
-                                overtime_tx.balance_after = float(user.wallet_balance or 0)
+                            user.wallet_balance = balance_before_overtime - expected_overtime_cost
+                            overtime_tx.amount = -expected_overtime_cost
+                            overtime_tx.description = f"Сверхтариф {expected_overtime_minutes} мин (перерасчёт)"
+                            overtime_tx.balance_before = balance_before_overtime
+                            overtime_tx.balance_after = float(user.wallet_balance or 0)
                         else:
                             balance_before_overtime = float(user.wallet_balance or 0)
-                            if balance_before_overtime >= expected_overtime_cost:
-                                user.wallet_balance -= expected_overtime_cost
-                                overtime_tx = WalletTransaction(
-                                    user_id=user.id,
-                                    amount=-expected_overtime_cost,
-                                    transaction_type=WalletTransactionType.RENT_OVERTIME_FEE,
-                                    description=f"Сверхтариф {expected_overtime_minutes} мин",
-                                    balance_before=balance_before_overtime,
-                                    balance_after=float(user.wallet_balance or 0),
-                                    related_rental_id=rental.id,
-                                    created_at=get_local_time()
-                                )
-                                db.add(overtime_tx)
+                            user.wallet_balance -= expected_overtime_cost
+                            overtime_tx = WalletTransaction(
+                                user_id=user.id,
+                                amount=-expected_overtime_cost,
+                                transaction_type=WalletTransactionType.RENT_OVERTIME_FEE,
+                                description=f"Сверхтариф {expected_overtime_minutes} мин",
+                                balance_before=balance_before_overtime,
+                                balance_after=float(user.wallet_balance or 0),
+                                related_rental_id=rental.id,
+                                created_at=get_local_time()
+                            )
+                            db.add(overtime_tx)
                         
                         rental.overtime_fee = expected_overtime_cost
             
