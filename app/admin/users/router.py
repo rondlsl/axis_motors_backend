@@ -54,6 +54,7 @@ import asyncio
 import httpx
 from app.wallet.utils import record_wallet_transaction
 from app.rent.utils.calculate_price import get_open_price, calc_required_balance, calculate_total_price
+from app.rent.utils.balance_utils import verify_and_fix_rental_balance
 from app.core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2
 from app.models.application_model import Application
 from app.models.history_model import RentalHistory
@@ -2788,6 +2789,48 @@ async def admin_end_rental(
     
     db.commit()
 
+    # ========== ВЕРИФИКАЦИЯ И ИСПРАВЛЕНИЕ БАЛАНСА ==========
+    # Пересчитываем все транзакции, синхронизируем поля аренды и исправляем баланс
+    is_owner = car.owner_id == target_user.id
+    if not is_owner:
+        try:
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            verification_result = verify_and_fix_rental_balance(
+                user=target_user,
+                rental=active_rental,
+                car=car,
+                db=db
+            )
+            
+            if verification_result.get("corrected"):
+                logger.info(
+                    f"🔧 Admin end rental - verification applied for user {target_user.id}: "
+                    f"balance_before_rental={verification_result.get('balance_before_rental')}, "
+                    f"old_balance={verification_result.get('old_balance')}, "
+                    f"new_balance={verification_result.get('new_balance')}, "
+                    f"rental_fields_updated={verification_result.get('rental_fields_updated')}"
+                )
+            elif verification_result.get("success"):
+                logger.info(
+                    f"✅ Admin end rental - balance verified for user {target_user.id}: "
+                    f"balance_before_rental={verification_result.get('balance_before_rental')}, "
+                    f"tx_sums={verification_result.get('tx_sums')}"
+                )
+            else:
+                logger.warning(
+                    f"⚠️ Admin end rental - balance verification failed for user {target_user.id}: "
+                    f"{verification_result.get('error')}"
+                )
+            
+            db.commit()
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error during balance verification in admin_end_rental: {e}", exc_info=True)
+    # ========== КОНЕЦ ВЕРИФИКАЦИИ БАЛАНСА ==========
+
     log_action(
         db,
         actor_id=current_user.id,
@@ -2821,6 +2864,10 @@ async def admin_end_rental(
     except Exception as e:
         print(f"Error sending notification to mechanics: {e}")
     
+    # Обновляем данные из БД после верификации
+    db.refresh(active_rental)
+    db.refresh(target_user)
+    
     return {
         "success": True,
         "rental_id": uuid_to_sid(active_rental.id),
@@ -2830,9 +2877,14 @@ async def admin_end_rental(
         "start_time": start_time.isoformat() if start_time else None,
         "end_time": active_rental.end_time.isoformat(),
         "duration_minutes": duration_minutes,
-        "rental_cost": rental_cost,
-        "open_fee": open_fee,
-        "total_charged": total_to_charge,
+        # Берём значения из пересчитанной аренды (после verify_and_fix_rental_balance)
+        "base_price": active_rental.base_price or 0,
+        "open_fee": active_rental.open_fee or 0,
+        "delivery_fee": active_rental.delivery_fee or 0,
+        "waiting_fee": active_rental.waiting_fee or 0,
+        "overtime_fee": active_rental.overtime_fee or 0,
+        "total_price": active_rental.total_price or 0,
+        "already_payed": active_rental.already_payed or 0,
         "photos_after_count": len(photos_after),
         "new_balance": float(target_user.wallet_balance),
         "ended_by_admin": uuid_to_sid(current_user.id)
@@ -5167,7 +5219,7 @@ async def admin_submit_rental_review(
             
             if waiting_fee > 0:
                 if existing_waiting_tx:
-                    already_charged_waiting = abs(existing_waiting_tx.amount) if existing_waiting_tx.amount else 0
+                    already_charged_waiting = float(abs(existing_waiting_tx.amount)) if existing_waiting_tx.amount else 0
                     difference_waiting = waiting_fee - already_charged_waiting
                     
                     if abs(difference_waiting) > 0.01:
@@ -5218,7 +5270,7 @@ async def admin_submit_rental_review(
                 ).first()
                 
                 if existing_fuel_tx:
-                    fuel_fee = abs(existing_fuel_tx.amount)
+                    fuel_fee = float(abs(existing_fuel_tx.amount)) if existing_fuel_tx.amount else 0
                 elif rental.fuel_before is not None and rental.fuel_after is not None:
                     if rental.fuel_after < rental.fuel_before:
                         fuel_before_rounded = ceil(rental.fuel_before)
@@ -5260,7 +5312,7 @@ async def admin_submit_rental_review(
                 ).all():
                     desc = tx.description or ""
                     if "оплат" in desc.lower() and "аренд" in desc.lower() and ("час" in desc.lower() or "день" in desc.lower()):
-                        actual_base_charged = abs(tx.amount) if tx.amount else 0
+                        actual_base_charged = float(abs(tx.amount)) if tx.amount else 0
                         base_charge_tx = tx
                         break
                 
@@ -5268,15 +5320,15 @@ async def admin_submit_rental_review(
                     difference_base = expected_base_price - actual_base_charged
                     
                     if base_charge_tx:
-                        balance_before_base = float(user.wallet_balance) + abs(base_charge_tx.amount)
+                        balance_before_base = float(user.wallet_balance or 0) + float(abs(base_charge_tx.amount) if base_charge_tx.amount else 0)
                         if balance_before_base >= expected_base_price:
                             user.wallet_balance = balance_before_base - expected_base_price
                             base_charge_tx.amount = -expected_base_price
                             base_charge_tx.description = f"Оплата аренды: {original_duration} {'час(ов)' if rental.rental_type == RentalType.HOURS else 'день(дней)'} (перерасчёт)"
                             base_charge_tx.balance_before = balance_before_base
-                            base_charge_tx.balance_after = float(user.wallet_balance)
+                            base_charge_tx.balance_after = float(user.wallet_balance or 0)
                     else:
-                        balance_before_base = float(user.wallet_balance)
+                        balance_before_base = float(user.wallet_balance or 0)
                         if balance_before_base >= expected_base_price:
                             user.wallet_balance -= expected_base_price
                             base_charge_tx = WalletTransaction(
@@ -5285,7 +5337,7 @@ async def admin_submit_rental_review(
                                 transaction_type=WalletTransactionType.RENT_BASE_CHARGE,
                                 description=f"Оплата аренды: {original_duration} {'час(ов)' if rental.rental_type == RentalType.HOURS else 'день(дней)'}",
                                 balance_before=balance_before_base,
-                                balance_after=float(user.wallet_balance),
+                                balance_after=float(user.wallet_balance or 0),
                                 related_rental_id=rental.id,
                                 created_at=get_local_time()
                             )
@@ -5309,21 +5361,21 @@ async def admin_submit_rental_review(
                         WalletTransaction.transaction_type == WalletTransactionType.RENT_OVERTIME_FEE
                     ).order_by(WalletTransaction.created_at.desc()).first()
                     
-                    actual_overtime_charged = abs(overtime_tx.amount) if overtime_tx and overtime_tx.amount else 0
+                    actual_overtime_charged = float(abs(overtime_tx.amount)) if overtime_tx and overtime_tx.amount else 0
                     
                     if abs(actual_overtime_charged - expected_overtime_cost) > 0.01:
                         difference_overtime = expected_overtime_cost - actual_overtime_charged
                         
                         if overtime_tx:
-                            balance_before_overtime = float(user.wallet_balance) + abs(overtime_tx.amount)
+                            balance_before_overtime = float(user.wallet_balance or 0) + float(abs(overtime_tx.amount) if overtime_tx.amount else 0)
                             if balance_before_overtime >= expected_overtime_cost:
                                 user.wallet_balance = balance_before_overtime - expected_overtime_cost
                                 overtime_tx.amount = -expected_overtime_cost
                                 overtime_tx.description = f"Сверхтариф {expected_overtime_minutes} мин (перерасчёт)"
                                 overtime_tx.balance_before = balance_before_overtime
-                                overtime_tx.balance_after = float(user.wallet_balance)
+                                overtime_tx.balance_after = float(user.wallet_balance or 0)
                         else:
-                            balance_before_overtime = float(user.wallet_balance)
+                            balance_before_overtime = float(user.wallet_balance or 0)
                             if balance_before_overtime >= expected_overtime_cost:
                                 user.wallet_balance -= expected_overtime_cost
                                 overtime_tx = WalletTransaction(
@@ -5332,7 +5384,7 @@ async def admin_submit_rental_review(
                                     transaction_type=WalletTransactionType.RENT_OVERTIME_FEE,
                                     description=f"Сверхтариф {expected_overtime_minutes} мин",
                                     balance_before=balance_before_overtime,
-                                    balance_after=float(user.wallet_balance),
+                                    balance_after=float(user.wallet_balance or 0),
                                     related_rental_id=rental.id,
                                     created_at=get_local_time()
                                 )

@@ -271,14 +271,14 @@ def init_app(app: FastAPI):
         )
         # scheduler.start() будет вызван ниже после добавления всех задач
 
-        try:
-            # Инициализируем тестовые данные
-            init_test_data(db)
-        except Exception as e:
-            print(e)
-            logger.error(f"Ошибка в стартап-инициализации: {e}")
-        finally:
-            db.close()
+        # try:
+        #     # Инициализируем тестовые данные
+        #     init_test_data(db)
+        # except Exception as e:
+        #     print(e)
+        #     logger.error(f"Ошибка в стартап-инициализации: {e}")
+        # finally:
+        #     db.close()
 
         try:
             backfill_availability_history()
