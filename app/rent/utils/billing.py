@@ -129,13 +129,14 @@ async def billing_job():
                 try:
                     await send_lock_engine(imei, auth_token)
                     # Уведомим пользователя в приложение (с ограничением параллелизма)
-                    async def _notify_engine_locked():
-                        async with push_semaphore:
-                            try:
-                                await send_localized_notification_to_user_async(user_id, "engine_locked_due_to_balance", "engine_locked_due_to_balance", car_name=car_name)
-                            except Exception as e:
-                                print(f"Ошибка отправки уведомления о блокировке двигателя пользователю {user_id}: {e}")
-                    asyncio.create_task(_notify_engine_locked())
+                    # TODO: временно отключено - enum engine_locked_due_to_balance не существует в БД
+                    # async def _notify_engine_locked():
+                    #     async with push_semaphore:
+                    #         try:
+                    #             await send_localized_notification_to_user_async(user_id, "engine_locked_due_to_balance", "engine_locked_due_to_balance", car_name=car_name)
+                    #         except Exception as e:
+                    #             print(f"Ошибка отправки уведомления о блокировке двигателя пользователю {user_id}: {e}")
+                    # asyncio.create_task(_notify_engine_locked())
                     # И в телеграм
                     user = db.query(User).filter(User.id == user_id).first()
                     user_info = f"user_id={user_id}"
