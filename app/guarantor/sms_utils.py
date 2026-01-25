@@ -1,18 +1,69 @@
 import httpx
+import logging
 from app.core.config import SMS_TOKEN
 
+logger = logging.getLogger(__name__)
 
-async def send_sms_mobizon(recipient: str, sms_text: str, api_key: str):
+
+async def send_sms_mobizon(recipient: str, sms_text: str, api_key: str, sender: str = None):
     """Отправка SMS через Mobizon API"""
+    if not api_key:
+        error_msg = "SMS_TOKEN не настроен. Проверьте переменную окружения SMS_TOKEN."
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+    
     url = "https://api.mobizon.kz/service/message/sendsmsmessage"
     params = {
         "recipient": recipient,
         "text": sms_text,
         "apiKey": api_key
     }
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        response = await client.get(url, params=params)
-        return response.text
+    if sender:
+        params["from"] = sender
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(url, params=params)
+            
+            # Проверяем статус ответа
+            if response.status_code != 200:
+                error_msg = f"Mobizon API вернул ошибку: статус {response.status_code}, ответ: {response.text}"
+                logger.error(error_msg)
+                logger.error(f"Параметры запроса: recipient={recipient}, text_length={len(sms_text)}")
+                raise Exception(error_msg)
+            
+            response_text = response.text
+            logger.info(f"SMS отправлено успешно на {recipient}. Ответ API: {response_text}")
+            
+            # Проверяем ответ API на наличие ошибок в JSON (если API возвращает JSON)
+            try:
+                import json
+                response_json = response.json()
+                # Mobizon обычно возвращает JSON с полем code или result
+                if isinstance(response_json, dict):
+                    code = response_json.get('code', response_json.get('resultCode'))
+                    if code and code != 0:  # 0 обычно означает успех
+                        error_msg = f"Mobizon API вернул ошибку: {response_json}"
+                        logger.error(error_msg)
+                        raise Exception(error_msg)
+            except (json.JSONDecodeError, ValueError):
+                # Если ответ не JSON, это нормально - просто текст
+                pass
+            
+            return response_text
+            
+    except httpx.TimeoutException as e:
+        error_msg = f"Таймаут при отправке SMS на {recipient}: {e}"
+        logger.error(error_msg)
+        raise Exception(error_msg)
+    except httpx.RequestError as e:
+        error_msg = f"Ошибка сети при отправке SMS на {recipient}: {e}"
+        logger.error(error_msg)
+        raise Exception(error_msg)
+    except Exception as e:
+        error_msg = f"Неожиданная ошибка при отправке SMS на {recipient}: {e}"
+        logger.error(error_msg)
+        raise
 
 
 async def send_guarantor_invitation_sms(guarantor_phone: str, requestor_first_name: str, requestor_last_name: str = None, requestor_middle_name: str = None):
@@ -40,14 +91,19 @@ Google play:
     
     # Если SMS_TOKEN = "6666" - тестовый режим, SMS не отправляем
     if SMS_TOKEN == "6666":
-        print(f"TEST SMS to {guarantor_phone}: {sms_text}")
+        logger.info(f"TEST SMS to {guarantor_phone}: {sms_text}")
         return {"message": "TEST SMS sent successfully"}
+    
+    if not SMS_TOKEN:
+        error_msg = "SMS_TOKEN не настроен"
+        logger.error(error_msg)
+        return {"message": "SMS sending failed", "error": error_msg}
     
     try:
         result = await send_sms_mobizon(guarantor_phone, sms_text, SMS_TOKEN)
         return {"message": "SMS sent successfully", "result": result}
     except Exception as e:
-        print(f"SMS sending error: {e}")
+        logger.error(f"SMS sending error: {e}", exc_info=True)
         return {"message": "SMS sending failed", "error": str(e)}
 
 
@@ -57,14 +113,19 @@ async def send_user_rejection_with_guarantor_sms(user_phone: str, user_name: str
     
     # Если SMS_TOKEN = "6666" - тестовый режим, SMS не отправляем
     if SMS_TOKEN == "6666":
-        print(f"TEST SMS to {user_phone}: {sms_text}")
+        logger.info(f"TEST SMS to {user_phone}: {sms_text}")
         return {"message": "TEST SMS sent successfully"}
+    
+    if not SMS_TOKEN:
+        error_msg = "SMS_TOKEN не настроен"
+        logger.error(error_msg)
+        return {"message": "SMS sending failed", "error": error_msg}
     
     try:
         result = await send_sms_mobizon(user_phone, sms_text, SMS_TOKEN)
         return {"message": "SMS sent successfully", "result": result}
     except Exception as e:
-        print(f"SMS sending error: {e}")
+        logger.error(f"SMS sending error: {e}", exc_info=True)
         return {"message": "SMS sending failed", "error": str(e)}
 
 
@@ -90,11 +151,16 @@ Google Play: Скоро будет доступно
 С уважением,
 Команда AZV Motors"""
     
+    if not SMS_TOKEN:
+        error_msg = "SMS_TOKEN не настроен"
+        logger.error(error_msg)
+        return {"message": "SMS sending failed", "error": error_msg}
+    
     try:
         result = await send_sms_mobizon(guarantor_phone, sms_text, SMS_TOKEN)
         return {"message": "SMS sent successfully", "result": result}
     except Exception as e:
-        print(f"SMS sending error: {e}")
+        logger.error(f"SMS sending error: {e}", exc_info=True)
         return {"message": "SMS sending failed", "error": str(e)}
 
 
@@ -122,14 +188,19 @@ ID машины: {car_id}
 Модель машины: {car_name}"""
     
     if SMS_TOKEN == "6666":
-        print(f"TEST SMS to {client_phone}: {sms_text}")
+        logger.info(f"TEST SMS to {client_phone}: {sms_text}")
         return {"message": "TEST SMS sent successfully"}
+    
+    if not SMS_TOKEN:
+        error_msg = "SMS_TOKEN не настроен"
+        logger.error(error_msg)
+        return {"message": "SMS sending failed", "error": error_msg}
     
     try:
         result = await send_sms_mobizon(client_phone, sms_text, SMS_TOKEN)
         return {"message": "SMS sent successfully", "result": result}
     except Exception as e:
-        print(f"SMS sending error: {e}")
+        logger.error(f"SMS sending error: {e}", exc_info=True)
         return {"message": "SMS sending failed", "error": str(e)}
 
 
@@ -157,14 +228,19 @@ ID машины: {car_id}
 Модель машины: {car_name}"""
     
     if SMS_TOKEN == "6666":
-        print(f"TEST SMS to {client_phone}: {sms_text}")
+        logger.info(f"TEST SMS to {client_phone}: {sms_text}")
         return {"message": "TEST SMS sent successfully"}
+    
+    if not SMS_TOKEN:
+        error_msg = "SMS_TOKEN не настроен"
+        logger.error(error_msg)
+        return {"message": "SMS sending failed", "error": error_msg}
     
     try:
         result = await send_sms_mobizon(client_phone, sms_text, SMS_TOKEN)
         return {"message": "SMS sent successfully", "result": result}
     except Exception as e:
-        print(f"SMS sending error: {e}")
+        logger.error(f"SMS sending error: {e}", exc_info=True)
         return {"message": "SMS sending failed", "error": str(e)}
 
 
@@ -180,14 +256,19 @@ async def send_guarantor_contract_signed_sms(
 ТОО «Объединение Азаева» - AZV Motors"""
     
     if SMS_TOKEN == "6666":
-        print(f"TEST SMS to {guarantor_phone}: {sms_text}")
+        logger.info(f"TEST SMS to {guarantor_phone}: {sms_text}")
         return {"message": "TEST SMS sent successfully"}
+    
+    if not SMS_TOKEN:
+        error_msg = "SMS_TOKEN не настроен"
+        logger.error(error_msg)
+        return {"message": "SMS sending failed", "error": error_msg}
     
     try:
         result = await send_sms_mobizon(guarantor_phone, sms_text, SMS_TOKEN)
         return {"message": "SMS sent successfully", "result": result}
     except Exception as e:
-        print(f"SMS sending error: {e}")
+        logger.error(f"SMS sending error: {e}", exc_info=True)
         return {"message": "SMS sending failed", "error": str(e)}
 
 
@@ -204,12 +285,17 @@ async def send_client_guarantor_confirmed_sms(
 ТОО «Объединение Азаева» - AZV Motors"""
     
     if SMS_TOKEN == "6666":
-        print(f"TEST SMS to {client_phone}: {sms_text}")
+        logger.info(f"TEST SMS to {client_phone}: {sms_text}")
         return {"message": "TEST SMS sent successfully"}
+    
+    if not SMS_TOKEN:
+        error_msg = "SMS_TOKEN не настроен"
+        logger.error(error_msg)
+        return {"message": "SMS sending failed", "error": error_msg}
     
     try:
         result = await send_sms_mobizon(client_phone, sms_text, SMS_TOKEN)
         return {"message": "SMS sent successfully", "result": result}
     except Exception as e:
-        print(f"SMS sending error: {e}")
+        logger.error(f"SMS sending error: {e}", exc_info=True)
         return {"message": "SMS sending failed", "error": str(e)}
