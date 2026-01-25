@@ -310,6 +310,27 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
     if not phone_number.isdigit():
         raise HTTPException(status_code=400, detail="Phone number must contain only digits.")
 
+    # Системные номера телефонов — сразу возвращаем успех без отправки SMS
+    SYSTEM_PHONE_NUMBERS = [
+        "70000000000",   # админ
+        "71234567890",   # механик
+        "71234567898",   # МВД
+        "71234567899",   # финансист
+        "79999999999",   # бухгалтер
+        "71231111111",   # владелец автомобилей
+    ]
+    
+    if phone_number in SYSTEM_PHONE_NUMBERS:
+        # Проверяем, что пользователь существует
+        system_user = db.query(User).filter(User.phone_number == phone_number, User.is_active == True).first()
+        if system_user:
+            # Для системных пользователей сразу возвращаем успех
+            logger.info(f"Системный пользователь {phone_number}, SMS не отправляется")
+            return SendSmsResponse(
+                message="SMS code sent successfully",
+                fcm_token=system_user.fcm_token if system_user.fcm_token else None
+            )
+
     can_send, error_msg = check_sms_rate_limit(phone_number)
     if not can_send:
         raise HTTPException(status_code=429, detail=error_msg)
