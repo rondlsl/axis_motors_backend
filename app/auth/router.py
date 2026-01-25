@@ -623,6 +623,7 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
     """
     Верификация смс-кода. Учтите, что ищем активного пользователя.
     Если sms_code == "1010", то тестовая проверка, иначе проверяем по коду и времени.
+    Для системных пользователей (ADMIN, MECHANIC, FINANCIER, MVD, ACCOUNTANT) время кода не проверяется.
     """
     phone_number = request.phone_number
     sms_code = request.sms_code
@@ -630,16 +631,32 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
     if not phone_number.isdigit():
         raise HTTPException(status_code=400, detail="Phone number must contain only digits.")
 
+    # Системные роли, для которых не проверяется время истечения кода
+    SYSTEM_ROLES = [UserRole.ADMIN, UserRole.MECHANIC, UserRole.FINANCIER, UserRole.MVD, UserRole.ACCOUNTANT]
+
     # При проверке пользуемся активными пользователями
     if sms_code == "1010":
         user = db.query(User).filter(User.phone_number == phone_number, User.is_active == True).first()
     else:
-        user = db.query(User).filter(
+        # Сначала проверяем, является ли пользователь системным (по номеру телефона)
+        potential_system_user = db.query(User).filter(
             User.phone_number == phone_number,
             User.last_sms_code == sms_code,
-            User.sms_code_valid_until > get_local_time(),
-            User.is_active == True
+            User.is_active == True,
+            User.role.in_(SYSTEM_ROLES)
         ).first()
+        
+        if potential_system_user:
+            # Для системных пользователей не проверяем время истечения кода
+            user = potential_system_user
+        else:
+            # Для обычных пользователей проверяем время
+            user = db.query(User).filter(
+                User.phone_number == phone_number,
+                User.last_sms_code == sms_code,
+                User.sms_code_valid_until > get_local_time(),
+                User.is_active == True
+            ).first()
 
     if not user:
         raise HTTPException(status_code=401, detail="Invalid SMS code or code expired")
