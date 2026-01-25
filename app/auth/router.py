@@ -30,6 +30,7 @@ from datetime import datetime, timedelta
 from app.core.config import ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS
 from app.core.config import SMS_TOKEN
 from app.dependencies.database.database import get_db
+from app.guarantor.sms_utils import send_sms_mobizon
 from app.models.car_model import Car
 from app.models.history_model import RentalHistory, RentalStatus, RentalReview
 from app.models.user_model import UserRole, User
@@ -258,19 +259,6 @@ class UpdateNameResponse(BaseModel):
         }
 
 
-async def send_sms_mobizon(recipient: str, sms_text: str, api_key: str):
-    url = "https://api.mobizon.kz/service/message/sendsmsmessage"
-    params = {
-        "recipient": recipient,
-        "text": sms_text,
-        "apiKey": api_key,
-        "from": "AZV Motors"
-    }
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url, params=params)
-        return response.text
-
-
 @Auth_router.post("/send_sms/", response_model=SendSmsResponse)
 async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
     """
@@ -445,7 +433,7 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
 Электронная подпись:{user.digital_signature}"""
     try:
         if SMS_TOKEN:
-            await send_sms_mobizon(phone_number, sms_text, f"{SMS_TOKEN}")
+            await send_sms_mobizon(phone_number, sms_text, f"{SMS_TOKEN}", sender="AZV Motors")
             update_sms_rate_limit(phone_number)
         else:
             logger.warning("SMS_TOKEN is not configured; skipping Mobizon send")
