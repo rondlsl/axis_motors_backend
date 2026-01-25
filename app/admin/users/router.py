@@ -5121,62 +5121,80 @@ async def admin_submit_rental_review(
     - rating: оценка от 1 до 5
     - comment: текстовый комментарий (опционально)
     """
+    print(f"[REVIEW] Начало обработки. rental_id={request.rental_id}, rating={request.rating}")
+    
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Только администратор или техподдержка может добавлять оценки от имени клиентов")
     
     try:
         rental_uuid = safe_sid_to_uuid(request.rental_id)
+        print(f"[REVIEW] rental_uuid={rental_uuid}")
     except ValueError as e:
+        print(f"[REVIEW] Ошибка парсинга rental_id: {e}")
         raise HTTPException(status_code=400, detail=f"Неверный формат rental_id: {str(e)}")
     
-    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
-    if not rental:
-        raise HTTPException(status_code=404, detail="Аренда не найдена")
-    
-    # 1. Сохраняем отзыв
-    existing_review = db.query(RentalReview).filter(RentalReview.rental_id == rental.id).first()
-    is_update = False
-    
-    if existing_review:
-        existing_review.rating = request.rating
-        existing_review.comment = request.comment
-        is_update = True
-    else:
-        review = RentalReview(
-            rental_id=rental.id,
-            rating=request.rating,
-            comment=request.comment
-        )
-        db.add(review)
-    
-    # 2. Завершаем аренду, если она активна
-    rental_completed = False
-    total_charged = None
-    
-    if rental.rental_status == RentalStatus.IN_USE:
-        # Получаем машину и пользователя
-        car = db.query(Car).filter(Car.id == rental.car_id).first()
-        user = db.query(User).filter(User.id == rental.user_id).first()
+    try:
+        rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+        if not rental:
+            print(f"[REVIEW] Аренда не найдена: {rental_uuid}")
+            raise HTTPException(status_code=404, detail="Аренда не найдена")
         
-        if car and user:
-            now = get_local_time()
-            start_time = rental.start_time or rental.reservation_time
+        print(f"[REVIEW] Аренда найдена: status={rental.rental_status}, user_id={rental.user_id}, car_id={rental.car_id}")
+        
+        # 1. Сохраняем отзыв
+        existing_review = db.query(RentalReview).filter(RentalReview.rental_id == rental.id).first()
+        is_update = False
+        
+        if existing_review:
+            existing_review.rating = request.rating
+            existing_review.comment = request.comment
+            is_update = True
+            print(f"[REVIEW] Обновляем существующий отзыв")
+        else:
+            review = RentalReview(
+                rental_id=rental.id,
+                rating=request.rating,
+                comment=request.comment
+            )
+            db.add(review)
+            print(f"[REVIEW] Создаём новый отзыв")
+    
+        # 2. Завершаем аренду, если она активна
+        rental_completed = False
+        total_charged = None
+        
+        print(f"[REVIEW] rental_status={rental.rental_status}, IN_USE={RentalStatus.IN_USE}")
+        
+        if rental.rental_status == RentalStatus.IN_USE:
+            # Получаем машину и пользователя
+            car = db.query(Car).filter(Car.id == rental.car_id).first()
+            user = db.query(User).filter(User.id == rental.user_id).first()
             
-            # Рассчитываем фактическую длительность в минутах
-            if start_time:
-                total_seconds = (now - start_time).total_seconds()
-                actual_minutes = total_seconds / 60
-                rounded_minutes = ceil(actual_minutes)
-            else:
-                rounded_minutes = 0
-                actual_minutes = 0
+            print(f"[REVIEW] car={car.id if car else None}, user={user.id if user else None}, user_balance={user.wallet_balance if user else None}")
             
-            # Сохраняем оригинальное значение duration (часы/дни) до перезаписи
-            original_duration = rental.duration
-            
-            price_per_minute = car.price_per_minute or 0
-            price_per_hour = car.price_per_hour or 0
-            price_per_day = car.price_per_day or 0
+            if car and user:
+                now = get_local_time()
+                start_time = rental.start_time or rental.reservation_time
+                
+                # Рассчитываем фактическую длительность в минутах
+                if start_time:
+                    total_seconds = (now - start_time).total_seconds()
+                    actual_minutes = total_seconds / 60
+                    rounded_minutes = ceil(actual_minutes)
+                else:
+                    rounded_minutes = 0
+                    actual_minutes = 0
+                
+                print(f"[REVIEW] actual_minutes={actual_minutes}, rounded_minutes={rounded_minutes}")
+                
+                # Сохраняем оригинальное значение duration (часы/дни) до перезаписи
+                original_duration = rental.duration
+                
+                price_per_minute = car.price_per_minute or 0
+                price_per_hour = car.price_per_hour or 0
+                price_per_day = car.price_per_day or 0
+                
+                print(f"[REVIEW] rental_type={rental.rental_type}, original_duration={original_duration}, prices: min={price_per_minute}, hour={price_per_hour}, day={price_per_day}")
             
             # Базовая плата по типу аренды
             if rental.rental_type == RentalType.MINUTES:
@@ -5441,12 +5459,17 @@ async def admin_submit_rental_review(
                     if rental.already_payed is None:
                         rental.already_payed = 0
             
+            print(f"[REVIEW] Расчёты завершены: base_price={rental.base_price}, open_fee={rental.open_fee}, waiting_fee={rental.waiting_fee}, overtime_fee={rental.overtime_fee}, total_price={rental.total_price}, already_payed={rental.already_payed}")
+            print(f"[REVIEW] Баланс пользователя после списаний: {user.wallet_balance}")
+            
             # Машина переходит в статус PENDING (требуется проверка механиком)
             car.status = CarStatus.PENDING
             car.current_renter_id = None
             
             rental_completed = True
             total_charged = rental.total_price  # Общая сумма аренды
+            
+            print(f"[REVIEW] Аренда завершена, машина переведена в PENDING")
             
             # Обновляем last_activity пользователя
             user.last_activity_at = now
@@ -5472,7 +5495,9 @@ async def admin_submit_rental_review(
             except Exception as e:
                 print(f"Error sending notification to mechanics: {e}")
     
+        print(f"[REVIEW] Готовы к commit. rental_completed={rental_completed}, total_charged={total_charged}")
         db.commit()
+        print(f"[REVIEW] Commit успешен")
         
         return {
         "message": "Отзыв добавлен и аренда завершена" if rental_completed else ("Оценка обновлена" if is_update else "Оценка добавлена"),
@@ -5483,6 +5508,15 @@ async def admin_submit_rental_review(
         "rental_completed": rental_completed,
         "total_charged": total_charged
         }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        import traceback
+        print(f"[REVIEW] ОШИБКА: {e}")
+        print(f"[REVIEW] Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Ошибка при завершении аренды: {str(e)}")
 
 
 
