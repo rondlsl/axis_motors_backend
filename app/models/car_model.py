@@ -64,6 +64,7 @@ class Car(Base):
     price_per_minute = Column(Integer, nullable=False)
     price_per_hour = Column(Integer, nullable=False)
     price_per_day = Column(Integer, nullable=False)
+    open_fee = Column(Integer, nullable=False, default=4000)  # Стоимость открытия дверей
     car_class = Column(Integer, nullable=True, default=1)
     auto_class = Column(
         SAEnum(CarAutoClass, name="car_auto_class"),

@@ -2918,8 +2918,9 @@ async def check_vehicle_status_for_completion(vehicle_imei: str, plate_number: O
     Возвращает ошибки если автомобиль не готов к завершению аренды.
     """
     try:
+        from app.core.config import VEHICLES_API_URL
         async with httpx.AsyncClient() as client:
-            response = await client.get(f"http://195.93.152.69:8667/vehicles/?skip=0&limit=100")
+            response = await client.get(f"{VEHICLES_API_URL}/vehicles/?skip=0&limit=100")
             response.raise_for_status()
             vehicles = response.json()
             

@@ -14,7 +14,8 @@ LOCK_ENGINE_DISABLED_VEHICLE_IDS = {800212421, 800283232}  # CLA45s, Hongqi
 
 
 async def get_last_vehicles_data():
-    url = "http://195.93.152.69:8667/vehicles/?skip=0&limit=100"
+    from app.core.config import VEHICLES_API_URL
+    url = f"{VEHICLES_API_URL}/vehicles/?skip=0&limit=100"
     headers = {"accept": "application/json"}
 
     async with httpx.AsyncClient(timeout=5.0) as client:

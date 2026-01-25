@@ -145,6 +145,7 @@ def car_to_detail_schema(car: Car, db: Optional[Session] = None) -> CarDetailSch
         price_per_minute=car.price_per_minute,
         price_per_hour=car.price_per_hour,
         price_per_day=car.price_per_day,
+        open_fee=car.open_fee if car.open_fee is not None else 4000,
         owner_id=uuid_to_sid(car.owner_id) if car.owner_id else None,
         current_renter_id=uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
         owner=owner_obj,

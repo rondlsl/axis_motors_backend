@@ -68,7 +68,8 @@ async def get_gps_route_data(
         start_encoded = urllib.parse.quote(start_q)
         end_encoded = urllib.parse.quote(end_q)
         
-        url = f"http://195.93.152.69:8667/vehicles/{device_id}/gps?start_date={start_encoded}&end_date={end_encoded}"
+        from app.core.config import VEHICLES_API_URL
+        url = f"{VEHICLES_API_URL}/vehicles/{device_id}/gps?start_date={start_encoded}&end_date={end_encoded}"
         headers = {"accept": "application/json"}
         
         async with httpx.AsyncClient(timeout=15.0) as client:

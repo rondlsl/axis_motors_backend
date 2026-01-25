@@ -15,27 +15,14 @@ DRIVER_FEE_PER_DAY = 20000  # 20000₸ за каждые сутки (суточ�
 
 
 def get_open_price(car: Car) -> int:
-    # G63, Maserati и Mercedes W222 - 8000₸
-    if car.gps_imei in ["860803068155890", "860803068139613", "860803068133152"]:
-        return 8000
-    # Range Rover Sport Supercharged - 6000₸
-    if car.gps_imei == "860803068151105":
-        return 6000
-    # Li L7 Ultra - 6000₸
-    if car.gps_imei == "860803068133657":
-        return 6000
-    # BMW 530i (G30) - 6000₸
-    if car.gps_imei == "860803068133343":
-        return 6000
-    
-    if car.car_class == 1:
-        return 4000
-    elif car.car_class == 2:
-        return 6000
-    elif car.car_class == 3:
-        return 8000
-    else:
-        return 0  # или можно вернуть None
+    """
+    Возвращает стоимость открытия дверей из базы данных.
+    Если open_fee не задан, возвращает 4000 по умолчанию.
+    """
+    if car.open_fee is not None:
+        return car.open_fee
+    # Fallback на случай если open_fee не задан (старые записи)
+    return 4000
 
 
 def calculate_total_price(
