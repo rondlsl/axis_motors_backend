@@ -67,6 +67,20 @@ def check_sms_rate_limit(phone_number: str) -> tuple[bool, str]:
     Проверяет rate limit для SMS.
     Возвращает (can_send, error_message)
     """
+    # Системные номера телефонов, для которых не применяется rate limit
+    SYSTEM_PHONE_NUMBERS = [
+        "70000000000",   # админ
+        "71234567890",   # механик
+        "71234567898",   # МВД
+        "71234567899",   # финансист
+        "79999999999",   # бухгалтер
+        "71231111111",   # владелец автомобилей
+    ]
+    
+    # Для системных пользователей пропускаем rate limit
+    if phone_number in SYSTEM_PHONE_NUMBERS:
+        return True, ""
+    
     now = get_local_time()
     
     if phone_number not in sms_rate_limit_cache:
