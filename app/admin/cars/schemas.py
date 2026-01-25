@@ -164,7 +164,7 @@ class CarDetailSchema(BaseModel):
     price_per_minute: int
     price_per_hour: int
     price_per_day: int
-    open_fee: int = 4000  # Стоимость открытия дверей
+    open_fee: int  # Стоимость открытия дверей (из БД)
     owner_id: Optional[str] = None
     current_renter_id: Optional[str] = None
     owner: Optional[OwnerSchema] = None
