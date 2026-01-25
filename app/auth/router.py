@@ -321,15 +321,14 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
     ]
     
     if phone_number in SYSTEM_PHONE_NUMBERS:
-        # Проверяем, что пользователь существует
-        system_user = db.query(User).filter(User.phone_number == phone_number, User.is_active == True).first()
-        if system_user:
-            # Для системных пользователей сразу возвращаем успех
-            logger.info(f"Системный пользователь {phone_number}, SMS не отправляется")
-            return SendSmsResponse(
-                message="SMS code sent successfully",
-                fcm_token=system_user.fcm_token if system_user.fcm_token else None
-            )
+        # Для системных пользователей сразу возвращаем успех без проверок
+        try:
+            system_user = db.query(User).filter(User.phone_number == phone_number, User.is_active == True).first()
+            fcm = system_user.fcm_token if system_user and system_user.fcm_token else None
+            return SendSmsResponse(message="SMS code sent successfully", fcm_token=fcm)
+        except Exception as e:
+            # Если что-то пошло не так, просто возвращаем успех
+            return SendSmsResponse(message="SMS code sent successfully", fcm_token=None)
 
     can_send, error_msg = check_sms_rate_limit(phone_number)
     if not can_send:
