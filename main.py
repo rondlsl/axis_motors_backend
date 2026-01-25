@@ -107,7 +107,8 @@ def run_migrations():
 
 
 async def get_last_vehicles_data():
-    url = "http://195.93.152.69:8667/vehicles/?skip=0&limit=100"
+    from app.core.config import VEHICLES_API_URL
+    url = f"{VEHICLES_API_URL}/vehicles/?skip=0&limit=100"
     headers = {"accept": "application/json"}
 
     try:
@@ -632,7 +633,8 @@ async def health_check():
 @app.get("/health/cars")
 async def health_check_cars():
     """Check if cars service is healthy and send alert if down"""
-    cars_url = "http://195.93.152.69:8667/health"
+    from app.core.config import VEHICLES_API_URL
+    cars_url = f"{VEHICLES_API_URL}/health"
     
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:

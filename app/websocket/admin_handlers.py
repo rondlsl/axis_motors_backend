@@ -46,8 +46,9 @@ async def get_admin_cars_list_data(
     # Получаем скорости всех машин одним запросом к внутреннему API
     car_speeds = {}
     try:
+        from app.core.config import VEHICLES_API_URL
         async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get("http://195.93.152.69:8667/vehicles")
+            response = await client.get(f"{VEHICLES_API_URL}/vehicles")
             if response.status_code == 200:
                 vehicles_cache = response.json()
                 imei_to_speed = {v.get("vehicle_imei"): v.get("speed") for v in vehicles_cache}

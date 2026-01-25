@@ -53,7 +53,8 @@ VEHICLE_STATUS_FIELDS = [
     "is_trunk_open", "is_handbrake_on", "are_lights_on", "is_light_auto_mode_on",
 ]
 
-CARS_V2_API_URL = "http://195.93.152.69:8667/vehicles"
+from app.core.config import VEHICLES_API_URL
+CARS_V2_API_URL = f"{VEHICLES_API_URL}/vehicles"
 
 cars_router = APIRouter(tags=["Admin Cars"])
 

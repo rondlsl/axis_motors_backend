@@ -17,7 +17,8 @@ from app.models.history_model import RentalHistory, RentalStatus
 from app.websocket.admin_handlers import get_admin_cars_list_data, get_admin_users_list_data
 from app.utils.time_utils import get_local_time
 
-INTERNAL_VEHICLES_API = "http://195.93.152.69:8667/vehicles"
+from app.core.config import VEHICLES_API_URL
+INTERNAL_VEHICLES_API = f"{VEHICLES_API_URL}/vehicles"
 
 logger = logging.getLogger(__name__)
 

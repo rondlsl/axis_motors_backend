@@ -83,8 +83,9 @@ async def get_vehicles_data_for_user(user: User, db: Session) -> Dict[str, Any]:
         # Получаем скорости всех машин одним запросом к внутреннему API
         car_speeds = {}
         try:
+            from app.core.config import VEHICLES_API_URL
             async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get("http://195.93.152.69:8667/vehicles")
+                response = await client.get(f"{VEHICLES_API_URL}/vehicles")
                 if response.status_code == 200:
                     vehicles_cache = response.json()
                     # Создаём словарь IMEI -> speed для быстрого поиска
