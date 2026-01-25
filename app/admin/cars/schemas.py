@@ -172,6 +172,8 @@ class CarDetailSchema(BaseModel):
     available_minutes: Optional[int] = None
     gps_id: Optional[str] = None
     gps_imei: Optional[str] = None
+    vehicle_id: Optional[str] = None  # Алиас для gps_id
+    vehicle_imei: Optional[str] = None  # Алиас для gps_imei
     vin: Optional[str] = None
     color: Optional[str] = None
     rating: Optional[float] = None
