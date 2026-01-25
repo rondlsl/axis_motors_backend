@@ -198,6 +198,9 @@ async def get_car_details(
         except Exception:
             pass
 
+    # Обновляем объект из БД, чтобы получить актуальные данные (включая open_fee)
+    db.refresh(car)
+
     return CarDetailSchema(
         id=uuid_to_sid(car.id),
         name=car.name,
@@ -223,7 +226,7 @@ async def get_car_details(
         price_per_minute=car.price_per_minute,
         price_per_hour=car.price_per_hour,
         price_per_day=car.price_per_day,
-        open_fee=car.open_fee if car.open_fee is not None else 4000,
+        open_fee=car.open_fee,
         owner_id=uuid_to_sid(car.owner_id) if car.owner_id else None,
         current_renter_id=uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
         owner=owner_obj,
