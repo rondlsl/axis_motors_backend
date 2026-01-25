@@ -909,34 +909,34 @@ def create_mock_cars(db: Session, owner: User) -> None:
         print("BMW 540i 2018 уже существует")
 
     # Lexus rx 350h
-    if not db.query(Car).filter(Car.plate_number == "x18").first():
-        car18 = Car(
-            name="Lexus rx 350h",
-            plate_number="x18",
-            latitude=43.390000,
-            longitude=77.090000,
-            gps_id=None,
-            gps_imei=None,
-            fuel_level=85,
-            course=45,
-            price_per_minute=95,
-            price_per_hour=4750,
-            price_per_day=95000,
-            engine_volume=2.4,
-            year=2025,
-            drive_type=3,
-            body_type=CarBodyType.CROSSOVER,
-            auto_class=CarAutoClass.A,
-            owner_id=owner.id,
-            status=CarStatus.OCCUPIED,
-            description="Гибридный кроссовер Lexus rx 350h.",
-            vin="JTHBE1D25N5234567",
-            color="Белый"
-        )
-        car18.photos = get_car_photos("x18")
-        mock_cars_to_create.append(("Lexus rx 350h", car18))
-    else:
-        print("Lexus rx 350h уже существует")
+    # if not db.query(Car).filter(Car.plate_number == "x18").first():
+    #     car18 = Car(
+    #         name="Lexus rx 350h",
+    #         plate_number="x18",
+    #         latitude=43.390000,
+    #         longitude=77.090000,
+    #         gps_id=None,
+    #         gps_imei=None,
+    #         fuel_level=85,
+    #         course=45,
+    #         price_per_minute=95,
+    #         price_per_hour=4750,
+    #         price_per_day=95000,
+    #         engine_volume=2.4,
+    #         year=2025,
+    #         drive_type=3,
+    #         body_type=CarBodyType.CROSSOVER,
+    #         auto_class=CarAutoClass.A,
+    #         owner_id=owner.id,
+    #         status=CarStatus.OCCUPIED,
+    #         description="Гибридный кроссовер Lexus rx 350h.",
+    #         vin="JTHBE1D25N5234567",
+    #         color="Белый"
+    #     )
+    #     car18.photos = get_car_photos("x18")
+    #     mock_cars_to_create.append(("Lexus rx 350h", car18))
+    # else:
+    #     print("Lexus rx 350h уже существует")
 
     # Changan uni-v
     if not db.query(Car).filter(Car.plate_number == "x19").first():
