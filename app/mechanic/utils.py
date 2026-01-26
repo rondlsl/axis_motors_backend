@@ -24,7 +24,7 @@ def validate_photo_count(photos: List[UploadFile], min_count: int = 1, max_count
 
 
 def validate_photo_types(files: List[UploadFile]):
-    allowed_types = ["image/jpeg", "image/png"]
+    allowed_types = ["image/jpeg", "image/png", "image/webp", "image/jpg"]
     for file in files:
         if file.content_type not in allowed_types:
             raise HTTPException(

@@ -54,8 +54,8 @@ import asyncio
 
 Auth_router = APIRouter(prefix="/auth", tags=["Auth"])
 
-ALLOWED_TYPES = ["image/jpeg", "image/png"]
-CERT_ALLOWED_TYPES = ["image/jpeg", "image/png", "application/pdf"]
+ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/jpg"]
+CERT_ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/jpg", "application/pdf"]
 
 SMS_COOLDOWN_SECONDS = 60  # Минимальный интервал между SMS
 SMS_HOURLY_LIMIT = 5  # Максимум SMS в час
@@ -924,7 +924,7 @@ async def upload_selfie(
     - Сообщение об успешной загрузке
     """
     # Валидация файла
-    if not selfie.content_type in ["image/jpeg", "image/png"]:
+    if not selfie.content_type in ["image/jpeg", "image/png", "image/webp", "image/jpg"]:
         raise HTTPException(
             status_code=400,
             detail="Файл должен быть изображением в формате JPEG или PNG"

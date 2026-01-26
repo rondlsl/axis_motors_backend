@@ -4303,7 +4303,7 @@ async def edit_user_full(
         user.rating = rating
         changes["rating"] = rating
     
-    ALLOWED_FILE_TYPES = ["image/jpeg", "image/png", "application/pdf"]
+    ALLOWED_FILE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/jpg", "application/pdf"]
     
     async def save_if_provided(file: Optional[UploadFile], field_name: str) -> Optional[str]:
         if file is None or file.filename is None or file.filename == "":

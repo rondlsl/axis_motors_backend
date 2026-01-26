@@ -38,7 +38,7 @@ async def save_file(file: UploadFile, user_id: uuid.UUID, folder: str) -> str:
 
 
 PHOTO_COUNT_RULE = (1, 10)  # min, max
-ALLOWED_TYPES = ["image/jpeg", "image/png"]
+ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/jpg"]
 
 
 def validate_photos(photos: List[UploadFile], field_name: str):
