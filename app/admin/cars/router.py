@@ -118,6 +118,30 @@ async def edit_car(
         else:
             update_fields["owner_id"] = None
     
+    # Обработка photos (изменение порядка, удаление)
+    if "photos" in update_fields:
+        from app.services.minio_service import get_minio_service
+        
+        new_photos = update_fields.pop("photos")
+        old_photos = car.photos or []
+        
+        if new_photos is not None:
+            # Находим фотографии для удаления (есть в old, но нет в new)
+            photos_to_delete = [p for p in old_photos if p not in new_photos]
+            
+            # Удаляем фотографии из MinIO
+            if photos_to_delete:
+                try:
+                    minio = get_minio_service()
+                    minio.delete_files(photos_to_delete)
+                    logger.info(f"Удалены фотографии из MinIO: {photos_to_delete}")
+                except Exception as e:
+                    logger.error(f"Ошибка удаления фотографий из MinIO: {e}")
+            
+            # Обновляем массив photos (новый порядок)
+            update_fields["photos"] = new_photos
+            logger.info(f"Обновлены фотографии машины {car_id}: удалено {len(photos_to_delete)}, новый порядок: {len(new_photos)} фото")
+    
     # Проверяем уникальность нового IMEI
     if gps_imei_changed and new_gps_imei:
         existing_car_by_imei = db.query(Car).filter(

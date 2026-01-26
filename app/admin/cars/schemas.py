@@ -267,6 +267,7 @@ class CarEditSchema(BaseModel):
     vin: Optional[str] = None
     color: Optional[str] = None
     owner_id: Optional[str] = None  # ID владельца (short id)
+    photos: Optional[List[str]] = None  # Массив URL фотографий (для изменения порядка/удаления)
 
 
 class CarCommentSchema(SidMixin):
