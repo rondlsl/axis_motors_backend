@@ -1,9 +1,55 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
-from app.models.car_model import CarStatus
+from app.models.car_model import CarStatus, CarAutoClass, CarBodyType, TransmissionType
 import uuid
 from datetime import datetime
 from app.schemas.base import SidMixin
+
+
+class CarCreateSchema(BaseModel):
+    """Схема создания автомобиля"""
+    name: str = Field(..., description="Название автомобиля")
+    plate_number: str = Field(..., description="Номерной знак")
+    gps_imei: str = Field(..., description="IMEI GPS-трекера")
+    price_per_minute: int = Field(..., description="Цена за минуту")
+    price_per_hour: int = Field(..., description="Цена за час")
+    price_per_day: int = Field(..., description="Цена за день")
+    open_fee: int = Field(default=4000, description="Стоимость открытия дверей")
+    auto_class: CarAutoClass = Field(default=CarAutoClass.A, description="Класс автомобиля (A, B, C)")
+    engine_volume: Optional[float] = Field(None, description="Объем двигателя")
+    year: Optional[int] = Field(None, description="Год выпуска")
+    drive_type: Optional[int] = Field(None, description="Тип привода")
+    transmission_type: Optional[TransmissionType] = Field(None, description="Тип трансмиссии")
+    body_type: CarBodyType = Field(default=CarBodyType.SEDAN, description="Тип кузова")
+    vin: Optional[str] = Field(None, description="VIN номер")
+    color: Optional[str] = Field(None, description="Цвет")
+    description: Optional[str] = Field(None, description="Описание")
+    owner_id: Optional[str] = Field(None, description="ID владельца (SID)")
+
+
+class CarCreateResponseSchema(BaseModel):
+    """Схема ответа при создании автомобиля"""
+    id: str
+    name: str
+    plate_number: str
+    gps_id: Optional[str] = None
+    gps_imei: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    fuel_level: Optional[float] = None
+    mileage: Optional[int] = None
+    status: str
+    auto_class: str
+    body_type: str
+    price_per_minute: int
+    price_per_hour: int
+    price_per_day: int
+    open_fee: int
+    vehicle_added_to_cars_v2: bool = False
+    glonass_data_received: bool = False
+
+    class Config:
+        from_attributes = True
 
 
 class CarFilterSchema(BaseModel):

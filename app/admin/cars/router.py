@@ -11,7 +11,7 @@ from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.auth.dependencies.save_documents import save_file
 from app.models.user_model import User, UserRole
-from app.models.car_model import Car, CarStatus, CarBodyType, TransmissionType
+from app.models.car_model import Car, CarStatus, CarBodyType, TransmissionType, CarAutoClass
 from app.models.car_comment_model import CarComment
 from app.models.history_model import RentalHistory, RentalStatus, RentalReview, RentalType
 from app.models.rental_actions_model import RentalAction
@@ -22,7 +22,8 @@ from app.admin.cars.schemas import (
     CarCommentCreateSchema, CarCommentUpdateSchema,
     CarAvailabilityTimerSchema, CarCurrentUserSchema,
     CarListResponseSchema, CarMapResponseSchema, CarStatisticsSchema,
-    CarListItemSchema, CarMapItemSchema, OwnerSchema, CurrentRenterSchema
+    CarListItemSchema, CarMapItemSchema, OwnerSchema, CurrentRenterSchema,
+    CarCreateSchema, CarCreateResponseSchema
 )
 from app.admin.cars.utils import car_to_detail_schema, status_display, _get_drive_type_display, sort_car_photos
 from app.gps_api.utils.route_data import get_gps_route_data
@@ -2955,3 +2956,298 @@ async def admin_take_key(
             "action": "admin_take_key", "car_id": car_id, "gps_imei": car.gps_imei
         })
         raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
+
+
+@cars_router.post("/", response_model=CarCreateResponseSchema, summary="Создать новый автомобиль")
+async def create_car(
+    car_data: CarCreateSchema,
+    photos: List[UploadFile] = File(default=[]),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Создать новый автомобиль.
+    
+    1. Получает данные о машине от Glonass API по IMEI
+    2. Создает машину в основной БД
+    3. Отправляет данные в azv_motors_cars_v2 для мониторинга
+    """
+    if current_user.role not in [UserRole.ADMIN]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав для создания автомобиля")
+    
+    # Проверяем, не существует ли уже машина с таким plate_number или gps_imei
+    existing_car = db.query(Car).filter(
+        or_(
+            Car.plate_number == car_data.plate_number,
+            Car.gps_imei == car_data.gps_imei
+        )
+    ).first()
+    
+    if existing_car:
+        if existing_car.plate_number == car_data.plate_number:
+            raise HTTPException(status_code=400, detail=f"Автомобиль с номером {car_data.plate_number} уже существует")
+        else:
+            raise HTTPException(status_code=400, detail=f"Автомобиль с IMEI {car_data.gps_imei} уже существует")
+    
+    glonass_data_received = False
+    vehicle_id = None
+    latitude = None
+    longitude = None
+    fuel_level = None
+    mileage = None
+    
+    # Шаг 1: Получаем данные от Glonass API
+    try:
+        # Аутентификация в Glonass
+        auth_token = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+        if auth_token:
+            # Получаем данные о машине по IMEI
+            glonass_response = await glonassoft_client.get_vehicle_data(car_data.gps_imei)
+            
+            if glonass_response:
+                glonass_data_received = True
+                vehicle_id = str(glonass_response.get("vehicleid"))
+                latitude = glonass_response.get("latitude")
+                longitude = glonass_response.get("longitude")
+                
+                # Извлекаем данные из RegistredSensors
+                registered_sensors = glonass_response.get("RegistredSensors", [])
+                for sensor in registered_sensors:
+                    param_name = sensor.get("parameterName", "")
+                    value = sensor.get("value", "")
+                    
+                    # Пробег (param68)
+                    if param_name == "param68":
+                        try:
+                            mileage = int(float(value))
+                        except (ValueError, TypeError):
+                            pass
+                    
+                    # Уровень топлива (param70)
+                    if param_name == "param70":
+                        try:
+                            # Значение может быть "19 l", извлекаем число
+                            fuel_str = value.replace(" l", "").replace(" L", "").strip()
+                            fuel_level = float(fuel_str)
+                        except (ValueError, TypeError):
+                            pass
+                
+                logger.info(f"Получены данные Glonass для IMEI {car_data.gps_imei}: vehicle_id={vehicle_id}, lat={latitude}, lon={longitude}")
+        else:
+            logger.warning(f"Не удалось получить токен авторизации Glonass для IMEI {car_data.gps_imei}")
+    except Exception as e:
+        logger.error(f"Ошибка получения данных Glonass для IMEI {car_data.gps_imei}: {e}")
+        # Продолжаем создание машины даже без данных Glonass
+    
+    # Шаг 2: Обработка owner_id
+    owner_uuid = None
+    if car_data.owner_id:
+        owner_uuid = safe_sid_to_uuid(car_data.owner_id)
+        # Проверяем, что владелец существует
+        owner = db.query(User).filter(User.id == owner_uuid).first()
+        if not owner:
+            raise HTTPException(status_code=400, detail=f"Владелец с ID {car_data.owner_id} не найден")
+    
+    # Шаг 3: Обработка фотографий
+    photo_urls = []
+    if photos:
+        for i, photo in enumerate(photos):
+            try:
+                # Используем plate_number для создания папки
+                folder_name = car_data.plate_number.replace(" ", "").replace("/", "").upper()
+                file_extension = photo.filename.split(".")[-1] if "." in photo.filename else "jpg"
+                
+                # Определяем тип фото по индексу
+                if i == 0:
+                    file_name = f"front_1.{file_extension}"
+                elif i == 1:
+                    file_name = f"interior_1.{file_extension}"
+                elif i == 2:
+                    file_name = f"rear_1.{file_extension}"
+                else:
+                    file_name = f"photo_{i+1}.{file_extension}"
+                
+                saved_url = await save_file(photo, f"cars/{folder_name}", file_name)
+                if saved_url:
+                    photo_urls.append(saved_url)
+            except Exception as e:
+                logger.error(f"Ошибка сохранения фото {photo.filename}: {e}")
+    
+    # Шаг 4: Создаем машину в БД
+    new_car = Car(
+        name=car_data.name,
+        plate_number=car_data.plate_number,
+        gps_id=vehicle_id,
+        gps_imei=car_data.gps_imei,
+        latitude=latitude,
+        longitude=longitude,
+        fuel_level=fuel_level,
+        mileage=mileage,
+        price_per_minute=car_data.price_per_minute,
+        price_per_hour=car_data.price_per_hour,
+        price_per_day=car_data.price_per_day,
+        open_fee=car_data.open_fee,
+        auto_class=car_data.auto_class,
+        engine_volume=car_data.engine_volume,
+        year=car_data.year,
+        drive_type=car_data.drive_type,
+        transmission_type=car_data.transmission_type,
+        body_type=car_data.body_type,
+        vin=car_data.vin,
+        color=car_data.color,
+        photos=photo_urls if photo_urls else None,
+        description=car_data.description,
+        owner_id=owner_uuid,
+        status=CarStatus.FREE,
+        created_at=get_local_time(),
+        updated_at=get_local_time()
+    )
+    
+    try:
+        db.add(new_car)
+        db.commit()
+        db.refresh(new_car)
+        logger.info(f"Автомобиль {new_car.name} ({new_car.plate_number}) успешно создан с ID {new_car.id}")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Ошибка создания автомобиля в БД: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка создания автомобиля: {e}")
+    
+    # Шаг 5: Отправляем данные в azv_motors_cars_v2
+    vehicle_added_to_cars_v2 = False
+    if vehicle_id:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                vehicle_data = {
+                    "vehicle_id": int(vehicle_id),
+                    "vehicle_imei": car_data.gps_imei,
+                    "name": car_data.name,
+                    "plate_number": car_data.plate_number
+                }
+                
+                response = await client.post(
+                    CARS_V2_API_URL + "/",
+                    json=vehicle_data,
+                    headers={"Content-Type": "application/json"}
+                )
+                
+                if response.status_code in [200, 201]:
+                    vehicle_added_to_cars_v2 = True
+                    logger.info(f"Автомобиль {new_car.name} успешно добавлен в azv_motors_cars_v2")
+                else:
+                    logger.warning(f"Не удалось добавить автомобиль в azv_motors_cars_v2: {response.status_code} - {response.text}")
+        except Exception as e:
+            logger.error(f"Ошибка отправки данных в azv_motors_cars_v2: {e}")
+            # Не прерываем процесс, машина уже создана в основной БД
+    
+    # Логируем действие
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="create_car",
+        entity_type="car",
+        entity_id=new_car.id,
+        details={
+            "name": new_car.name,
+            "plate_number": new_car.plate_number,
+            "gps_imei": new_car.gps_imei,
+            "glonass_data_received": glonass_data_received,
+            "vehicle_added_to_cars_v2": vehicle_added_to_cars_v2
+        }
+    )
+    db.commit()
+    
+    # Уведомляем о обновлении списка машин
+    try:
+        await notify_vehicles_list_update()
+    except Exception as e:
+        logger.warning(f"Не удалось отправить уведомление об обновлении списка машин: {e}")
+    
+    return CarCreateResponseSchema(
+        id=uuid_to_sid(new_car.id),
+        name=new_car.name,
+        plate_number=new_car.plate_number,
+        gps_id=new_car.gps_id,
+        gps_imei=new_car.gps_imei,
+        latitude=new_car.latitude,
+        longitude=new_car.longitude,
+        fuel_level=new_car.fuel_level,
+        mileage=new_car.mileage,
+        status=new_car.status.value if new_car.status else "FREE",
+        auto_class=new_car.auto_class.value if new_car.auto_class else "A",
+        body_type=new_car.body_type.value if new_car.body_type else "SEDAN",
+        price_per_minute=new_car.price_per_minute,
+        price_per_hour=new_car.price_per_hour,
+        price_per_day=new_car.price_per_day,
+        open_fee=new_car.open_fee,
+        vehicle_added_to_cars_v2=vehicle_added_to_cars_v2,
+        glonass_data_received=glonass_data_received
+    )
+
+
+@cars_router.post("/with-photos", response_model=CarCreateResponseSchema, summary="Создать новый автомобиль с фотографиями")
+async def create_car_with_photos(
+    name: str = Query(..., description="Название автомобиля"),
+    plate_number: str = Query(..., description="Номерной знак"),
+    gps_imei: str = Query(..., description="IMEI GPS-трекера"),
+    price_per_minute: int = Query(..., description="Цена за минуту"),
+    price_per_hour: int = Query(..., description="Цена за час"),
+    price_per_day: int = Query(..., description="Цена за день"),
+    open_fee: int = Query(default=4000, description="Стоимость открытия дверей"),
+    auto_class: str = Query(default="A", description="Класс автомобиля (A, B, C)"),
+    engine_volume: Optional[float] = Query(None, description="Объем двигателя"),
+    year: Optional[int] = Query(None, description="Год выпуска"),
+    drive_type: Optional[int] = Query(None, description="Тип привода"),
+    transmission_type: Optional[str] = Query(None, description="Тип трансмиссии"),
+    body_type: str = Query(default="SEDAN", description="Тип кузова"),
+    vin: Optional[str] = Query(None, description="VIN номер"),
+    color: Optional[str] = Query(None, description="Цвет"),
+    description: Optional[str] = Query(None, description="Описание"),
+    owner_id: Optional[str] = Query(None, description="ID владельца (SID)"),
+    photos: List[UploadFile] = File(default=[]),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Создать новый автомобиль с загрузкой фотографий.
+    Этот эндпоинт принимает данные через query параметры и файлы через multipart/form-data.
+    """
+    # Конвертируем строковые значения в enum
+    try:
+        auto_class_enum = CarAutoClass(auto_class)
+    except ValueError:
+        auto_class_enum = CarAutoClass.A
+    
+    try:
+        body_type_enum = CarBodyType(body_type)
+    except ValueError:
+        body_type_enum = CarBodyType.SEDAN
+    
+    transmission_type_enum = None
+    if transmission_type:
+        try:
+            transmission_type_enum = TransmissionType(transmission_type)
+        except ValueError:
+            pass
+    
+    car_data = CarCreateSchema(
+        name=name,
+        plate_number=plate_number,
+        gps_imei=gps_imei,
+        price_per_minute=price_per_minute,
+        price_per_hour=price_per_hour,
+        price_per_day=price_per_day,
+        open_fee=open_fee,
+        auto_class=auto_class_enum,
+        engine_volume=engine_volume,
+        year=year,
+        drive_type=drive_type,
+        transmission_type=transmission_type_enum,
+        body_type=body_type_enum,
+        vin=vin,
+        color=color,
+        description=description,
+        owner_id=owner_id
+    )
+    
+    return await create_car(car_data=car_data, photos=photos, current_user=current_user, db=db)
