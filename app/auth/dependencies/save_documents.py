@@ -1,3 +1,6 @@
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 import uuid
 import time
 from typing import List
@@ -20,7 +23,7 @@ async def save_file(file: UploadFile, user_id: uuid.UUID, folder: str) -> str:
         str: Публичный URL файла в MinIO
     """
     save_file_start = time.time()
-    print(f"[SAVE_FILE] START: filename={file.filename}, user_id={user_id}, folder={folder}")
+    logger.info(f"[SAVE_FILE] START: filename={file.filename}, user_id={user_id}, folder={folder}")
     
     # Нормализуем путь папки (убираем "uploads/" если есть, так как bucket уже называется "uploads")
     normalized_folder = folder
@@ -32,7 +35,7 @@ async def save_file(file: UploadFile, user_id: uuid.UUID, folder: str) -> str:
     url = await save_file_to_minio(file, user_id, normalized_folder)
     
     total_duration = time.time() - save_file_start
-    print(f"[SAVE_FILE] TOTAL took {total_duration:.3f}s, URL: {url}")
+    logger.info(f"[SAVE_FILE] TOTAL took {total_duration:.3f}s, URL: {url}")
     
     return url
 

@@ -1,6 +1,9 @@
 """
 Утилиты для атомарных операций с автоматическим откатом
 """
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 from typing import List, Optional, Callable, Any
 from sqlalchemy.orm import Session
 from contextlib import contextmanager
@@ -47,8 +50,8 @@ def atomic_upload_transaction(db: Session, uploaded_files: Optional[List[str]] =
     try:
         yield uploaded_files
     except Exception as e:
-        print(f"Error in atomic transaction, rolling back...")
-        print(f"Exception: {type(e).__name__}: {str(e)}")
+        logger.error(f" in atomic transaction, rolling back...")
+        logger.debug(f"Exception: {type(e).__name__}: {str(e)}")
         
         db.rollback()
         delete_uploaded_files(uploaded_files)
@@ -97,7 +100,7 @@ async def atomic_operation_with_gps(
         return {"success": True, "file_count": len(uploaded_files)}
         
     except Exception as e:
-        print(f"Error in atomic operation: {type(e).__name__}: {str(e)}")
+        logger.error(f" in atomic operation: {type(e).__name__}: {str(e)}")
         db.rollback()
         
         if cleanup_on_error and uploaded_files:

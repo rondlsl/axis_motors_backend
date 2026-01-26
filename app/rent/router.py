@@ -2018,7 +2018,7 @@ async def start_rental(
     #         plate_number=car.plate_number,
     #         car_name=car.name
     #     )
-    #     print(f"SMS отправлена клиенту {current_user.phone_number} при начале аренды")
+    #     logger.debug(f"SMS отправлена клиенту {current_user.phone_number} при начале аренды")
     # except Exception as e:
     #     logger.error(f"Ошибка отправки SMS при начале аренды: {e}")
 
@@ -3979,7 +3979,7 @@ async def complete_rental(
     #         plate_number=car.plate_number,
     #         car_name=car.name
     #     )
-    #     print(f"SMS отправлена клиенту {current_user.phone_number} при завершении аренды")
+    #     logger.debug(f"SMS отправлена клиенту {current_user.phone_number} при завершении аренды")
     # except Exception as e:
     #     logger.error(f"Ошибка отправки SMS при завершении аренды: {e}")
 

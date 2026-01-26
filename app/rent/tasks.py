@@ -1,6 +1,9 @@
 """
 Задачи для обработки забронированных заранее автомобилей
 """
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 import asyncio
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -21,13 +24,13 @@ async def process_scheduled_bookings_task():
             # Обрабатываем забронированные заранее автомобили
             result = process_scheduled_bookings(db)
             
-            print(f"[{datetime.now()}] Обработано забронированных заранее автомобилей:")
-            print(f"  - Активировано: {result['activated_bookings']}")
-            print(f"  - Отменено: {result['cancelled_bookings']}")
-            print(f"  - Завершено: {result['completed_bookings']}")
+            logger.info(f"[{datetime.now()}] Обработано забронированных заранее автомобилей:")
+            logger.debug(f"  - Активировано: {result['activated_bookings']}")
+            logger.debug(f"  - Отменено: {result['cancelled_bookings']}")
+            logger.debug(f"  - Завершено: {result['completed_bookings']}")
             
         except Exception as e:
-            print(f"[{datetime.now()}] Ошибка при обработке забронированных заранее автомобилей: {e}")
+            logger.info(f"[{datetime.now()}] Ошибка при обработке забронированных заранее автомобилей: {e}")
         
         finally:
             # Закрываем сессию

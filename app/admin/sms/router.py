@@ -1,3 +1,6 @@
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -54,7 +57,7 @@ async def send_custom_sms(
     
     # Тестовый режим
     if SMS_TOKEN == "1010":
-        print(f"TEST SMS to {phone_number}: {message_text}")
+        logger.debug(f"TEST SMS to {phone_number}: {message_text}")
         return SendSmsResponse(
             success=True,
             message="TEST SMS sent successfully (test mode)",
@@ -81,7 +84,7 @@ async def send_custom_sms(
             result=result
         )
     except Exception as e:
-        print(f"SMS sending error: {e}")
+        logger.debug(f"SMS sending error: {e}")
         try:
             await log_error_to_telegram(
                 error=e,

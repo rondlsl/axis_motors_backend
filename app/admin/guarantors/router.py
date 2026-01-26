@@ -1,3 +1,6 @@
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
@@ -128,7 +131,7 @@ async def approve_guarantor_request(
                 client_middle_name=requestor.middle_name
             )
         except Exception as e:
-            print(f"Failed to send SMS to guarantor: {e}")
+            logger.error(f" to send SMS to guarantor: {e}")
             try:
                 await log_error_to_telegram(
                     error=e,
@@ -211,7 +214,7 @@ async def reject_guarantor_request(
                 rejection_reason=rejection_data.rejection_reason
             )
         except Exception as e:
-            print(f"Failed to send SMS to user: {e}")
+            logger.error(f" to send SMS to user: {e}")
             try:
                 await log_error_to_telegram(
                     error=e,

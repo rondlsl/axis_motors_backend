@@ -1,3 +1,6 @@
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy import or_, and_, func
 from sqlalchemy.orm import Session, joinedload
@@ -141,7 +144,7 @@ async def start_token_refresh():
                 try:
                     AUTH_TOKEN = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
                 except Exception as e:
-                    print("Ошибка обновления токена: {e}")
+                    logger.debug("Ошибка обновления токена: {e}")
                 await asyncio.sleep(1800)
 
         asyncio.create_task(refresh_token())
@@ -1536,22 +1539,22 @@ async def get_vehicle_telemetry(
                 )
         
         logger.info(f"Getting telemetry for car_id={car_id}, IMEI={vehicle_imei}")
-        print(f"[TELEMETRY] Getting telemetry for car_id={car_id}, IMEI={vehicle_imei}")
+        logger.info(f"[TELEMETRY] Getting telemetry for car_id={car_id}, IMEI={vehicle_imei}")
         
         glonassoft_data = await glonassoft_client.get_vehicle_data(vehicle_imei)
-        print(f"[TELEMETRY] Glonassoft response: {glonassoft_data}")
+        logger.info(f"[TELEMETRY] Glonassoft response: {glonassoft_data}")
         
         if not glonassoft_data:
             logger.error(f"No data received from Glonassoft for IMEI={vehicle_imei}")
-            print(f"[TELEMETRY ERROR] No data received from Glonassoft for IMEI={vehicle_imei}")
+            logger.info(f"[TELEMETRY ERROR] No data received from Glonassoft for IMEI={vehicle_imei}")
             raise HTTPException(
                 status_code=503,
                 detail="Не удалось получить данные от системы мониторинга"
             )
         
-        print(f"[TELEMETRY] Processing data for car: {car.name}")
+        logger.info(f"[TELEMETRY] Processing data for car: {car.name}")
         telemetry = process_glonassoft_data(glonassoft_data, car.name)
-        print(f"[TELEMETRY] Processed telemetry: {telemetry}")
+        logger.info(f"[TELEMETRY] Processed telemetry: {telemetry}")
         
         return telemetry
         
@@ -1559,9 +1562,9 @@ async def get_vehicle_telemetry(
         raise
     except Exception as e:
         logger.error(f"Error getting telemetry for car {car_id}: {e}")
-        print(f"[TELEMETRY ERROR] Error getting telemetry for car {car_id}: {e}")
+        logger.info(f"[TELEMETRY ERROR] Error getting telemetry for car {car_id}: {e}")
         import traceback
-        print(f"[TELEMETRY ERROR] Traceback: {traceback.format_exc()}")
+        logger.info(f"[TELEMETRY ERROR] Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=500,
             detail="Внутренняя ошибка сервера при получении телеметрии"

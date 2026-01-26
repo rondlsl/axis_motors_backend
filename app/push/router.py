@@ -591,8 +591,8 @@ async def test_push_by_phone(
     Доступен только администраторам и механикам для тестирования.
     """
     
-    print("="*80)
-    print("🔔 [TEST_PUSH_BY_PHONE] Запрос получен")
+    logger.info("=" * 80)
+    logger.info("🔔 [TEST_PUSH_BY_PHONE] Запрос получен")
     logger.debug(f"📱 Ищем пользователя: {payload.phone}")
     logger.debug(f"👤 От: {current_user.phone_number} (роль: {current_user.role.value if current_user.role else None})")
     logger.debug(f"📝 Заголовок: {payload.title}")
@@ -624,7 +624,7 @@ async def test_push_by_phone(
     
     logger.debug(f"✅ Найдено {len(tokens)} FCM токен(ов)")
     logger.debug(f"🚀 Начинаем отправку push-уведомления...")
-    print("-"*80)
+    logger.info("-" * 80)
     sys.stdout.flush()
     
     success = False
@@ -636,7 +636,7 @@ async def test_push_by_phone(
         )
         success = success or token_success
     
-    print("-"*80)
+    logger.info("-" * 80)
     if success:
         logger.debug(f"✅ [TEST_PUSH_BY_PHONE] Push отправлен успешно!")
         
@@ -651,8 +651,8 @@ async def test_push_by_phone(
         db.commit()
     else:
         logger.debug(f"❌ [TEST_PUSH_BY_PHONE] Ошибка отправки push")
-    print("="*80)
-    print()
+    logger.info("=" * 80)
+    logger.info("")
     sys.stdout.flush()
     
     # Формируем ответ
@@ -695,7 +695,7 @@ async def test_push_to_me(
     
     logger.debug(f"Найдено {len(tokens)} FCM токен(ов)")
     logger.debug(f"Начинаем отправку push-уведомления...")
-    print("-"*80)
+    logger.info("-" * 80)
     sys.stdout.flush()
     
     success = False
@@ -711,13 +711,13 @@ async def test_push_to_me(
         else:
             failed_tokens.append(token[:50] + "...")
     
-    print("-"*80)
+    logger.info("-" * 80)
     if success:
         logger.info(f"[TEST_PUSH_TO_ME] Push отправлен успешно!")
     else:
         logger.info(f"[TEST_PUSH_TO_ME] Ошибка отправки push на все устройства")
-    print("="*80)
-    print()
+    logger.info("=" * 80)
+    logger.info("")
     sys.stdout.flush()
     
     full_name = f"{current_user.first_name or ''} {current_user.last_name or ''} {current_user.middle_name or ''}".strip() or "Не указано"
