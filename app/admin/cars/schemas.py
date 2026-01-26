@@ -10,7 +10,7 @@ class CarCreateSchema(BaseModel):
     """Схема создания автомобиля"""
     name: str = Field(..., description="Название автомобиля")
     plate_number: str = Field(..., description="Номерной знак")
-    gps_imei: str = Field(..., description="IMEI GPS-трекера")
+    gps_imei: Optional[str] = Field(None, description="IMEI GPS-трекера")
     price_per_minute: int = Field(..., description="Цена за минуту")
     price_per_hour: int = Field(..., description="Цена за час")
     price_per_day: int = Field(..., description="Цена за день")
@@ -33,7 +33,7 @@ class CarCreateResponseSchema(BaseModel):
     name: str
     plate_number: str
     gps_id: Optional[str] = None
-    gps_imei: str
+    gps_imei: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     fuel_level: Optional[float] = None

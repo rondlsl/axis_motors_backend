@@ -2975,18 +2975,21 @@ async def create_car(
     if current_user.role not in [UserRole.ADMIN]:
         raise HTTPException(status_code=403, detail="Недостаточно прав для создания автомобиля")
     
-    # Проверяем, не существует ли уже машина с таким plate_number или gps_imei
+    # Проверяем, не существует ли уже машина с таким plate_number
     existing_car = db.query(Car).filter(
-        or_(
-            Car.plate_number == car_data.plate_number,
-            Car.gps_imei == car_data.gps_imei
-        )
+        Car.plate_number == car_data.plate_number
     ).first()
     
     if existing_car:
-        if existing_car.plate_number == car_data.plate_number:
-            raise HTTPException(status_code=400, detail=f"Автомобиль с номером {car_data.plate_number} уже существует")
-        else:
+        raise HTTPException(status_code=400, detail=f"Автомобиль с номером {car_data.plate_number} уже существует")
+    
+    # Проверяем IMEI только если он указан
+    if car_data.gps_imei:
+        existing_car_by_imei = db.query(Car).filter(
+            Car.gps_imei == car_data.gps_imei
+        ).first()
+        
+        if existing_car_by_imei:
             raise HTTPException(status_code=400, detail=f"Автомобиль с IMEI {car_data.gps_imei} уже существует")
     
     glonass_data_received = False
@@ -2996,48 +2999,51 @@ async def create_car(
     fuel_level = None
     mileage = None
     
-    # Шаг 1: Получаем данные от Glonass API
-    try:
-        # Аутентификация в Glonass
-        auth_token = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-        if auth_token:
-            # Получаем данные о машине по IMEI
-            glonass_response = await glonassoft_client.get_vehicle_data(car_data.gps_imei)
-            
-            if glonass_response:
-                glonass_data_received = True
-                vehicle_id = str(glonass_response.get("vehicleid"))
-                latitude = glonass_response.get("latitude")
-                longitude = glonass_response.get("longitude")
+    # Шаг 1: Получаем данные от Glonass API (только если указан gps_imei)
+    if car_data.gps_imei:
+        try:
+            # Аутентификация в Glonass
+            auth_token = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+            if auth_token:
+                # Получаем данные о машине по IMEI
+                glonass_response = await glonassoft_client.get_vehicle_data(car_data.gps_imei)
                 
-                # Извлекаем данные из RegistredSensors
-                registered_sensors = glonass_response.get("RegistredSensors", [])
-                for sensor in registered_sensors:
-                    param_name = sensor.get("parameterName", "")
-                    value = sensor.get("value", "")
+                if glonass_response:
+                    glonass_data_received = True
+                    vehicle_id = str(glonass_response.get("vehicleid"))
+                    latitude = glonass_response.get("latitude")
+                    longitude = glonass_response.get("longitude")
                     
-                    # Пробег (param68)
-                    if param_name == "param68":
-                        try:
-                            mileage = int(float(value))
-                        except (ValueError, TypeError):
-                            pass
+                    # Извлекаем данные из RegistredSensors
+                    registered_sensors = glonass_response.get("RegistredSensors", [])
+                    for sensor in registered_sensors:
+                        param_name = sensor.get("parameterName", "")
+                        value = sensor.get("value", "")
+                        
+                        # Пробег (param68)
+                        if param_name == "param68":
+                            try:
+                                mileage = int(float(value))
+                            except (ValueError, TypeError):
+                                pass
+                        
+                        # Уровень топлива (param70)
+                        if param_name == "param70":
+                            try:
+                                # Значение может быть "19 l", извлекаем число
+                                fuel_str = value.replace(" l", "").replace(" L", "").strip()
+                                fuel_level = float(fuel_str)
+                            except (ValueError, TypeError):
+                                pass
                     
-                    # Уровень топлива (param70)
-                    if param_name == "param70":
-                        try:
-                            # Значение может быть "19 l", извлекаем число
-                            fuel_str = value.replace(" l", "").replace(" L", "").strip()
-                            fuel_level = float(fuel_str)
-                        except (ValueError, TypeError):
-                            pass
-                
-                logger.info(f"Получены данные Glonass для IMEI {car_data.gps_imei}: vehicle_id={vehicle_id}, lat={latitude}, lon={longitude}")
-        else:
-            logger.warning(f"Не удалось получить токен авторизации Glonass для IMEI {car_data.gps_imei}")
-    except Exception as e:
-        logger.error(f"Ошибка получения данных Glonass для IMEI {car_data.gps_imei}: {e}")
-        # Продолжаем создание машины даже без данных Glonass
+                    logger.info(f"Получены данные Glonass для IMEI {car_data.gps_imei}: vehicle_id={vehicle_id}, lat={latitude}, lon={longitude}")
+            else:
+                logger.warning(f"Не удалось получить токен авторизации Glonass для IMEI {car_data.gps_imei}")
+        except Exception as e:
+            logger.error(f"Ошибка получения данных Glonass для IMEI {car_data.gps_imei}: {e}")
+            # Продолжаем создание машины даже без данных Glonass
+    else:
+        logger.info("GPS IMEI не указан, пропускаем запрос к Glonass API")
     
     # Шаг 2: Обработка owner_id
     owner_uuid = None
@@ -3113,9 +3119,9 @@ async def create_car(
         logger.error(f"Ошибка создания автомобиля в БД: {e}")
         raise HTTPException(status_code=500, detail=f"Ошибка создания автомобиля: {e}")
     
-    # Шаг 5: Отправляем данные в azv_motors_cars_v2
+    # Шаг 5: Отправляем данные в azv_motors_cars_v2 (только если есть vehicle_id и gps_imei)
     vehicle_added_to_cars_v2 = False
-    if vehicle_id:
+    if vehicle_id and car_data.gps_imei:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 vehicle_data = {
@@ -3139,6 +3145,11 @@ async def create_car(
         except Exception as e:
             logger.error(f"Ошибка отправки данных в azv_motors_cars_v2: {e}")
             # Не прерываем процесс, машина уже создана в основной БД
+    else:
+        if not car_data.gps_imei:
+            logger.info("GPS IMEI не указан, пропускаем отправку в azv_motors_cars_v2")
+        elif not vehicle_id:
+            logger.info("Vehicle ID не получен от Glonass, пропускаем отправку в azv_motors_cars_v2")
     
     # Логируем действие
     log_action(
@@ -3189,7 +3200,7 @@ async def create_car(
 async def create_car_with_photos(
     name: str = Query(..., description="Название автомобиля"),
     plate_number: str = Query(..., description="Номерной знак"),
-    gps_imei: str = Query(..., description="IMEI GPS-трекера"),
+    gps_imei: Optional[str] = Query(None, description="IMEI GPS-трекера"),
     price_per_minute: int = Query(..., description="Цена за минуту"),
     price_per_hour: int = Query(..., description="Цена за час"),
     price_per_day: int = Query(..., description="Цена за день"),
