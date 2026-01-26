@@ -99,6 +99,8 @@ async def edit_car(
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
     update_fields = body.model_dump(exclude_unset=True)
+    logger.info(f"[edit_car] Received update_fields: {update_fields}")
+    logger.info(f"[edit_car] Photos in update_fields: {update_fields.get('photos', 'NOT PRESENT')}")
     
     # Сохраняем старый IMEI для проверки изменений
     old_gps_imei = car.gps_imei
@@ -3326,11 +3328,11 @@ async def create_car(
     )
     db.commit()
     
-    # Уведомляем о обновлении списка машин
-    try:
-        await notify_vehicles_list_update()
-    except Exception as e:
-        logger.warning(f"Не удалось отправить уведомление об обновлении списка машин: {e}")
+    # # Уведомляем о обновлении списка машин
+    # try:
+    #     await notify_vehicles_list_update()
+    # except Exception as e:
+    #     logger.warning(f"Не удалось отправить уведомление об обновлении списка машин: {e}")
     
     return CarCreateResponseSchema(
         id=uuid_to_sid(new_car.id),
