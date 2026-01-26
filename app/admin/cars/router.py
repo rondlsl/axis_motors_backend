@@ -56,6 +56,7 @@ VEHICLE_STATUS_FIELDS = [
 
 from app.core.config import VEHICLES_API_URL
 CARS_V2_API_URL = f"{VEHICLES_API_URL}/vehicles"
+BASE_URL = "https://regions.glonasssoft.ru"
 
 cars_router = APIRouter(tags=["Admin Cars"])
 
@@ -82,7 +83,14 @@ async def edit_car(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Редактировать автомобиль"""
+    """
+    Редактировать автомобиль.
+    
+    Если изменяется gps_imei:
+    1. Удаляет старую машину из azv_motors_cars_v2 по старому IMEI
+    2. Получает данные от Glonass API по новому IMEI
+    3. Добавляет машину в azv_motors_cars_v2 с новыми данными
+    """
     if current_user.role not in [UserRole.ADMIN]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
@@ -91,13 +99,134 @@ async def edit_car(
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
     update_fields = body.model_dump(exclude_unset=True)
+    
+    # Сохраняем старый IMEI для проверки изменений
+    old_gps_imei = car.gps_imei
+    old_gps_id = car.gps_id
+    new_gps_imei = update_fields.get("gps_imei")
+    gps_imei_changed = new_gps_imei is not None and new_gps_imei != old_gps_imei
+    
+    # Обработка owner_id (преобразование из short id в UUID)
+    if "owner_id" in update_fields:
+        owner_id_value = update_fields.pop("owner_id")
+        if owner_id_value:
+            owner_uuid = safe_sid_to_uuid(owner_id_value)
+            owner = db.query(User).filter(User.id == owner_uuid).first()
+            if not owner:
+                raise HTTPException(status_code=400, detail=f"Владелец с ID {owner_id_value} не найден")
+            update_fields["owner_id"] = owner_uuid
+        else:
+            update_fields["owner_id"] = None
+    
+    # Проверяем уникальность нового IMEI
+    if gps_imei_changed and new_gps_imei:
+        existing_car_by_imei = db.query(Car).filter(
+            Car.gps_imei == new_gps_imei,
+            Car.id != car.id
+        ).first()
+        if existing_car_by_imei:
+            raise HTTPException(status_code=400, detail=f"Автомобиль с IMEI {new_gps_imei} уже существует")
+    
+    # Если IMEI изменился, обрабатываем интеграцию с Glonass и azv_motors_cars_v2
+    glonass_data_received = False
+    vehicle_id = None
+    
+    if gps_imei_changed:
+        # Шаг 1: Удаляем старую машину из azv_motors_cars_v2 по старому IMEI
+        if old_gps_imei:
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    delete_response = await client.delete(
+                        f"{CARS_V2_API_URL}/by-imei/{old_gps_imei}"
+                    )
+                    if delete_response.status_code == 204:
+                        logger.info(f"Удалена старая машина из azv_motors_cars_v2 по IMEI {old_gps_imei}")
+                    elif delete_response.status_code == 404:
+                        logger.info(f"Машина с IMEI {old_gps_imei} не найдена в azv_motors_cars_v2 (уже удалена или не существовала)")
+                    else:
+                        logger.warning(f"Не удалось удалить машину из azv_motors_cars_v2: {delete_response.status_code}")
+            except Exception as e:
+                logger.error(f"Ошибка удаления машины из azv_motors_cars_v2: {e}")
+        
+        # Шаг 2: Получаем данные от Glonass API по новому IMEI
+        if new_gps_imei:
+            try:
+                auth_token = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                if auth_token:
+                    glonass_response = await glonassoft_client.get_vehicle_data(new_gps_imei)
+                    
+                    if glonass_response:
+                        glonass_data_received = True
+                        vehicle_id = str(glonass_response.get("vehicleid"))
+                        
+                        # Обновляем координаты и данные с Glonass
+                        update_fields["gps_id"] = vehicle_id
+                        update_fields["latitude"] = glonass_response.get("latitude")
+                        update_fields["longitude"] = glonass_response.get("longitude")
+                        
+                        # Извлекаем данные из RegistredSensors
+                        registered_sensors = glonass_response.get("RegistredSensors", [])
+                        for sensor in registered_sensors:
+                            param_name = sensor.get("parameterName", "")
+                            value = sensor.get("value", "")
+                            
+                            if param_name == "param68":  # Пробег
+                                try:
+                                    update_fields["mileage"] = int(float(value))
+                                except (ValueError, TypeError):
+                                    pass
+                            
+                            if param_name == "param70":  # Уровень топлива
+                                try:
+                                    fuel_str = value.replace(" l", "").replace(" L", "").strip()
+                                    update_fields["fuel_level"] = float(fuel_str)
+                                except (ValueError, TypeError):
+                                    pass
+                        
+                        logger.info(f"Получены данные Glonass для нового IMEI {new_gps_imei}: vehicle_id={vehicle_id}")
+                else:
+                    logger.warning(f"Не удалось получить токен авторизации Glonass для IMEI {new_gps_imei}")
+            except Exception as e:
+                logger.error(f"Ошибка получения данных Glonass для IMEI {new_gps_imei}: {e}")
+        else:
+            # Если новый IMEI пустой, сбрасываем gps_id
+            update_fields["gps_id"] = None
+    
+    # Обновляем поля машины
     for field, value in update_fields.items():
         if field == "status" and value is not None:
-            setattr(car, "status", value.value)
+            setattr(car, "status", value.value if hasattr(value, 'value') else value)
         else:
             setattr(car, field, value)
 
     db.commit()
+    db.refresh(car)
+    
+    # Шаг 3: Добавляем новую машину в azv_motors_cars_v2 (если IMEI изменился и есть vehicle_id)
+    vehicle_added_to_cars_v2 = False
+    if gps_imei_changed and new_gps_imei and vehicle_id:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                vehicle_data = {
+                    "vehicle_id": int(vehicle_id),
+                    "vehicle_imei": new_gps_imei,
+                    "name": car.name,
+                    "plate_number": car.plate_number
+                }
+                
+                response = await client.post(
+                    CARS_V2_API_URL + "/",
+                    json=vehicle_data,
+                    headers={"Content-Type": "application/json"}
+                )
+                
+                if response.status_code in [200, 201]:
+                    vehicle_added_to_cars_v2 = True
+                    logger.info(f"Машина {car.name} добавлена в azv_motors_cars_v2 с новым IMEI {new_gps_imei}")
+                else:
+                    logger.warning(f"Не удалось добавить машину в azv_motors_cars_v2: {response.status_code} - {response.text}")
+        except Exception as e:
+            logger.error(f"Ошибка добавления машины в azv_motors_cars_v2: {e}")
     
     log_action(
         db,
@@ -105,10 +234,17 @@ async def edit_car(
         action="edit_car",
         entity_type="car",
         entity_id=car.id,
-        details={"updated_fields": list(update_fields.keys()), "update_data": str(update_fields)}
+        details={
+            "updated_fields": list(update_fields.keys()), 
+            "update_data": str(update_fields),
+            "gps_imei_changed": gps_imei_changed,
+            "old_gps_imei": old_gps_imei,
+            "new_gps_imei": new_gps_imei,
+            "glonass_data_received": glonass_data_received,
+            "vehicle_added_to_cars_v2": vehicle_added_to_cars_v2
+        }
     )
-
-    db.refresh(car)
+    db.commit()
 
     return car_to_detail_schema(car, db)
 
@@ -2635,8 +2771,6 @@ async def get_car_rental_history(
         "rental_history": result,
         "total_rentals": len(result)
     }
-
-BASE_URL = "https://regions.glonasssoft.ru"
 
 
 @cars_router.post("/{car_id}/open", summary="Открыть автомобиль")

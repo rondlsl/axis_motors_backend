@@ -252,6 +252,7 @@ class CarEditSchema(BaseModel):
     """Схема для редактирования автомобиля"""
     name: Optional[str] = None
     plate_number: Optional[str] = None
+    gps_imei: Optional[str] = None  # GPS IMEI трекера
     engine_volume: Optional[float] = None
     year: Optional[int] = None
     drive_type: Optional[int] = None
@@ -265,6 +266,7 @@ class CarEditSchema(BaseModel):
     auto_class: Optional[str] = None
     vin: Optional[str] = None
     color: Optional[str] = None
+    owner_id: Optional[str] = None  # ID владельца (short id)
 
 
 class CarCommentSchema(SidMixin):
