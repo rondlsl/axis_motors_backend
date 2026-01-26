@@ -29,7 +29,8 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from sqlalchemy.orm import Session
 from app.auth.router import Auth_router
-from app.core.config import logger, TELEGRAM_BOT_TOKEN_2
+from app.core.config import TELEGRAM_BOT_TOKEN_2
+from app.core.logging_config import setup_logging, get_logger
 from app.dependencies.database.database import get_db
 from app.middleware.error_logger_middleware import ErrorLoggerMiddleware
 from app.middleware.request_logger_middleware import RequestLoggerMiddleware
@@ -37,14 +38,9 @@ from app.middleware.hang_detector_middleware import HangDetectorMiddleware, set_
 from app.utils.hang_watchdog import HangWatchdog, set_hang_watchdog
 import logging
 
-# Настройка логирования для вывода в консоль Docker
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler()
-    ]
-)
+# Инициализация централизованного логирования
+setup_logging()
+logger = get_logger(__name__)
 
 logging.getLogger("apscheduler").setLevel(logging.ERROR)
 logging.getLogger("apscheduler.executors.default").setLevel(logging.ERROR)

@@ -11,6 +11,9 @@ import httpx
 import uuid
 import base64
 
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
 from app.utils.sid_converter import convert_uuid_response_to_sid
 
@@ -1924,9 +1927,9 @@ async def start_rental(
                 # Универсальная последовательность: разблокировать двигатель → выдать ключ
                 result = await execute_gps_sequence(car.gps_imei, auth_token, "interior")
                 if not result["success"]:
-                    print(f"Ошибка GPS последовательности при старте: {result.get('error', 'Unknown error')}")
+                    logger.error(f"Ошибка GPS последовательности при старте: {result.get('error', 'Unknown error')}")
         except Exception as e:
-            print(f"Ошибка GPS команд при старте аренды: {e}")
+            logger.error(f"Ошибка GPS команд при старте аренды: {e}")
             # Логируем критическую ошибку GPS команды
             try:
                 await log_error_to_telegram(
@@ -1976,7 +1979,7 @@ async def start_rental(
                         json={"chat_id": chat_id, "text": text}
                     )
             except Exception as e:
-                print(f"Ошибка отправки Telegram уведомления в {chat_id}: {e}")
+                logger.error(f"Ошибка отправки Telegram уведомления в {chat_id}: {e}")
         
         # Список чатов для уведомлений
         chat_ids = [965048905, 5941825713, 860991388, 1594112444, 808277096, 7656716395, 964255811, 8522837235, 797693964]
@@ -1990,7 +1993,7 @@ async def start_rental(
                 asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN_2))
                 
     except Exception as e:
-        print(f"Ошибка отправки уведомления о начале аренды в Telegram: {e}")
+        logger.error(f"Ошибка отправки уведомления о начале аренды в Telegram: {e}")
 
     # try:
     #     name_parts = []
@@ -2017,7 +2020,7 @@ async def start_rental(
     #     )
     #     print(f"SMS отправлена клиенту {current_user.phone_number} при начале аренды")
     # except Exception as e:
-    #     print(f"Ошибка отправки SMS при начале аренды: {e}")
+    #     logger.error(f"Ошибка отправки SMS при начале аренды: {e}")
 
     # Обновляем все данные из БД для получения свежих данных
     db.expire_all()
@@ -2068,7 +2071,7 @@ async def upload_photos_before(
     """
     import time
     start_time = time.time()
-    print(f"[UPLOAD_PHOTOS_BEFORE] ========== START ========== user_id={current_user.id}")
+    logger.info(f"[UPLOAD_PHOTOS_BEFORE] ========== START ========== user_id={current_user.id}")
     
     # Получаем rental из БД
     query_start = time.time()
@@ -2077,20 +2080,20 @@ async def upload_photos_before(
         RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
     ).first()
     query_duration = time.time() - query_start
-    print(f"[UPLOAD_PHOTOS_BEFORE] DB query for rental took {query_duration:.3f}s")
+    logger.info(f"[UPLOAD_PHOTOS_BEFORE] DB query for rental took {query_duration:.3f}s")
     
     if not rental:
-        print(f"[UPLOAD_PHOTOS_BEFORE] ERROR: No active rental found for user {current_user.id}")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] ERROR: No active rental found for user {current_user.id}")
         raise HTTPException(status_code=404, detail="No active rental found")
     
-    print(f"[UPLOAD_PHOTOS_BEFORE] Found rental_id={rental.id}, status={rental.rental_status}")
+    logger.info(f"[UPLOAD_PHOTOS_BEFORE] Found rental_id={rental.id}, status={rental.rental_status}")
 
     # Валидация фото
     validate_start = time.time()
     validate_photos([selfie], 'selfie')
     validate_photos(car_photos, 'car_photos')
     validate_duration = time.time() - validate_start
-    print(f"[UPLOAD_PHOTOS_BEFORE] Photo validation took {validate_duration:.3f}s (selfie + {len(car_photos)} car photos)")
+    logger.info(f"[UPLOAD_PHOTOS_BEFORE] Photo validation took {validate_duration:.3f}s (selfie + {len(car_photos)} car photos)")
 
     uploaded_files = []
     
@@ -2098,88 +2101,88 @@ async def upload_photos_before(
         # 1) Сверяем селфи клиента с документом из профиля
         try:
             verify_start = time.time()
-            print(f"[UPLOAD_PHOTOS_BEFORE] Starting face verification...")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE] Starting face verification...")
             is_same, msg = await run_in_threadpool(verify_user_upload_against_profile, current_user, selfie)
             verify_duration = time.time() - verify_start
-            print(f"[UPLOAD_PHOTOS_BEFORE] Face verification took {verify_duration:.3f}s, is_same={is_same}")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE] Face verification took {verify_duration:.3f}s, is_same={is_same}")
             if not is_same:
-                print(f"[UPLOAD_PHOTOS_BEFORE] Face verification FAILED: {msg}")
+                logger.info(f"[UPLOAD_PHOTOS_BEFORE] Face verification FAILED: {msg}")
                 raise HTTPException(status_code=400, detail=msg)
         except HTTPException:
             raise
         except Exception as e:
-            print(f"[UPLOAD_PHOTOS_BEFORE] Face verification EXCEPTION: {type(e).__name__}: {str(e)}")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE] Face verification EXCEPTION: {type(e).__name__}: {str(e)}")
             raise HTTPException(status_code=400, detail="Ой! Похоже на фотографии не вы, но если это вы, то пожалуйста сделайте селфи как в профиле.")
 
         # 2) Если верификация успешна — сохраняем фото
         urls = list(rental.photos_before or [])
-        print(f"[UPLOAD_PHOTOS_BEFORE] Current photos_before count: {len(urls)}")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] Current photos_before count: {len(urls)}")
         
         # save selfie
-        print(f"[UPLOAD_PHOTOS_BEFORE] Saving selfie...")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] Saving selfie...")
         save_start = time.time()
         selfie_url = await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/before/selfie/")
         urls.append(selfie_url)
         uploaded_files.append(selfie_url)
-        print(f"[UPLOAD_PHOTOS_BEFORE] Selfie save TOTAL took {time.time() - save_start:.3f}s")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] Selfie save TOTAL took {time.time() - save_start:.3f}s")
         
         # save exterior
-        print(f"[UPLOAD_PHOTOS_BEFORE] Saving {len(car_photos)} car photos...")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] Saving {len(car_photos)} car photos...")
         for idx, p in enumerate(car_photos):
             photo_start = time.time()
-            print(f"[UPLOAD_PHOTOS_BEFORE] Saving car photo {idx+1}/{len(car_photos)}: {p.filename}")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE] Saving car photo {idx+1}/{len(car_photos)}: {p.filename}")
             car_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/car/")
             urls.append(car_url)
             uploaded_files.append(car_url)
-            print(f"[UPLOAD_PHOTOS_BEFORE] Car photo {idx+1} save TOTAL took {time.time() - photo_start:.3f}s")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE] Car photo {idx+1} save TOTAL took {time.time() - photo_start:.3f}s")
 
         rental.photos_before = urls
-        print(f"[UPLOAD_PHOTOS_BEFORE] Total photos_before after save: {len(urls)}")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] Total photos_before after save: {len(urls)}")
         
         # DB commit - закрываем транзакцию перед GPS операциями, чтобы не блокировать БД
         commit_start = time.time()
-        print(f"[UPLOAD_PHOTOS_BEFORE] Committing DB changes...")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] Committing DB changes...")
         db.commit()
         commit_duration = time.time() - commit_start
-        print(f"[UPLOAD_PHOTOS_BEFORE] DB commit took {commit_duration:.3f}s")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] DB commit took {commit_duration:.3f}s")
         
         # Получаем car из БД
         car_query_start = time.time()
         car = db.query(Car).get(rental.car_id)
         car_query_duration = time.time() - car_query_start
-        print(f"[UPLOAD_PHOTOS_BEFORE] Car query took {car_query_duration:.3f}s, car_id={rental.car_id}, gps_imei={car.gps_imei if car else 'None'}")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] Car query took {car_query_duration:.3f}s, car_id={rental.car_id}, gps_imei={car.gps_imei if car else 'None'}")
         
         if car and car.gps_imei:
             gps_start = time.time()
-            print(f"[UPLOAD_PHOTOS_BEFORE] Starting GPS sequence for imei={car.gps_imei}")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE] Starting GPS sequence for imei={car.gps_imei}")
             
             auth_start = time.time()
             auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
             auth_duration = time.time() - auth_start
-            print(f"[UPLOAD_PHOTOS_BEFORE] GPS auth took {auth_duration:.3f}s")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE] GPS auth took {auth_duration:.3f}s")
             
             # Универсальная последовательность: открыть замки → выдать ключ → открыть замки → забрать ключ
             sequence_start = time.time()
-            print(f"[UPLOAD_PHOTOS_BEFORE] Executing GPS sequence 'selfie_exterior'...")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE] Executing GPS sequence 'selfie_exterior'...")
             result = await execute_gps_sequence(car.gps_imei, auth_token, "selfie_exterior")
             sequence_duration = time.time() - sequence_start
-            print(f"[UPLOAD_PHOTOS_BEFORE] GPS sequence took {sequence_duration:.3f}s, success={result.get('success', False)}")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE] GPS sequence took {sequence_duration:.3f}s, success={result.get('success', False)}")
             
             if not result["success"]:
                 error_msg = result.get('error', 'Unknown error')
-                print(f"[UPLOAD_PHOTOS_BEFORE] GPS sequence FAILED: {error_msg}")
+                logger.info(f"[UPLOAD_PHOTOS_BEFORE] GPS sequence FAILED: {error_msg}")
                 logger.error(f"Ошибка GPS последовательности для селфи+кузов: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
             else:
                 # Логируем только краткую информацию, без детального списка команд
-                print(f"[UPLOAD_PHOTOS_BEFORE] GPS sequence SUCCESS for car_id={car.id}")
+                logger.info(f"[UPLOAD_PHOTOS_BEFORE] GPS sequence SUCCESS for car_id={car.id}")
                 logger.info(f"GPS последовательность 'selfie_exterior' успешно выполнена для авто {car.id}")
         else:
-            print(f"[UPLOAD_PHOTOS_BEFORE] Skipping GPS sequence (car={car is not None}, gps_imei={car.gps_imei if car else 'None'})")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE] Skipping GPS sequence (car={car is not None}, gps_imei={car.gps_imei if car else 'None'})")
         
         # Обновляем все данные из БД для получения свежих данных (после всех операций)
         refresh_start = time.time()
-        print(f"[UPLOAD_PHOTOS_BEFORE] Refreshing DB objects...")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] Refreshing DB objects...")
         db.expire_all()
         db.refresh(rental)
         db.refresh(current_user)
@@ -2190,25 +2193,25 @@ async def upload_photos_before(
             if owner:
                 db.refresh(owner)
         refresh_duration = time.time() - refresh_start
-        print(f"[UPLOAD_PHOTOS_BEFORE] DB refresh took {refresh_duration:.3f}s")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] DB refresh took {refresh_duration:.3f}s")
         
         # Отправляем WebSocket уведомления в самом конце, после всех операций
         ws_start = time.time()
-        print(f"[UPLOAD_PHOTOS_BEFORE] Sending WebSocket notifications...")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] Sending WebSocket notifications...")
         try:
             await notify_user_status_update(str(current_user.id))
             if car and car.owner_id:
                 await notify_user_status_update(str(car.owner_id))
             ws_duration = time.time() - ws_start
-            print(f"[UPLOAD_PHOTOS_BEFORE] WebSocket notifications sent in {ws_duration:.3f}s")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE] WebSocket notifications sent in {ws_duration:.3f}s")
             logger.info(f"WebSocket user_status notification sent for user {current_user.id} after uploading photos before")
         except Exception as e:
             ws_duration = time.time() - ws_start
-            print(f"[UPLOAD_PHOTOS_BEFORE] WebSocket notification ERROR after {ws_duration:.3f}s: {e}")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE] WebSocket notification ERROR after {ws_duration:.3f}s: {e}")
             logger.error(f"Error sending WebSocket notification: {e}");
         
         total_duration = time.time() - start_time
-        print(f"[UPLOAD_PHOTOS_BEFORE] ========== SUCCESS TOTAL: {total_duration:.3f}s ==========")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] ========== SUCCESS TOTAL: {total_duration:.3f}s ==========")
         
         return {"message": "Photos before (selfie+car) uploaded", "photo_count": len(urls)}
     except HTTPException:
@@ -2247,7 +2250,7 @@ async def upload_photos_before_interior(
     """
     import time
     start_time = time.time()
-    print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] ========== START ========== user_id={current_user.id}")
+    logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] ========== START ========== user_id={current_user.id}")
     
     # Получаем rental из БД
     query_start = time.time()
@@ -2256,60 +2259,60 @@ async def upload_photos_before_interior(
         RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
     ).first()
     query_duration = time.time() - query_start
-    print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] DB query for rental took {query_duration:.3f}s")
+    logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] DB query for rental took {query_duration:.3f}s")
     
     if not rental:
-        print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] ERROR: No active rental found for user {current_user.id}")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] ERROR: No active rental found for user {current_user.id}")
         raise HTTPException(status_code=404, detail="No active rental found")
     
-    print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Found rental_id={rental.id}, status={rental.rental_status}")
+    logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Found rental_id={rental.id}, status={rental.rental_status}")
 
     # Требуем, чтобы перед салоном были загружены внешние фото
     check_start = time.time()
     existing = rental.photos_before or []
     has_exterior = any(('/before/car/' in p) or ('\\before\\car\\' in p) for p in existing)
     check_duration = time.time() - check_start
-    print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Exterior check took {check_duration:.3f}s, has_exterior={has_exterior}, existing_count={len(existing)}")
+    logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Exterior check took {check_duration:.3f}s, has_exterior={has_exterior}, existing_count={len(existing)}")
     
     if not has_exterior:
-        print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] ERROR: Exterior photos not found, cannot upload interior")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] ERROR: Exterior photos not found, cannot upload interior")
         raise HTTPException(status_code=400, detail="Сначала загрузите внешние фото")
 
     # Валидация фото
     validate_start = time.time()
     validate_photos(interior_photos, 'interior_photos')
     validate_duration = time.time() - validate_start
-    print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Photo validation took {validate_duration:.3f}s, count={len(interior_photos)}")
+    logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Photo validation took {validate_duration:.3f}s, count={len(interior_photos)}")
 
     uploaded_files = []
     
     try:
         urls = list(rental.photos_before or [])
-        print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Current photos_before count: {len(urls)}")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Current photos_before count: {len(urls)}")
         
         # Сохранение interior фото
-        print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Saving {len(interior_photos)} interior photos...")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Saving {len(interior_photos)} interior photos...")
         for idx, p in enumerate(interior_photos):
             photo_start = time.time()
-            print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Saving interior photo {idx+1}/{len(interior_photos)}: {p.filename}")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Saving interior photo {idx+1}/{len(interior_photos)}: {p.filename}")
             interior_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/interior/")
             urls.append(interior_url)
             uploaded_files.append(interior_url)
-            print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Interior photo {idx+1} save TOTAL took {time.time() - photo_start:.3f}s")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Interior photo {idx+1} save TOTAL took {time.time() - photo_start:.3f}s")
         
         rental.photos_before = urls
-        print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Total photos_before after save: {len(urls)}")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Total photos_before after save: {len(urls)}")
         
         # DB commit
         commit_start = time.time()
-        print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Committing DB changes...")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Committing DB changes...")
         db.commit()
         commit_duration = time.time() - commit_start
-        print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] DB commit took {commit_duration:.3f}s")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] DB commit took {commit_duration:.3f}s")
         
         # Обновляем все данные из БД для получения свежих данных (после всех операций)
         refresh_start = time.time()
-        print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Refreshing DB objects...")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Refreshing DB objects...")
         db.expire_all()
         db.refresh(rental)
         db.refresh(current_user)
@@ -2321,25 +2324,25 @@ async def upload_photos_before_interior(
             if owner:
                 db.refresh(owner)
         refresh_duration = time.time() - refresh_start
-        print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] DB refresh took {refresh_duration:.3f}s")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] DB refresh took {refresh_duration:.3f}s")
         
         # Отправляем WebSocket уведомления в самом конце, после всех операций
         ws_start = time.time()
-        print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Sending WebSocket notifications...")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Sending WebSocket notifications...")
         try:
             await notify_user_status_update(str(current_user.id))
             if car and car.owner_id:
                 await notify_user_status_update(str(car.owner_id))
             ws_duration = time.time() - ws_start
-            print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] WebSocket notifications sent in {ws_duration:.3f}s")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] WebSocket notifications sent in {ws_duration:.3f}s")
             logger.info(f"WebSocket user_status notification sent for user {current_user.id} after uploading photos before interior")
         except Exception as e:
             ws_duration = time.time() - ws_start
-            print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] WebSocket notification ERROR after {ws_duration:.3f}s: {e}")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] WebSocket notification ERROR after {ws_duration:.3f}s: {e}")
             logger.error(f"Error sending WebSocket notification: {e}")
         
         total_duration = time.time() - start_time
-        print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] ========== SUCCESS TOTAL: {total_duration:.3f}s ==========")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] ========== SUCCESS TOTAL: {total_duration:.3f}s ==========")
         
         return {"message": "Photos before (interior) uploaded", "photo_count": len(interior_photos)}
     except Exception as e:
@@ -2439,18 +2442,18 @@ async def upload_photos_after(
         
         # После загрузки селфи+салона: заблокировать двигатель → забрать ключ → закрыть замки
         car = db.query(Car).get(rental.car_id)
-        print(f"[DEBUG] Car found: {car is not None}, GPS IMEI: {car.gps_imei if car else 'N/A'}")
+        logger.info(f"[DEBUG] Car found: {car is not None}, GPS IMEI: {car.gps_imei if car else 'N/A'}")
         if car and car.gps_imei:
-            print(f"[DEBUG] Calling GPS sequence complete_selfie_interior for {car.gps_imei}")
+            logger.info(f"[DEBUG] Calling GPS sequence complete_selfie_interior for {car.gps_imei}")
             auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
             # Универсальная последовательность: заблокировать двигатель → забрать ключ → закрыть замки
             result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_selfie_interior")
             if not result["success"]:
                 error_msg = result.get('error', 'Unknown error')
-                print(f"Ошибка GPS последовательности для завершения селфи+салон: {error_msg}")
+                logger.error(f"Ошибка GPS последовательности для завершения селфи+салон: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
         else:
-            print(f"[DEBUG] Skipping GPS sequence - no car or no IMEI")
+            logger.info(f"[DEBUG] Skipping GPS sequence - no car or no IMEI")
         
         # Обновляем все данные из БД для получения свежих данных (после всех операций)
         db.expire_all()
@@ -2582,7 +2585,7 @@ async def upload_photos_after_car(
             result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_exterior")
             if not result["success"]:
                 error_msg = result.get('error', 'Unknown error')
-                print(f"Ошибка GPS последовательности для завершения кузова: {error_msg}")
+                logger.error(f"Ошибка GPS последовательности для завершения кузова: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
         
         # Обновляем все данные из БД для получения свежих данных (после всех операций)
@@ -2672,11 +2675,11 @@ async def upload_photos_before_owner(
                 open_result = await send_open(car.gps_imei, auth_token)
                 command_id = open_result.get('command_id')
                 if command_id:
-                    print(f"Замки успешно открыты для владельца. Command ID: {command_id}")
+                    logger.info(f"Замки успешно открыты для владельца. Command ID: {command_id}")
                 else:
-                    print(f"Предупреждение: команда отправлена, но command_id не получен")
+                    logger.warning(f"Команда отправлена, но command_id не получен")
             except Exception as gps_error:
-                print(f"Ошибка GPS при открытии замков: {str(gps_error)}")
+                logger.error(f"Ошибка GPS при открытии замков: {str(gps_error)}")
                 # Не прерываем процесс загрузки фото, только логируем ошибку
                 try:
                     await log_error_to_telegram(
@@ -2829,7 +2832,7 @@ async def upload_photos_after_owner(
             result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_selfie_interior")
             if not result["success"]:
                 error_msg = result.get('error', 'Unknown error')
-                print(f"Ошибка GPS последовательности для завершения салона владельцем: {error_msg}")
+                logger.error(f"Ошибка GPS последовательности для завершения салона владельцем: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
         
         return {"message": "Owner photos after (interior) uploaded", "photo_count": len(interior_photos)}
@@ -3951,7 +3954,7 @@ async def complete_rental(
             plate_number=car.plate_number
         )
     except Exception as e:
-        print(e)
+        logger.error(f"Ошибка отправки уведомления механикам: {e}", exc_info=True)
 
     # try:
     #     name_parts = []
@@ -3978,7 +3981,7 @@ async def complete_rental(
     #     )
     #     print(f"SMS отправлена клиенту {current_user.phone_number} при завершении аренды")
     # except Exception as e:
-    #     print(f"Ошибка отправки SMS при завершении аренды: {e}")
+    #     logger.error(f"Ошибка отправки SMS при завершении аренды: {e}")
 
     schedule_notifications(
         user_ids=[current_user.id, car.owner_id],

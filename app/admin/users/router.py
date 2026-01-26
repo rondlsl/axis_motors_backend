@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 import uuid
 from app.models.notification_model import Notification
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
 
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
 from app.utils.sid_converter import convert_uuid_response_to_sid
@@ -1758,7 +1760,7 @@ async def update_trip_details(
                     file_url = await save_file(file, rental.id, f"uploads/rents/{rental.id}/{save_folder}")
                     final_urls.append(file_url)
                 except Exception as e:
-                    print(f"Error saving file {file.filename}: {e}")
+                    logger.error(f"Error saving file {file.filename}: {e}")
                     pass
                 
         return final_urls
@@ -2390,7 +2392,7 @@ async def admin_start_rental(
                                 json={"chat_id": chat_id, "text": text}
                             )
                     except Exception as e:
-                        print(f"Ошибка отправки Telegram уведомления в {chat_id}: {e}")
+                        logger.error(f"Ошибка отправки Telegram уведомления в {chat_id}: {e}")
                 
                 # Список чатов для уведомлений
                 chat_ids = [965048905, 5941825713, 860991388, 1594112444, 808277096, 7656716395, 964255811, 8522837235, 797693964]
@@ -2404,7 +2406,7 @@ async def admin_start_rental(
                         asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN_2))
                         
             except Exception as e:
-                print(f"Не удалось отправить Telegram уведомление о начале аренды: {e}")
+                logger.error(f"Не удалось отправить Telegram уведомление о начале аренды: {e}")
             
             asyncio.create_task(notify_user_status_update(str(target_user.id)))
             
@@ -2620,7 +2622,7 @@ async def admin_start_rental(
                         json={"chat_id": chat_id, "text": text}
                     )
             except Exception as e:
-                print(f"Ошибка отправки Telegram уведомления в {chat_id}: {e}")
+                logger.error(f"Ошибка отправки Telegram уведомления в {chat_id}: {e}")
         
         # Список чатов для уведомлений
         chat_ids = [965048905, 5941825713, 860991388, 1594112444, 808277096, 7656716395, 964255811, 8522837235, 797693964]
@@ -2634,7 +2636,7 @@ async def admin_start_rental(
                 asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN_2))
                 
     except Exception as e:
-        print(f"Не удалось отправить Telegram уведомление о начале аренды: {e}")
+        logger.error(f"Не удалось отправить Telegram уведомление о начале аренды: {e}")
     
     asyncio.create_task(notify_user_status_update(str(target_user.id)))
     
@@ -2862,7 +2864,7 @@ async def admin_end_rental(
             plate_number=car.plate_number
         )
     except Exception as e:
-        print(f"Error sending notification to mechanics: {e}")
+        logger.error(f"Error sending notification to mechanics: {e}")
     
     # Обновляем данные из БД после верификации
     db.refresh(active_rental)
@@ -4864,7 +4866,7 @@ async def admin_upload_photos_before(
             if car.owner_id:
                 await notify_user_status_update(str(car.owner_id))
         except Exception as e:
-            print(f"Error sending WebSocket notifications: {e}")
+            logger.error(f"Error sending WebSocket notifications: {e}")
         
         return {
             "message": "Фотографии до аренды (selfie+car) загружены",
@@ -4937,7 +4939,7 @@ async def admin_upload_photos_before_interior(
             if car.owner_id:
                 await notify_user_status_update(str(car.owner_id))
         except Exception as e:
-            print(f"Error sending WebSocket notifications: {e}")
+            logger.error(f"Error sending WebSocket notifications: {e}")
         
         return {
             "message": "Фотографии салона до аренды загружены",
@@ -5016,7 +5018,7 @@ async def admin_upload_photos_after(
             if car.owner_id:
                 await notify_user_status_update(str(car.owner_id))
         except Exception as e:
-            print(f"Error sending WebSocket notifications: {e}")
+            logger.error(f"Error sending WebSocket notifications: {e}")
         
         return {
             "message": "Фотографии после аренды (selfie+interior) загружены",
@@ -5087,7 +5089,7 @@ async def admin_upload_photos_after_car(
             if car.owner_id:
                 await notify_user_status_update(str(car.owner_id))
         except Exception as e:
-            print(f"Error sending WebSocket notifications: {e}")
+            logger.error(f"Error sending WebSocket notifications: {e}")
         
         return {
             "message": "Фотографии кузова после аренды загружены",
@@ -5121,25 +5123,25 @@ async def admin_submit_rental_review(
     - rating: оценка от 1 до 5
     - comment: текстовый комментарий (опционально)
     """
-    print(f"[REVIEW] Начало обработки. rental_id={request.rental_id}, rating={request.rating}")
+    logger.info(f"[REVIEW] Начало обработки. rental_id={request.rental_id}, rating={request.rating}")
     
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Только администратор или техподдержка может добавлять оценки от имени клиентов")
     
     try:
         rental_uuid = safe_sid_to_uuid(request.rental_id)
-        print(f"[REVIEW] rental_uuid={rental_uuid}")
+        logger.info(f"[REVIEW] rental_uuid={rental_uuid}")
     except ValueError as e:
-        print(f"[REVIEW] Ошибка парсинга rental_id: {e}")
+        logger.info(f"[REVIEW] Ошибка парсинга rental_id: {e}")
         raise HTTPException(status_code=400, detail=f"Неверный формат rental_id: {str(e)}")
     
     try:
         rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
         if not rental:
-            print(f"[REVIEW] Аренда не найдена: {rental_uuid}")
+            logger.info(f"[REVIEW] Аренда не найдена: {rental_uuid}")
             raise HTTPException(status_code=404, detail="Аренда не найдена")
         
-        print(f"[REVIEW] Аренда найдена: status={rental.rental_status}, user_id={rental.user_id}, car_id={rental.car_id}")
+        logger.info(f"[REVIEW] Аренда найдена: status={rental.rental_status}, user_id={rental.user_id}, car_id={rental.car_id}")
         
         # 1. Сохраняем отзыв
         existing_review = db.query(RentalReview).filter(RentalReview.rental_id == rental.id).first()
@@ -5149,7 +5151,7 @@ async def admin_submit_rental_review(
             existing_review.rating = request.rating
             existing_review.comment = request.comment
             is_update = True
-            print(f"[REVIEW] Обновляем существующий отзыв")
+            logger.info(f"[REVIEW] Обновляем существующий отзыв")
         else:
             review = RentalReview(
                 rental_id=rental.id,
@@ -5157,20 +5159,20 @@ async def admin_submit_rental_review(
                 comment=request.comment
             )
             db.add(review)
-            print(f"[REVIEW] Создаём новый отзыв")
+            logger.info(f"[REVIEW] Создаём новый отзыв")
     
         # 2. Завершаем аренду, если она активна
         rental_completed = False
         total_charged = None
         
-        print(f"[REVIEW] rental_status={rental.rental_status}, IN_USE={RentalStatus.IN_USE}")
+        logger.info(f"[REVIEW] rental_status={rental.rental_status}, IN_USE={RentalStatus.IN_USE}")
         
         if rental.rental_status == RentalStatus.IN_USE:
             # Получаем машину и пользователя
             car = db.query(Car).filter(Car.id == rental.car_id).first()
             user = db.query(User).filter(User.id == rental.user_id).first()
             
-            print(f"[REVIEW] car={car.id if car else None}, user={user.id if user else None}, user_balance={user.wallet_balance if user else None}")
+            logger.info(f"[REVIEW] car={car.id if car else None}, user={user.id if user else None}, user_balance={user.wallet_balance if user else None}")
             
             if car and user:
                 now = get_local_time()
@@ -5185,7 +5187,7 @@ async def admin_submit_rental_review(
                     rounded_minutes = 0
                     actual_minutes = 0
                 
-                print(f"[REVIEW] actual_minutes={actual_minutes}, rounded_minutes={rounded_minutes}")
+                logger.info(f"[REVIEW] actual_minutes={actual_minutes}, rounded_minutes={rounded_minutes}")
                 
                 # Сохраняем оригинальное значение duration (часы/дни) до перезаписи
                 original_duration = rental.duration
@@ -5194,7 +5196,7 @@ async def admin_submit_rental_review(
                 price_per_hour = car.price_per_hour or 0
                 price_per_day = car.price_per_day or 0
                 
-                print(f"[REVIEW] rental_type={rental.rental_type}, original_duration={original_duration}, prices: min={price_per_minute}, hour={price_per_hour}, day={price_per_day}")
+                logger.info(f"[REVIEW] rental_type={rental.rental_type}, original_duration={original_duration}, prices: min={price_per_minute}, hour={price_per_hour}, day={price_per_day}")
             
             # Базовая плата по типу аренды
             if rental.rental_type == RentalType.MINUTES:
@@ -5459,8 +5461,8 @@ async def admin_submit_rental_review(
                     if rental.already_payed is None:
                         rental.already_payed = 0
             
-            print(f"[REVIEW] Расчёты завершены: base_price={rental.base_price}, open_fee={rental.open_fee}, waiting_fee={rental.waiting_fee}, overtime_fee={rental.overtime_fee}, total_price={rental.total_price}, already_payed={rental.already_payed}")
-            print(f"[REVIEW] Баланс пользователя после списаний: {user.wallet_balance}")
+            logger.info(f"[REVIEW] Расчёты завершены: base_price={rental.base_price}, open_fee={rental.open_fee}, waiting_fee={rental.waiting_fee}, overtime_fee={rental.overtime_fee}, total_price={rental.total_price}, already_payed={rental.already_payed}")
+            logger.info(f"[REVIEW] Баланс пользователя после списаний: {user.wallet_balance}")
             
             # Машина переходит в статус PENDING (требуется проверка механиком)
             car.status = CarStatus.PENDING
@@ -5469,7 +5471,7 @@ async def admin_submit_rental_review(
             rental_completed = True
             total_charged = rental.total_price  # Общая сумма аренды
             
-            print(f"[REVIEW] Аренда завершена, машина переведена в PENDING")
+            logger.info(f"[REVIEW] Аренда завершена, машина переведена в PENDING")
             
             # Обновляем last_activity пользователя
             user.last_activity_at = now
@@ -5481,7 +5483,7 @@ async def admin_submit_rental_review(
                 if car.owner_id:
                     await notify_user_status_update(str(car.owner_id))
             except Exception as e:
-                print(f"Error sending WebSocket notifications: {e}")
+                logger.error(f"Error sending WebSocket notifications: {e}")
             
             # Отправляем уведомление всем механикам о новой машине для проверки
             try:
@@ -5493,11 +5495,11 @@ async def admin_submit_rental_review(
                     plate_number=car.plate_number
                 )
             except Exception as e:
-                print(f"Error sending notification to mechanics: {e}")
+                logger.error(f"Error sending notification to mechanics: {e}")
     
-        print(f"[REVIEW] Готовы к commit. rental_completed={rental_completed}, total_charged={total_charged}")
+        logger.info(f"[REVIEW] Готовы к commit. rental_completed={rental_completed}, total_charged={total_charged}")
         db.commit()
-        print(f"[REVIEW] Commit успешен")
+        logger.info(f"[REVIEW] Commit успешен")
         
         return {
         "message": "Отзыв добавлен и аренда завершена" if rental_completed else ("Оценка обновлена" if is_update else "Оценка добавлена"),
@@ -5514,8 +5516,8 @@ async def admin_submit_rental_review(
     except Exception as e:
         db.rollback()
         import traceback
-        print(f"[REVIEW] ОШИБКА: {e}")
-        print(f"[REVIEW] Traceback: {traceback.format_exc()}")
+        logger.info(f"[REVIEW] ОШИБКА: {e}")
+        logger.info(f"[REVIEW] Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Ошибка при завершении аренды: {str(e)}")
 
 
@@ -5582,7 +5584,7 @@ async def admin_cancel_reservation(
         if car.owner_id:
             await notify_user_status_update(str(car.owner_id))
     except Exception as e:
-        print(f"Error sending WebSocket notifications: {e}")
+        logger.error(f"Error sending WebSocket notifications: {e}")
     
     return AdminCancelReservationResponse(
         message="Бронь отменена",
@@ -5689,7 +5691,7 @@ async def admin_extend_rental(
         if car.owner_id:
             await notify_user_status_update(str(car.owner_id))
     except Exception as e:
-        print(f"Error sending WebSocket notifications: {e}")
+        logger.error(f"Error sending WebSocket notifications: {e}")
     
     try:
         if user_has_push_tokens(db, user.id):
@@ -5712,7 +5714,7 @@ async def admin_extend_rental(
                 cost=int(price_to_charge)
             )
     except Exception as e:
-        print(f"Error sending push notification: {e}")
+        logger.error(f"Error sending push notification: {e}")
     
     return AdminExtendRentalResponse(
         message=f"Аренда продлена на {duration_text}",
@@ -6082,7 +6084,7 @@ async def admin_assign_mechanic(
         if car.owner_id:
             await notify_user_status_update(str(car.owner_id))
     except Exception as e:
-        print(f"Error sending WebSocket notifications: {e}")
+        logger.error(f"Error sending WebSocket notifications: {e}")
     
     try:
         if user_has_push_tokens(db, mechanic.id):
@@ -6094,7 +6096,7 @@ async def admin_assign_mechanic(
                 plate_number=car.plate_number
             )
     except Exception as e:
-        print(f"Error sending push notification: {e}")
+        logger.error(f"Error sending push notification: {e}")
     
     return {
         "message": "Механик назначен",
@@ -6167,7 +6169,7 @@ async def admin_unassign_mechanic(
         if car.owner_id:
             await notify_user_status_update(str(car.owner_id))
     except Exception as e:
-        print(f"Error sending WebSocket notifications: {e}")
+        logger.error(f"Error sending WebSocket notifications: {e}")
     
     try:
         if user_has_push_tokens(db, mechanic_id):
@@ -6179,7 +6181,7 @@ async def admin_unassign_mechanic(
                 plate_number=car.plate_number
             )
     except Exception as e:
-        print(f"Error sending push notification: {e}")
+        logger.error(f"Error sending push notification: {e}")
     
     return {
         "message": "Назначение механика снято",
@@ -6274,7 +6276,7 @@ async def delete_user(
         try:
             await notify_user_status_update(str(user.id))
         except Exception as e:
-            print(f"Error sending WebSocket notification: {e}")
+            logger.error(f"Error sending WebSocket notification: {e}")
     
     return AdminDeleteUserResponse(
         message=message,

@@ -1,4 +1,6 @@
 from typing import List, Optional
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
 import asyncio
 import sys
 from datetime import datetime
@@ -339,7 +341,7 @@ async def register_device(
             .all()
         )
         for other_device in other_devices_with_token:
-            print(f"🗑️ [REGISTER_DEVICE] Deleting device {other_device.id} from user {other_device.user_id} (fcm_token conflict)")
+            logger.debug(f"🗑️ [REGISTER_DEVICE] Deleting device {other_device.id} from user {other_device.user_id} (fcm_token conflict)")
             db.delete(other_device)
         
         # Удаляем устройства других пользователей с этим device_id
@@ -353,7 +355,7 @@ async def register_device(
                 .all()
             )
             for other_device in other_devices_with_device_id:
-                print(f"🗑️ [REGISTER_DEVICE] Deleting device {other_device.id} from user {other_device.user_id} (device_id conflict)")
+                logger.debug(f"🗑️ [REGISTER_DEVICE] Deleting device {other_device.id} from user {other_device.user_id} (device_id conflict)")
                 db.delete(other_device)
         
         # Обрабатываем предыдущие устройства текущего пользователя
@@ -377,7 +379,7 @@ async def register_device(
                 prev_device.revoked_at = get_local_time()
                 prev_device.update_timestamp()
                 db.add(prev_device)
-                print(f"🔄 [REGISTER_DEVICE] Deactivating previous device {prev_device.id} for mechanic (same fcm_token, different device_id)")
+                logger.debug(f"🔄 [REGISTER_DEVICE] Deactivating previous device {prev_device.id} for mechanic (same fcm_token, different device_id)")
         else:
             # Для обычных пользователей: УДАЛЯЕМ все предыдущие устройства
             previous_devices = (
@@ -386,7 +388,7 @@ async def register_device(
                 .all()
             )
             for prev_device in previous_devices:
-                print(f"🗑️ [REGISTER_DEVICE] Deleting previous device {prev_device.id} for user")
+                logger.debug(f"🗑️ [REGISTER_DEVICE] Deleting previous device {prev_device.id} for user")
                 db.delete(prev_device)
         
         db.flush()
@@ -449,7 +451,7 @@ async def register_device(
                 .all()
             )
             for other_device in other_active_devices:
-                print(f"🗑️ [REGISTER_DEVICE] Force deleting other active device {other_device.id}")
+                logger.debug(f"🗑️ [REGISTER_DEVICE] Force deleting other active device {other_device.id}")
                 db.delete(other_device)
 
         db.commit()
@@ -591,15 +593,15 @@ async def test_push_by_phone(
     
     print("="*80)
     print("🔔 [TEST_PUSH_BY_PHONE] Запрос получен")
-    print(f"📱 Ищем пользователя: {payload.phone}")
-    print(f"👤 От: {current_user.phone_number} (роль: {current_user.role.value if current_user.role else None})")
-    print(f"📝 Заголовок: {payload.title}")
-    print(f"📝 Текст: {payload.body}")
+    logger.debug(f"📱 Ищем пользователя: {payload.phone}")
+    logger.debug(f"👤 От: {current_user.phone_number} (роль: {current_user.role.value if current_user.role else None})")
+    logger.debug(f"📝 Заголовок: {payload.title}")
+    logger.debug(f"📝 Текст: {payload.body}")
     sys.stdout.flush()
     
     # Проверяем права доступа
     if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
-        print(f"❌ Доступ запрещен - роль {current_user.role}")
+        logger.debug(f"❌ Доступ запрещен - роль {current_user.role}")
         raise HTTPException(
             status_code=403, 
             detail=f"Only admins and mechanics can use test endpoints. Your role: {current_user.role.value if current_user.role else None}"
@@ -609,19 +611,19 @@ async def test_push_by_phone(
     target_user = db.query(User).filter(User.phone_number == payload.phone).first()
     
     if not target_user:
-        print(f"❌ Пользователь {payload.phone} не найден")
+        logger.debug(f"❌ Пользователь {payload.phone} не найден")
         raise HTTPException(status_code=404, detail=f"User with phone {payload.phone} not found")
     
-    print(f"✅ Пользователь найден: {target_user.id}")
-    print(f"   Имя: {target_user.first_name} {target_user.last_name}")
+    logger.debug(f"✅ Пользователь найден: {target_user.id}")
+    logger.debug(f"   Имя: {target_user.first_name} {target_user.last_name}")
     
     tokens = get_user_push_tokens(db, target_user.id)
     if not tokens:
-        print(f"❌ У пользователя нет активных FCM токенов")
+        logger.debug(f"❌ У пользователя нет активных FCM токенов")
         raise HTTPException(status_code=400, detail=f"User {target_user.phone_number} doesn't have active FCM tokens")
     
-    print(f"✅ Найдено {len(tokens)} FCM токен(ов)")
-    print(f"🚀 Начинаем отправку push-уведомления...")
+    logger.debug(f"✅ Найдено {len(tokens)} FCM токен(ов)")
+    logger.debug(f"🚀 Начинаем отправку push-уведомления...")
     print("-"*80)
     sys.stdout.flush()
     
@@ -636,7 +638,7 @@ async def test_push_by_phone(
     
     print("-"*80)
     if success:
-        print(f"✅ [TEST_PUSH_BY_PHONE] Push отправлен успешно!")
+        logger.debug(f"✅ [TEST_PUSH_BY_PHONE] Push отправлен успешно!")
         
         log_action(
             db,
@@ -648,7 +650,7 @@ async def test_push_by_phone(
         )
         db.commit()
     else:
-        print(f"❌ [TEST_PUSH_BY_PHONE] Ошибка отправки push")
+        logger.debug(f"❌ [TEST_PUSH_BY_PHONE] Ошибка отправки push")
     print("="*80)
     print()
     sys.stdout.flush()
@@ -685,14 +687,14 @@ async def test_push_to_me(
     
     tokens = get_user_push_tokens(db, current_user.id)
     if not tokens:
-        print(f"У вас нет активных FCM токенов")
+        logger.debug(f"У вас нет активных FCM токенов")
         raise HTTPException(
             status_code=400, 
             detail="У вас нет активных FCM токенов. Убедитесь, что приложение установлено и зарегистрировано."
         )
     
-    print(f"Найдено {len(tokens)} FCM токен(ов)")
-    print(f"Начинаем отправку push-уведомления...")
+    logger.debug(f"Найдено {len(tokens)} FCM токен(ов)")
+    logger.debug(f"Начинаем отправку push-уведомления...")
     print("-"*80)
     sys.stdout.flush()
     
@@ -711,9 +713,9 @@ async def test_push_to_me(
     
     print("-"*80)
     if success:
-        print(f"[TEST_PUSH_TO_ME] Push отправлен успешно!")
+        logger.info(f"[TEST_PUSH_TO_ME] Push отправлен успешно!")
     else:
-        print(f"[TEST_PUSH_TO_ME] Ошибка отправки push на все устройства")
+        logger.info(f"[TEST_PUSH_TO_ME] Ошибка отправки push на все устройства")
     print("="*80)
     print()
     sys.stdout.flush()
@@ -880,9 +882,9 @@ async def broadcast_notification(
         tokens = [row[0] for row in active_tokens]
         total_users = len(users_with_devices)
         
-        print(f"📢 [BROADCAST] Отправка уведомления {total_users} пользователям ({len(tokens)} уникальных токенов)")
-        print(f"   Заголовок: {payload.title}")
-        print(f"   Текст: {payload.body[:100]}...")
+        logger.debug(f"📢 [BROADCAST] Отправка уведомления {total_users} пользователям ({len(tokens)} уникальных токенов)")
+        logger.debug(f"   Заголовок: {payload.title}")
+        logger.debug(f"   Текст: {payload.body[:100]}...")
         
         # Отправляем батчами, чтобы не перегрузить сервер
         MAX_CONCURRENT = 50
@@ -929,7 +931,7 @@ async def broadcast_notification(
                 db.add(notif)
                 saved_count += 1
             except Exception as e:
-                print(f"Ошибка сохранения уведомления для пользователя {user.id}: {e}")
+                logger.error(f" сохранения уведомления для пользователя {user.id}: {e}")
         
         db.commit()
 
@@ -948,7 +950,7 @@ async def broadcast_notification(
         )
         db.commit()
         
-        print(f"✅ [BROADCAST] Успешно: {success_count}, Ошибок: {failed_count}, Сохранено в БД: {saved_count}")
+        logger.debug(f"✅ [BROADCAST] Успешно: {success_count}, Ошибок: {failed_count}, Сохранено в БД: {saved_count}")
         
         return {
             "success": success_count,
@@ -1022,8 +1024,8 @@ async def broadcast_localized_notification(
             }
         
         total_users = len(users_with_devices)
-        print(f"📢 [BROADCAST_LOCALIZED] Отправка локализованного уведомления {total_users} пользователям")
-        print(f"   Ключ перевода: {payload.translation_key}")
+        logger.debug(f"📢 [BROADCAST_LOCALIZED] Отправка локализованного уведомления {total_users} пользователям")
+        logger.debug(f"   Ключ перевода: {payload.translation_key}")
         
         notification_status = None
         try:
@@ -1063,7 +1065,7 @@ async def broadcast_localized_notification(
         success_count = sum(1 for r in results if r is True)
         failed_count = total_users - success_count
         
-        print(f"✅ [BROADCAST_LOCALIZED] Успешно: {success_count}, Ошибок: {failed_count}")
+        logger.debug(f"✅ [BROADCAST_LOCALIZED] Успешно: {success_count}, Ошибок: {failed_count}")
         
         log_action(
             db,
@@ -1158,9 +1160,9 @@ async def notify_unverified_email_users(
         title = "Заявка в обработке"
         body = "Чтобы открыть доступ к автомобилям, необходимо подтвердить вашу почту."
         
-        print(f"📢 [NOTIFY_UNVERIFIED_EMAIL] Отправка уведомления {total_users} пользователям")
-        print(f"   Заголовок: {title}")
-        print(f"   Текст: {body}")
+        logger.debug(f"📢 [NOTIFY_UNVERIFIED_EMAIL] Отправка уведомления {total_users} пользователям")
+        logger.debug(f"   Заголовок: {title}")
+        logger.debug(f"   Текст: {body}")
         
         users_with_tokens = []
         users_without_tokens = []
@@ -1182,8 +1184,8 @@ async def notify_unverified_email_users(
             else:
                 users_without_tokens.append(user)
         
-        print(f"   Пользователей с токенами: {len(users_with_tokens)}")
-        print(f"   Пользователей без токенов: {len(users_without_tokens)}")
+        logger.debug(f"   Пользователей с токенами: {len(users_with_tokens)}")
+        logger.debug(f"   Пользователей без токенов: {len(users_without_tokens)}")
         
         if not users_with_tokens:
             return {
@@ -1240,7 +1242,7 @@ async def notify_unverified_email_users(
                     "error": str(result),
                     "error_type": type(result).__name__
                 })
-                print(f"❌ [NOTIFY_UNVERIFIED_EMAIL] Ошибка для пользователя {users_with_tokens[i].phone_number}: {type(result).__name__}: {result}")
+                logger.debug(f"❌ [NOTIFY_UNVERIFIED_EMAIL] Ошибка для пользователя {users_with_tokens[i].phone_number}: {type(result).__name__}: {result}")
             elif result is True:
                 success_count += 1
             else:
@@ -1251,7 +1253,7 @@ async def notify_unverified_email_users(
                     "reason": "Push notification failed (no token or send failed)"
                 })
         
-        print(f"✅ [NOTIFY_UNVERIFIED_EMAIL] Успешно: {success_count}, Неудачно: {failed_count}, Исключений: {exception_count}")
+        logger.debug(f"✅ [NOTIFY_UNVERIFIED_EMAIL] Успешно: {success_count}, Неудачно: {failed_count}, Исключений: {exception_count}")
         
         response = {
             "success": success_count,
@@ -1532,11 +1534,11 @@ async def notify_documents_approved(
         title = "Документы одобрены"
         body = "Ваши документы успешно проверены и одобрены. Теперь вы можете арендовать автомобили."
         
-        print(f"📢 [NOTIFY_DOCUMENTS_APPROVED] Отправка уведомления {len(users)} пользователям")
-        print(f"   Заголовок: {title}")
-        print(f"   Текст: {body}")
-        print(f"   Найдено пользователей: {len(users)}")
-        print(f"   Не найдено: {len(not_found_phones)}")
+        logger.debug(f"📢 [NOTIFY_DOCUMENTS_APPROVED] Отправка уведомления {len(users)} пользователям")
+        logger.debug(f"   Заголовок: {title}")
+        logger.debug(f"   Текст: {body}")
+        logger.debug(f"   Найдено пользователей: {len(users)}")
+        logger.debug(f"   Не найдено: {len(not_found_phones)}")
         
         # Проверяем наличие токенов у пользователей
         users_with_tokens = []
@@ -1549,8 +1551,8 @@ async def notify_documents_approved(
             else:
                 users_without_tokens.append(user)
         
-        print(f"   Пользователей с токенами: {len(users_with_tokens)}")
-        print(f"   Пользователей без токенов: {len(users_without_tokens)}")
+        logger.debug(f"   Пользователей с токенами: {len(users_with_tokens)}")
+        logger.debug(f"   Пользователей без токенов: {len(users_without_tokens)}")
         
         if not users_with_tokens:
             return {
@@ -1609,7 +1611,7 @@ async def notify_documents_approved(
                     "error": str(result),
                     "error_type": type(result).__name__
                 })
-                print(f"❌ [NOTIFY_DOCUMENTS_APPROVED] Ошибка для пользователя {users_with_tokens[i].phone_number}: {type(result).__name__}: {result}")
+                logger.debug(f"❌ [NOTIFY_DOCUMENTS_APPROVED] Ошибка для пользователя {users_with_tokens[i].phone_number}: {type(result).__name__}: {result}")
             elif result is True:
                 success_count += 1
             else:
@@ -1620,7 +1622,7 @@ async def notify_documents_approved(
                     "reason": "Push notification failed (no token or send failed)"
                 })
         
-        print(f"✅ [NOTIFY_DOCUMENTS_APPROVED] Успешно: {success_count}, Неудачно: {failed_count}, Исключений: {exception_count}")
+        logger.debug(f"✅ [NOTIFY_DOCUMENTS_APPROVED] Успешно: {success_count}, Неудачно: {failed_count}, Исключений: {exception_count}")
         
         response = {
             "success": success_count,

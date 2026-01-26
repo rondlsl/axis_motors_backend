@@ -1,4 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, Query
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, constr, Field, conint
 from sqlalchemy import or_
@@ -890,9 +892,9 @@ async def start_rental(
             # Универсальная последовательность: разблокировать двигатель → выдать ключ
             result = await execute_gps_sequence(car.gps_imei, auth_token, "interior")
             if not result["success"]:
-                print(f"Ошибка GPS последовательности при старте проверки механиком: {result.get('error', 'Unknown error')}")
+                logger.error(f" GPS последовательности при старте проверки механиком: {result.get('error', 'Unknown error')}")
     except Exception as e:
-        print(f"Ошибка GPS команд при старте проверки механиком: {e}")
+        logger.error(f" GPS команд при старте проверки механиком: {e}")
         try:
             await log_error_to_telegram(
                 error=e,
@@ -959,9 +961,9 @@ async def start_rental(
     #         plate_number=car.plate_number,
     #         car_name=car.name
     #     )
-    #     print(f"SMS отправлена механику {current_mechanic.phone_number} при начале проверки")
+    #     logger.debug(f"SMS отправлена механику {current_mechanic.phone_number} при начале проверки")
     # except Exception as e:
-    #     print(f"Ошибка отправки SMS при начале проверки механиком: {e}")
+    #     logger.error(f" отправки SMS при начале проверки механиком: {e}")
     
     return {"message": "Проверка автомобиля запущена", "rental_id": uuid_to_sid(rental.id)}
 
@@ -1309,7 +1311,7 @@ async def upload_photos_after(
             result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_selfie_interior")
             if not result["success"]:
                 error_msg = result.get('error', 'Unknown error')
-                print(f"Ошибка GPS последовательности для завершения селфи+салон механиком: {error_msg}")
+                logger.error(f" GPS последовательности для завершения селфи+салон механиком: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
         
         # Обновляем все данные из БД для получения свежих данных (после всех операций)
@@ -1408,7 +1410,7 @@ async def upload_photos_after_car(
             result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_exterior")
             if not result["success"]:
                 error_msg = result.get('error', 'Unknown error')
-                print(f"Ошибка GPS последовательности для завершения кузова механиком: {error_msg}")
+                logger.error(f" GPS последовательности для завершения кузова механиком: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
         
         # Обновляем все данные из БД для получения свежих данных (после всех операций)
@@ -1570,9 +1572,9 @@ async def complete_rental(
         #         plate_number=car.plate_number,
         #         car_name=car.name
         #     )
-        #     print(f"SMS отправлена механику {current_mechanic.phone_number} при завершении проверки")
+        #     logger.debug(f"SMS отправлена механику {current_mechanic.phone_number} при завершении проверки")
         # except Exception as e:
-        #     print(f"Ошибка отправки SMS при завершении проверки механиком: {e}")
+        #     logger.error(f" отправки SMS при завершении проверки механиком: {e}")
         
         return {
             "message": "Проверка автомобиля успешно завершена",

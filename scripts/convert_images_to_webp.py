@@ -1,42 +1,82 @@
 #!/usr/bin/env python3
 """
-Скрипт для конвертации существующих изображений в MinIO в формат WebP.
-Логика: сначала берём URL из БД, потом конвертируем файлы в MinIO.
+Оптимизированный скрипт для конвертации изображений в MinIO в формат WebP.
+Поддерживает параллельную обработку, чекпоинты и прогресс-бар.
 
 Запуск:
-    python scripts/convert_images_to_webp.py
+    python scripts/convert_images_to_webp.py --dry-run
+    python scripts/convert_images_to_webp.py --workers 8
+    python scripts/convert_images_to_webp.py --resume
 
 Опции:
     --dry-run       Показать что будет конвертировано, без реальных изменений
     --delete-old    Удалить оригинальные файлы после конвертации
     --table TABLE   Обработать только указанную таблицу
+    --workers N     Количество параллельных воркеров (по умолчанию 4)
+    --resume        Продолжить с последнего чекпоинта
+    --batch-size N  Размер батча для коммита в БД (по умолчанию 100)
 """
 import os
 import sys
 import argparse
 import logging
 import json
+import pickle
 from io import BytesIO
-from typing import List, Tuple, Optional, Dict, Set
+from typing import List, Tuple, Optional, Dict
 from urllib.parse import urlparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
+from pathlib import Path
+import time
 
 # Добавляем корневую директорию проекта в путь
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import boto3
 from botocore.exceptions import ClientError
+from botocore.config import Config as BotoConfig
 from PIL import Image
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
+# Попробуем импортировать tqdm для прогресс-бара
+try:
+    from tqdm import tqdm
+    HAS_TQDM = True
+except ImportError:
+    HAS_TQDM = False
+    print("⚠️  tqdm не установлен. Установите: pip install tqdm")
+
+# Импорт конфигурации
 from app.core.config import (
     MINIO_ENDPOINT,
     MINIO_ACCESS_KEY,
     MINIO_SECRET_KEY,
     MINIO_BUCKET_UPLOADS,
     MINIO_PUBLIC_URL,
-    DATABASE_URL,
 )
+
+# Пробуем получить DATABASE_URL из разных источников
+try:
+    from app.core.config import DATABASE_URL
+except Exception:
+    DATABASE_URL = None
+
+# Если DATABASE_URL не загрузился, пробуем собрать вручную
+if not DATABASE_URL or 'None' in str(DATABASE_URL):
+    from app.core.config import (
+        POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB
+    )
+    # Проверяем что все переменные есть
+    if all([POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB]):
+        DATABASE_URL = f"postgresql+psycopg2://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+    else:
+        # Дефолтные значения для локальной разработки
+        DATABASE_URL = os.getenv(
+            'DATABASE_URL',
+            'postgresql+psycopg2://postgres:postgres@localhost:5432/azv_motors_backend_v2'
+        )
 
 # Настройка логирования
 logging.basicConfig(
@@ -45,79 +85,121 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Расширения изображений для конвертации
+# Константы
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff'}
-
-# Качество WebP (0-100)
 WEBP_QUALITY = 85
+CHECKPOINT_FILE = Path(__file__).parent / '.webp_migration_checkpoint.pkl'
+
+
+@dataclass
+class MigrationStats:
+    """Статистика миграции"""
+    total_urls: int = 0
+    processed: int = 0
+    converted: int = 0
+    already_exists: int = 0
+    not_found: int = 0
+    errors: int = 0
+    bytes_before: int = 0
+    bytes_after: int = 0
+    db_updated: int = 0
+    skipped: int = 0
+
+
+@dataclass
+class ConversionResult:
+    """Результат конвертации одного файла"""
+    url: str
+    status: str  # converted, exists, not_found, error, skipped
+    original_size: int = 0
+    new_size: int = 0
+    new_url: str = ""
+    error_msg: str = ""
 
 
 def get_s3_client():
-    """Создать клиент S3/MinIO"""
+    """Создать клиент S3/MinIO с оптимизированными настройками"""
     return boto3.client(
         's3',
         endpoint_url=MINIO_ENDPOINT,
         aws_access_key_id=MINIO_ACCESS_KEY,
         aws_secret_access_key=MINIO_SECRET_KEY,
-        config=boto3.session.Config(
+        config=BotoConfig(
             signature_version='s3v4',
-            s3={'addressing_style': 'path'}
+            s3={'addressing_style': 'path'},
+            max_pool_connections=50,  # Больше соединений для параллельной работы
+            retries={'max_attempts': 3}
         )
     )
 
 
-def get_db_session():
-    """Создать сессию БД"""
-    engine = create_engine(DATABASE_URL)
-    session_factory = sessionmaker(bind=engine)
-    return session_factory()
+def get_db_engine():
+    """Создать engine БД"""
+    return create_engine(
+        DATABASE_URL,
+        pool_size=10,
+        max_overflow=20,
+        pool_pre_ping=True
+    )
 
 
-def is_convertible_image(url: str) -> bool:
-    """Проверить, можно ли конвертировать файл по URL"""
-    if not url:
+def is_convertible_image(path: str) -> bool:
+    """Проверить, можно ли конвертировать файл по пути"""
+    if not path:
         return False
-    ext = os.path.splitext(urlparse(url).path.lower())[1]
+    # Уже WebP - пропускаем
+    if path.lower().endswith('.webp'):
+        return False
+    ext = os.path.splitext(path.lower())[1]
     return ext in IMAGE_EXTENSIONS
 
 
-def parse_minio_url(url: str) -> Tuple[Optional[str], Optional[str]]:
+def parse_db_path(db_path: str) -> Tuple[Optional[str], Optional[str]]:
     """
-    Извлечь bucket и key из MinIO URL.
+    Извлечь bucket и key из пути/URL в БД.
     
-    URL формат: https://msmain.azvmotors.kz/uploads/folder/file.jpg
+    Форматы в БД:
+    - uploads/documents/uuid.jpg -> bucket=uploads, key=documents/uuid.jpg
+    - /uploads/cars/X60/front.jpg -> bucket=uploads, key=cars/X60/front.jpg
+    - https://msmain.azvmotors.kz/uploads/documents/uuid.jpg -> bucket=uploads, key=documents/uuid.jpg
+    
     Returns: (bucket, key) или (None, None)
     """
-    if not url:
+    if not db_path:
         return None, None
     
     try:
-        # Убираем протокол
-        url_without_protocol = url.replace("https://", "").replace("http://", "")
-        parts = url_without_protocol.split("/", 1)
+        path = db_path
+        
+        # Если это полный URL - извлекаем путь
+        if path.startswith('http://') or path.startswith('https://'):
+            # https://msmain.azvmotors.kz/uploads/documents/uuid.jpg
+            # Убираем протокол и домен
+            path = path.split('://', 1)[1]  # msmain.azvmotors.kz/uploads/documents/uuid.jpg
+            path = path.split('/', 1)[1] if '/' in path else ''  # uploads/documents/uuid.jpg
+        
+        # Убираем начальный слеш если есть
+        path = path.lstrip('/')
+        
+        if not path:
+            return None, None
+        
+        # Разделяем на bucket и key
+        parts = path.split('/', 1)
         
         if len(parts) < 2:
             return None, None
         
-        path = parts[1]  # uploads/folder/file.jpg
-        path_parts = path.split("/", 1)
+        bucket = parts[0]  # uploads
+        key = parts[1]     # documents/uuid.jpg или cars/X60/front.jpg
         
-        if len(path_parts) < 2:
-            return None, None
-        
-        bucket = path_parts[0]
-        key = path_parts[1]
         return bucket, key
     except Exception:
         return None, None
 
 
 def convert_image_to_webp(content: bytes) -> Tuple[Optional[bytes], int, int]:
-    """
-    Конвертировать изображение в WebP.
-    
-    Returns: (webp_bytes, original_size, new_size) или (None, 0, 0) при ошибке
-    """
+    """Конвертировать изображение в WebP"""
     try:
         original_size = len(content)
         img = Image.open(BytesIO(content))
@@ -135,378 +217,239 @@ def convert_image_to_webp(content: bytes) -> Tuple[Optional[bytes], int, int]:
         elif img.mode != 'RGB':
             img = img.convert('RGB')
         
-        # Сохраняем в WebP
         output = BytesIO()
-        img.save(output, format='WEBP', quality=WEBP_QUALITY, method=6)
+        img.save(output, format='WEBP', quality=WEBP_QUALITY, method=4)  # method=4 быстрее чем 6
         output.seek(0)
         
         webp_content = output.getvalue()
         return webp_content, original_size, len(webp_content)
         
     except Exception as e:
-        logger.error(f"Ошибка конвертации: {e}")
+        logger.debug(f"Ошибка конвертации: {e}")
         return None, 0, 0
 
 
-def get_webp_url(original_url: str) -> str:
-    """Получить URL для WebP версии файла"""
-    base, _ = os.path.splitext(original_url)
+def get_webp_path(original_path: str) -> str:
+    """
+    Получить путь/URL для WebP версии файла (для БД).
+    Сохраняет исходный формат (URL остаётся URL, путь остаётся путём).
+    """
+    base, _ = os.path.splitext(original_path)
     return f"{base}.webp"
 
 
 def get_webp_key(original_key: str) -> str:
-    """Получить key для WebP версии файла"""
+    """Получить key для WebP версии файла (для MinIO)"""
     base, _ = os.path.splitext(original_key)
     return f"{base}.webp"
 
 
 # ============================================================
-# СБОР URL ИЗ БАЗЫ ДАННЫХ
+# СБОР URL ИЗ БАЗЫ ДАННЫХ (оптимизированный)
 # ============================================================
 
-def collect_urls_from_users(db_session) -> Dict[str, List[dict]]:
-    """Собрать URL изображений из таблицы users"""
-    columns = [
-        'selfie_with_license_url',
-        'selfie_url',
-        'drivers_license_url',
-        'id_card_front_url',
-        'id_card_back_url',
-        'psych_neurology_certificate_url',
-        'narcology_certificate_url',
-        'pension_contributions_certificate_url'
-    ]
-    
-    urls = {}
-    
-    for column in columns:
-        result = db_session.execute(
-            text(f"SELECT id, {column} FROM users WHERE {column} IS NOT NULL AND {column} != ''")
-        )
-        for row in result.fetchall():
-            user_id, url = row
-            if url and is_convertible_image(url):
-                if url not in urls:
-                    urls[url] = []
-                urls[url].append({
-                    'table': 'users',
-                    'column': column,
-                    'id': str(user_id),
-                    'id_column': 'id'
-                })
-    
-    return urls
-
-
-def collect_urls_from_cars(db_session) -> Dict[str, List[dict]]:
-    """Собрать URL изображений из таблицы cars (JSON поле photos)"""
-    urls = {}
-    
-    result = db_session.execute(
-        text("SELECT id, photos FROM cars WHERE photos IS NOT NULL")
-    )
-    
-    for row in result.fetchall():
-        car_id, photos = row
-        if not photos:
-            continue
-        
-        # photos может быть строкой JSON или списком
-        try:
-            if isinstance(photos, str):
-                photos_list = json.loads(photos)
-            else:
-                photos_list = photos if photos else []
-        except Exception:
-            continue
-        
-        for idx, url in enumerate(photos_list):
-            if url and is_convertible_image(url):
-                if url not in urls:
-                    urls[url] = []
-                urls[url].append({
-                    'table': 'cars',
-                    'column': 'photos',
-                    'id': str(car_id),
-                    'id_column': 'id',
-                    'array_index': idx,
-                    'is_json': True
-                })
-    
-    return urls
-
-
-def collect_urls_from_rental_history(db_session) -> Dict[str, List[dict]]:
-    """Собрать URL изображений из таблицы rental_history (ARRAY поля)"""
-    columns = [
-        'photos_before',
-        'photos_after',
-        'delivery_photos_before',
-        'delivery_photos_after',
-        'mechanic_photos_before',
-        'mechanic_photos_after'
-    ]
-    
-    urls = {}
-    
-    for column in columns:
-        result = db_session.execute(
-            text(f"SELECT id, {column} FROM rental_history WHERE {column} IS NOT NULL AND array_length({column}, 1) > 0")
-        )
-        
-        for row in result.fetchall():
-            rental_id, photos = row
-            if not photos:
-                continue
-            
-            for idx, url in enumerate(photos):
-                if url and is_convertible_image(url):
-                    if url not in urls:
-                        urls[url] = []
-                    urls[url].append({
-                        'table': 'rental_history',
-                        'column': column,
-                        'id': str(rental_id),
-                        'id_column': 'id',
-                        'array_index': idx,
-                        'is_array': True
-                    })
-    
-    return urls
-
-
-def collect_urls_from_support_messages(db_session) -> Dict[str, List[dict]]:
-    """Собрать URL изображений из таблицы support_messages"""
-    urls = {}
-    
-    result = db_session.execute(
-        text("SELECT id, media_url FROM support_messages WHERE media_url IS NOT NULL AND media_url != ''")
-    )
-    
-    for row in result.fetchall():
-        msg_id, url = row
-        if url and is_convertible_image(url):
-            if url not in urls:
-                urls[url] = []
-            urls[url].append({
-                'table': 'support_messages',
-                'column': 'media_url',
-                'id': str(msg_id),
-                'id_column': 'id'
-            })
-    
-    return urls
-
-
-def collect_urls_from_contract_files(db_session) -> Dict[str, List[dict]]:
-    """Собрать URL изображений из таблицы contract_files"""
-    urls = {}
-    
-    try:
-        result = db_session.execute(
-            text("SELECT id, file_url FROM contract_files WHERE file_url IS NOT NULL AND file_url != ''")
-        )
-        
-        for row in result.fetchall():
-            file_id, url = row
-            if url and is_convertible_image(url):
-                if url not in urls:
-                    urls[url] = []
-                urls[url].append({
-                    'table': 'contract_files',
-                    'column': 'file_url',
-                    'id': str(file_id),
-                    'id_column': 'id'
-                })
-    except Exception as e:
-        logger.warning(f"Таблица contract_files не найдена или ошибка: {e}")
-    
-    return urls
-
-
-def collect_all_urls(db_session, tables: Optional[List[str]] = None) -> Dict[str, List[dict]]:
+def collect_all_urls_fast(engine, tables: Optional[List[str]] = None) -> Dict[str, List[dict]]:
     """
-    Собрать все URL изображений из БД.
-    
-    Returns:
-        Dict[url, List[{table, column, id, ...}]] - маппинг URL на места использования
+    Быстрый сбор всех URL из БД одним проходом.
+    Возвращает Dict[url, List[{table, column, id, ...}]]
     """
     all_urls = {}
     
-    collectors = {
-        'users': collect_urls_from_users,
-        'cars': collect_urls_from_cars,
-        'rental_history': collect_urls_from_rental_history,
-        'support_messages': collect_urls_from_support_messages,
-        'contract_files': collect_urls_from_contract_files,
-    }
-    
-    for table_name, collector in collectors.items():
-        if tables and table_name not in tables:
-            continue
+    with engine.connect() as conn:
+        # Users - простые поля
+        if not tables or 'users' in tables:
+            logger.info("Сканирование users...")
+            user_columns = [
+                'selfie_with_license_url', 'selfie_url', 'drivers_license_url',
+                'id_card_front_url', 'id_card_back_url',
+                'psych_neurology_certificate_url', 'narcology_certificate_url',
+                'pension_contributions_certificate_url'
+            ]
+            
+            for col in user_columns:
+                result = conn.execute(text(
+                    f"SELECT id, {col} FROM users WHERE {col} IS NOT NULL AND {col} != '' AND {col} NOT LIKE '%.webp'"
+                ))
+                for row in result.fetchall():
+                    url = row[1]
+                    if url and is_convertible_image(url):
+                        if url not in all_urls:
+                            all_urls[url] = []
+                        all_urls[url].append({
+                            'table': 'users', 'column': col,
+                            'id': str(row[0]), 'id_column': 'id'
+                        })
+            
+            logger.info(f"  users: найдено {sum(1 for u in all_urls.values() if any(x['table']=='users' for x in u))} URL")
         
-        logger.info(f"Сканирование таблицы {table_name}...")
-        table_urls = collector(db_session)
+        # Cars - JSON поле photos
+        if not tables or 'cars' in tables:
+            logger.info("Сканирование cars...")
+            result = conn.execute(text(
+                "SELECT id, photos FROM cars WHERE photos IS NOT NULL"
+            ))
+            
+            cars_count = 0
+            for row in result.fetchall():
+                car_id, photos = row
+                if not photos:
+                    continue
+                
+                try:
+                    photos_list = json.loads(photos) if isinstance(photos, str) else (photos or [])
+                except Exception:
+                    continue
+                
+                for idx, url in enumerate(photos_list):
+                    if url and is_convertible_image(url):
+                        if url not in all_urls:
+                            all_urls[url] = []
+                        all_urls[url].append({
+                            'table': 'cars', 'column': 'photos',
+                            'id': str(car_id), 'id_column': 'id',
+                            'array_index': idx, 'is_json': True
+                        })
+                        cars_count += 1
+            
+            logger.info(f"  cars: найдено {cars_count} URL")
         
-        for url, usages in table_urls.items():
-            if url not in all_urls:
-                all_urls[url] = []
-            all_urls[url].extend(usages)
+        # Rental history - ARRAY поля
+        if not tables or 'rental_history' in tables:
+            logger.info("Сканирование rental_history...")
+            rental_columns = [
+                'photos_before', 'photos_after',
+                'delivery_photos_before', 'delivery_photos_after',
+                'mechanic_photos_before', 'mechanic_photos_after'
+            ]
+            
+            rental_count = 0
+            for col in rental_columns:
+                try:
+                    result = conn.execute(text(
+                        f"SELECT id, {col} FROM rental_history WHERE {col} IS NOT NULL AND array_length({col}, 1) > 0"
+                    ))
+                    
+                    for row in result.fetchall():
+                        rental_id, photos = row
+                        if not photos:
+                            continue
+                        
+                        for idx, url in enumerate(photos):
+                            if url and is_convertible_image(url):
+                                if url not in all_urls:
+                                    all_urls[url] = []
+                                all_urls[url].append({
+                                    'table': 'rental_history', 'column': col,
+                                    'id': str(rental_id), 'id_column': 'id',
+                                    'array_index': idx, 'is_array': True
+                                })
+                                rental_count += 1
+                except Exception as e:
+                    logger.debug(f"  Ошибка {col}: {e}")
+            
+            logger.info(f"  rental_history: найдено {rental_count} URL")
         
-        logger.info(f"  Найдено {len(table_urls)} уникальных URL")
+        # Support messages
+        if not tables or 'support_messages' in tables:
+            logger.info("Сканирование support_messages...")
+            try:
+                result = conn.execute(text(
+                    "SELECT id, media_url FROM support_messages WHERE media_url IS NOT NULL AND media_url != '' AND media_url NOT LIKE '%.webp'"
+                ))
+                
+                support_count = 0
+                for row in result.fetchall():
+                    url = row[1]
+                    if url and is_convertible_image(url):
+                        if url not in all_urls:
+                            all_urls[url] = []
+                        all_urls[url].append({
+                            'table': 'support_messages', 'column': 'media_url',
+                            'id': str(row[0]), 'id_column': 'id'
+                        })
+                        support_count += 1
+                
+                logger.info(f"  support_messages: найдено {support_count} URL")
+            except Exception as e:
+                logger.debug(f"  support_messages: {e}")
+        
+        # Contract files
+        if not tables or 'contract_files' in tables:
+            logger.info("Сканирование contract_files...")
+            try:
+                result = conn.execute(text(
+                    "SELECT id, file_url FROM contract_files WHERE file_url IS NOT NULL AND file_url != '' AND file_url NOT LIKE '%.webp'"
+                ))
+                
+                contract_count = 0
+                for row in result.fetchall():
+                    url = row[1]
+                    if url and is_convertible_image(url):
+                        if url not in all_urls:
+                            all_urls[url] = []
+                        all_urls[url].append({
+                            'table': 'contract_files', 'column': 'file_url',
+                            'id': str(row[0]), 'id_column': 'id'
+                        })
+                        contract_count += 1
+                
+                logger.info(f"  contract_files: найдено {contract_count} URL")
+            except Exception as e:
+                logger.debug(f"  contract_files: {e}")
     
     return all_urls
 
 
 # ============================================================
-# ОБНОВЛЕНИЕ БД
+# КОНВЕРТАЦИЯ (параллельная)
 # ============================================================
 
-def update_db_url(db_session, old_url: str, new_url: str, usages: List[dict], dry_run: bool = False) -> int:
+def convert_single_file(args: tuple) -> ConversionResult:
     """
-    Обновить URL в БД для всех мест использования.
+    Конвертировать один файл (для параллельной обработки).
+    args: (db_path, dry_run, delete_old)
     
-    Returns:
-        Количество обновлённых записей
+    db_path - путь как хранится в БД: uploads/documents/uuid.jpg или /uploads/cars/X60/front.jpg
     """
-    updated = 0
+    db_path, dry_run, delete_old = args
     
-    for usage in usages:
-        table = usage['table']
-        column = usage['column']
-        record_id = usage['id']
-        id_column = usage.get('id_column', 'id')
-        
-        if dry_run:
-            logger.info(f"    [DRY-RUN] {table}.{column} id={record_id}: {old_url} -> {new_url}")
-            updated += 1
-            continue
-        
-        try:
-            if usage.get('is_json'):
-                # JSON поле (cars.photos)
-                # Получаем текущее значение
-                result = db_session.execute(
-                    text(f"SELECT {column} FROM {table} WHERE {id_column} = :id"),
-                    {"id": record_id}
-                )
-                row = result.fetchone()
-                if row and row[0]:
-                    photos = row[0] if isinstance(row[0], list) else json.loads(row[0])
-                    # Заменяем URL
-                    new_photos = [new_url if p == old_url else p for p in photos]
-                    db_session.execute(
-                        text(f"UPDATE {table} SET {column} = :photos WHERE {id_column} = :id"),
-                        {"photos": json.dumps(new_photos), "id": record_id}
-                    )
-                    updated += 1
-                    
-            elif usage.get('is_array'):
-                # PostgreSQL ARRAY поле
-                result = db_session.execute(
-                    text(f"SELECT {column} FROM {table} WHERE {id_column} = :id"),
-                    {"id": record_id}
-                )
-                row = result.fetchone()
-                if row and row[0]:
-                    photos = list(row[0])
-                    # Заменяем URL
-                    new_photos = [new_url if p == old_url else p for p in photos]
-                    # Формируем PostgreSQL array literal
-                    array_str = "{" + ",".join([f'"{url}"' for url in new_photos]) + "}"
-                    db_session.execute(
-                        text(f"UPDATE {table} SET {column} = :photos WHERE {id_column} = :id"),
-                        {"photos": array_str, "id": record_id}
-                    )
-                    updated += 1
-            else:
-                # Простое строковое поле
-                db_session.execute(
-                    text(f"UPDATE {table} SET {column} = :new_url WHERE {id_column} = :id AND {column} = :old_url"),
-                    {"new_url": new_url, "id": record_id, "old_url": old_url}
-                )
-                updated += 1
-                
-        except Exception as e:
-            logger.error(f"    Ошибка обновления {table}.{column} id={record_id}: {e}")
+    # Каждый поток создаёт свой клиент
+    s3_client = get_s3_client()
     
-    return updated
-
-
-# ============================================================
-# ОСНОВНАЯ ЛОГИКА КОНВЕРТАЦИИ
-# ============================================================
-
-def convert_and_update(
-    db_session,
-    s3_client,
-    url: str,
-    usages: List[dict],
-    dry_run: bool = False,
-    delete_old: bool = False
-) -> dict:
-    """
-    Конвертировать один файл и обновить БД.
-    
-    Returns:
-        Статистика операции
-    """
-    result = {
-        'status': 'skipped',
-        'original_size': 0,
-        'new_size': 0,
-        'db_updated': 0
-    }
-    
-    # Парсим URL
-    bucket, key = parse_minio_url(url)
+    # Парсим путь из БД
+    bucket, key = parse_db_path(db_path)
     if not bucket or not key:
-        logger.warning(f"  Не удалось распарсить URL: {url}")
-        result['status'] = 'error'
-        return result
+        return ConversionResult(url=db_path, status='error', error_msg='Invalid path format')
     
     new_key = get_webp_key(key)
-    new_url = get_webp_url(url)
+    new_db_path = get_webp_path(db_path)  # Новый путь для БД
     
-    # Проверяем, существует ли уже WebP версия
+    # Проверяем существование WebP в MinIO
     try:
         s3_client.head_object(Bucket=bucket, Key=new_key)
-        logger.info(f"  ⏭️  WebP уже существует: {new_key}")
-        # Обновляем БД на новый URL
-        result['db_updated'] = update_db_url(db_session, url, new_url, usages, dry_run)
-        result['status'] = 'exists'
-        return result
+        return ConversionResult(url=db_path, status='exists', new_url=new_db_path)
     except ClientError:
-        pass  # Файл не существует - будем создавать
+        pass
     
     if dry_run:
-        logger.info(f"  🔍 [DRY-RUN] Будет конвертирован: {key} -> {new_key}")
-        result['status'] = 'would_convert'
-        result['db_updated'] = update_db_url(db_session, url, new_url, usages, dry_run)
-        return result
+        return ConversionResult(url=db_path, status='would_convert', new_url=new_db_path)
     
-    # Скачиваем оригинал
+    # Скачиваем оригинал из MinIO
     try:
         response = s3_client.get_object(Bucket=bucket, Key=key)
         content = response['Body'].read()
-    except ClientError as e:
-        logger.error(f"  ❌ Файл не найден в MinIO: {key} ({e})")
-        result['status'] = 'not_found'
-        return result
+    except ClientError:
+        return ConversionResult(url=db_path, status='not_found', error_msg=f'File not found: {bucket}/{key}')
     except Exception as e:
-        logger.error(f"  ❌ Ошибка скачивания: {e}")
-        result['status'] = 'error'
-        return result
+        return ConversionResult(url=db_path, status='error', error_msg=str(e))
     
-    # Конвертируем
+    # Конвертируем в WebP
     webp_content, original_size, new_size = convert_image_to_webp(content)
     
     if webp_content is None:
-        logger.error(f"  ❌ Ошибка конвертации: {key}")
-        result['status'] = 'error'
-        return result
+        return ConversionResult(url=db_path, status='error', error_msg='Conversion failed')
     
-    # Загружаем WebP
+    # Загружаем WebP в MinIO
     try:
         s3_client.put_object(
             Bucket=bucket,
@@ -516,155 +459,314 @@ def convert_and_update(
             ContentLength=new_size
         )
     except Exception as e:
-        logger.error(f"  ❌ Ошибка загрузки WebP: {e}")
-        result['status'] = 'error'
-        return result
-    
-    savings = ((original_size - new_size) / original_size * 100) if original_size > 0 else 0
-    logger.info(f"  ✅ Конвертирован: {key} -> {new_key} ({original_size:,} -> {new_size:,} байт, -{savings:.1f}%)")
-    
-    # Обновляем БД
-    result['db_updated'] = update_db_url(db_session, url, new_url, usages, dry_run)
+        return ConversionResult(url=db_path, status='error', error_msg=f'Upload failed: {e}')
     
     # Удаляем оригинал если нужно
     if delete_old:
         try:
             s3_client.delete_object(Bucket=bucket, Key=key)
-            logger.info(f"  🗑️  Удалён оригинал: {key}")
-        except Exception as e:
-            logger.error(f"  ❌ Ошибка удаления оригинала: {e}")
+        except Exception:
+            pass
     
-    result['status'] = 'converted'
-    result['original_size'] = original_size
-    result['new_size'] = new_size
-    
-    return result
+    return ConversionResult(
+        url=db_path, status='converted',
+        original_size=original_size, new_size=new_size,
+        new_url=new_db_path
+    )
 
+
+# ============================================================
+# ОБНОВЛЕНИЕ БД (батчевое)
+# ============================================================
+
+def update_db_batch(engine, updates: List[tuple], dry_run: bool = False) -> int:
+    """
+    Батчевое обновление БД с отдельными транзакциями для каждого обновления.
+    updates: List[(old_url, new_url, usages)]
+    """
+    if dry_run or not updates:
+        return 0
+    
+    updated = 0
+    
+    for old_url, new_url, usages in updates:
+        for usage in usages:
+            table = usage['table']
+            column = usage['column']
+            record_id = usage['id']
+            id_column = usage.get('id_column', 'id')
+            
+            # Каждое обновление в отдельной транзакции
+            try:
+                with engine.begin() as conn:
+                    if usage.get('is_json'):
+                        # JSON поле
+                        result = conn.execute(
+                            text(f"SELECT {column} FROM {table} WHERE {id_column} = :id"),
+                            {"id": record_id}
+                        )
+                        row = result.fetchone()
+                        if row and row[0]:
+                            photos = row[0] if isinstance(row[0], list) else json.loads(row[0])
+                            new_photos = [new_url if p == old_url else p for p in photos]
+                            conn.execute(
+                                text(f"UPDATE {table} SET {column} = :photos WHERE {id_column} = :id"),
+                                {"photos": json.dumps(new_photos), "id": record_id}
+                            )
+                            updated += 1
+                    
+                    elif usage.get('is_array'):
+                        # PostgreSQL ARRAY
+                        result = conn.execute(
+                            text(f"SELECT {column} FROM {table} WHERE {id_column} = :id"),
+                            {"id": record_id}
+                        )
+                        row = result.fetchone()
+                        if row and row[0]:
+                            photos = list(row[0])
+                            new_photos = [new_url if p == old_url else p for p in photos]
+                            array_str = "{" + ",".join([f'"{u}"' for u in new_photos]) + "}"
+                            conn.execute(
+                                text(f"UPDATE {table} SET {column} = :photos WHERE {id_column} = :id"),
+                                {"photos": array_str, "id": record_id}
+                            )
+                            updated += 1
+                    
+                    else:
+                        # Простое поле
+                        conn.execute(
+                            text(f"UPDATE {table} SET {column} = :new_url WHERE {id_column} = :id AND {column} = :old_url"),
+                            {"new_url": new_url, "id": record_id, "old_url": old_url}
+                        )
+                        updated += 1
+            
+            except Exception as e:
+                logger.error(f"Ошибка обновления {table}.{column} id={record_id}: {e}")
+    
+    return updated
+
+
+# ============================================================
+# ЧЕКПОИНТЫ
+# ============================================================
+
+def save_checkpoint(processed_urls: set, stats: MigrationStats):
+    """Сохранить чекпоинт"""
+    try:
+        with open(CHECKPOINT_FILE, 'wb') as f:
+            pickle.dump({
+                'processed_urls': processed_urls,
+                'stats': stats
+            }, f)
+    except Exception as e:
+        logger.warning(f"Не удалось сохранить чекпоинт: {e}")
+
+
+def load_checkpoint() -> Tuple[set, Optional[MigrationStats]]:
+    """Загрузить чекпоинт"""
+    try:
+        if CHECKPOINT_FILE.exists():
+            with open(CHECKPOINT_FILE, 'rb') as f:
+                data = pickle.load(f)
+                return data.get('processed_urls', set()), data.get('stats')
+    except Exception as e:
+        logger.warning(f"Не удалось загрузить чекпоинт: {e}")
+    return set(), None
+
+
+def clear_checkpoint():
+    """Удалить чекпоинт"""
+    try:
+        if CHECKPOINT_FILE.exists():
+            CHECKPOINT_FILE.unlink()
+    except Exception:
+        pass
+
+
+# ============================================================
+# MAIN
+# ============================================================
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Конвертация изображений в WebP (БД → MinIO)'
+        description='Оптимизированная конвертация изображений в WebP'
     )
-    parser.add_argument(
-        '--dry-run',
-        action='store_true',
-        help='Показать что будет сделано без реальных изменений'
-    )
-    parser.add_argument(
-        '--delete-old',
-        action='store_true',
-        help='Удалить оригинальные файлы после конвертации'
-    )
-    parser.add_argument(
-        '--table',
-        type=str,
-        help='Обработать только указанную таблицу (users, cars, rental_history, support_messages, contract_files)'
-    )
+    parser.add_argument('--dry-run', action='store_true', help='Без реальных изменений')
+    parser.add_argument('--delete-old', action='store_true', help='Удалить оригиналы')
+    parser.add_argument('--table', type=str, help='Только указанная таблица')
+    parser.add_argument('--workers', type=int, default=4, help='Количество воркеров (default: 4)')
+    parser.add_argument('--resume', action='store_true', help='Продолжить с чекпоинта')
+    parser.add_argument('--batch-size', type=int, default=100, help='Размер батча для БД (default: 100)')
+    parser.add_argument('--clear-checkpoint', action='store_true', help='Очистить чекпоинт и начать заново')
     
     args = parser.parse_args()
     tables = [args.table] if args.table else None
     
+    # Очистка чекпоинта
+    if args.clear_checkpoint:
+        clear_checkpoint()
+        logger.info("Чекпоинт очищен")
+    
     logger.info("=" * 70)
-    logger.info("КОНВЕРТАЦИЯ ИЗОБРАЖЕНИЙ В WEBP")
-    logger.info("Логика: БД → MinIO (сначала собираем URL из БД, потом конвертируем)")
+    logger.info("ОПТИМИЗИРОВАННАЯ КОНВЕРТАЦИЯ ИЗОБРАЖЕНИЙ В WEBP")
     logger.info("=" * 70)
+    logger.info(f"Воркеров: {args.workers}")
+    logger.info(f"Batch size: {args.batch_size}")
     logger.info(f"Dry-run: {args.dry_run}")
     logger.info(f"Delete old: {args.delete_old}")
-    logger.info(f"Tables: {tables or 'все'}")
+    logger.info(f"Resume: {args.resume}")
+    logger.info(f"DATABASE_URL: {DATABASE_URL[:50]}...")
     logger.info("=" * 70)
     
     if args.delete_old and not args.dry_run:
-        confirm = input("⚠️  ВНИМАНИЕ: Оригинальные файлы будут удалены! Продолжить? (yes/no): ")
+        confirm = input("⚠️  ВНИМАНИЕ: Оригиналы будут удалены! Продолжить? (yes/no): ")
         if confirm.lower() != 'yes':
-            logger.info("Отменено пользователем")
+            logger.info("Отменено")
             return
     
-    # Статистика
-    stats = {
-        'total_urls': 0,
-        'converted': 0,
-        'already_exists': 0,
-        'not_found': 0,
-        'errors': 0,
-        'bytes_before': 0,
-        'bytes_after': 0,
-        'db_updated': 0
-    }
+    # Загружаем чекпоинт
+    processed_urls, saved_stats = set(), None
+    if args.resume:
+        processed_urls, saved_stats = load_checkpoint()
+        if processed_urls:
+            logger.info(f"Загружен чекпоинт: {len(processed_urls)} уже обработано")
     
-    # Подключаемся к БД и MinIO
-    logger.info("\nПодключение к БД и MinIO...")
-    db_session = get_db_session()
-    s3_client = get_s3_client()
+    stats = saved_stats or MigrationStats()
     
-    # Собираем все URL из БД
+    # Подключение к БД
+    logger.info("\nПодключение к БД...")
+    try:
+        engine = get_db_engine()
+        # Тест подключения
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        logger.info("✅ БД подключена")
+    except Exception as e:
+        logger.error(f"❌ Ошибка подключения к БД: {e}")
+        return
+    
+    # Сбор URL
     logger.info("\n" + "=" * 70)
-    logger.info("ШАГ 1: СБОР URL ИЗ БАЗЫ ДАННЫХ")
+    logger.info("ШАГ 1: СБОР URL ИЗ БД")
     logger.info("=" * 70)
     
-    all_urls = collect_all_urls(db_session, tables)
-    stats['total_urls'] = len(all_urls)
+    all_urls = collect_all_urls_fast(engine, tables)
     
-    logger.info(f"\nВсего найдено {len(all_urls)} уникальных URL для конвертации")
+    # Фильтруем уже обработанные
+    if processed_urls:
+        all_urls = {u: v for u, v in all_urls.items() if u not in processed_urls}
+    
+    stats.total_urls = len(all_urls) + len(processed_urls)
+    logger.info(f"\nВсего URL: {stats.total_urls}")
+    logger.info(f"К обработке: {len(all_urls)}")
+    logger.info(f"Уже обработано: {len(processed_urls)}")
     
     if not all_urls:
         logger.info("Нет изображений для конвертации")
+        clear_checkpoint()
         return
     
-    # Конвертируем каждый URL
+    # Конвертация
     logger.info("\n" + "=" * 70)
-    logger.info("ШАГ 2: КОНВЕРТАЦИЯ ФАЙЛОВ И ОБНОВЛЕНИЕ БД")
+    logger.info("ШАГ 2: КОНВЕРТАЦИЯ ФАЙЛОВ")
     logger.info("=" * 70)
     
-    for i, (url, usages) in enumerate(all_urls.items(), 1):
-        logger.info(f"\n[{i}/{len(all_urls)}] {url}")
-        logger.info(f"  Используется в: {len(usages)} местах")
-        
-        result = convert_and_update(
-            db_session=db_session,
-            s3_client=s3_client,
-            url=url,
-            usages=usages,
-            dry_run=args.dry_run,
-            delete_old=args.delete_old
-        )
-        
-        if result['status'] == 'converted':
-            stats['converted'] += 1
-            stats['bytes_before'] += result['original_size']
-            stats['bytes_after'] += result['new_size']
-        elif result['status'] == 'exists':
-            stats['already_exists'] += 1
-        elif result['status'] == 'not_found':
-            stats['not_found'] += 1
-        elif result['status'] == 'error':
-            stats['errors'] += 1
-        
-        stats['db_updated'] += result['db_updated']
+    url_list = list(all_urls.keys())
+    db_updates = []  # (old_url, new_url, usages)
     
-    # Коммитим изменения в БД
-    if not args.dry_run:
-        logger.info("\nСохранение изменений в БД...")
-        db_session.commit()
+    start_time = time.time()
     
-    db_session.close()
+    # Подготовка аргументов для воркеров
+    tasks = [(url, args.dry_run, args.delete_old) for url in url_list]
+    
+    # Прогресс-бар
+    if HAS_TQDM:
+        pbar = tqdm(total=len(tasks), desc="Конвертация", unit="файл")
+    
+    with ThreadPoolExecutor(max_workers=args.workers) as executor:
+        futures = {executor.submit(convert_single_file, task): task[0] for task in tasks}
+        
+        for future in as_completed(futures):
+            url = futures[future]
+            
+            try:
+                result = future.result()
+                
+                if result.status == 'converted':
+                    stats.converted += 1
+                    stats.bytes_before += result.original_size
+                    stats.bytes_after += result.new_size
+                    db_updates.append((url, result.new_url, all_urls[url]))
+                elif result.status == 'exists':
+                    stats.already_exists += 1
+                    db_updates.append((url, result.new_url, all_urls[url]))
+                elif result.status == 'would_convert':
+                    stats.converted += 1
+                elif result.status == 'not_found':
+                    stats.not_found += 1
+                elif result.status == 'error':
+                    stats.errors += 1
+                    logger.debug(f"Ошибка {url}: {result.error_msg}")
+                
+                processed_urls.add(url)
+                stats.processed += 1
+                
+            except Exception as e:
+                stats.errors += 1
+                logger.error(f"Ошибка обработки {url}: {e}")
+            
+            # Обновляем прогресс
+            if HAS_TQDM:
+                pbar.update(1)
+                elapsed = time.time() - start_time
+                if stats.processed > 0:
+                    rate = stats.processed / elapsed
+                    eta = (len(tasks) - stats.processed) / rate if rate > 0 else 0
+                    pbar.set_postfix({
+                        'conv': stats.converted,
+                        'err': stats.errors,
+                        'ETA': f'{eta/60:.1f}m'
+                    })
+            
+            # Батчевое обновление БД и сохранение чекпоинта
+            if len(db_updates) >= args.batch_size:
+                stats.db_updated += update_db_batch(engine, db_updates, args.dry_run)
+                db_updates = []
+                save_checkpoint(processed_urls, stats)
+    
+    if HAS_TQDM:
+        pbar.close()
+    
+    # Финальное обновление БД
+    if db_updates:
+        logger.info("\nФинальное обновление БД...")
+        stats.db_updated += update_db_batch(engine, db_updates, args.dry_run)
+    
+    # Очищаем чекпоинт при успешном завершении
+    clear_checkpoint()
     
     # Итоги
+    elapsed = time.time() - start_time
+    
     logger.info("\n" + "=" * 70)
     logger.info("РЕЗУЛЬТАТЫ")
     logger.info("=" * 70)
-    logger.info(f"Всего URL в БД: {stats['total_urls']}")
-    logger.info(f"Конвертировано: {stats['converted']}")
-    logger.info(f"Уже в WebP: {stats['already_exists']}")
-    logger.info(f"Не найдено в MinIO: {stats['not_found']}")
-    logger.info(f"Ошибок: {stats['errors']}")
-    logger.info(f"Обновлено записей в БД: {stats['db_updated']}")
+    logger.info(f"Время: {elapsed/60:.1f} минут ({elapsed:.0f} сек)")
+    logger.info(f"Скорость: {stats.processed/elapsed:.1f} файлов/сек")
+    logger.info(f"Всего URL: {stats.total_urls}")
+    logger.info(f"Обработано: {stats.processed}")
+    logger.info(f"Конвертировано: {stats.converted}")
+    logger.info(f"Уже в WebP: {stats.already_exists}")
+    logger.info(f"Не найдено: {stats.not_found}")
+    logger.info(f"Ошибок: {stats.errors}")
+    logger.info(f"Обновлено в БД: {stats.db_updated}")
     
-    if stats['bytes_before'] > 0:
-        savings = stats['bytes_before'] - stats['bytes_after']
-        savings_pct = (savings / stats['bytes_before']) * 100
-        logger.info(f"\nРазмер до: {stats['bytes_before']:,} байт ({stats['bytes_before'] / 1024 / 1024:.2f} MB)")
-        logger.info(f"Размер после: {stats['bytes_after']:,} байт ({stats['bytes_after'] / 1024 / 1024:.2f} MB)")
-        logger.info(f"Экономия: {savings:,} байт ({savings_pct:.1f}%)")
+    if stats.bytes_before > 0:
+        savings = stats.bytes_before - stats.bytes_after
+        savings_pct = (savings / stats.bytes_before) * 100
+        logger.info(f"\nРазмер до: {stats.bytes_before/1024/1024:.1f} MB")
+        logger.info(f"Размер после: {stats.bytes_after/1024/1024:.1f} MB")
+        logger.info(f"Экономия: {savings/1024/1024:.1f} MB ({savings_pct:.1f}%)")
     
     logger.info("=" * 70)
 

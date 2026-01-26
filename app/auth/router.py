@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
 from sqlalchemy.orm import Session
 import pyotp
 from datetime import datetime, timedelta
@@ -390,7 +392,7 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
             # try:
             #     ensure_user_has_unique_fcm_token(db, inactive_user)
             # except Exception as e:
-            #     print(f"Ошибка при генерации FCM токена при восстановлении: {e}")
+            #     logger.error(f" при генерации FCM токена при восстановлении: {e}")
             #     # Продолжаем без токена, он будет сгенерирован при логине
             
             user = inactive_user
@@ -430,7 +432,7 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
             # try:
             #     user.fcm_token = ensure_unique_fcm_token(db, user_id=user.id)
             # except Exception as e:
-            #     print(f"Ошибка при генерации FCM токена при регистрации: {e}")
+            #     logger.error(f" при генерации FCM токена при регистрации: {e}")
             #     # Продолжаем без токена, он будет сгенерирован при логине
     else:
         # Существующий активный пользователь - проверяем, что не переданы лишние поля
@@ -792,7 +794,7 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
             db.commit()
             
     except Exception as e:
-        print(f"Ошибка при связывании заявок гарантов: {e}")
+        logger.error(f" при связывании заявок гарантов: {e}")
         # Продолжаем выполнение без обработки гарантов
         linked_count = 0
 
@@ -804,7 +806,7 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
     #         db.commit()
     #         db.refresh(user)
     # except Exception as e:
-    #     print(f"Ошибка при генерации FCM токена: {e}")
+    #     logger.error(f" при генерации FCM токена: {e}")
     #     # Продолжаем выполнение даже если не удалось сгенерировать токен
     #     db.rollback()
 
