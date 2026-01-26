@@ -11,7 +11,7 @@ import logging
 import boto3
 from botocore.exceptions import ClientError
 from fastapi import UploadFile, HTTPException
-from PIL import Image
+from PIL import Image, ImageOps
 
 from app.core.config import (
     MINIO_ENDPOINT,
@@ -52,6 +52,9 @@ def convert_to_webp(content: bytes, content_type: str) -> Tuple[bytes, str, str]
     try:
         # Открываем изображение
         img = Image.open(BytesIO(content))
+        
+        # Применяем EXIF ориентацию чтобы фото не переворачивались
+        img = ImageOps.exif_transpose(img)
         
         # Конвертируем RGBA в RGB если нужно (для JPEG/PNG с прозрачностью)
         if img.mode in ('RGBA', 'LA', 'P'):

@@ -36,7 +36,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import boto3
 from botocore.exceptions import ClientError
 from botocore.config import Config as BotoConfig
-from PIL import Image
+from PIL import Image, ImageOps
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
@@ -203,6 +203,9 @@ def convert_image_to_webp(content: bytes) -> Tuple[Optional[bytes], int, int]:
     try:
         original_size = len(content)
         img = Image.open(BytesIO(content))
+        
+        # Применяем EXIF ориентацию чтобы фото не переворачивались
+        img = ImageOps.exif_transpose(img)
         
         # Конвертируем цветовое пространство
         if img.mode in ('RGBA', 'LA', 'P'):
