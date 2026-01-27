@@ -120,13 +120,37 @@ async def edit_car(
         else:
             update_fields["owner_id"] = None
     
-    # Обработка photos (изменение порядка ссылок)
+    # Обработка photos (изменение порядка, добавление, удаление)
     if "photos" in update_fields:
         new_photos = update_fields.pop("photos")
         if new_photos is not None:
+            old_photos = car.photos or []
+            old_photos_set = set(old_photos)
+            new_photos_set = set(new_photos)
+            
+            # Находим фотографии для удаления (есть в old, но нет в new)
+            photos_to_delete = [p for p in old_photos if p not in new_photos_set]
+            
+            # Находим добавленные фотографии (есть в new, но нет в old)
+            photos_added = [p for p in new_photos if p not in old_photos_set]
+            
+            # Удаляем фотографии из MinIO если есть что удалять
+            if photos_to_delete:
+                try:
+                    from app.services.minio_service import get_minio_service
+                    minio = get_minio_service()
+                    minio.delete_files(photos_to_delete)
+                    logger.info(f"Удалены фотографии из MinIO: {photos_to_delete}")
+                except Exception as e:
+                    logger.error(f"Ошибка удаления фотографий из MinIO: {e}")
+            
             # Обновляем массив photos (новый порядок)
             update_fields["photos"] = new_photos
-            logger.info(f"Обновлен порядок фотографий машины {car_id}: {len(new_photos)} фото")
+            
+            if photos_to_delete or photos_added:
+                logger.info(f"Обновлены фотографии машины {car_id}: удалено {len(photos_to_delete)}, добавлено {len(photos_added)}, итого: {len(new_photos)} фото")
+            else:
+                logger.info(f"Изменен порядок фотографий машины {car_id}: {len(new_photos)} фото")
     
     # Проверяем уникальность нового IMEI
     if gps_imei_changed and new_gps_imei:
