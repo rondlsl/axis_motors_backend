@@ -75,6 +75,97 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+def get_required_trips_for_class_upgrade(user_classes: List[str], target_class: str) -> int:
+    """
+    Определяет количество необходимых поездок для доступа к классу авто.
+    
+    Логика:
+    - Класс A -> Класс B: нужно 3 поездки
+    - Класс B -> Класс C: нужно 3 поездки
+    - Класс A -> Класс C: нужно 5 поездок
+    
+    Возвращает 0 если пользователь уже имеет доступ к этому классу.
+    """
+    if not user_classes:
+        user_classes = []
+    
+    # Нормализуем классы к верхнему регистру
+    user_classes_upper = [c.upper().strip() for c in user_classes if c]
+    target_class_upper = target_class.upper().strip() if target_class else ""
+    
+    # Если у пользователя уже есть доступ к этому классу - не требуется поездок
+    if target_class_upper in user_classes_upper:
+        return 0
+    
+    # Определяем максимальный класс пользователя
+    class_hierarchy = {"A": 1, "B": 2, "C": 3}
+    target_level = class_hierarchy.get(target_class_upper, 0)
+    
+    if target_level == 0:
+        return 0  # Неизвестный класс - пропускаем проверку
+    
+    # Находим максимальный уровень класса у пользователя
+    max_user_level = 0
+    for cls in user_classes_upper:
+        level = class_hierarchy.get(cls, 0)
+        if level > max_user_level:
+            max_user_level = level
+    
+    # Если у пользователя нет классов, считаем что он на уровне 0
+    if max_user_level == 0:
+        max_user_level = 1  # По умолчанию считаем класс A
+    
+    # Если целевой класс ниже или равен текущему - доступ есть
+    if target_level <= max_user_level:
+        return 0
+    
+    # Рассчитываем необходимое количество поездок
+    level_diff = target_level - max_user_level
+    
+    if level_diff == 1:
+        # Переход на 1 класс выше (A->B или B->C): 3 поездки
+        return 3
+    elif level_diff == 2:
+        # Переход на 2 класса выше (A->C): 5 поездок
+        return 5
+    else:
+        return 0
+
+
+def check_user_trips_for_class_access(db: Session, user: User, target_car_class: str) -> None:
+    """
+    Проверяет, имеет ли пользователь достаточно завершенных поездок для доступа к классу авто.
+    Выбрасывает HTTPException если поездок недостаточно.
+    """
+    # Получаем классы пользователя
+    user_classes = user.auto_class if user.auto_class else []
+    
+    # Определяем необходимое количество поездок
+    required_trips = get_required_trips_for_class_upgrade(user_classes, target_car_class)
+    
+    if required_trips == 0:
+        return  # Доступ разрешен
+    
+    # Считаем завершенные поездки пользователя
+    completed_trips = db.query(RentalHistory).filter(
+        RentalHistory.user_id == user.id,
+        RentalHistory.rental_status == RentalStatus.COMPLETED,
+        RentalHistory.start_time.isnot(None)  # Только реальные поездки, не отмененные брони
+    ).count()
+    
+    if completed_trips < required_trips:
+        trips_remaining = required_trips - completed_trips
+        
+        # Формируем понятное сообщение об ошибке
+        user_class_str = ", ".join(user_classes) if user_classes else "A"
+        raise HTTPException(
+            status_code=403,
+            detail=f"Для доступа к автомобилям класса {target_car_class} необходимо совершить {required_trips} поездок. "
+                   f"У вас {completed_trips} завершенных поездок. Осталось: {trips_remaining} поездок."
+        )
+
+
 def _write_upload_to_temp(upload: UploadFile) -> str:
     tmp = NamedTemporaryFile(delete=False, suffix=Path(upload.filename or 'upload').suffix)
     with tmp as f:
@@ -899,6 +990,10 @@ async def reserve_car(
     ).first()
     if not car:
         raise HTTPException(status_code=404, detail="Car not found or not available")
+
+    # 3) Проверка доступа к классу авто по количеству поездок (только для НЕ владельцев)
+    if car.owner_id != current_user.id and car.auto_class:
+        check_user_trips_for_class_access(db, current_user, car.auto_class.value if hasattr(car.auto_class, 'value') else str(car.auto_class))
 
     orig_open_fee = get_open_price(car)
     open_fee = orig_open_fee if rental_type in (RentalType.MINUTES, RentalType.HOURS) else 0
