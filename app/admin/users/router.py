@@ -980,6 +980,26 @@ async def get_user_card(
                 raw = raw[1:-1]
             auto_class_list = [part.strip() for part in raw.split(",") if part.strip()]
     
+    # Счётчики
+    fines_count = db.query(WalletTransaction).filter(
+        and_(
+            WalletTransaction.user_id == user.id,
+            WalletTransaction.transaction_type == WalletTransactionType.SANCTION_PENALTY
+        )
+    ).count()
+    
+    owned_cars_count = db.query(Car).filter(Car.owner_id == user.id).count()
+    
+    trips_count = db.query(RentalHistory).filter(RentalHistory.user_id == user.id).count()
+    
+    transactions_count = db.query(WalletTransaction).filter(
+        WalletTransaction.user_id == user.id
+    ).count()
+    
+    guarantor_for_count = db.query(Guarantor).filter(
+        Guarantor.guarantor_id == user.id
+    ).count()
+    
     user_data = {
         "id": uuid_to_sid(user.id),
         "user_uuid": str(user.id),
@@ -1019,7 +1039,12 @@ async def get_user_card(
         "current_rental_car": current_car,
         "owner_earnings_current_month": owner_earnings["current_month"] if owner_earnings else None,
         "owner_earnings_total": owner_earnings["total"] if owner_earnings else None,
-        "rating": float(user.rating) if user.rating else None
+        "rating": float(user.rating) if user.rating else None,
+        "fines_count": fines_count,
+        "owned_cars_count": owned_cars_count,
+        "trips_count": trips_count,
+        "transactions_count": transactions_count,
+        "guarantor_for_count": guarantor_for_count
     }
     
     converted_data = convert_uuid_response_to_sid(user_data, ["id"])

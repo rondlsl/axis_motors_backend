@@ -78,7 +78,14 @@ class UserCardSchema(SidMixin):
     current_rental_car: Optional[Dict[str, Any]] = None
     owner_earnings_current_month: Optional[float] = None
     owner_earnings_total: Optional[float] = None
-    rating: Optional[float] = None 
+    rating: Optional[float] = None
+    
+    # Счётчики
+    fines_count: int = 0  # Количество штрафов
+    owned_cars_count: int = 0  # Количество авто в собственности
+    trips_count: int = 0  # Общее количество поездок
+    transactions_count: int = 0  # Общее количество транзакций
+    guarantor_for_count: int = 0  # Кому он гарант 
 
 
 class UserListSchema(SidMixin):
