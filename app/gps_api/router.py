@@ -22,7 +22,6 @@ from app.models.car_model import Car, CarAutoClass, CarStatus
 from app.models.history_model import RentalHistory, RentalStatus
 from app.models.rental_actions_model import ActionType, ActionStatus, RentalAction
 from app.models.user_model import User, UserRole
-from app.rent.utils.user_utils import get_user_available_auto_classes
 from app.models.application_model import Application, ApplicationStatus
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.get_active_rental import get_active_rental_car, get_active_rental, get_active_rental_by_car_id
@@ -98,7 +97,7 @@ def validate_user_can_control_car(current_user: User, db: Session) -> None:
             GuarantorRequest.status == GuarantorRequestStatus.ACCEPTED
         ).first()
         
-        if not active_guarantor or not active_guarantor.guarantor_user or not active_guarantor.guarantor_user.auto_class:
+        if not active_guarantor or not active_guarantor.guarantor_user:
             raise HTTPException(
                 status_code=403, 
                 detail="Управление недоступно по финансовым причинам"
@@ -192,51 +191,8 @@ async def get_vehicle_info(
                 if current_user.phone_number not in ["71011111111", "71234567890", "77057726400", "71234567876", "77766639210", special_user_phone]:
                     query = query.filter(Car.plate_number.notin_(["666AZV02"]))
 
-        if current_user.role == UserRole.USER and bool(current_user.documents_verified):
-            available_classes = get_user_available_auto_classes(current_user, db)
-            
-            if not available_classes:
-                allowed_classes: list[str] = []
-
-                if isinstance(current_user.auto_class, list):
-                    allowed_classes = [str(c).strip().upper() for c in current_user.auto_class if c]
-                elif isinstance(current_user.auto_class, str):
-                    raw = current_user.auto_class.strip()
-                    if raw.startswith("{") and raw.endswith("}"):
-                        raw = raw[1:-1]
-                    raw = raw.replace('""', '').replace('"', '').replace("'", "")
-                    allowed_classes = [part.strip().upper() for part in raw.split(",") if part.strip()]
-                
-                available_classes = allowed_classes
-            
-            allowed_enum: list[CarAutoClass] = []
-            for cls in available_classes:
-                try:
-                    allowed_enum.append(CarAutoClass(cls))
-                except Exception:
-                    pass
-
-            if len(allowed_enum) == 0:
-                cars = []
-            else:
-                cars = query.filter(Car.auto_class.in_(allowed_enum)).all()
-        elif current_user.role in [UserRole.REJECTFIRST, UserRole.REJECTFIRSTCERT, UserRole.REJECTFIRSTDOC]:
-            available_classes = get_user_available_auto_classes(current_user, db)
-            
-            if available_classes:
-                allowed_enum: list[CarAutoClass] = []
-                for cls in available_classes:
-                    try:
-                        allowed_enum.append(CarAutoClass(cls))
-                    except Exception:
-                        pass
-                
-                if allowed_enum:
-                    cars = query.filter(Car.auto_class.in_(allowed_enum)).all()
-            else:
-                cars = query.all()
-        else:
-            cars = query.all()
+        # Убрана фильтрация по классу автомобиля - все машины доступны всем пользователям
+        cars = query.all()
 
         # Специальная обработка для номера 77017347719: добавляем машины со статусом OCCUPIED как FREE
         occupied_cars_to_show = []
@@ -246,29 +202,7 @@ async def get_vehicle_info(
             if current_user.phone_number not in ["71011111111", "71234567890", "77057726400", "71234567876", "77766639210", special_user_phone]:
                 occupied_query = occupied_query.filter(Car.plate_number.notin_(["666AZV02"]))
             
-            # Применяем фильтры по классу авто, если есть
-            if current_user.role == UserRole.USER and bool(current_user.documents_verified):
-                available_classes = get_user_available_auto_classes(current_user, db)
-                if not available_classes:
-                    allowed_classes: list[str] = []
-                    if isinstance(current_user.auto_class, list):
-                        allowed_classes = [str(c).strip().upper() for c in current_user.auto_class if c]
-                    elif isinstance(current_user.auto_class, str):
-                        raw = current_user.auto_class.strip()
-                        if raw.startswith("{") and raw.endswith("}"):
-                            raw = raw[1:-1]
-                        raw = raw.replace('""', '').replace('"', '').replace("'", "")
-                        allowed_classes = [part.strip().upper() for part in raw.split(",") if part.strip()]
-                    
-                    allowed_enum: list[CarAutoClass] = []
-                    for cls in allowed_classes:
-                        try:
-                            allowed_enum.append(CarAutoClass(cls))
-                        except Exception:
-                            pass
-                    
-                    if allowed_enum:
-                        occupied_query = occupied_query.filter(Car.auto_class.in_(allowed_enum))
+            # Убрана фильтрация по классу автомобиля - все машины доступны всем пользователям
             
             occupied_cars_all = occupied_query.limit(30).all()
             occupied_cars_to_show = occupied_cars_all[:25]  # Берем до 25 машин
