@@ -4672,40 +4672,43 @@ async def add_company_bonus(
         )
 
 
-@users_router.post("/sanctions", summary="Назначить санкцию клиенту")
-async def add_sanction_penalty(
+@users_router.post("/{user_id}/fines", summary="Назначить штраф пользователю")
+async def add_user_fine(
+    user_id: str,
     penalty_data: SanctionPenaltySchema,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    Назначает санкцию (штраф) клиенту:
-    - Находит пользователя по номеру телефона
-    - Вычитает сумму санкции из баланса
-    - Создаёт транзакцию SANCTION_PENALTY, привязанную к аренде
+    Назначает штраф (санкцию) пользователю:
+    - Находит пользователя по user_id из path
+    - Вычитает сумму штрафа из баланса
+    - Создаёт транзакцию SANCTION_PENALTY
+    - Опционально привязывает к аренде (rental_id)
     - Отправляет push-уведомление пользователю
     """
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    if not penalty_data.phone_number.isdigit():
-        raise HTTPException(status_code=400, detail="Номер телефона должен содержать только цифры")
-    
     try:
-        user = db.query(User).filter(User.phone_number == penalty_data.phone_number).first()
+        user_uuid = safe_sid_to_uuid(user_id)
+        user = db.query(User).filter(User.id == user_uuid).first()
         if not user:
-            raise HTTPException(status_code=404, detail="Пользователь с таким номером телефона не найден")
+            raise HTTPException(status_code=404, detail="Пользователь не найден")
         
-        try:
-            rental_uuid = safe_sid_to_uuid(penalty_data.rental_id)
-        except Exception:
-            raise HTTPException(status_code=400, detail="Некорректный rental_id")
-        
-        rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
-        if not rental:
-            raise HTTPException(status_code=404, detail="Аренда не найдена")
-        if rental.user_id != user.id:
-            raise HTTPException(status_code=400, detail="Указанная аренда не принадлежит пользователю")
+        # Проверка rental_id только если он указан
+        rental_uuid = None
+        if penalty_data.rental_id:
+            try:
+                rental_uuid = safe_sid_to_uuid(penalty_data.rental_id)
+            except Exception:
+                raise HTTPException(status_code=400, detail="Некорректный rental_id")
+            
+            rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+            if not rental:
+                raise HTTPException(status_code=404, detail="Аренда не найдена")
+            if rental.user_id != user.id:
+                raise HTTPException(status_code=400, detail="Указанная аренда не принадлежит пользователю")
         
         penalty_amount = Decimal(str(penalty_data.amount))
         balance_before = float(user.wallet_balance or 0)
@@ -4721,7 +4724,7 @@ async def add_sanction_penalty(
             description=penalty_data.description,
             balance_before=balance_before,
             balance_after=balance_after,
-            related_rental_id=rental.id,
+            related_rental_id=rental_uuid,  # None если не указан
             created_at=get_local_time()
         )
         db.add(transaction)
@@ -4746,13 +4749,13 @@ async def add_sanction_penalty(
                 additional_context={
                     "action": "send_sanction_notification",
                     "penalty_amount": penalty_data.amount,
-                    "phone_number": penalty_data.phone_number,
+                    "user_id": user_id,
                     "admin_id": str(current_user.id)
                 }
             )
         
         return {
-            "message": "Санкция успешно начислена",
+            "message": "Штраф успешно начислен",
             "user_id": uuid_to_sid(user.id),
             "phone_number": user.phone_number,
             "amount": penalty_data.amount,
@@ -4768,8 +4771,8 @@ async def add_sanction_penalty(
             error=e,
             user=current_user,
             additional_context={
-                "action": "add_sanction_penalty",
-                "phone_number": penalty_data.phone_number,
+                "action": "add_user_fine",
+                "user_id": user_id,
                 "penalty_amount": penalty_data.amount,
                 "description": penalty_data.description,
                 "rental_id": penalty_data.rental_id
@@ -4777,7 +4780,7 @@ async def add_sanction_penalty(
         )
         raise HTTPException(
             status_code=500,
-            detail="Ошибка при назначении санкции. Администраторы уведомлены."
+            detail="Ошибка при назначении штрафа. Администраторы уведомлены."
         )
 
 

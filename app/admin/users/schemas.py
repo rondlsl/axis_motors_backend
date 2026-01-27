@@ -264,10 +264,9 @@ class CompanyBonusSchema(BaseModel):
 
 class SanctionPenaltySchema(BaseModel):
     """Схема для назначения санкции клиенту"""
-    phone_number: str = Field(..., min_length=11, max_length=11, description="Номер телефона пользователя")
     amount: float = Field(..., gt=0, description="Сумма санкции (штраф)")
     description: str = Field(..., min_length=1, max_length=500, description="Описание санкции")
-    rental_id: str = Field(..., description="SID аренды, к которой относится санкция")
+    rental_id: Optional[str] = Field(None, description="SID аренды, к которой относится санкция (необязательно)")
 
 
 class DeleteRentalsRequestSchema(BaseModel):
