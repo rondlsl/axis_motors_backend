@@ -44,7 +44,10 @@ from app.admin.users.schemas import (
     AssignMechanicResponse, UnassignMechanicResponse,
     AdminDeleteUserRequest, AdminDeleteUserResponse,
     GroupedTransactionsPaginationSchema, GroupedTransactionItemSchema,
-    UserFineSchema, UserFineTripInfoSchema
+    UserFineSchema, UserFineTripInfoSchema,
+    SendUserSmsRequest, SendUserSmsResponse,
+    SendUserEmailRequest, SendUserEmailResponse,
+    SendUserNotificationRequest, SendUserNotificationResponse
 )
 from math import ceil, floor
 from app.owner.router import calculate_owner_earnings
@@ -58,7 +61,10 @@ import httpx
 from app.wallet.utils import record_wallet_transaction
 from app.rent.utils.calculate_price import get_open_price, calc_required_balance, calculate_total_price
 from app.rent.utils.balance_utils import verify_and_fix_rental_balance
-from app.core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2
+from app.core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2, SMS_TOKEN
+from app.guarantor.sms_utils import send_sms_mobizon
+import smtplib
+from email.mime.text import MIMEText
 from app.models.application_model import Application
 from app.models.history_model import RentalHistory
 from app.models.wallet_transaction_model import WalletTransaction
@@ -6581,3 +6587,293 @@ async def get_action_logs(
         "limit": limit,
         "pages": ceil(total / limit) if limit > 0 else 0
     }
+
+
+@users_router.post("/{user_id}/send-sms", response_model=SendUserSmsResponse, summary="Отправить SMS пользователю")
+async def send_sms_to_user(
+    user_id: str,
+    request: SendUserSmsRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Отправка SMS сообщения пользователю по его ID.
+    
+    - Находит пользователя по user_id
+    - Отправляет SMS на номер телефона пользователя
+    - Логирует действие
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    if not user.phone_number:
+        raise HTTPException(status_code=400, detail="У пользователя не указан номер телефона")
+    
+    phone_number = user.phone_number.strip()
+    message_text = request.message.strip()
+    
+    # Тестовый режим
+    if SMS_TOKEN == "1010":
+        logger.debug(f"TEST SMS to {phone_number}: {message_text}")
+        
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="send_sms_to_user",
+            entity_type="user",
+            entity_id=user.id,
+            details={"phone_number": phone_number, "message": message_text, "test_mode": True}
+        )
+        db.commit()
+        
+        return SendUserSmsResponse(
+            success=True,
+            message="SMS отправлено (тестовый режим)",
+            user_id=user_id,
+            phone_number=phone_number,
+            result="Test mode - SMS not actually sent"
+        )
+    
+    try:
+        result = await send_sms_mobizon(phone_number, message_text, SMS_TOKEN)
+        
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="send_sms_to_user",
+            entity_type="user",
+            entity_id=user.id,
+            details={"phone_number": phone_number, "message": message_text, "result": result}
+        )
+        db.commit()
+        
+        return SendUserSmsResponse(
+            success=True,
+            message="SMS успешно отправлено",
+            user_id=user_id,
+            phone_number=phone_number,
+            result=result
+        )
+    except Exception as e:
+        logger.error(f"SMS sending error: {e}")
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "send_sms_to_user",
+                    "user_id": user_id,
+                    "phone_number": phone_number,
+                    "admin_id": str(current_user.id)
+                }
+            )
+        except:
+            pass
+        return SendUserSmsResponse(
+            success=False,
+            message="Ошибка при отправке SMS",
+            user_id=user_id,
+            phone_number=phone_number,
+            error=str(e)
+        )
+
+
+@users_router.post("/{user_id}/send-email", response_model=SendUserEmailResponse, summary="Отправить email пользователю")
+async def send_email_to_user(
+    user_id: str,
+    request: SendUserEmailRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Отправка email сообщения пользователю по его ID.
+    
+    - Находит пользователя по user_id
+    - Отправляет email на почту пользователя
+    - Логирует действие
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    if not user.email:
+        raise HTTPException(status_code=400, detail="У пользователя не указан email")
+    
+    email = user.email.strip().lower()
+    subject = request.subject.strip()
+    body = request.body.strip()
+    
+    try:
+        smtp_host = os.getenv("SMTP_HOST")
+        smtp_port = int(os.getenv("SMTP_PORT", "587"))
+        smtp_user = os.getenv("SMTP_USER")
+        smtp_pass = os.getenv("SMTP_PASSWORD")
+        smtp_from = os.getenv("SMTP_FROM", smtp_user or "no-reply@azvmotors.kz")
+        
+        if smtp_host and smtp_user and smtp_pass:
+            msg = MIMEText(body, "plain", "utf-8")
+            msg["Subject"] = subject
+            msg["From"] = smtp_from
+            msg["To"] = email
+            
+            with smtplib.SMTP(smtp_host, smtp_port) as server:
+                server.starttls()
+                server.login(smtp_user, smtp_pass)
+                server.sendmail(smtp_from, [email], msg.as_string())
+            
+            log_action(
+                db,
+                actor_id=current_user.id,
+                action="send_email_to_user",
+                entity_type="user",
+                entity_id=user.id,
+                details={"email": email, "subject": subject}
+            )
+            db.commit()
+            
+            return SendUserEmailResponse(
+                success=True,
+                message="Email успешно отправлен",
+                user_id=user_id,
+                email=email
+            )
+        else:
+            logger.warning(f"SMTP not configured; email to {email} with subject '{subject}' not sent")
+            return SendUserEmailResponse(
+                success=False,
+                message="SMTP не настроен",
+                user_id=user_id,
+                email=email,
+                error="SMTP configuration missing"
+            )
+    except Exception as e:
+        logger.error(f"Email sending error: {e}")
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "send_email_to_user",
+                    "user_id": user_id,
+                    "email": email,
+                    "admin_id": str(current_user.id)
+                }
+            )
+        except:
+            pass
+        return SendUserEmailResponse(
+            success=False,
+            message="Ошибка при отправке email",
+            user_id=user_id,
+            email=email,
+            error=str(e)
+        )
+
+
+@users_router.post("/{user_id}/send-notification", response_model=SendUserNotificationResponse, summary="Отправить уведомление пользователю")
+async def send_notification_to_user(
+    user_id: str,
+    request: SendUserNotificationRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Отправка push-уведомления пользователю и сохранение в базу данных.
+    
+    - Находит пользователя по user_id
+    - Сохраняет уведомление в таблицу notifications
+    - Отправляет push-уведомление через FCM (если у пользователя есть токены)
+    - Логирует действие
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    title = request.title.strip()
+    body = request.body.strip()
+    
+    try:
+        # Сохраняем уведомление в БД
+        notification = Notification(
+            user_id=user.id,
+            title=title,
+            body=body
+        )
+        db.add(notification)
+        db.flush()
+        
+        notification_id = uuid_to_sid(notification.id)
+        
+        # Пытаемся отправить push-уведомление
+        push_sent = False
+        try:
+            if user_has_push_tokens(db, user.id):
+                await send_push_to_user_by_id(
+                    db_session=db,
+                    user_id=user.id,
+                    title=title,
+                    body=body
+                )
+                push_sent = True
+        except Exception as push_error:
+            logger.warning(f"Push notification failed for user {user_id}: {push_error}")
+        
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="send_notification_to_user",
+            entity_type="user",
+            entity_id=user.id,
+            details={
+                "title": title,
+                "body": body,
+                "notification_id": notification_id,
+                "push_sent": push_sent
+            }
+        )
+        db.commit()
+        
+        return SendUserNotificationResponse(
+            success=True,
+            message="Уведомление успешно отправлено" + (" и сохранено" if not push_sent else ""),
+            user_id=user_id,
+            notification_id=notification_id,
+            push_sent=push_sent
+        )
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Notification sending error: {e}")
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "send_notification_to_user",
+                    "user_id": user_id,
+                    "admin_id": str(current_user.id)
+                }
+            )
+        except:
+            pass
+        return SendUserNotificationResponse(
+            success=False,
+            message="Ошибка при отправке уведомления",
+            user_id=user_id,
+            error=str(e)
+        )

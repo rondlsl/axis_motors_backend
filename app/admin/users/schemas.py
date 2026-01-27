@@ -512,3 +512,74 @@ class AdminDeleteUserResponse(BaseModel):
     user_id: str
     delete_type: str
     deleted_at: Optional[str] = None
+
+
+# === Schemas for messaging endpoints ===
+
+class SendUserSmsRequest(BaseModel):
+    """Схема запроса для отправки SMS пользователю"""
+    message: str = Field(..., description="Текст SMS сообщения", min_length=1, max_length=500)
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "message": "Здравствуйте! Это сообщение от AZV Motors."
+            }
+        }
+
+
+class SendUserSmsResponse(BaseModel):
+    """Схема ответа при отправке SMS"""
+    success: bool
+    message: str
+    user_id: str
+    phone_number: str
+    result: Optional[str] = None
+    error: Optional[str] = None
+
+
+class SendUserEmailRequest(BaseModel):
+    """Схема запроса для отправки email пользователю"""
+    subject: str = Field(..., description="Тема письма", min_length=1, max_length=200)
+    body: str = Field(..., description="Текст письма", min_length=1, max_length=5000)
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "subject": "Уведомление от AZV Motors",
+                "body": "Здравствуйте! Это сообщение от AZV Motors."
+            }
+        }
+
+
+class SendUserEmailResponse(BaseModel):
+    """Схема ответа при отправке email"""
+    success: bool
+    message: str
+    user_id: str
+    email: str
+    error: Optional[str] = None
+
+
+class SendUserNotificationRequest(BaseModel):
+    """Схема запроса для отправки push-уведомления пользователю"""
+    title: str = Field(..., description="Заголовок уведомления", min_length=1, max_length=200)
+    body: str = Field(..., description="Текст уведомления", min_length=1, max_length=1000)
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "title": "Уведомление от AZV Motors",
+                "body": "Здравствуйте! Это уведомление от AZV Motors."
+            }
+        }
+
+
+class SendUserNotificationResponse(BaseModel):
+    """Схема ответа при отправке push-уведомления"""
+    success: bool
+    message: str
+    user_id: str
+    notification_id: Optional[str] = None
+    push_sent: bool = False
+    error: Optional[str] = None
