@@ -53,7 +53,15 @@ from math import ceil, floor
 from app.owner.router import calculate_owner_earnings
 from app.admin.cars.utils import sort_car_photos
 from app.utils.telegram_logger import log_error_to_telegram
-from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user, send_localized_notification_to_user_async, user_has_push_tokens, send_localized_notification_to_all_mechanics
+from app.push.utils import (
+    send_push_to_user_by_id,
+    send_localized_notification_to_user,
+    send_localized_notification_to_user_async,
+    user_has_push_tokens,
+    send_localized_notification_to_all_mechanics,
+    get_user_push_tokens,
+    send_push_notification_async,
+)
 from app.websocket.notifications import notify_user_status_update
 from app.utils.time_utils import get_local_time, parse_datetime_to_local
 import asyncio
@@ -6819,17 +6827,17 @@ async def send_notification_to_user(
         
         notification_id = uuid_to_sid(notification.id)
         
-        # Пытаемся отправить push-уведомление
+        # Отправляем только push (без повторного сохранения в notifications — запись уже создана выше)
         push_sent = False
         try:
-            if user_has_push_tokens(db, user.id):
-                await send_push_to_user_by_id(
-                    db_session=db,
-                    user_id=user.id,
-                    title=title,
-                    body=body
-                )
-                push_sent = True
+            devices_tokens = get_user_push_tokens(db, user.id)
+            if devices_tokens:
+                tasks = [
+                    send_push_notification_async(token=t, title=title, body=body)
+                    for t in devices_tokens
+                ]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                push_sent = any(r is True for r in results)
         except Exception as push_error:
             logger.warning(f"Push notification failed for user {user_id}: {push_error}")
         
