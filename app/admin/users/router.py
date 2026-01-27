@@ -43,7 +43,8 @@ from app.admin.users.schemas import (
     AdminMechanicCompleteRequest, AdminAssignMechanicRequest,
     AssignMechanicResponse, UnassignMechanicResponse,
     AdminDeleteUserRequest, AdminDeleteUserResponse,
-    GroupedTransactionsPaginationSchema, GroupedTransactionItemSchema
+    GroupedTransactionsPaginationSchema, GroupedTransactionItemSchema,
+    UserFineSchema, UserFineTripInfoSchema
 )
 from math import ceil, floor
 from app.owner.router import calculate_owner_earnings
@@ -3879,6 +3880,108 @@ async def get_his_guarantors(
             
             converted_data = convert_uuid_response_to_sid(guarantor_data, ["id"])
             result.append(GuarantorInfoSchema(**converted_data))
+    
+    return result
+
+
+@users_router.get("/{user_id}/fines", response_model=List[UserFineSchema])
+async def get_user_fines(
+    user_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Получение списка штрафов (санкций) пользователя"""
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    # Получаем все штрафы (транзакции типа SANCTION_PENALTY)
+    fines = db.query(WalletTransaction).filter(
+        and_(
+            WalletTransaction.user_id == user_uuid,
+            WalletTransaction.transaction_type == WalletTransactionType.SANCTION_PENALTY
+        )
+    ).order_by(desc(WalletTransaction.created_at)).all()
+    
+    result = []
+    for fine in fines:
+        # Получаем информацию о поездке, если есть связь
+        trip_info = None
+        trip_id = None
+        
+        if fine.related_rental_id:
+            trip_id = uuid_to_sid(fine.related_rental_id)
+            rental = db.query(RentalHistory).filter(RentalHistory.id == fine.related_rental_id).first()
+            if rental:
+                car = db.query(Car).filter(Car.id == rental.car_id).first()
+                if car:
+                    trip_info = UserFineTripInfoSchema(
+                        car_name=car.name or "Неизвестно",
+                        car_plate_number=car.plate_number or "Неизвестно"
+                    )
+        
+        result.append(UserFineSchema(
+            id=uuid_to_sid(fine.id),
+            name=fine.description or "Штраф",
+            amount=abs(float(fine.amount)),  # Возвращаем положительное значение
+            created_at=fine.created_at,
+            trip_id=trip_id,
+            trip_info=trip_info
+        ))
+    
+    return result
+
+
+@users_router.get("/{user_id}/owned-cars", response_model=List[OwnerCarListItemSchema])
+async def get_user_owned_cars(
+    user_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Получение списка автомобилей, где пользователь является владельцем (owner_id)"""
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    # Получаем автомобили, где пользователь является владельцем
+    cars = db.query(Car).filter(Car.owner_id == user_uuid).all()
+    
+    result = []
+    now = datetime.now()
+    current_month_start = datetime(now.year, now.month, 1)
+    
+    for car in cars:
+        # Рассчитываем доступные минуты для текущего месяца
+        available_minutes = _calculate_month_availability_minutes(
+            car_id=car.id,
+            year=now.year,
+            month=now.month,
+            owner_id=user_uuid,
+            db=db
+        )
+        
+        # Рассчитываем заработок
+        earnings_data = _calculate_car_earnings(car.id, user_uuid, db, current_month_start)
+        
+        result.append(OwnerCarListItemSchema(
+            id=uuid_to_sid(car.id),
+            name=car.name,
+            plate_number=car.plate_number,
+            available_minutes=available_minutes,
+            earnings_current_month=earnings_data["current_month"],
+            earnings_total=earnings_data["total"],
+            photos=sort_car_photos(car.photos or []),
+            vin=car.vin,
+            color=car.color
+        ))
     
     return result
 

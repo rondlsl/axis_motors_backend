@@ -157,6 +157,22 @@ class GuarantorInfoSchema(SidMixin):
     selfie_url: Optional[str] = None
 
 
+class UserFineTripInfoSchema(BaseModel):
+    """Информация о поездке для штрафа"""
+    car_name: str
+    car_plate_number: str
+
+
+class UserFineSchema(SidMixin):
+    """Схема штрафа пользователя"""
+    id: str
+    name: str  # description
+    amount: float
+    created_at: datetime
+    trip_id: Optional[str] = None
+    trip_info: Optional[UserFineTripInfoSchema] = None
+
+
 class TripSummarySchema(BaseModel):
     """Сводка по поездкам"""
     total_minutes: int = 0
