@@ -1,3 +1,6 @@
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 import asyncio
 import math
 import re
@@ -74,7 +77,7 @@ async def billing_job():
                     user_id, title, body = notification
                     await send_push_to_user_by_id_async(user_id, title, body)
                 else:  
-                    print(f"Unexpected notification format: {notification}")
+                    logger.debug(f"Unexpected notification format: {notification}")
             except Exception as e:
                 error_str = str(e)
                 is_db_error = "QueuePool" in error_str or "connection" in error_str.lower() or "timeout" in error_str.lower()
@@ -85,7 +88,7 @@ async def billing_job():
                     return await _send_notification_with_retry(notification, retry_count + 1)
                 else:
                     if not is_db_error:
-                        print(f"Ошибка отправки push-уведомления: {e}")
+                        logger.error(f" отправки push-уведомления: {e}")
     
     # Отправляем уведомления батчами с ограничением параллелизма
     BATCH_SIZE = 20
@@ -129,13 +132,14 @@ async def billing_job():
                 try:
                     await send_lock_engine(imei, auth_token)
                     # Уведомим пользователя в приложение (с ограничением параллелизма)
-                    async def _notify_engine_locked():
-                        async with push_semaphore:
-                            try:
-                                await send_localized_notification_to_user_async(user_id, "engine_locked_due_to_balance", "engine_locked_due_to_balance", car_name=car_name)
-                            except Exception as e:
-                                print(f"Ошибка отправки уведомления о блокировке двигателя пользователю {user_id}: {e}")
-                    asyncio.create_task(_notify_engine_locked())
+                    # TODO: временно отключено - enum engine_locked_due_to_balance не существует в БД
+                    # async def _notify_engine_locked():
+                    #     async with push_semaphore:
+                    #         try:
+                    #             await send_localized_notification_to_user_async(user_id, "engine_locked_due_to_balance", "engine_locked_due_to_balance", car_name=car_name)
+                    #         except Exception as e:
+                    #             logger.error(f" отправки уведомления о блокировке двигателя пользователю {user_id}: {e}")
+                    # asyncio.create_task(_notify_engine_locked())
                     # И в телеграм
                     user = db.query(User).filter(User.id == user_id).first()
                     user_info = f"user_id={user_id}"
@@ -225,12 +229,12 @@ async def billing_job():
                 try:
                     await notify_user_status_update(user_id)
                 except Exception as e:
-                    print(f"Ошибка отправки уведомления пользователю {user_id}: {e}")
+                    logger.error(f" отправки уведомления пользователю {user_id}: {e}")
         
         for user_id in user_ids:
             asyncio.create_task(_notify_with_semaphore(user_id))
     except Exception as e:
-        print(f"Error sending WebSocket notifications in billing_job: {e}")
+        logger.error(f" sending WebSocket notifications in billing_job: {e}")
     finally:
         if db:
             db.close()
@@ -260,7 +264,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
 
     rental_count = db.query(RentalHistory).count()
     if rental_count == 0:
-        print("ℹ️ Таблица rental_history пуста, пропускаем billing_job")
+        logger.debug("ℹ️ Таблица rental_history пуста, пропускаем billing_job")
         db.close()
         return [], [], []
     
@@ -1038,7 +1042,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
 
         except Exception as e:
             db.rollback()
-            print("[Billing error] rental={rental.id}: {e}")
+            logger.debug("[Billing error] rental={rental.id}: {e}")
 
     # Обработка штрафов механиков за задержку доставки
     try:
@@ -1085,11 +1089,11 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                             f"за задержку доставки автомобиля ID {rental.car_id} на {penalty_minutes:.1f} мин."
                         )
                         
-                        print(f"Штраф за задержку доставки: {penalty_fee}₸ с механика {mechanic.phone_number}")
+                        logger.debug(f"Штраф за задержку доставки: {penalty_fee}₸ с механика {mechanic.phone_number}")
                         db.commit()
                         
     except Exception as e:
-        print(f"[Delivery penalty error]: {e}")
+        logger.info(f"[Delivery penalty error]: {e}")
         db.rollback()
 
     # Очистка флагов для завершённых/отменённых арен

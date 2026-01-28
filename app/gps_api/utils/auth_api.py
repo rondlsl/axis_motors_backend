@@ -1,3 +1,6 @@
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 from typing import Optional
 
 from httpx import Response
@@ -22,11 +25,11 @@ async def get_auth_token(base_url: str, login: str, password: str) -> Optional[s
         response: Response = await client.send_request("POST", url, json=payload)
         if response.status_code == 200:
             auth_data = response.json()
-            print(auth_data.get("AuthId"))
+            logger.debug(auth_data.get("AuthId"))
             return auth_data.get("AuthId")
         else:
-            print("Ошибка авторизации: {response.status_code}, {response.text}")
+            logger.debug("Ошибка авторизации: {response.status_code}, {response.text}")
     except Exception as e:
-        print("Ошибка сети: {e}")
+        logger.debug("Ошибка сети: {e}")
 
     return None

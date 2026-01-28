@@ -70,10 +70,11 @@ def uuid_str_to_sid(uuid_str: str) -> str:
 
 def safe_sid_to_uuid(sid: str) -> uuid.UUID:
     """
-    Безопасная конвертация sid в UUID с понятной ошибкой
+    Безопасная конвертация sid или UUID-строки в UUID с понятной ошибкой.
+    Поддерживает оба формата: короткий ID (base64) и полный UUID.
     
     Args:
-        sid: Закодированная строка
+        sid: Закодированная строка (short ID) или UUID-строка
         
     Returns:
         UUID объект
@@ -85,9 +86,31 @@ def safe_sid_to_uuid(sid: str) -> uuid.UUID:
         >>> safe_sid_to_uuid('VQ6EAOKbQdSnFkRmVUQAAA')
         UUID('550e8400-e29b-41d4-a716-446655440000')
         
+        >>> safe_sid_to_uuid('550e8400-e29b-41d4-a716-446655440000')
+        UUID('550e8400-e29b-41d4-a716-446655440000')
+        
         >>> safe_sid_to_uuid('invalid')
         ValueError: Неверный формат Short ID: invalid
     """
+    # Уже UUID — возвращаем как есть (например, из SQLAlchemy model)
+    if isinstance(sid, uuid.UUID):
+        return sid
+    sid = str(sid)
+    # Проверяем, не является ли это уже полным UUID (с дефисами или без)
+    # UUID формат: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (36 символов с дефисами)
+    # или 32 hex символа без дефисов
+    if len(sid) == 36 and sid.count('-') == 4:
+        try:
+            return uuid.UUID(sid)
+        except ValueError:
+            pass
+    elif len(sid) == 32:
+        try:
+            return uuid.UUID(sid)
+        except ValueError:
+            pass
+    
+    # Иначе пробуем декодировать как short ID
     try:
         return sid_to_uuid(sid)
     except Exception as e:

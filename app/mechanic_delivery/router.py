@@ -1,4 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
@@ -222,9 +224,9 @@ async def start_delivery(
             # Универсальная последовательность: разблокировать двигатель → выдать ключ
             result = await execute_gps_sequence(car.gps_imei, auth_token, "interior")
             if not result["success"]:
-                print(f"Ошибка GPS последовательности при старте доставки: {result.get('error', 'Unknown error')}")
+                logger.error(f" GPS последовательности при старте доставки: {result.get('error', 'Unknown error')}")
     except Exception as e:
-        print(f"Ошибка GPS команд при старте доставки: {e}")
+        logger.error(f" GPS команд при старте доставки: {e}")
         try:
             await log_error_to_telegram(
                 error=e,
@@ -298,9 +300,9 @@ async def start_delivery(
     #         plate_number=car.plate_number,
     #         car_name=car.name
     #     )
-    #     print(f"SMS отправлена доставщику {current_mechanic.phone_number} при начале доставки")
+    #     logger.debug(f"SMS отправлена доставщику {current_mechanic.phone_number} при начале доставки")
     # except Exception as e:
-    #     print(f"Ошибка отправки SMS при начале доставки: {e}")
+    #     logger.error(f" отправки SMS при начале доставки: {e}")
 
     return {"message": "Доставка запущена", "rental_id": uuid_to_sid(rental.id)}
 
@@ -364,7 +366,7 @@ async def complete_delivery(
             if mechanic:
                 record_wallet_transaction(db, user=mechanic, amount=-penalty_fee, ttype=WalletTransactionType.DELIVERY_PENALTY, description=f"Штраф за задержку доставки {penalty_minutes:.1f} мин", related_rental=rental)
                 mechanic.wallet_balance -= penalty_fee
-                print(f"Штраф за задержку доставки: {penalty_fee}₸ с механика {mechanic.phone_number}")
+                logger.debug(f"Штраф за задержку доставки: {penalty_fee}₸ с механика {mechanic.phone_number}")
                 db.flush()  # Фиксируем изменения механика перед commit
 
     # Сохраняем ID механика до того, как установим его в None
@@ -492,9 +494,9 @@ async def complete_delivery(
     #         plate_number=car.plate_number,
     #         car_name=car.name
     #     )
-    #     print(f"SMS отправлена доставщику {current_mechanic.phone_number} при завершении доставки")
+    #     logger.debug(f"SMS отправлена доставщику {current_mechanic.phone_number} при завершении доставки")
     # except Exception as e:
-    #     print(f"Ошибка отправки SMS при завершении доставки: {e}")
+    #     logger.error(f" отправки SMS при завершении доставки: {e}")
 
     return {
         "message": "Доставка успешно завершена, статус автомобиля — RESERVED.",
@@ -814,7 +816,7 @@ async def upload_delivery_photos_before(
             result = await execute_gps_sequence(car.gps_imei, auth_token, "selfie_exterior")
             if not result["success"]:
                 error_msg = result.get('error', 'Unknown error')
-                print(f"Ошибка GPS последовательности для селфи+кузов доставщика: {error_msg}")
+                logger.error(f" GPS последовательности для селфи+кузов доставщика: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
         
         # Обновляем все данные из БД для получения свежих данных (после всех операций)
@@ -978,7 +980,7 @@ async def upload_delivery_photos_after(
             result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_selfie_interior")
             if not result["success"]:
                 error_msg = result.get('error', 'Unknown error')
-                print(f"Ошибка GPS последовательности для завершения селфи+салон доставщиком: {error_msg}")
+                logger.error(f" GPS последовательности для завершения селфи+салон доставщиком: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
         
         # Обновляем все данные из БД для получения свежих данных (после всех операций)
@@ -1071,7 +1073,7 @@ async def upload_delivery_photos_after_car(
             result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_exterior")
             if not result["success"]:
                 error_msg = result.get('error', 'Unknown error')
-                print(f"Ошибка GPS последовательности для завершения кузова доставщиком: {error_msg}")
+                logger.error(f" GPS последовательности для завершения кузова доставщиком: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
         
         # Обновляем все данные из БД для получения свежих данных (после всех операций)

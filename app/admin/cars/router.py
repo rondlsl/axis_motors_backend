@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Body, Request
 from math import ceil, floor
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
@@ -11,7 +11,7 @@ from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.auth.dependencies.save_documents import save_file
 from app.models.user_model import User, UserRole
-from app.models.car_model import Car, CarStatus, CarBodyType, TransmissionType
+from app.models.car_model import Car, CarStatus, CarBodyType, TransmissionType, CarAutoClass
 from app.models.car_comment_model import CarComment
 from app.models.history_model import RentalHistory, RentalStatus, RentalReview, RentalType
 from app.models.rental_actions_model import RentalAction
@@ -22,7 +22,8 @@ from app.admin.cars.schemas import (
     CarCommentCreateSchema, CarCommentUpdateSchema,
     CarAvailabilityTimerSchema, CarCurrentUserSchema,
     CarListResponseSchema, CarMapResponseSchema, CarStatisticsSchema,
-    CarListItemSchema, CarMapItemSchema, OwnerSchema, CurrentRenterSchema
+    CarListItemSchema, CarMapItemSchema, OwnerSchema, CurrentRenterSchema,
+    CarCreateSchema, CarCreateResponseSchema, CarDeletePhotoSchema
 )
 from app.admin.cars.utils import car_to_detail_schema, status_display, _get_drive_type_display, sort_car_photos
 from app.gps_api.utils.route_data import get_gps_route_data
@@ -39,6 +40,7 @@ from app.utils.time_utils import get_local_time, parse_datetime_to_local
 from app.owner.availability import update_car_availability_snapshot
 from app.owner.router import calculate_owner_earnings, calculate_fuel_cost, calculate_delivery_cost
 import asyncio
+import json
 import uuid
 import httpx
 from app.models.contract_model import UserContractSignature, ContractFile, ContractType
@@ -55,6 +57,7 @@ VEHICLE_STATUS_FIELDS = [
 
 from app.core.config import VEHICLES_API_URL
 CARS_V2_API_URL = f"{VEHICLES_API_URL}/vehicles"
+BASE_URL = "https://regions.glonasssoft.ru"
 
 cars_router = APIRouter(tags=["Admin Cars"])
 
@@ -77,11 +80,23 @@ def to_utc_for_glonass(dt: datetime) -> str | None:
 @cars_router.patch("/{car_id}", response_model=CarDetailSchema)
 async def edit_car(
     car_id: str,
-    body: CarEditSchema,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Редактировать автомобиль"""
+    """
+    Редактировать автомобиль.
+
+    - Не удаляет фотографии. Удаление — только через DELETE /{car_id}/photos/one.
+    - Может добавлять новые фото: multipart/form-data с полем «data» (JSON) и «new_photos» (файлы).
+      Новые файлы загружаются в MinIO, их URL дописываются в car.photos.
+    - Может менять порядок фото: в «data» передать «photos» — массив URL в нужном порядке.
+
+    Если изменяется gps_imei:
+    1. Удаляет старую машину из azv_motors_cars_v2 по старому IMEI
+    2. Получает данные от Glonass API по новому IMEI
+    3. Добавляет машину в azv_motors_cars_v2 с новыми данными
+    """
     if current_user.role not in [UserRole.ADMIN]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
@@ -89,14 +104,192 @@ async def edit_car(
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
+    content_type = request.headers.get("content-type", "")
+    new_photos_files: List[UploadFile] = []
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        data_raw = form.get("data")
+        data_dict: dict = {}
+        if data_raw is not None:
+            try:
+                data_dict = json.loads(data_raw) if isinstance(data_raw, str) else data_raw
+            except (json.JSONDecodeError, TypeError) as e:
+                raise HTTPException(status_code=400, detail=f"Невалидный JSON в «data»: {e}")
+        body = CarEditSchema(**data_dict)
+        for v in form.getlist("new_photos"):
+            if hasattr(v, "read") and hasattr(v, "filename"):
+                new_photos_files.append(v)
+    else:
+        try:
+            raw = await request.json()
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Ожидается JSON или multipart: {e}")
+        body = CarEditSchema(**raw)
+
     update_fields = body.model_dump(exclude_unset=True)
+    logger.info(f"[edit_car] Received update_fields: {list(update_fields.keys())}")
+    logger.info(f"[edit_car] Photos in update_fields: {update_fields.get('photos', 'NOT PRESENT')}")
+
+    # Добавление новых фото: загрузка в MinIO и добавление URL в car.photos
+    if new_photos_files:
+        from app.services.minio_service import get_minio_service
+        minio = get_minio_service()
+        normalized_plate = normalize_plate_number(car.plate_number) if car.plate_number else str(car.id)
+        folder = f"cars/{normalized_plate}"
+        saved_urls: List[str] = []
+        for f in new_photos_files:
+            try:
+                url = await minio.upload_file(f, car.id, folder)
+                saved_urls.append(url)
+            except Exception as e:
+                logger.error(f"[edit_car] Ошибка загрузки фото {getattr(f, 'filename', '?')}: {e}")
+        if saved_urls:
+            base = update_fields.get("photos") if "photos" in update_fields else (car.photos or [])
+            update_fields["photos"] = list(base) + saved_urls
+            logger.info(f"[edit_car] Загружено в MinIO и добавлено в photos: {len(saved_urls)} файлов")
+    
+    # Сохраняем старый IMEI для проверки изменений
+    old_gps_imei = car.gps_imei
+    old_gps_id = car.gps_id
+    new_gps_imei = update_fields.get("gps_imei")
+    gps_imei_changed = new_gps_imei is not None and new_gps_imei != old_gps_imei
+    
+    # Обработка owner_id (преобразование из short id в UUID)
+    if "owner_id" in update_fields:
+        owner_id_value = update_fields.pop("owner_id")
+        if owner_id_value:
+            owner_uuid = safe_sid_to_uuid(owner_id_value)
+            owner = db.query(User).filter(User.id == owner_uuid).first()
+            if not owner:
+                raise HTTPException(status_code=400, detail=f"Владелец с ID {owner_id_value} не найден")
+            update_fields["owner_id"] = owner_uuid
+        else:
+            update_fields["owner_id"] = None
+    
+    # Обработка photos: только добавление новых URL и смена порядка. Удаление не выполняем.
+    if "photos" in update_fields:
+        new_photos = update_fields.pop("photos")
+        if new_photos is not None:
+            old_photos = car.photos or []
+            old_set = set(old_photos)
+            added = [u for u in new_photos if u not in old_set]
+            reordered = list(old_photos) != new_photos and set(old_photos) == set(new_photos)
+            update_fields["photos"] = new_photos
+            if added:
+                logger.info(f"[edit_car] Добавлены фото: {len(added)}, итого: {len(new_photos)}")
+            elif reordered:
+                logger.info(f"[edit_car] Изменён порядок фото, итого: {len(new_photos)}")
+    
+    # Проверяем уникальность нового IMEI
+    if gps_imei_changed and new_gps_imei:
+        existing_car_by_imei = db.query(Car).filter(
+            Car.gps_imei == new_gps_imei,
+            Car.id != car.id
+        ).first()
+        if existing_car_by_imei:
+            raise HTTPException(status_code=400, detail=f"Автомобиль с IMEI {new_gps_imei} уже существует")
+    
+    # Если IMEI изменился, обрабатываем интеграцию с Glonass и azv_motors_cars_v2
+    glonass_data_received = False
+    vehicle_id = None
+    
+    if gps_imei_changed:
+        # Шаг 1: Удаляем старую машину из azv_motors_cars_v2 по старому IMEI
+        if old_gps_imei:
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    delete_response = await client.delete(
+                        f"{CARS_V2_API_URL}/by-imei/{old_gps_imei}"
+                    )
+                    if delete_response.status_code == 204:
+                        logger.info(f"Удалена старая машина из azv_motors_cars_v2 по IMEI {old_gps_imei}")
+                    elif delete_response.status_code == 404:
+                        logger.info(f"Машина с IMEI {old_gps_imei} не найдена в azv_motors_cars_v2 (уже удалена или не существовала)")
+                    else:
+                        logger.warning(f"Не удалось удалить машину из azv_motors_cars_v2: {delete_response.status_code}")
+            except Exception as e:
+                logger.error(f"Ошибка удаления машины из azv_motors_cars_v2: {e}")
+        
+        # Шаг 2: Получаем данные от Glonass API по новому IMEI
+        if new_gps_imei:
+            try:
+                auth_token = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+                if auth_token:
+                    glonass_response = await glonassoft_client.get_vehicle_data(new_gps_imei)
+                    
+                    if glonass_response:
+                        glonass_data_received = True
+                        vehicle_id = str(glonass_response.get("vehicleid"))
+                        
+                        # Обновляем координаты и данные с Glonass
+                        update_fields["gps_id"] = vehicle_id
+                        update_fields["latitude"] = glonass_response.get("latitude")
+                        update_fields["longitude"] = glonass_response.get("longitude")
+                        
+                        # Извлекаем данные из RegistredSensors
+                        registered_sensors = glonass_response.get("RegistredSensors", [])
+                        for sensor in registered_sensors:
+                            param_name = sensor.get("parameterName", "")
+                            value = sensor.get("value", "")
+                            
+                            if param_name == "param68":  # Пробег
+                                try:
+                                    update_fields["mileage"] = int(float(value))
+                                except (ValueError, TypeError):
+                                    pass
+                            
+                            if param_name == "param70":  # Уровень топлива
+                                try:
+                                    fuel_str = value.replace(" l", "").replace(" L", "").strip()
+                                    update_fields["fuel_level"] = float(fuel_str)
+                                except (ValueError, TypeError):
+                                    pass
+                        
+                        logger.info(f"Получены данные Glonass для нового IMEI {new_gps_imei}: vehicle_id={vehicle_id}")
+                else:
+                    logger.warning(f"Не удалось получить токен авторизации Glonass для IMEI {new_gps_imei}")
+            except Exception as e:
+                logger.error(f"Ошибка получения данных Glonass для IMEI {new_gps_imei}: {e}")
+        else:
+            # Если новый IMEI пустой, сбрасываем gps_id
+            update_fields["gps_id"] = None
+    
+    # Обновляем поля машины
     for field, value in update_fields.items():
         if field == "status" and value is not None:
-            setattr(car, "status", value.value)
+            setattr(car, "status", value.value if hasattr(value, 'value') else value)
         else:
             setattr(car, field, value)
 
     db.commit()
+    db.refresh(car)
+    
+    # Шаг 3: Добавляем новую машину в azv_motors_cars_v2 (если IMEI изменился и есть vehicle_id)
+    vehicle_added_to_cars_v2 = False
+    if gps_imei_changed and new_gps_imei and vehicle_id:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                vehicle_data = {
+                    "vehicle_id": int(vehicle_id),
+                    "vehicle_imei": new_gps_imei,
+                    "name": car.name,
+                    "plate_number": car.plate_number
+                }
+                
+                response = await client.post(
+                    CARS_V2_API_URL + "/",
+                    json=vehicle_data,
+                    headers={"Content-Type": "application/json"}
+                )
+                
+                if response.status_code in [200, 201]:
+                    vehicle_added_to_cars_v2 = True
+                    logger.info(f"Машина {car.name} добавлена в azv_motors_cars_v2 с новым IMEI {new_gps_imei}")
+                else:
+                    logger.warning(f"Не удалось добавить машину в azv_motors_cars_v2: {response.status_code} - {response.text}")
+        except Exception as e:
+            logger.error(f"Ошибка добавления машины в azv_motors_cars_v2: {e}")
     
     log_action(
         db,
@@ -104,10 +297,17 @@ async def edit_car(
         action="edit_car",
         entity_type="car",
         entity_id=car.id,
-        details={"updated_fields": list(update_fields.keys()), "update_data": str(update_fields)}
+        details={
+            "updated_fields": list(update_fields.keys()), 
+            "update_data": str(update_fields),
+            "gps_imei_changed": gps_imei_changed,
+            "old_gps_imei": old_gps_imei,
+            "new_gps_imei": new_gps_imei,
+            "glonass_data_received": glonass_data_received,
+            "vehicle_added_to_cars_v2": vehicle_added_to_cars_v2
+        }
     )
-
-    db.refresh(car)
+    db.commit()
 
     return car_to_detail_schema(car, db)
 
@@ -198,6 +398,8 @@ async def get_car_details(
         except Exception:
             pass
 
+    # Обновляем объект из БД, чтобы получить актуальные данные (включая open_fee)
+    db.refresh(car)
     return CarDetailSchema(
         id=uuid_to_sid(car.id),
         name=car.name,
@@ -223,6 +425,7 @@ async def get_car_details(
         price_per_minute=car.price_per_minute,
         price_per_hour=car.price_per_hour,
         price_per_day=car.price_per_day,
+        open_fee=car.open_fee,
         owner_id=uuid_to_sid(car.owner_id) if car.owner_id else None,
         current_renter_id=uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
         owner=owner_obj,
@@ -230,6 +433,8 @@ async def get_car_details(
         available_minutes=available_minutes,
         gps_id=car.gps_id,
         gps_imei=car.gps_imei,
+        vehicle_id=car.gps_id,  # Алиас для gps_id
+        vehicle_imei=car.gps_imei,  # Алиас для gps_imei
         vin=car.vin,
         color=car.color,
         rating=car.rating,
@@ -2284,6 +2489,103 @@ async def upload_car_photos(
     }
 
 
+def normalize_photo_url_for_comparison(url: str) -> str:
+    """Нормализует URL фотографии для сравнения (извлекает путь без домена)"""
+    if not url:
+        return url
+    # Удаляем домен MinIO, если есть
+    minio_domains = [
+        "https://msmain.azvmotors.kz",
+        "http://msmain.azvmotors.kz",
+        "https://msmain.azvmotors.kz/",
+        "http://msmain.azvmotors.kz/",
+    ]
+    for domain in minio_domains:
+        if url.startswith(domain):
+            url = url[len(domain):]
+            break
+    # Убираем ведущий слеш если есть
+    url = url.lstrip("/")
+    return url
+
+
+@cars_router.delete("/{car_id}/photos/one", summary="Удалить одну фотографию автомобиля")
+async def delete_car_photo_one(
+    car_id: str,
+    body: CarDeletePhotoSchema = Body(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Удалить одну фотографию автомобиля из MinIO и из списка photos при редактировании"""
+    from app.services.minio_service import get_minio_service
+
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+
+    car = get_car_by_id(db, car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+
+    photo_url = body.photo_url.strip()
+    if not photo_url:
+        raise HTTPException(status_code=400, detail="photo_url не может быть пустым")
+
+    photos = car.photos or []
+    
+    # Нормализуем URL для сравнения
+    normalized_input = normalize_photo_url_for_comparison(photo_url)
+    
+    # Ищем соответствующее фото в списке (сравниваем нормализованные URL)
+    matching_photo = None
+    for p in photos:
+        if normalize_photo_url_for_comparison(p) == normalized_input:
+            matching_photo = p
+            break
+    
+    if not matching_photo:
+        logger.warning(f"[delete_car_photo_one] Photo not found. Input: {photo_url}, Normalized: {normalized_input}")
+        logger.warning(f"[delete_car_photo_one] Available photos: {photos}")
+        raise HTTPException(
+            status_code=404,
+            detail="Фотография не найдена среди фотографий этого автомобиля"
+        )
+    
+    # Используем оригинальный URL из базы для удаления
+    photo_url = matching_photo
+
+    try:
+        minio = get_minio_service()
+        ok = minio.delete_file(photo_url)
+        if not ok:
+            logger.warning(f"Не удалось удалить файл из MinIO: {photo_url}")
+
+        car.photos = [p for p in photos if p != photo_url]
+
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="delete_car_photo_one",
+            entity_type="car",
+            entity_id=car.id,
+            details={"photo_url": photo_url, "remaining_count": len(car.photos or [])},
+        )
+        db.commit()
+        db.refresh(car)
+
+        return {
+            "message": "Фотография удалена",
+            "car_id": uuid_to_sid(car.id),
+            "deleted_url": photo_url,
+            "remaining_count": len(car.photos or []),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Ошибка удаления фотографии: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка удаления фотографии: {e}")
+
+
 @cars_router.delete("/{car_id}/photos", summary="Удалить все фотографии автомобиля")
 async def delete_car_photos(
     car_id: str,
@@ -2630,8 +2932,6 @@ async def get_car_rental_history(
         "total_rentals": len(result)
     }
 
-BASE_URL = "https://regions.glonasssoft.ru"
-
 
 @cars_router.post("/{car_id}/open", summary="Открыть автомобиль")
 async def admin_open_vehicle(
@@ -2950,3 +3250,309 @@ async def admin_take_key(
             "action": "admin_take_key", "car_id": car_id, "gps_imei": car.gps_imei
         })
         raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
+
+
+@cars_router.post("/", response_model=CarCreateResponseSchema, summary="Создать новый автомобиль")
+async def create_car(
+    car_data: CarCreateSchema,
+    photos: List[UploadFile] = File(default=[]),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Создать новый автомобиль.
+    
+    1. Получает данные о машине от Glonass API по IMEI
+    2. Создает машину в основной БД
+    3. Отправляет данные в azv_motors_cars_v2 для мониторинга
+    """
+    if current_user.role not in [UserRole.ADMIN]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав для создания автомобиля")
+    
+    # Проверяем, не существует ли уже машина с таким plate_number
+    existing_car = db.query(Car).filter(
+        Car.plate_number == car_data.plate_number
+    ).first()
+    
+    if existing_car:
+        raise HTTPException(status_code=400, detail=f"Автомобиль с номером {car_data.plate_number} уже существует")
+    
+    # Проверяем IMEI только если он указан
+    if car_data.gps_imei:
+        existing_car_by_imei = db.query(Car).filter(
+            Car.gps_imei == car_data.gps_imei
+        ).first()
+        
+        if existing_car_by_imei:
+            raise HTTPException(status_code=400, detail=f"Автомобиль с IMEI {car_data.gps_imei} уже существует")
+    
+    glonass_data_received = False
+    vehicle_id = None
+    latitude = None
+    longitude = None
+    fuel_level = None
+    mileage = None
+    
+    # Шаг 1: Получаем данные от Glonass API (только если указан gps_imei)
+    if car_data.gps_imei:
+        try:
+            # Аутентификация в Glonass
+            auth_token = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
+            if auth_token:
+                # Получаем данные о машине по IMEI
+                glonass_response = await glonassoft_client.get_vehicle_data(car_data.gps_imei)
+                
+                if glonass_response:
+                    glonass_data_received = True
+                    vehicle_id = str(glonass_response.get("vehicleid"))
+                    latitude = glonass_response.get("latitude")
+                    longitude = glonass_response.get("longitude")
+                    
+                    # Извлекаем данные из RegistredSensors
+                    registered_sensors = glonass_response.get("RegistredSensors", [])
+                    for sensor in registered_sensors:
+                        param_name = sensor.get("parameterName", "")
+                        value = sensor.get("value", "")
+                        
+                        # Пробег (param68)
+                        if param_name == "param68":
+                            try:
+                                mileage = int(float(value))
+                            except (ValueError, TypeError):
+                                pass
+                        
+                        # Уровень топлива (param70)
+                        if param_name == "param70":
+                            try:
+                                # Значение может быть "19 l", извлекаем число
+                                fuel_str = value.replace(" l", "").replace(" L", "").strip()
+                                fuel_level = float(fuel_str)
+                            except (ValueError, TypeError):
+                                pass
+                    
+                    logger.info(f"Получены данные Glonass для IMEI {car_data.gps_imei}: vehicle_id={vehicle_id}, lat={latitude}, lon={longitude}")
+            else:
+                logger.warning(f"Не удалось получить токен авторизации Glonass для IMEI {car_data.gps_imei}")
+        except Exception as e:
+            logger.error(f"Ошибка получения данных Glonass для IMEI {car_data.gps_imei}: {e}")
+            # Продолжаем создание машины даже без данных Glonass
+    else:
+        logger.info("GPS IMEI не указан, пропускаем запрос к Glonass API")
+    
+    # Шаг 2: Обработка owner_id
+    owner_uuid = None
+    if car_data.owner_id:
+        owner_uuid = safe_sid_to_uuid(car_data.owner_id)
+        # Проверяем, что владелец существует
+        owner = db.query(User).filter(User.id == owner_uuid).first()
+        if not owner:
+            raise HTTPException(status_code=400, detail=f"Владелец с ID {car_data.owner_id} не найден")
+    
+    # Шаг 3: Обработка фотографий
+    photo_urls = []
+    if photos:
+        for i, photo in enumerate(photos):
+            try:
+                # Используем plate_number для создания папки
+                folder_name = car_data.plate_number.replace(" ", "").replace("/", "").upper()
+                file_extension = photo.filename.split(".")[-1] if "." in photo.filename else "jpg"
+                
+                # Определяем тип фото по индексу
+                if i == 0:
+                    file_name = f"front_1.{file_extension}"
+                elif i == 1:
+                    file_name = f"interior_1.{file_extension}"
+                elif i == 2:
+                    file_name = f"rear_1.{file_extension}"
+                else:
+                    file_name = f"photo_{i+1}.{file_extension}"
+                
+                saved_url = await save_file(photo, f"cars/{folder_name}", file_name)
+                if saved_url:
+                    photo_urls.append(saved_url)
+            except Exception as e:
+                logger.error(f"Ошибка сохранения фото {photo.filename}: {e}")
+    
+    # Шаг 4: Создаем машину в БД
+    new_car = Car(
+        name=car_data.name,
+        plate_number=car_data.plate_number,
+        gps_id=vehicle_id,
+        gps_imei=car_data.gps_imei,
+        latitude=latitude,
+        longitude=longitude,
+        fuel_level=fuel_level,
+        mileage=mileage,
+        price_per_minute=car_data.price_per_minute,
+        price_per_hour=car_data.price_per_hour,
+        price_per_day=car_data.price_per_day,
+        open_fee=car_data.open_fee,
+        auto_class=car_data.auto_class,
+        engine_volume=car_data.engine_volume,
+        year=car_data.year,
+        drive_type=car_data.drive_type,
+        transmission_type=car_data.transmission_type,
+        body_type=car_data.body_type,
+        vin=car_data.vin,
+        color=car_data.color,
+        photos=photo_urls if photo_urls else None,
+        description=car_data.description,
+        owner_id=owner_uuid,
+        status=CarStatus.FREE,
+        created_at=get_local_time(),
+        updated_at=get_local_time()
+    )
+    
+    try:
+        db.add(new_car)
+        db.commit()
+        db.refresh(new_car)
+        logger.info(f"Автомобиль {new_car.name} ({new_car.plate_number}) успешно создан с ID {new_car.id}")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Ошибка создания автомобиля в БД: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка создания автомобиля: {e}")
+    
+    # Шаг 5: Отправляем данные в azv_motors_cars_v2 (только если есть vehicle_id и gps_imei)
+    vehicle_added_to_cars_v2 = False
+    if vehicle_id and car_data.gps_imei:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                vehicle_data = {
+                    "vehicle_id": int(vehicle_id),
+                    "vehicle_imei": car_data.gps_imei,
+                    "name": car_data.name,
+                    "plate_number": car_data.plate_number
+                }
+                
+                response = await client.post(
+                    CARS_V2_API_URL + "/",
+                    json=vehicle_data,
+                    headers={"Content-Type": "application/json"}
+                )
+                
+                if response.status_code in [200, 201]:
+                    vehicle_added_to_cars_v2 = True
+                    logger.info(f"Автомобиль {new_car.name} успешно добавлен в azv_motors_cars_v2")
+                else:
+                    logger.warning(f"Не удалось добавить автомобиль в azv_motors_cars_v2: {response.status_code} - {response.text}")
+        except Exception as e:
+            logger.error(f"Ошибка отправки данных в azv_motors_cars_v2: {e}")
+            # Не прерываем процесс, машина уже создана в основной БД
+    else:
+        if not car_data.gps_imei:
+            logger.info("GPS IMEI не указан, пропускаем отправку в azv_motors_cars_v2")
+        elif not vehicle_id:
+            logger.info("Vehicle ID не получен от Glonass, пропускаем отправку в azv_motors_cars_v2")
+    
+    # Логируем действие
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="create_car",
+        entity_type="car",
+        entity_id=new_car.id,
+        details={
+            "name": new_car.name,
+            "plate_number": new_car.plate_number,
+            "gps_imei": new_car.gps_imei,
+            "glonass_data_received": glonass_data_received,
+            "vehicle_added_to_cars_v2": vehicle_added_to_cars_v2
+        }
+    )
+    db.commit()
+    
+    # # Уведомляем о обновлении списка машин
+    # try:
+    #     await notify_vehicles_list_update()
+    # except Exception as e:
+    #     logger.warning(f"Не удалось отправить уведомление об обновлении списка машин: {e}")
+    
+    return CarCreateResponseSchema(
+        id=uuid_to_sid(new_car.id),
+        name=new_car.name,
+        plate_number=new_car.plate_number,
+        gps_id=new_car.gps_id,
+        gps_imei=new_car.gps_imei,
+        latitude=new_car.latitude,
+        longitude=new_car.longitude,
+        fuel_level=new_car.fuel_level,
+        mileage=new_car.mileage,
+        status=new_car.status.value if new_car.status else "FREE",
+        auto_class=new_car.auto_class.value if new_car.auto_class else "A",
+        body_type=new_car.body_type.value if new_car.body_type else "SEDAN",
+        price_per_minute=new_car.price_per_minute,
+        price_per_hour=new_car.price_per_hour,
+        price_per_day=new_car.price_per_day,
+        open_fee=new_car.open_fee,
+        vehicle_added_to_cars_v2=vehicle_added_to_cars_v2,
+        glonass_data_received=glonass_data_received
+    )
+
+
+@cars_router.post("/with-photos", response_model=CarCreateResponseSchema, summary="Создать новый автомобиль с фотографиями")
+async def create_car_with_photos(
+    name: str = Query(..., description="Название автомобиля"),
+    plate_number: str = Query(..., description="Номерной знак"),
+    gps_imei: Optional[str] = Query(None, description="IMEI GPS-трекера"),
+    price_per_minute: int = Query(..., description="Цена за минуту"),
+    price_per_hour: int = Query(..., description="Цена за час"),
+    price_per_day: int = Query(..., description="Цена за день"),
+    open_fee: int = Query(default=4000, description="Стоимость открытия дверей"),
+    auto_class: str = Query(default="A", description="Класс автомобиля (A, B, C)"),
+    engine_volume: Optional[float] = Query(None, description="Объем двигателя"),
+    year: Optional[int] = Query(None, description="Год выпуска"),
+    drive_type: Optional[int] = Query(None, description="Тип привода"),
+    transmission_type: Optional[str] = Query(None, description="Тип трансмиссии"),
+    body_type: str = Query(default="SEDAN", description="Тип кузова"),
+    vin: Optional[str] = Query(None, description="VIN номер"),
+    color: Optional[str] = Query(None, description="Цвет"),
+    description: Optional[str] = Query(None, description="Описание"),
+    owner_id: Optional[str] = Query(None, description="ID владельца (SID)"),
+    photos: List[UploadFile] = File(default=[]),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Создать новый автомобиль с загрузкой фотографий.
+    Этот эндпоинт принимает данные через query параметры и файлы через multipart/form-data.
+    """
+    # Конвертируем строковые значения в enum
+    try:
+        auto_class_enum = CarAutoClass(auto_class)
+    except ValueError:
+        auto_class_enum = CarAutoClass.A
+    
+    try:
+        body_type_enum = CarBodyType(body_type)
+    except ValueError:
+        body_type_enum = CarBodyType.SEDAN
+    
+    transmission_type_enum = None
+    if transmission_type:
+        try:
+            transmission_type_enum = TransmissionType(transmission_type)
+        except ValueError:
+            pass
+    
+    car_data = CarCreateSchema(
+        name=name,
+        plate_number=plate_number,
+        gps_imei=gps_imei,
+        price_per_minute=price_per_minute,
+        price_per_hour=price_per_hour,
+        price_per_day=price_per_day,
+        open_fee=open_fee,
+        auto_class=auto_class_enum,
+        engine_volume=engine_volume,
+        year=year,
+        drive_type=drive_type,
+        transmission_type=transmission_type_enum,
+        body_type=body_type_enum,
+        vin=vin,
+        color=color,
+        description=description,
+        owner_id=owner_id
+    )
+    
+    return await create_car(car_data=car_data, photos=photos, current_user=current_user, db=db)

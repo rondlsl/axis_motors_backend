@@ -9,15 +9,15 @@ from app.utils.time_utils import get_local_time
 
 
 class GuarantorRequestStatus(enum.Enum):
-    PENDING = "pending"  # Ожидает ответа гаранта
-    ACCEPTED = "accepted"  # Принято гарантом
-    REJECTED = "rejected"  # Отклонено гарантом
-    EXPIRED = "expired"  # Истекло время ответа
+    PENDING = "pending"     # Ожидает ответа гаранта
+    ACCEPTED = "accepted"   # Принято гарантом
+    REJECTED = "rejected"   # Отклонено гарантом
+    EXPIRED = "expired"     # Истекло время ответа
 
 
 class VerificationStatus(enum.Enum):
-    NOT_VERIFIED = "not_verified"  # Не проверено администратором
-    VERIFIED = "verified"  # Проверено и одобрено администратором
+    NOT_VERIFIED = "not_verified"   # Не проверено администратором
+    VERIFIED = "verified"           # Проверено и одобрено администратором
     REJECTED_BY_ADMIN = "rejected"  # Отклонено администратором
 
 
@@ -26,16 +26,16 @@ class GuarantorRequest(Base):
     __tablename__ = "guarantor_requests"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    requestor_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)  # Кто запрашивает гаранта
-    guarantor_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)  # Кого просят быть гарантом (может быть NULL пока не зарегистрирован)
-    guarantor_phone = Column(String, nullable=True)  # Номер телефона гаранта (для незарегистрированных)
+    requestor_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)   # Кто запрашивает гаранта
+    guarantor_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)    # Кого просят быть гарантом (может быть NULL пока не зарегистрирован)
+    guarantor_phone = Column(String, nullable=True)                                     # Номер телефона гаранта (для незарегистрированных)
     status = Column(Enum(GuarantorRequestStatus), default=GuarantorRequestStatus.PENDING)
-    verification_status = Column(String, default="not_verified")  # Статус проверки администратором: not_verified, verified, rejected
-    reason = Column(Text, nullable=True)  # Причина отказа в регистрации (если применимо)
-    admin_notes = Column(Text, nullable=True)  # Заметки администратора при проверке
+    verification_status = Column(String, default="not_verified")                        # Статус проверки администратором: not_verified, verified, rejected
+    reason = Column(Text, nullable=True)                                                # Причина отказа в регистрации (если применимо)
+    admin_notes = Column(Text, nullable=True)                                           # Заметки администратора при проверке
     created_at = Column(DateTime, default=get_local_time)
     responded_at = Column(DateTime, nullable=True)
-    verified_at = Column(DateTime, nullable=True)  # Когда проверено администратором
+    verified_at = Column(DateTime, nullable=True)                                       # Когда проверено администратором
     
     # Relationships
     requestor = relationship("User", foreign_keys=[requestor_id], back_populates="sent_guarantor_requests")
@@ -52,9 +52,9 @@ class Guarantor(Base):
     __tablename__ = "guarantors"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    guarantor_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)  # Кто является гарантом
-    client_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)  # За кого отвечает
-    request_id = Column(UUID(as_uuid=True), ForeignKey("guarantor_requests.id"), nullable=False)  # Ссылка на заявку
+    guarantor_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)               # Кто является гарантом
+    client_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)                  # За кого отвечает
+    request_id = Column(UUID(as_uuid=True), ForeignKey("guarantor_requests.id"), nullable=False)    # Ссылка на заявку
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=get_local_time)
     deactivated_at = Column(DateTime, nullable=True)

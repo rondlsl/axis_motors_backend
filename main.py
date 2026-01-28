@@ -29,7 +29,8 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from sqlalchemy.orm import Session
 from app.auth.router import Auth_router
-from app.core.config import logger, TELEGRAM_BOT_TOKEN_2
+from app.core.config import TELEGRAM_BOT_TOKEN_2
+from app.core.logging_config import setup_logging, get_logger
 from app.dependencies.database.database import get_db
 from app.middleware.error_logger_middleware import ErrorLoggerMiddleware
 from app.middleware.request_logger_middleware import RequestLoggerMiddleware
@@ -37,14 +38,9 @@ from app.middleware.hang_detector_middleware import HangDetectorMiddleware, set_
 from app.utils.hang_watchdog import HangWatchdog, set_hang_watchdog
 import logging
 
-# Настройка логирования для вывода в консоль Docker
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler()
-    ]
-)
+# Инициализация централизованного логирования
+setup_logging()
+logger = get_logger(__name__)
 
 logging.getLogger("apscheduler").setLevel(logging.ERROR)
 logging.getLogger("apscheduler.executors.default").setLevel(logging.ERROR)
@@ -363,69 +359,6 @@ def init_app(app: FastAPI):
                 minute=0,
                 id="check_new_cars"
             )
-            
-            # Ежедневный backup базы данных в 02:00 по Алматы (GMT+5)
-            async def daily_database_backup():
-                """Ежедневный backup базы данных"""
-                try:
-                    import subprocess
-                    import os
-                    from pathlib import Path
-                    from datetime import datetime
-                    
-                    logger.info("Начало ежедневного backup базы данных")
-                    start_time = datetime.now()
-                    
-                    script_dir = Path(__file__).parent / "scripts"
-                    backup_script = script_dir / "backup_database.sh"
-                    
-                    if not backup_script.exists():
-                        logger.error(f"Скрипт backup не найден: {backup_script}")
-                        return
-                    
-                    # Делаем скрипт исполняемым
-                    os.chmod(backup_script, 0o755)
-                    
-                    # Запускаем backup
-                    result = subprocess.run(
-                        [str(backup_script), "full", "daily"],
-                        capture_output=True,
-                        text=True,
-                        cwd=str(script_dir),
-                        timeout=3600  # Таймаут 1 час
-                    )
-                    
-                    end_time = datetime.now()
-                    duration = (end_time - start_time).total_seconds()
-                    
-                    if result.returncode == 0:
-                        logger.info(f"✅ Ежедневный backup успешно создан за {duration:.1f} секунд")
-                        important_lines = [line for line in result.stdout.split('\n') 
-                                          if any(keyword in line.lower() for keyword in ['создан', 'размер', 'статистика', 'удалено'])]
-                        if important_lines:
-                            logger.info("Детали backup:\n" + "\n".join(important_lines))
-                    else:
-                        logger.error(f"❌ Ошибка при создании backup (код: {result.returncode})")
-                        logger.error(f"STDERR: {result.stderr}")
-                        if result.stdout:
-                            logger.error(f"STDOUT: {result.stdout}")
-                except subprocess.TimeoutExpired:
-                    logger.error("❌ Таймаут при создании backup (превышен лимит 1 час)")
-                except Exception as e:
-                    logger.error(f"❌ Ошибка в процессе ежедневного backup: {e}")
-                    import traceback
-                    logger.error(traceback.format_exc())
-            
-            scheduler.add_job(
-                daily_database_backup,
-                trigger="cron",
-                hour=2,
-                minute=0,
-                id="daily_database_backup",
-                max_instances=1,
-                coalesce=True
-            )
-            
             scheduler.start()
             logger.info("Планировщик задач запущен")
         except Exception as e:

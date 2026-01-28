@@ -1,3 +1,6 @@
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 from typing import Tuple, Dict, Any
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -122,7 +125,7 @@ def verify_user_upload_against_profile(user, upload_file) -> Tuple[bool, str]:
     # selfie_tmp_path = _write_upload_to_temp_file(upload_file)
     # 
     # try:
-    #     print(f"🔍 Проверка лица пользователя {getattr(user, 'id', 'unknown')}...")
+    #     logger.debug(f"🔍 Проверка лица пользователя {getattr(user, 'id', 'unknown')}...")
     #     
     #     # Проверка с ArcFace (строгий threshold для высокой точности)
     #     # Модель загрузится только при первом вызове verify_faces
@@ -133,18 +136,18 @@ def verify_user_upload_against_profile(user, upload_file) -> Tuple[bool, str]:
     #         enforce_detection=False
     #     )
     #     
-    #     print(f"✅ Проверка лица завершена: is_same={is_same}, distance={details.get('distance')}")
+    #     logger.debug(f"✅ Проверка лица завершена: is_same={is_same}, distance={details.get('distance')}")
     #     
     #     if is_same:
     #         return True, "ok"
     #     
     #     return False, "Ой! Похоже на фотографии не вы, но если это вы, то пожалуйста сделайте селфи как в профиле."
     # except Exception as e:
-    #     print(f"❌ Ошибка при проверке лица: {str(e)}")
+    #     logger.debug(f"❌ Ошибка при проверке лица: {str(e)}")
     #     # При ошибке AI проверки НЕ блокируем пользователя (чтобы не ломать UX)
     #     # Но логируем для мониторинга
     #     import traceback
-    #     print(f"Traceback: {traceback.format_exc()}")
+    #     logger.debug(f"Traceback: {traceback.format_exc()}")
     #     return True, "ok"  # Пропускаем при ошибке AI
     # finally:
     #     # Очищаем временный файл

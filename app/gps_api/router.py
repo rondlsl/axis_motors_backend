@@ -1,3 +1,6 @@
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy import or_, and_, func
 from sqlalchemy.orm import Session, joinedload
@@ -19,7 +22,6 @@ from app.models.car_model import Car, CarAutoClass, CarStatus
 from app.models.history_model import RentalHistory, RentalStatus
 from app.models.rental_actions_model import ActionType, ActionStatus, RentalAction
 from app.models.user_model import User, UserRole
-from app.rent.utils.user_utils import get_user_available_auto_classes
 from app.models.application_model import Application, ApplicationStatus
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.get_active_rental import get_active_rental_car, get_active_rental, get_active_rental_by_car_id
@@ -95,7 +97,7 @@ def validate_user_can_control_car(current_user: User, db: Session) -> None:
             GuarantorRequest.status == GuarantorRequestStatus.ACCEPTED
         ).first()
         
-        if not active_guarantor or not active_guarantor.guarantor_user or not active_guarantor.guarantor_user.auto_class:
+        if not active_guarantor or not active_guarantor.guarantor_user:
             raise HTTPException(
                 status_code=403, 
                 detail="Управление недоступно по финансовым причинам"
@@ -141,7 +143,7 @@ async def start_token_refresh():
                 try:
                     AUTH_TOKEN = await get_auth_token(BASE_URL, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
                 except Exception as e:
-                    print("Ошибка обновления токена: {e}")
+                    logger.debug("Ошибка обновления токена: {e}")
                 await asyncio.sleep(1800)
 
         asyncio.create_task(refresh_token())
@@ -189,51 +191,8 @@ async def get_vehicle_info(
                 if current_user.phone_number not in ["71011111111", "71234567890", "77057726400", "71234567876", "77766639210", special_user_phone]:
                     query = query.filter(Car.plate_number.notin_(["666AZV02"]))
 
-        if current_user.role == UserRole.USER and bool(current_user.documents_verified):
-            available_classes = get_user_available_auto_classes(current_user, db)
-            
-            if not available_classes:
-                allowed_classes: list[str] = []
-
-                if isinstance(current_user.auto_class, list):
-                    allowed_classes = [str(c).strip().upper() for c in current_user.auto_class if c]
-                elif isinstance(current_user.auto_class, str):
-                    raw = current_user.auto_class.strip()
-                    if raw.startswith("{") and raw.endswith("}"):
-                        raw = raw[1:-1]
-                    raw = raw.replace('""', '').replace('"', '').replace("'", "")
-                    allowed_classes = [part.strip().upper() for part in raw.split(",") if part.strip()]
-                
-                available_classes = allowed_classes
-            
-            allowed_enum: list[CarAutoClass] = []
-            for cls in available_classes:
-                try:
-                    allowed_enum.append(CarAutoClass(cls))
-                except Exception:
-                    pass
-
-            if len(allowed_enum) == 0:
-                cars = []
-            else:
-                cars = query.filter(Car.auto_class.in_(allowed_enum)).all()
-        elif current_user.role in [UserRole.REJECTFIRST, UserRole.REJECTFIRSTCERT, UserRole.REJECTFIRSTDOC]:
-            available_classes = get_user_available_auto_classes(current_user, db)
-            
-            if available_classes:
-                allowed_enum: list[CarAutoClass] = []
-                for cls in available_classes:
-                    try:
-                        allowed_enum.append(CarAutoClass(cls))
-                    except Exception:
-                        pass
-                
-                if allowed_enum:
-                    cars = query.filter(Car.auto_class.in_(allowed_enum)).all()
-            else:
-                cars = query.all()
-        else:
-            cars = query.all()
+        # Убрана фильтрация по классу автомобиля - все машины доступны всем пользователям
+        cars = query.all()
 
         # Специальная обработка для номера 77017347719: добавляем машины со статусом OCCUPIED как FREE
         occupied_cars_to_show = []
@@ -243,29 +202,7 @@ async def get_vehicle_info(
             if current_user.phone_number not in ["71011111111", "71234567890", "77057726400", "71234567876", "77766639210", special_user_phone]:
                 occupied_query = occupied_query.filter(Car.plate_number.notin_(["666AZV02"]))
             
-            # Применяем фильтры по классу авто, если есть
-            if current_user.role == UserRole.USER and bool(current_user.documents_verified):
-                available_classes = get_user_available_auto_classes(current_user, db)
-                if not available_classes:
-                    allowed_classes: list[str] = []
-                    if isinstance(current_user.auto_class, list):
-                        allowed_classes = [str(c).strip().upper() for c in current_user.auto_class if c]
-                    elif isinstance(current_user.auto_class, str):
-                        raw = current_user.auto_class.strip()
-                        if raw.startswith("{") and raw.endswith("}"):
-                            raw = raw[1:-1]
-                        raw = raw.replace('""', '').replace('"', '').replace("'", "")
-                        allowed_classes = [part.strip().upper() for part in raw.split(",") if part.strip()]
-                    
-                    allowed_enum: list[CarAutoClass] = []
-                    for cls in allowed_classes:
-                        try:
-                            allowed_enum.append(CarAutoClass(cls))
-                        except Exception:
-                            pass
-                    
-                    if allowed_enum:
-                        occupied_query = occupied_query.filter(Car.auto_class.in_(allowed_enum))
+            # Убрана фильтрация по классу автомобиля - все машины доступны всем пользователям
             
             occupied_cars_all = occupied_query.limit(30).all()
             occupied_cars_to_show = occupied_cars_all[:25]  # Берем до 25 машин
@@ -1536,22 +1473,22 @@ async def get_vehicle_telemetry(
                 )
         
         logger.info(f"Getting telemetry for car_id={car_id}, IMEI={vehicle_imei}")
-        print(f"[TELEMETRY] Getting telemetry for car_id={car_id}, IMEI={vehicle_imei}")
+        logger.info(f"[TELEMETRY] Getting telemetry for car_id={car_id}, IMEI={vehicle_imei}")
         
         glonassoft_data = await glonassoft_client.get_vehicle_data(vehicle_imei)
-        print(f"[TELEMETRY] Glonassoft response: {glonassoft_data}")
+        logger.info(f"[TELEMETRY] Glonassoft response: {glonassoft_data}")
         
         if not glonassoft_data:
             logger.error(f"No data received from Glonassoft for IMEI={vehicle_imei}")
-            print(f"[TELEMETRY ERROR] No data received from Glonassoft for IMEI={vehicle_imei}")
+            logger.info(f"[TELEMETRY ERROR] No data received from Glonassoft for IMEI={vehicle_imei}")
             raise HTTPException(
                 status_code=503,
                 detail="Не удалось получить данные от системы мониторинга"
             )
         
-        print(f"[TELEMETRY] Processing data for car: {car.name}")
+        logger.info(f"[TELEMETRY] Processing data for car: {car.name}")
         telemetry = process_glonassoft_data(glonassoft_data, car.name)
-        print(f"[TELEMETRY] Processed telemetry: {telemetry}")
+        logger.info(f"[TELEMETRY] Processed telemetry: {telemetry}")
         
         return telemetry
         
@@ -1559,9 +1496,9 @@ async def get_vehicle_telemetry(
         raise
     except Exception as e:
         logger.error(f"Error getting telemetry for car {car_id}: {e}")
-        print(f"[TELEMETRY ERROR] Error getting telemetry for car {car_id}: {e}")
+        logger.info(f"[TELEMETRY ERROR] Error getting telemetry for car {car_id}: {e}")
         import traceback
-        print(f"[TELEMETRY ERROR] Traceback: {traceback.format_exc()}")
+        logger.info(f"[TELEMETRY ERROR] Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=500,
             detail="Внутренняя ошибка сервера при получении телеметрии"

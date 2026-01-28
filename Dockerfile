@@ -1,6 +1,6 @@
 FROM python:3.12
 
-# Устанавливаем системные зависимости для deepface/opencv и dlib (без X-сервера)
+# Устанавливаем системные зависимости для deepface/opencv, dlib и Pillow (WebP)
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
@@ -10,6 +10,10 @@ RUN apt-get update && apt-get install -y \
     libgl1 \
     libglib2.0-0 \
     postgresql-client \
+    libjpeg-dev \
+    libpng-dev \
+    libwebp-dev \
+    zlib1g-dev \
  && rm -rf /var/lib/apt/lists/*
 
 # Отключаем буферизацию Python для корректного вывода логов в Docker

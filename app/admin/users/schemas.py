@@ -78,7 +78,14 @@ class UserCardSchema(SidMixin):
     current_rental_car: Optional[Dict[str, Any]] = None
     owner_earnings_current_month: Optional[float] = None
     owner_earnings_total: Optional[float] = None
-    rating: Optional[float] = None 
+    rating: Optional[float] = None
+    
+    # Счётчики
+    fines_count: int = 0  # Количество штрафов
+    owned_cars_count: int = 0  # Количество авто в собственности
+    trips_count: int = 0  # Общее количество поездок
+    transactions_count: int = 0  # Общее количество транзакций
+    guarantor_for_count: int = 0  # Кому он гарант 
 
 
 class UserListSchema(SidMixin):
@@ -155,6 +162,22 @@ class GuarantorInfoSchema(SidMixin):
     iin: Optional[str] = None
     passport_number: Optional[str] = None
     selfie_url: Optional[str] = None
+
+
+class UserFineTripInfoSchema(BaseModel):
+    """Информация о поездке для штрафа"""
+    car_name: str
+    car_plate_number: str
+
+
+class UserFineSchema(SidMixin):
+    """Схема штрафа пользователя"""
+    id: str
+    name: str  # description
+    amount: float
+    created_at: datetime
+    trip_id: Optional[str] = None
+    trip_info: Optional[UserFineTripInfoSchema] = None
 
 
 class TripSummarySchema(BaseModel):
@@ -248,10 +271,9 @@ class CompanyBonusSchema(BaseModel):
 
 class SanctionPenaltySchema(BaseModel):
     """Схема для назначения санкции клиенту"""
-    phone_number: str = Field(..., min_length=11, max_length=11, description="Номер телефона пользователя")
     amount: float = Field(..., gt=0, description="Сумма санкции (штраф)")
     description: str = Field(..., min_length=1, max_length=500, description="Описание санкции")
-    rental_id: str = Field(..., description="SID аренды, к которой относится санкция")
+    rental_id: Optional[str] = Field(None, description="SID аренды, к которой относится санкция (необязательно)")
 
 
 class DeleteRentalsRequestSchema(BaseModel):
@@ -490,3 +512,74 @@ class AdminDeleteUserResponse(BaseModel):
     user_id: str
     delete_type: str
     deleted_at: Optional[str] = None
+
+
+# === Schemas for messaging endpoints ===
+
+class SendUserSmsRequest(BaseModel):
+    """Схема запроса для отправки SMS пользователю"""
+    message: str = Field(..., description="Текст SMS сообщения", min_length=1, max_length=500)
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "message": "Здравствуйте! Это сообщение от AZV Motors."
+            }
+        }
+
+
+class SendUserSmsResponse(BaseModel):
+    """Схема ответа при отправке SMS"""
+    success: bool
+    message: str
+    user_id: str
+    phone_number: str
+    result: Optional[str] = None
+    error: Optional[str] = None
+
+
+class SendUserEmailRequest(BaseModel):
+    """Схема запроса для отправки email пользователю"""
+    subject: str = Field(..., description="Тема письма", min_length=1, max_length=200)
+    body: str = Field(..., description="Текст письма", min_length=1, max_length=5000)
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "subject": "Уведомление от AZV Motors",
+                "body": "Здравствуйте! Это сообщение от AZV Motors."
+            }
+        }
+
+
+class SendUserEmailResponse(BaseModel):
+    """Схема ответа при отправке email"""
+    success: bool
+    message: str
+    user_id: str
+    email: str
+    error: Optional[str] = None
+
+
+class SendUserNotificationRequest(BaseModel):
+    """Схема запроса для отправки push-уведомления пользователю"""
+    title: str = Field(..., description="Заголовок уведомления", min_length=1, max_length=200)
+    body: str = Field(..., description="Текст уведомления", min_length=1, max_length=1000)
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "title": "Уведомление от AZV Motors",
+                "body": "Здравствуйте! Это уведомление от AZV Motors."
+            }
+        }
+
+
+class SendUserNotificationResponse(BaseModel):
+    """Схема ответа при отправке push-уведомления"""
+    success: bool
+    message: str
+    user_id: str
+    notification_id: Optional[str] = None
+    push_sent: bool = False
+    error: Optional[str] = None

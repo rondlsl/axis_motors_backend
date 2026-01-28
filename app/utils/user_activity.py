@@ -1,6 +1,9 @@
 """
 Утилиты для отслеживания активности пользователей
 """
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 import uuid
 from sqlalchemy.orm import Session
 from app.models.user_model import User
@@ -17,4 +20,4 @@ def update_user_last_activity(db: Session, user_id: uuid.UUID) -> None:
             user.last_activity_at = get_local_time()
             db.commit()
     except Exception as e:
-        print(f"Error updating user last activity: {e}")
+        logger.error(f" updating user last activity: {e}")

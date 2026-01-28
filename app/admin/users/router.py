@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 import uuid
 from app.models.notification_model import Notification
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
 
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
 from app.utils.sid_converter import convert_uuid_response_to_sid
@@ -41,13 +43,25 @@ from app.admin.users.schemas import (
     AdminMechanicCompleteRequest, AdminAssignMechanicRequest,
     AssignMechanicResponse, UnassignMechanicResponse,
     AdminDeleteUserRequest, AdminDeleteUserResponse,
-    GroupedTransactionsPaginationSchema, GroupedTransactionItemSchema
+    GroupedTransactionsPaginationSchema, GroupedTransactionItemSchema,
+    UserFineSchema, UserFineTripInfoSchema,
+    SendUserSmsRequest, SendUserSmsResponse,
+    SendUserEmailRequest, SendUserEmailResponse,
+    SendUserNotificationRequest, SendUserNotificationResponse
 )
 from math import ceil, floor
 from app.owner.router import calculate_owner_earnings
 from app.admin.cars.utils import sort_car_photos
 from app.utils.telegram_logger import log_error_to_telegram
-from app.push.utils import send_push_to_user_by_id, send_localized_notification_to_user, send_localized_notification_to_user_async, user_has_push_tokens, send_localized_notification_to_all_mechanics
+from app.push.utils import (
+    send_push_to_user_by_id,
+    send_localized_notification_to_user,
+    send_localized_notification_to_user_async,
+    user_has_push_tokens,
+    send_localized_notification_to_all_mechanics,
+    get_user_push_tokens,
+    send_push_notification_async,
+)
 from app.websocket.notifications import notify_user_status_update
 from app.utils.time_utils import get_local_time, parse_datetime_to_local
 import asyncio
@@ -55,7 +69,10 @@ import httpx
 from app.wallet.utils import record_wallet_transaction
 from app.rent.utils.calculate_price import get_open_price, calc_required_balance, calculate_total_price
 from app.rent.utils.balance_utils import verify_and_fix_rental_balance
-from app.core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2
+from app.core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2, SMS_TOKEN
+from app.guarantor.sms_utils import send_sms_mobizon
+import smtplib
+from email.mime.text import MIMEText
 from app.models.application_model import Application
 from app.models.history_model import RentalHistory
 from app.models.wallet_transaction_model import WalletTransaction
@@ -977,6 +994,26 @@ async def get_user_card(
                 raw = raw[1:-1]
             auto_class_list = [part.strip() for part in raw.split(",") if part.strip()]
     
+    # Счётчики
+    fines_count = db.query(WalletTransaction).filter(
+        and_(
+            WalletTransaction.user_id == user.id,
+            WalletTransaction.transaction_type == WalletTransactionType.SANCTION_PENALTY
+        )
+    ).count()
+    
+    owned_cars_count = db.query(Car).filter(Car.owner_id == user.id).count()
+    
+    trips_count = db.query(RentalHistory).filter(RentalHistory.user_id == user.id).count()
+    
+    transactions_count = db.query(WalletTransaction).filter(
+        WalletTransaction.user_id == user.id
+    ).count()
+    
+    guarantor_for_count = db.query(Guarantor).filter(
+        Guarantor.guarantor_id == user.id
+    ).count()
+    
     user_data = {
         "id": uuid_to_sid(user.id),
         "user_uuid": str(user.id),
@@ -1016,7 +1053,12 @@ async def get_user_card(
         "current_rental_car": current_car,
         "owner_earnings_current_month": owner_earnings["current_month"] if owner_earnings else None,
         "owner_earnings_total": owner_earnings["total"] if owner_earnings else None,
-        "rating": float(user.rating) if user.rating else None
+        "rating": float(user.rating) if user.rating else None,
+        "fines_count": fines_count,
+        "owned_cars_count": owned_cars_count,
+        "trips_count": trips_count,
+        "transactions_count": transactions_count,
+        "guarantor_for_count": guarantor_for_count
     }
     
     converted_data = convert_uuid_response_to_sid(user_data, ["id"])
@@ -1758,7 +1800,7 @@ async def update_trip_details(
                     file_url = await save_file(file, rental.id, f"uploads/rents/{rental.id}/{save_folder}")
                     final_urls.append(file_url)
                 except Exception as e:
-                    print(f"Error saving file {file.filename}: {e}")
+                    logger.error(f"Error saving file {file.filename}: {e}")
                     pass
                 
         return final_urls
@@ -2390,7 +2432,7 @@ async def admin_start_rental(
                                 json={"chat_id": chat_id, "text": text}
                             )
                     except Exception as e:
-                        print(f"Ошибка отправки Telegram уведомления в {chat_id}: {e}")
+                        logger.error(f"Ошибка отправки Telegram уведомления в {chat_id}: {e}")
                 
                 # Список чатов для уведомлений
                 chat_ids = [965048905, 5941825713, 860991388, 1594112444, 808277096, 7656716395, 964255811, 8522837235, 797693964]
@@ -2404,7 +2446,7 @@ async def admin_start_rental(
                         asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN_2))
                         
             except Exception as e:
-                print(f"Не удалось отправить Telegram уведомление о начале аренды: {e}")
+                logger.error(f"Не удалось отправить Telegram уведомление о начале аренды: {e}")
             
             asyncio.create_task(notify_user_status_update(str(target_user.id)))
             
@@ -2620,7 +2662,7 @@ async def admin_start_rental(
                         json={"chat_id": chat_id, "text": text}
                     )
             except Exception as e:
-                print(f"Ошибка отправки Telegram уведомления в {chat_id}: {e}")
+                logger.error(f"Ошибка отправки Telegram уведомления в {chat_id}: {e}")
         
         # Список чатов для уведомлений
         chat_ids = [965048905, 5941825713, 860991388, 1594112444, 808277096, 7656716395, 964255811, 8522837235, 797693964]
@@ -2634,7 +2676,7 @@ async def admin_start_rental(
                 asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN_2))
                 
     except Exception as e:
-        print(f"Не удалось отправить Telegram уведомление о начале аренды: {e}")
+        logger.error(f"Не удалось отправить Telegram уведомление о начале аренды: {e}")
     
     asyncio.create_task(notify_user_status_update(str(target_user.id)))
     
@@ -2862,7 +2904,7 @@ async def admin_end_rental(
             plate_number=car.plate_number
         )
     except Exception as e:
-        print(f"Error sending notification to mechanics: {e}")
+        logger.error(f"Error sending notification to mechanics: {e}")
     
     # Обновляем данные из БД после верификации
     db.refresh(active_rental)
@@ -3881,6 +3923,114 @@ async def get_his_guarantors(
     return result
 
 
+@users_router.get("/{user_id}/fines", response_model=List[UserFineSchema])
+async def get_user_fines(
+    user_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Получение списка штрафов (санкций) пользователя"""
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    # Получаем все штрафы (транзакции типа SANCTION_PENALTY)
+    fines = db.query(WalletTransaction).filter(
+        and_(
+            WalletTransaction.user_id == user_uuid,
+            WalletTransaction.transaction_type == WalletTransactionType.SANCTION_PENALTY
+        )
+    ).order_by(desc(WalletTransaction.created_at)).all()
+    
+    result = []
+    for fine in fines:
+        # Получаем информацию о поездке, если есть связь
+        trip_info = None
+        trip_id = None
+        
+        if fine.related_rental_id:
+            trip_id = uuid_to_sid(fine.related_rental_id)
+            rental = db.query(RentalHistory).filter(RentalHistory.id == fine.related_rental_id).first()
+            if rental:
+                car = db.query(Car).filter(Car.id == rental.car_id).first()
+                if car:
+                    trip_info = UserFineTripInfoSchema(
+                        car_name=car.name or "Неизвестно",
+                        car_plate_number=car.plate_number or "Неизвестно"
+                    )
+        
+        result.append(UserFineSchema(
+            id=uuid_to_sid(fine.id),
+            name=fine.description or "Штраф",
+            amount=abs(float(fine.amount)),  # Возвращаем положительное значение
+            created_at=fine.created_at,
+            trip_id=trip_id,
+            trip_info=trip_info
+        ))
+    
+    return result
+
+
+@users_router.get("/{user_id}/owned-cars", response_model=List[OwnerCarListItemSchema])
+async def get_user_owned_cars(
+    user_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Получение списка автомобилей, где пользователь является владельцем (owner_id)"""
+    print(f"[owned-cars] GET user_id={user_id}")
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    user_uuid = safe_sid_to_uuid(user_id)
+    print(f"[owned-cars] user_uuid={user_uuid}")
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        print(f"[owned-cars] user not found user_id={user_id}")
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    # Получаем автомобили, где пользователь является владельцем
+    cars = db.query(Car).filter(Car.owner_id == user_uuid).all()
+    print(f"[owned-cars] cars_count={len(cars)} user_id={user_id}")
+    
+    result = []
+    now = datetime.now()
+    current_month_start = datetime(now.year, now.month, 1)
+    
+    for car in cars:
+        print(f"[owned-cars] car id={uuid_to_sid(car.id)} name={car.name} plate={car.plate_number}")
+        # Рассчитываем доступные минуты для текущего месяца
+        available_minutes = _calculate_month_availability_minutes(
+            car_id=car.id,
+            year=now.year,
+            month=now.month,
+            owner_id=user_uuid,
+            db=db
+        )
+        
+        # Рассчитываем заработок
+        earnings_data = _calculate_car_earnings(car.id, user_uuid, db, current_month_start)
+        
+        result.append(OwnerCarListItemSchema(
+            id=uuid_to_sid(car.id),
+            name=car.name,
+            plate_number=car.plate_number,
+            available_minutes=available_minutes,
+            earnings_current_month=earnings_data["current_month"],
+            earnings_total=earnings_data["total"],
+            photos=sort_car_photos(car.photos or []),
+            vin=car.vin,
+            color=car.color
+        ))
+    
+    print(f"[owned-cars] OK user_id={user_id} result_count={len(result)}")
+    return result
+
+
 @users_router.get("/{user_id}/trips/summary", response_model=TripSummarySchema)
 async def get_user_trips_summary(
     user_id: str,
@@ -4303,7 +4453,7 @@ async def edit_user_full(
         user.rating = rating
         changes["rating"] = rating
     
-    ALLOWED_FILE_TYPES = ["image/jpeg", "image/png", "application/pdf"]
+    ALLOWED_FILE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/jpg", "application/pdf"]
     
     async def save_if_provided(file: Optional[UploadFile], field_name: str) -> Optional[str]:
         if file is None or file.filename is None or file.filename == "":
@@ -4567,40 +4717,43 @@ async def add_company_bonus(
         )
 
 
-@users_router.post("/sanctions", summary="Назначить санкцию клиенту")
-async def add_sanction_penalty(
+@users_router.post("/{user_id}/fines", summary="Назначить штраф пользователю")
+async def add_user_fine(
+    user_id: str,
     penalty_data: SanctionPenaltySchema,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    Назначает санкцию (штраф) клиенту:
-    - Находит пользователя по номеру телефона
-    - Вычитает сумму санкции из баланса
-    - Создаёт транзакцию SANCTION_PENALTY, привязанную к аренде
+    Назначает штраф (санкцию) пользователю:
+    - Находит пользователя по user_id из path
+    - Вычитает сумму штрафа из баланса
+    - Создаёт транзакцию SANCTION_PENALTY
+    - Опционально привязывает к аренде (rental_id)
     - Отправляет push-уведомление пользователю
     """
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
-    if not penalty_data.phone_number.isdigit():
-        raise HTTPException(status_code=400, detail="Номер телефона должен содержать только цифры")
-    
     try:
-        user = db.query(User).filter(User.phone_number == penalty_data.phone_number).first()
+        user_uuid = safe_sid_to_uuid(user_id)
+        user = db.query(User).filter(User.id == user_uuid).first()
         if not user:
-            raise HTTPException(status_code=404, detail="Пользователь с таким номером телефона не найден")
+            raise HTTPException(status_code=404, detail="Пользователь не найден")
         
-        try:
-            rental_uuid = safe_sid_to_uuid(penalty_data.rental_id)
-        except Exception:
-            raise HTTPException(status_code=400, detail="Некорректный rental_id")
-        
-        rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
-        if not rental:
-            raise HTTPException(status_code=404, detail="Аренда не найдена")
-        if rental.user_id != user.id:
-            raise HTTPException(status_code=400, detail="Указанная аренда не принадлежит пользователю")
+        # Проверка rental_id только если он указан
+        rental_uuid = None
+        if penalty_data.rental_id:
+            try:
+                rental_uuid = safe_sid_to_uuid(penalty_data.rental_id)
+            except Exception:
+                raise HTTPException(status_code=400, detail="Некорректный rental_id")
+            
+            rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+            if not rental:
+                raise HTTPException(status_code=404, detail="Аренда не найдена")
+            if rental.user_id != user.id:
+                raise HTTPException(status_code=400, detail="Указанная аренда не принадлежит пользователю")
         
         penalty_amount = Decimal(str(penalty_data.amount))
         balance_before = float(user.wallet_balance or 0)
@@ -4616,7 +4769,7 @@ async def add_sanction_penalty(
             description=penalty_data.description,
             balance_before=balance_before,
             balance_after=balance_after,
-            related_rental_id=rental.id,
+            related_rental_id=rental_uuid,  # None если не указан
             created_at=get_local_time()
         )
         db.add(transaction)
@@ -4641,13 +4794,13 @@ async def add_sanction_penalty(
                 additional_context={
                     "action": "send_sanction_notification",
                     "penalty_amount": penalty_data.amount,
-                    "phone_number": penalty_data.phone_number,
+                    "user_id": user_id,
                     "admin_id": str(current_user.id)
                 }
             )
         
         return {
-            "message": "Санкция успешно начислена",
+            "message": "Штраф успешно начислен",
             "user_id": uuid_to_sid(user.id),
             "phone_number": user.phone_number,
             "amount": penalty_data.amount,
@@ -4663,8 +4816,8 @@ async def add_sanction_penalty(
             error=e,
             user=current_user,
             additional_context={
-                "action": "add_sanction_penalty",
-                "phone_number": penalty_data.phone_number,
+                "action": "add_user_fine",
+                "user_id": user_id,
                 "penalty_amount": penalty_data.amount,
                 "description": penalty_data.description,
                 "rental_id": penalty_data.rental_id
@@ -4672,7 +4825,7 @@ async def add_sanction_penalty(
         )
         raise HTTPException(
             status_code=500,
-            detail="Ошибка при назначении санкции. Администраторы уведомлены."
+            detail="Ошибка при назначении штрафа. Администраторы уведомлены."
         )
 
 
@@ -4864,7 +5017,7 @@ async def admin_upload_photos_before(
             if car.owner_id:
                 await notify_user_status_update(str(car.owner_id))
         except Exception as e:
-            print(f"Error sending WebSocket notifications: {e}")
+            logger.error(f"Error sending WebSocket notifications: {e}")
         
         return {
             "message": "Фотографии до аренды (selfie+car) загружены",
@@ -4937,7 +5090,7 @@ async def admin_upload_photos_before_interior(
             if car.owner_id:
                 await notify_user_status_update(str(car.owner_id))
         except Exception as e:
-            print(f"Error sending WebSocket notifications: {e}")
+            logger.error(f"Error sending WebSocket notifications: {e}")
         
         return {
             "message": "Фотографии салона до аренды загружены",
@@ -5016,7 +5169,7 @@ async def admin_upload_photos_after(
             if car.owner_id:
                 await notify_user_status_update(str(car.owner_id))
         except Exception as e:
-            print(f"Error sending WebSocket notifications: {e}")
+            logger.error(f"Error sending WebSocket notifications: {e}")
         
         return {
             "message": "Фотографии после аренды (selfie+interior) загружены",
@@ -5087,7 +5240,7 @@ async def admin_upload_photos_after_car(
             if car.owner_id:
                 await notify_user_status_update(str(car.owner_id))
         except Exception as e:
-            print(f"Error sending WebSocket notifications: {e}")
+            logger.error(f"Error sending WebSocket notifications: {e}")
         
         return {
             "message": "Фотографии кузова после аренды загружены",
@@ -5121,62 +5274,80 @@ async def admin_submit_rental_review(
     - rating: оценка от 1 до 5
     - comment: текстовый комментарий (опционально)
     """
+    logger.info(f"[REVIEW] Начало обработки. rental_id={request.rental_id}, rating={request.rating}")
+    
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Только администратор или техподдержка может добавлять оценки от имени клиентов")
     
     try:
         rental_uuid = safe_sid_to_uuid(request.rental_id)
+        logger.info(f"[REVIEW] rental_uuid={rental_uuid}")
     except ValueError as e:
+        logger.info(f"[REVIEW] Ошибка парсинга rental_id: {e}")
         raise HTTPException(status_code=400, detail=f"Неверный формат rental_id: {str(e)}")
     
-    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
-    if not rental:
-        raise HTTPException(status_code=404, detail="Аренда не найдена")
-    
-    # 1. Сохраняем отзыв
-    existing_review = db.query(RentalReview).filter(RentalReview.rental_id == rental.id).first()
-    is_update = False
-    
-    if existing_review:
-        existing_review.rating = request.rating
-        existing_review.comment = request.comment
-        is_update = True
-    else:
-        review = RentalReview(
-            rental_id=rental.id,
-            rating=request.rating,
-            comment=request.comment
-        )
-        db.add(review)
-    
-    # 2. Завершаем аренду, если она активна
-    rental_completed = False
-    total_charged = None
-    
-    if rental.rental_status == RentalStatus.IN_USE:
-        # Получаем машину и пользователя
-        car = db.query(Car).filter(Car.id == rental.car_id).first()
-        user = db.query(User).filter(User.id == rental.user_id).first()
+    try:
+        rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+        if not rental:
+            logger.info(f"[REVIEW] Аренда не найдена: {rental_uuid}")
+            raise HTTPException(status_code=404, detail="Аренда не найдена")
         
-        if car and user:
-            now = get_local_time()
-            start_time = rental.start_time or rental.reservation_time
+        logger.info(f"[REVIEW] Аренда найдена: status={rental.rental_status}, user_id={rental.user_id}, car_id={rental.car_id}")
+        
+        # 1. Сохраняем отзыв
+        existing_review = db.query(RentalReview).filter(RentalReview.rental_id == rental.id).first()
+        is_update = False
+        
+        if existing_review:
+            existing_review.rating = request.rating
+            existing_review.comment = request.comment
+            is_update = True
+            logger.info(f"[REVIEW] Обновляем существующий отзыв")
+        else:
+            review = RentalReview(
+                rental_id=rental.id,
+                rating=request.rating,
+                comment=request.comment
+            )
+            db.add(review)
+            logger.info(f"[REVIEW] Создаём новый отзыв")
+    
+        # 2. Завершаем аренду, если она активна
+        rental_completed = False
+        total_charged = None
+        
+        logger.info(f"[REVIEW] rental_status={rental.rental_status}, IN_USE={RentalStatus.IN_USE}")
+        
+        if rental.rental_status == RentalStatus.IN_USE:
+            # Получаем машину и пользователя
+            car = db.query(Car).filter(Car.id == rental.car_id).first()
+            user = db.query(User).filter(User.id == rental.user_id).first()
             
-            # Рассчитываем фактическую длительность в минутах
-            if start_time:
-                total_seconds = (now - start_time).total_seconds()
-                actual_minutes = total_seconds / 60
-                rounded_minutes = ceil(actual_minutes)
-            else:
-                rounded_minutes = 0
-                actual_minutes = 0
+            logger.info(f"[REVIEW] car={car.id if car else None}, user={user.id if user else None}, user_balance={user.wallet_balance if user else None}")
             
-            # Сохраняем оригинальное значение duration (часы/дни) до перезаписи
-            original_duration = rental.duration
-            
-            price_per_minute = car.price_per_minute or 0
-            price_per_hour = car.price_per_hour or 0
-            price_per_day = car.price_per_day or 0
+            if car and user:
+                now = get_local_time()
+                start_time = rental.start_time or rental.reservation_time
+                
+                # Рассчитываем фактическую длительность в минутах
+                if start_time:
+                    total_seconds = (now - start_time).total_seconds()
+                    actual_minutes = total_seconds / 60
+                    rounded_minutes = ceil(actual_minutes)
+                else:
+                    rounded_minutes = 0
+                    actual_minutes = 0
+                
+                logger.info(f"[REVIEW] actual_minutes={actual_minutes}, rounded_minutes={rounded_minutes}")
+                
+                # Сохраняем оригинальное значение duration (часы/дни) до перезаписи
+                original_duration = rental.duration
+                
+                price_per_minute = car.price_per_minute or 0
+                price_per_hour = car.price_per_hour or 0
+                price_per_day = car.price_per_day or 0
+                
+                logger.info(f"[REVIEW] rental_type={rental.rental_type}, original_duration={original_duration}, prices: min={price_per_minute}, hour={price_per_hour}, day={price_per_day}")
             
             # Базовая плата по типу аренды
             if rental.rental_type == RentalType.MINUTES:
@@ -5223,9 +5394,10 @@ async def admin_submit_rental_review(
                     difference_waiting = waiting_fee - already_charged_waiting
                     
                     if abs(difference_waiting) > 0.01:
-                        if difference_waiting > 0 and user.wallet_balance >= difference_waiting:
+                        # Разрешаем списание даже при отрицательном балансе
+                        if difference_waiting > 0:
                             balance_before_waiting = float(user.wallet_balance)
-                            user.wallet_balance -= difference_waiting
+                            user.wallet_balance -= Decimal(str(difference_waiting))
                             existing_waiting_tx.amount = -waiting_fee
                             existing_waiting_tx.description = f"Платное ожидание {int(extra_minutes)} мин"
                             existing_waiting_tx.balance_before = balance_before_waiting
@@ -5233,26 +5405,26 @@ async def admin_submit_rental_review(
                         elif difference_waiting < 0:
                             refund = abs(difference_waiting)
                             balance_before_waiting = float(user.wallet_balance)
-                            user.wallet_balance += refund
+                            user.wallet_balance += Decimal(str(refund))
                             existing_waiting_tx.amount = -waiting_fee
                             existing_waiting_tx.description = f"Платное ожидание {int(extra_minutes)} мин (перерасчёт)"
                             existing_waiting_tx.balance_before = balance_before_waiting
                             existing_waiting_tx.balance_after = float(user.wallet_balance)
                 else:
-                    if user.wallet_balance >= waiting_fee:
-                        balance_before_waiting = float(user.wallet_balance)
-                        user.wallet_balance -= waiting_fee
-                        waiting_tx = WalletTransaction(
-                            user_id=user.id,
-                            amount=-waiting_fee,
-                            transaction_type=WalletTransactionType.RENT_WAITING_FEE,
-                            description=f"Платное ожидание {int(extra_minutes)} мин",
-                            balance_before=balance_before_waiting,
-                            balance_after=float(user.wallet_balance),
-                            related_rental_id=rental.id,
-                            created_at=get_local_time()
-                        )
-                        db.add(waiting_tx)
+                    # Разрешаем списание даже при отрицательном балансе
+                    balance_before_waiting = float(user.wallet_balance)
+                    user.wallet_balance -= Decimal(str(waiting_fee))
+                    waiting_tx = WalletTransaction(
+                        user_id=user.id,
+                        amount=-waiting_fee,
+                        transaction_type=WalletTransactionType.RENT_WAITING_FEE,
+                        description=f"Платное ожидание {int(extra_minutes)} мин",
+                        balance_before=balance_before_waiting,
+                        balance_after=float(user.wallet_balance),
+                        related_rental_id=rental.id,
+                        created_at=get_local_time()
+                    )
+                    db.add(waiting_tx)
             
             rental.waiting_fee = waiting_fee
             
@@ -5283,20 +5455,20 @@ async def admin_submit_rental_review(
                                 price_per_liter = FUEL_PRICE_PER_LITER
                             fuel_fee = int(fuel_consumed * price_per_liter)
                             
-                            if user.wallet_balance >= fuel_fee:
-                                balance_before_fuel = float(user.wallet_balance)
-                                user.wallet_balance -= fuel_fee
-                                fuel_tx = WalletTransaction(
-                                    user_id=user.id,
-                                    amount=-fuel_fee,
-                                    transaction_type=WalletTransactionType.RENT_FUEL_FEE,
-                                    description=f"Оплата топлива: {int(fuel_consumed)} л × {price_per_liter}₸ = {fuel_fee:,}₸" if car.body_type != CarBodyType.ELECTRIC else f"Оплата заряда: {int(fuel_consumed)}% × {price_per_liter}₸ = {fuel_fee:,}₸",
-                                    balance_before=balance_before_fuel,
-                                    balance_after=float(user.wallet_balance),
-                                    related_rental_id=rental.id,
-                                    created_at=get_local_time()
-                                )
-                                db.add(fuel_tx)
+                            # Разрешаем списание даже при отрицательном балансе
+                            balance_before_fuel = float(user.wallet_balance)
+                            user.wallet_balance -= Decimal(str(fuel_fee))
+                            fuel_tx = WalletTransaction(
+                                user_id=user.id,
+                                amount=-fuel_fee,
+                                transaction_type=WalletTransactionType.RENT_FUEL_FEE,
+                                description=f"Оплата топлива: {int(fuel_consumed)} л × {price_per_liter}₸ = {fuel_fee:,}₸" if car.body_type != CarBodyType.ELECTRIC else f"Оплата заряда: {int(fuel_consumed)}% × {price_per_liter}₸ = {fuel_fee:,}₸",
+                                balance_before=balance_before_fuel,
+                                balance_after=float(user.wallet_balance),
+                                related_rental_id=rental.id,
+                                created_at=get_local_time()
+                            )
+                            db.add(fuel_tx)
             
             # Проверка base_price для часового/суточного тарифа
             if rental.rental_type in (RentalType.HOURS, RentalType.DAYS) and not (car.owner_id == user.id):
@@ -5319,29 +5491,28 @@ async def admin_submit_rental_review(
                 if abs(actual_base_charged - expected_base_price) > 0.01:
                     difference_base = expected_base_price - actual_base_charged
                     
+                    # Разрешаем списание даже при отрицательном балансе
                     if base_charge_tx:
                         balance_before_base = float(user.wallet_balance or 0) + float(abs(base_charge_tx.amount) if base_charge_tx.amount else 0)
-                        if balance_before_base >= expected_base_price:
-                            user.wallet_balance = balance_before_base - expected_base_price
-                            base_charge_tx.amount = -expected_base_price
-                            base_charge_tx.description = f"Оплата аренды: {original_duration} {'час(ов)' if rental.rental_type == RentalType.HOURS else 'день(дней)'} (перерасчёт)"
-                            base_charge_tx.balance_before = balance_before_base
-                            base_charge_tx.balance_after = float(user.wallet_balance or 0)
+                        user.wallet_balance = Decimal(str(balance_before_base - expected_base_price))
+                        base_charge_tx.amount = -expected_base_price
+                        base_charge_tx.description = f"Оплата аренды: {original_duration} {'час(ов)' if rental.rental_type == RentalType.HOURS else 'день(дней)'} (перерасчёт)"
+                        base_charge_tx.balance_before = balance_before_base
+                        base_charge_tx.balance_after = float(user.wallet_balance or 0)
                     else:
                         balance_before_base = float(user.wallet_balance or 0)
-                        if balance_before_base >= expected_base_price:
-                            user.wallet_balance -= expected_base_price
-                            base_charge_tx = WalletTransaction(
-                                user_id=user.id,
-                                amount=-expected_base_price,
-                                transaction_type=WalletTransactionType.RENT_BASE_CHARGE,
-                                description=f"Оплата аренды: {original_duration} {'час(ов)' if rental.rental_type == RentalType.HOURS else 'день(дней)'}",
-                                balance_before=balance_before_base,
-                                balance_after=float(user.wallet_balance or 0),
-                                related_rental_id=rental.id,
-                                created_at=get_local_time()
-                            )
-                            db.add(base_charge_tx)
+                        user.wallet_balance -= Decimal(str(expected_base_price))
+                        base_charge_tx = WalletTransaction(
+                            user_id=user.id,
+                            amount=-expected_base_price,
+                            transaction_type=WalletTransactionType.RENT_BASE_CHARGE,
+                            description=f"Оплата аренды: {original_duration} {'час(ов)' if rental.rental_type == RentalType.HOURS else 'день(дней)'}",
+                            balance_before=balance_before_base,
+                            balance_after=float(user.wallet_balance or 0),
+                            related_rental_id=rental.id,
+                            created_at=get_local_time()
+                        )
+                        db.add(base_charge_tx)
                     
                     rental.base_price = expected_base_price
             
@@ -5366,29 +5537,28 @@ async def admin_submit_rental_review(
                     if abs(actual_overtime_charged - expected_overtime_cost) > 0.01:
                         difference_overtime = expected_overtime_cost - actual_overtime_charged
                         
+                        # Разрешаем списание даже при отрицательном балансе
                         if overtime_tx:
                             balance_before_overtime = float(user.wallet_balance or 0) + float(abs(overtime_tx.amount) if overtime_tx.amount else 0)
-                            if balance_before_overtime >= expected_overtime_cost:
-                                user.wallet_balance = balance_before_overtime - expected_overtime_cost
-                                overtime_tx.amount = -expected_overtime_cost
-                                overtime_tx.description = f"Сверхтариф {expected_overtime_minutes} мин (перерасчёт)"
-                                overtime_tx.balance_before = balance_before_overtime
-                                overtime_tx.balance_after = float(user.wallet_balance or 0)
+                            user.wallet_balance = Decimal(str(balance_before_overtime - expected_overtime_cost))
+                            overtime_tx.amount = -expected_overtime_cost
+                            overtime_tx.description = f"Сверхтариф {expected_overtime_minutes} мин (перерасчёт)"
+                            overtime_tx.balance_before = balance_before_overtime
+                            overtime_tx.balance_after = float(user.wallet_balance or 0)
                         else:
                             balance_before_overtime = float(user.wallet_balance or 0)
-                            if balance_before_overtime >= expected_overtime_cost:
-                                user.wallet_balance -= expected_overtime_cost
-                                overtime_tx = WalletTransaction(
-                                    user_id=user.id,
-                                    amount=-expected_overtime_cost,
-                                    transaction_type=WalletTransactionType.RENT_OVERTIME_FEE,
-                                    description=f"Сверхтариф {expected_overtime_minutes} мин",
-                                    balance_before=balance_before_overtime,
-                                    balance_after=float(user.wallet_balance or 0),
-                                    related_rental_id=rental.id,
-                                    created_at=get_local_time()
-                                )
-                                db.add(overtime_tx)
+                            user.wallet_balance -= Decimal(str(expected_overtime_cost))
+                            overtime_tx = WalletTransaction(
+                                user_id=user.id,
+                                amount=-expected_overtime_cost,
+                                transaction_type=WalletTransactionType.RENT_OVERTIME_FEE,
+                                description=f"Сверхтариф {expected_overtime_minutes} мин",
+                                balance_before=balance_before_overtime,
+                                balance_after=float(user.wallet_balance or 0),
+                                related_rental_id=rental.id,
+                                created_at=get_local_time()
+                            )
+                            db.add(overtime_tx)
                         
                         rental.overtime_fee = expected_overtime_cost
             
@@ -5442,12 +5612,17 @@ async def admin_submit_rental_review(
                     if rental.already_payed is None:
                         rental.already_payed = 0
             
+            logger.info(f"[REVIEW] Расчёты завершены: base_price={rental.base_price}, open_fee={rental.open_fee}, waiting_fee={rental.waiting_fee}, overtime_fee={rental.overtime_fee}, total_price={rental.total_price}, already_payed={rental.already_payed}")
+            logger.info(f"[REVIEW] Баланс пользователя после списаний: {user.wallet_balance}")
+            
             # Машина переходит в статус PENDING (требуется проверка механиком)
             car.status = CarStatus.PENDING
             car.current_renter_id = None
             
             rental_completed = True
             total_charged = rental.total_price  # Общая сумма аренды
+            
+            logger.info(f"[REVIEW] Аренда завершена, машина переведена в PENDING")
             
             # Обновляем last_activity пользователя
             user.last_activity_at = now
@@ -5459,7 +5634,7 @@ async def admin_submit_rental_review(
                 if car.owner_id:
                     await notify_user_status_update(str(car.owner_id))
             except Exception as e:
-                print(f"Error sending WebSocket notifications: {e}")
+                logger.error(f"Error sending WebSocket notifications: {e}")
             
             # Отправляем уведомление всем механикам о новой машине для проверки
             try:
@@ -5471,9 +5646,11 @@ async def admin_submit_rental_review(
                     plate_number=car.plate_number
                 )
             except Exception as e:
-                print(f"Error sending notification to mechanics: {e}")
+                logger.error(f"Error sending notification to mechanics: {e}")
     
+        logger.info(f"[REVIEW] Готовы к commit. rental_completed={rental_completed}, total_charged={total_charged}")
         db.commit()
+        logger.info(f"[REVIEW] Commit успешен")
         
         return {
         "message": "Отзыв добавлен и аренда завершена" if rental_completed else ("Оценка обновлена" if is_update else "Оценка добавлена"),
@@ -5484,6 +5661,15 @@ async def admin_submit_rental_review(
         "rental_completed": rental_completed,
         "total_charged": total_charged
         }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        import traceback
+        logger.info(f"[REVIEW] ОШИБКА: {e}")
+        logger.info(f"[REVIEW] Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Ошибка при завершении аренды: {str(e)}")
 
 
 
@@ -5549,7 +5735,7 @@ async def admin_cancel_reservation(
         if car.owner_id:
             await notify_user_status_update(str(car.owner_id))
     except Exception as e:
-        print(f"Error sending WebSocket notifications: {e}")
+        logger.error(f"Error sending WebSocket notifications: {e}")
     
     return AdminCancelReservationResponse(
         message="Бронь отменена",
@@ -5656,7 +5842,7 @@ async def admin_extend_rental(
         if car.owner_id:
             await notify_user_status_update(str(car.owner_id))
     except Exception as e:
-        print(f"Error sending WebSocket notifications: {e}")
+        logger.error(f"Error sending WebSocket notifications: {e}")
     
     try:
         if user_has_push_tokens(db, user.id):
@@ -5679,7 +5865,7 @@ async def admin_extend_rental(
                 cost=int(price_to_charge)
             )
     except Exception as e:
-        print(f"Error sending push notification: {e}")
+        logger.error(f"Error sending push notification: {e}")
     
     return AdminExtendRentalResponse(
         message=f"Аренда продлена на {duration_text}",
@@ -6049,7 +6235,7 @@ async def admin_assign_mechanic(
         if car.owner_id:
             await notify_user_status_update(str(car.owner_id))
     except Exception as e:
-        print(f"Error sending WebSocket notifications: {e}")
+        logger.error(f"Error sending WebSocket notifications: {e}")
     
     try:
         if user_has_push_tokens(db, mechanic.id):
@@ -6061,7 +6247,7 @@ async def admin_assign_mechanic(
                 plate_number=car.plate_number
             )
     except Exception as e:
-        print(f"Error sending push notification: {e}")
+        logger.error(f"Error sending push notification: {e}")
     
     return {
         "message": "Механик назначен",
@@ -6134,7 +6320,7 @@ async def admin_unassign_mechanic(
         if car.owner_id:
             await notify_user_status_update(str(car.owner_id))
     except Exception as e:
-        print(f"Error sending WebSocket notifications: {e}")
+        logger.error(f"Error sending WebSocket notifications: {e}")
     
     try:
         if user_has_push_tokens(db, mechanic_id):
@@ -6146,7 +6332,7 @@ async def admin_unassign_mechanic(
                 plate_number=car.plate_number
             )
     except Exception as e:
-        print(f"Error sending push notification: {e}")
+        logger.error(f"Error sending push notification: {e}")
     
     return {
         "message": "Назначение механика снято",
@@ -6241,7 +6427,7 @@ async def delete_user(
         try:
             await notify_user_status_update(str(user.id))
         except Exception as e:
-            print(f"Error sending WebSocket notification: {e}")
+            logger.error(f"Error sending WebSocket notification: {e}")
     
     return AdminDeleteUserResponse(
         message=message,
@@ -6415,3 +6601,274 @@ async def get_action_logs(
         "limit": limit,
         "pages": ceil(total / limit) if limit > 0 else 0
     }
+
+
+@users_router.post("/{user_id}/send-sms", response_model=SendUserSmsResponse, summary="Отправить SMS пользователю")
+async def send_sms_to_user(
+    user_id: str,
+    request: SendUserSmsRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Отправка SMS сообщения пользователю по его ID.
+    
+    - Находит пользователя по user_id
+    - Отправляет SMS на номер телефона пользователя
+    - Логирует действие
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    if not user.phone_number:
+        raise HTTPException(status_code=400, detail="У пользователя не указан номер телефона")
+    
+    phone_number = user.phone_number.strip()
+    message_text = request.message.strip()
+    
+    # Тестовый режим
+    if SMS_TOKEN == "1010":
+        logger.debug(f"TEST SMS to {phone_number}: {message_text}")
+        
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="send_sms_to_user",
+            entity_type="user",
+            entity_id=user.id,
+            details={"phone_number": phone_number, "message": message_text, "test_mode": True}
+        )
+        db.commit()
+        
+        return SendUserSmsResponse(
+            success=True,
+            message="SMS отправлено (тестовый режим)",
+            user_id=user_id,
+            phone_number=phone_number,
+            result="Test mode - SMS not actually sent"
+        )
+    
+    try:
+        result = await send_sms_mobizon(phone_number, message_text, SMS_TOKEN)
+        
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="send_sms_to_user",
+            entity_type="user",
+            entity_id=user.id,
+            details={"phone_number": phone_number, "message": message_text, "result": result}
+        )
+        db.commit()
+        
+        return SendUserSmsResponse(
+            success=True,
+            message="SMS успешно отправлено",
+            user_id=user_id,
+            phone_number=phone_number,
+            result=result
+        )
+    except Exception as e:
+        logger.error(f"SMS sending error: {e}")
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "send_sms_to_user",
+                    "user_id": user_id,
+                    "phone_number": phone_number,
+                    "admin_id": str(current_user.id)
+                }
+            )
+        except:
+            pass
+        return SendUserSmsResponse(
+            success=False,
+            message="Ошибка при отправке SMS",
+            user_id=user_id,
+            phone_number=phone_number,
+            error=str(e)
+        )
+
+
+@users_router.post("/{user_id}/send-email", response_model=SendUserEmailResponse, summary="Отправить email пользователю")
+async def send_email_to_user(
+    user_id: str,
+    request: SendUserEmailRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Отправка email сообщения пользователю по его ID.
+    
+    - Находит пользователя по user_id
+    - Отправляет email на почту пользователя
+    - Логирует действие
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    if not user.email:
+        raise HTTPException(status_code=400, detail="У пользователя не указан email")
+    
+    email = user.email.strip().lower()
+    subject = request.subject.strip()
+    body = request.body.strip()
+    
+    try:
+        smtp_host = os.getenv("SMTP_HOST")
+        smtp_port = int(os.getenv("SMTP_PORT", "587"))
+        smtp_user = os.getenv("SMTP_USER")
+        smtp_pass = os.getenv("SMTP_PASSWORD")
+        smtp_from = os.getenv("SMTP_FROM", smtp_user or "no-reply@azvmotors.kz")
+        
+        if smtp_host and smtp_user and smtp_pass:
+            msg = MIMEText(body, "plain", "utf-8")
+            msg["Subject"] = subject
+            msg["From"] = smtp_from
+            msg["To"] = email
+            
+            with smtplib.SMTP(smtp_host, smtp_port) as server:
+                server.starttls()
+                server.login(smtp_user, smtp_pass)
+                server.sendmail(smtp_from, [email], msg.as_string())
+            
+            log_action(
+                db,
+                actor_id=current_user.id,
+                action="send_email_to_user",
+                entity_type="user",
+                entity_id=user.id,
+                details={"email": email, "subject": subject}
+            )
+            db.commit()
+            
+            return SendUserEmailResponse(
+                success=True,
+                message="Email успешно отправлен",
+                user_id=user_id,
+                email=email
+            )
+        else:
+            logger.warning(f"SMTP not configured; email to {email} with subject '{subject}' not sent")
+            return SendUserEmailResponse(
+                success=False,
+                message="SMTP не настроен",
+                user_id=user_id,
+                email=email,
+                error="SMTP configuration missing"
+            )
+    except Exception as e:
+        logger.error(f"Email sending error: {e}")
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "send_email_to_user",
+                    "user_id": user_id,
+                    "email": email,
+                    "admin_id": str(current_user.id)
+                }
+            )
+        except:
+            pass
+        return SendUserEmailResponse(
+            success=False,
+            message="Ошибка при отправке email",
+            user_id=user_id,
+            email=email,
+            error=str(e)
+        )
+
+
+@users_router.post("/{user_id}/send-notification", response_model=SendUserNotificationResponse, summary="Отправить уведомление пользователю")
+async def send_notification_to_user(
+    user_id: str,
+    request: SendUserNotificationRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Отправка push-уведомления пользователю и сохранение в базу данных.
+    
+    - Находит пользователя по user_id
+    - Сохраняет уведомление в таблицу notifications
+    - Отправляет push-уведомление через FCM (если у пользователя есть токены)
+    - Логирует действие
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    title = request.title.strip()
+    body = request.body.strip()
+    
+    try:
+        # send_push_to_user_by_id сохраняет уведомление в БД и отправляет push
+        push_sent = await send_push_to_user_by_id(
+            db_session=db,
+            user_id=user.id,
+            title=title,
+            body=body
+        )
+        
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="send_notification_to_user",
+            entity_type="user",
+            entity_id=user.id,
+            details={
+                "title": title,
+                "body": body,
+                "push_sent": push_sent
+            }
+        )
+        db.commit()
+        
+        return SendUserNotificationResponse(
+            success=True,
+            message="Уведомление успешно отправлено",
+            user_id=user_id,
+            push_sent=push_sent
+        )
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Notification sending error: {e}")
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "send_notification_to_user",
+                    "user_id": user_id,
+                    "admin_id": str(current_user.id)
+                }
+            )
+        except:
+            pass
+        return SendUserNotificationResponse(
+            success=False,
+            message="Ошибка при отправке уведомления",
+            user_id=user_id,
+            error=str(e)
+        )

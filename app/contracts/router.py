@@ -1,3 +1,6 @@
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -49,7 +52,7 @@ if not logger.handlers:
         
         logger.info(f"📝 Contract signing logger initialized. Log file: {contract_log_file}")
     except Exception as e:
-        print(f"⚠️ Failed to initialize contract logger: {e}")
+        logger.debug(f"⚠️ Failed to initialize contract logger: {e}")
 
 from app.contracts.schemas import (
     ContractFileResponse,

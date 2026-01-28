@@ -6,6 +6,9 @@
 - Уменьшен BATCH_SIZE и увеличен BATCH_DELAY
 - Запуск в background для неблокирующей работы
 """
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 import asyncio
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
@@ -78,7 +81,7 @@ async def send_notifications_in_batches(user_ids: List, notification_key: str):
                 else:
                     # Не логируем ошибки QueuePool после всех попыток - они ожидаемы
                     if not is_db_error:
-                        print(f"Ошибка отправки уведомления пользователю {user_id}: {e}")
+                        logger.error(f" отправки уведомления пользователю {user_id}: {e}")
                     return False
     
     # Разбиваем на батчи

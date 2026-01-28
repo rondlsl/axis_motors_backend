@@ -4,13 +4,14 @@ MinIO Service для работы с объектным хранилищем S3-
 import os
 import uuid
 import time
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from io import BytesIO
 import logging
 
 import boto3
 from botocore.exceptions import ClientError
 from fastapi import UploadFile, HTTPException
+from PIL import Image, ImageOps
 
 from app.core.config import (
     MINIO_ENDPOINT,
@@ -23,6 +24,67 @@ from app.core.config import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Типы изображений, которые конвертируем в WebP
+IMAGE_TYPES_TO_CONVERT = {
+    'image/jpeg', 'image/jpg', 'image/png', 'image/bmp', 'image/tiff'
+}
+
+# Качество WebP (0-100, где 100 - максимальное качество)
+WEBP_QUALITY = 85
+
+
+def convert_to_webp(content: bytes, content_type: str) -> Tuple[bytes, str, str]:
+    """
+    Конвертирует изображение в формат WebP.
+    
+    Args:
+        content: Исходные байты изображения
+        content_type: MIME тип исходного изображения
+        
+    Returns:
+        Tuple[bytes, str, str]: (конвертированные байты, новый content_type, новое расширение)
+    """
+    if content_type.lower() not in IMAGE_TYPES_TO_CONVERT:
+        # Не конвертируем - возвращаем как есть
+        return content, content_type, None
+    
+    try:
+        # Открываем изображение
+        img = Image.open(BytesIO(content))
+        
+        # Применяем EXIF ориентацию чтобы фото не переворачивались
+        img = ImageOps.exif_transpose(img)
+        
+        # Конвертируем RGBA в RGB если нужно (для JPEG/PNG с прозрачностью)
+        if img.mode in ('RGBA', 'LA', 'P'):
+            # Создаём белый фон
+            background = Image.new('RGB', img.size, (255, 255, 255))
+            if img.mode == 'P':
+                img = img.convert('RGBA')
+            background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+            img = background
+        elif img.mode != 'RGB':
+            img = img.convert('RGB')
+        
+        # Сохраняем в WebP
+        output_buffer = BytesIO()
+        img.save(output_buffer, format='WEBP', quality=WEBP_QUALITY, method=6)
+        output_buffer.seek(0)
+        
+        webp_content = output_buffer.getvalue()
+        
+        logger.info(
+            f"[WEBP_CONVERT] Converted {content_type}: "
+            f"{len(content)} bytes -> {len(webp_content)} bytes "
+            f"({100 - (len(webp_content) / len(content) * 100):.1f}% smaller)"
+        )
+        
+        return webp_content, 'image/webp', '.webp'
+        
+    except Exception as e:
+        logger.warning(f"[WEBP_CONVERT] Failed to convert {content_type}: {e}, using original")
+        return content, content_type, None
 
 
 class MinIOService:
@@ -112,21 +174,31 @@ class MinIOService:
         
         logger.info(f"[MINIO_UPLOAD] START: filename={file.filename}, object_id={object_id}, folder={folder}")
         
-        # Генерируем уникальное имя файла
-        file_extension = os.path.splitext(file.filename or "file")[1]
-        unique_filename = f"{object_id}_{uuid.uuid4()}{file_extension}"
-        
-        # Полный путь объекта (ключ)
-        object_key = f"{folder.strip('/')}/{unique_filename}"
-        
         try:
             # Читаем содержимое файла
             read_start = time.time()
             content = await file.read()
-            logger.info(f"[MINIO_UPLOAD] File read took {time.time() - read_start:.3f}s, size={len(content)} bytes")
+            original_size = len(content)
+            logger.info(f"[MINIO_UPLOAD] File read took {time.time() - read_start:.3f}s, size={original_size} bytes")
             
             # Определяем content type
             content_type = file.content_type or 'application/octet-stream'
+            file_extension = os.path.splitext(file.filename or "file")[1]
+            
+            # Конвертируем в WebP если это изображение
+            convert_start = time.time()
+            converted_content, converted_type, new_extension = convert_to_webp(content, content_type)
+            if new_extension:
+                file_extension = new_extension
+                content_type = converted_type
+                content = converted_content
+                logger.info(f"[MINIO_UPLOAD] WebP conversion took {time.time() - convert_start:.3f}s")
+            
+            # Генерируем уникальное имя файла
+            unique_filename = f"{object_id}_{uuid.uuid4()}{file_extension}"
+            
+            # Полный путь объекта (ключ)
+            object_key = f"{folder.strip('/')}/{unique_filename}"
             
             # Загружаем в MinIO
             upload_start = time.time()
@@ -160,7 +232,8 @@ class MinIOService:
         filename: str,
         folder: str,
         content_type: str = 'application/octet-stream',
-        bucket: str = None
+        bucket: str = None,
+        convert_to_webp_flag: bool = True
     ) -> str:
         """
         Синхронная загрузка файла в MinIO.
@@ -171,16 +244,27 @@ class MinIOService:
             folder: Папка в bucket'е
             content_type: MIME тип
             bucket: Имя bucket'а
+            convert_to_webp_flag: Конвертировать в WebP (по умолчанию True)
             
         Returns:
             str: Публичный URL файла
         """
         bucket = bucket or MINIO_BUCKET_UPLOADS
         
-        # Полный путь объекта (ключ)
-        object_key = f"{folder.strip('/')}/{filename}"
-        
         try:
+            # Конвертируем в WebP если это изображение
+            if convert_to_webp_flag:
+                converted_content, converted_type, new_extension = convert_to_webp(content, content_type)
+                if new_extension:
+                    # Заменяем расширение в имени файла
+                    base_name = os.path.splitext(filename)[0]
+                    filename = f"{base_name}{new_extension}"
+                    content_type = converted_type
+                    content = converted_content
+            
+            # Полный путь объекта (ключ)
+            object_key = f"{folder.strip('/')}/{filename}"
+            
             self.client.put_object(
                 Bucket=bucket,
                 Key=object_key,

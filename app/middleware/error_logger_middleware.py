@@ -1,6 +1,9 @@
 """
 Middleware для автоматического логирования ошибок в Telegram
 """
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 import traceback
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
@@ -70,7 +73,7 @@ class ErrorLoggerMiddleware(BaseHTTPMiddleware):
                     additional_context=additional_context
                 )
             except Exception as telegram_error:
-                print(f"Ошибка отправки в Telegram: {telegram_error}")
+                logger.error(f" отправки в Telegram: {telegram_error}")
             
             # Возвращаем HTTP 500
             return JSONResponse(

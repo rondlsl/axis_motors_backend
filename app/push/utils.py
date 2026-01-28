@@ -1,3 +1,6 @@
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 import asyncio
 import uuid
 import httpx
@@ -266,7 +269,7 @@ async def broadcast_push_notification_async(db_session, title: str, body: str):
             tokens = [row[0] for row in token_rows]
 
         if not tokens:
-            print("No FCM tokens found for broadcast")
+            logger.debug("No FCM tokens found for broadcast")
             return {"success": 0, "failed": 0, "failed_tokens": []}
 
         # Отправляем батчами, чтобы не перегрузить сервер
@@ -300,7 +303,7 @@ async def broadcast_push_notification_async(db_session, title: str, body: str):
         ]
         failed_count = len(failed_tokens)
 
-        print("Broadcast: {success_count} succeeded, {failed_count} failed")
+        logger.debug("Broadcast: {success_count} succeeded, {failed_count} failed")
 
         return {
             "success": success_count,
@@ -309,7 +312,7 @@ async def broadcast_push_notification_async(db_session, title: str, body: str):
         }
 
     except Exception as e:
-        print("Error during broadcast: {e}")
+        logger.debug("Error during broadcast: {e}")
         return {"success": 0, "failed": 0, "error": str(e)}
 
 

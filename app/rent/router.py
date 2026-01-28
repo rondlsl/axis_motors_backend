@@ -1,4 +1,5 @@
 from math import floor, ceil
+from decimal import Decimal
 import asyncio
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, status, Query, Security
 from pydantic import BaseModel, constr, Field, conint
@@ -9,6 +10,9 @@ from typing import List, Optional, Dict, Any
 import httpx
 import uuid
 import base64
+
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
 
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
 from app.utils.sid_converter import convert_uuid_response_to_sid
@@ -70,6 +74,97 @@ from app.rent.utils.balance_utils import recalculate_user_balance_before_rental,
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def get_required_trips_for_class_upgrade(user_classes: List[str], target_class: str) -> int:
+    """
+    Определяет количество необходимых поездок для доступа к классу авто.
+    
+    Логика:
+    - Класс A -> Класс B: нужно 3 поездки
+    - Класс B -> Класс C: нужно 3 поездки
+    - Класс A -> Класс C: нужно 5 поездок
+    
+    Возвращает 0 если пользователь уже имеет доступ к этому классу.
+    """
+    if not user_classes:
+        user_classes = []
+    
+    # Нормализуем классы к верхнему регистру
+    user_classes_upper = [c.upper().strip() for c in user_classes if c]
+    target_class_upper = target_class.upper().strip() if target_class else ""
+    
+    # Если у пользователя уже есть доступ к этому классу - не требуется поездок
+    if target_class_upper in user_classes_upper:
+        return 0
+    
+    # Определяем максимальный класс пользователя
+    class_hierarchy = {"A": 1, "B": 2, "C": 3}
+    target_level = class_hierarchy.get(target_class_upper, 0)
+    
+    if target_level == 0:
+        return 0  # Неизвестный класс - пропускаем проверку
+    
+    # Находим максимальный уровень класса у пользователя
+    max_user_level = 0
+    for cls in user_classes_upper:
+        level = class_hierarchy.get(cls, 0)
+        if level > max_user_level:
+            max_user_level = level
+    
+    # Если у пользователя нет классов, считаем что он на уровне 0
+    if max_user_level == 0:
+        max_user_level = 1  # По умолчанию считаем класс A
+    
+    # Если целевой класс ниже или равен текущему - доступ есть
+    if target_level <= max_user_level:
+        return 0
+    
+    # Рассчитываем необходимое количество поездок
+    level_diff = target_level - max_user_level
+    
+    if level_diff == 1:
+        # Переход на 1 класс выше (A->B или B->C): 3 поездки
+        return 3
+    elif level_diff == 2:
+        # Переход на 2 класса выше (A->C): 5 поездок
+        return 5
+    else:
+        return 0
+
+
+def check_user_trips_for_class_access(db: Session, user: User, target_car_class: str) -> None:
+    """
+    Проверяет, имеет ли пользователь достаточно завершенных поездок для доступа к классу авто.
+    Выбрасывает HTTPException если поездок недостаточно.
+    """
+    # Получаем классы пользователя
+    user_classes = user.auto_class if user.auto_class else []
+    
+    # Определяем необходимое количество поездок
+    required_trips = get_required_trips_for_class_upgrade(user_classes, target_car_class)
+    
+    if required_trips == 0:
+        return  # Доступ разрешен
+    
+    # Считаем завершенные поездки пользователя
+    completed_trips = db.query(RentalHistory).filter(
+        RentalHistory.user_id == user.id,
+        RentalHistory.rental_status == RentalStatus.COMPLETED,
+        RentalHistory.start_time.isnot(None)  # Только реальные поездки, не отмененные брони
+    ).count()
+    
+    if completed_trips < required_trips:
+        trips_remaining = required_trips - completed_trips
+        
+        # Формируем понятное сообщение об ошибке
+        user_class_str = ", ".join(user_classes) if user_classes else "A"
+        raise HTTPException(
+            status_code=403,
+            detail=f"Для доступа к автомобилям класса {target_car_class} необходимо совершить {required_trips} поездок. "
+                   f"У вас {completed_trips} завершенных поездок. Осталось: {trips_remaining} поездок."
+        )
+
 
 def _write_upload_to_temp(upload: UploadFile) -> str:
     tmp = NamedTemporaryFile(delete=False, suffix=Path(upload.filename or 'upload').suffix)
@@ -895,6 +990,10 @@ async def reserve_car(
     ).first()
     if not car:
         raise HTTPException(status_code=404, detail="Car not found or not available")
+
+    # 3) Проверка доступа к классу авто по количеству поездок (только для НЕ владельцев)
+    if car.owner_id != current_user.id and car.auto_class:
+        check_user_trips_for_class_access(db, current_user, car.auto_class.value if hasattr(car.auto_class, 'value') else str(car.auto_class))
 
     orig_open_fee = get_open_price(car)
     open_fee = orig_open_fee if rental_type in (RentalType.MINUTES, RentalType.HOURS) else 0
@@ -1923,9 +2022,9 @@ async def start_rental(
                 # Универсальная последовательность: разблокировать двигатель → выдать ключ
                 result = await execute_gps_sequence(car.gps_imei, auth_token, "interior")
                 if not result["success"]:
-                    print(f"Ошибка GPS последовательности при старте: {result.get('error', 'Unknown error')}")
+                    logger.error(f"Ошибка GPS последовательности при старте: {result.get('error', 'Unknown error')}")
         except Exception as e:
-            print(f"Ошибка GPS команд при старте аренды: {e}")
+            logger.error(f"Ошибка GPS команд при старте аренды: {e}")
             # Логируем критическую ошибку GPS команды
             try:
                 await log_error_to_telegram(
@@ -1975,7 +2074,7 @@ async def start_rental(
                         json={"chat_id": chat_id, "text": text}
                     )
             except Exception as e:
-                print(f"Ошибка отправки Telegram уведомления в {chat_id}: {e}")
+                logger.error(f"Ошибка отправки Telegram уведомления в {chat_id}: {e}")
         
         # Список чатов для уведомлений
         chat_ids = [965048905, 5941825713, 860991388, 1594112444, 808277096, 7656716395, 964255811, 8522837235, 797693964]
@@ -1989,7 +2088,7 @@ async def start_rental(
                 asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN_2))
                 
     except Exception as e:
-        print(f"Ошибка отправки уведомления о начале аренды в Telegram: {e}")
+        logger.error(f"Ошибка отправки уведомления о начале аренды в Telegram: {e}")
 
     # try:
     #     name_parts = []
@@ -2014,9 +2113,9 @@ async def start_rental(
     #         plate_number=car.plate_number,
     #         car_name=car.name
     #     )
-    #     print(f"SMS отправлена клиенту {current_user.phone_number} при начале аренды")
+    #     logger.debug(f"SMS отправлена клиенту {current_user.phone_number} при начале аренды")
     # except Exception as e:
-    #     print(f"Ошибка отправки SMS при начале аренды: {e}")
+    #     logger.error(f"Ошибка отправки SMS при начале аренды: {e}")
 
     # Обновляем все данные из БД для получения свежих данных
     db.expire_all()
@@ -2067,7 +2166,7 @@ async def upload_photos_before(
     """
     import time
     start_time = time.time()
-    print(f"[UPLOAD_PHOTOS_BEFORE] ========== START ========== user_id={current_user.id}")
+    logger.info(f"[UPLOAD_PHOTOS_BEFORE] ========== START ========== user_id={current_user.id}")
     
     # Получаем rental из БД
     query_start = time.time()
@@ -2076,20 +2175,20 @@ async def upload_photos_before(
         RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
     ).first()
     query_duration = time.time() - query_start
-    print(f"[UPLOAD_PHOTOS_BEFORE] DB query for rental took {query_duration:.3f}s")
+    logger.info(f"[UPLOAD_PHOTOS_BEFORE] DB query for rental took {query_duration:.3f}s")
     
     if not rental:
-        print(f"[UPLOAD_PHOTOS_BEFORE] ERROR: No active rental found for user {current_user.id}")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] ERROR: No active rental found for user {current_user.id}")
         raise HTTPException(status_code=404, detail="No active rental found")
     
-    print(f"[UPLOAD_PHOTOS_BEFORE] Found rental_id={rental.id}, status={rental.rental_status}")
+    logger.info(f"[UPLOAD_PHOTOS_BEFORE] Found rental_id={rental.id}, status={rental.rental_status}")
 
     # Валидация фото
     validate_start = time.time()
     validate_photos([selfie], 'selfie')
     validate_photos(car_photos, 'car_photos')
     validate_duration = time.time() - validate_start
-    print(f"[UPLOAD_PHOTOS_BEFORE] Photo validation took {validate_duration:.3f}s (selfie + {len(car_photos)} car photos)")
+    logger.info(f"[UPLOAD_PHOTOS_BEFORE] Photo validation took {validate_duration:.3f}s (selfie + {len(car_photos)} car photos)")
 
     uploaded_files = []
     
@@ -2097,88 +2196,88 @@ async def upload_photos_before(
         # 1) Сверяем селфи клиента с документом из профиля
         try:
             verify_start = time.time()
-            print(f"[UPLOAD_PHOTOS_BEFORE] Starting face verification...")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE] Starting face verification...")
             is_same, msg = await run_in_threadpool(verify_user_upload_against_profile, current_user, selfie)
             verify_duration = time.time() - verify_start
-            print(f"[UPLOAD_PHOTOS_BEFORE] Face verification took {verify_duration:.3f}s, is_same={is_same}")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE] Face verification took {verify_duration:.3f}s, is_same={is_same}")
             if not is_same:
-                print(f"[UPLOAD_PHOTOS_BEFORE] Face verification FAILED: {msg}")
+                logger.info(f"[UPLOAD_PHOTOS_BEFORE] Face verification FAILED: {msg}")
                 raise HTTPException(status_code=400, detail=msg)
         except HTTPException:
             raise
         except Exception as e:
-            print(f"[UPLOAD_PHOTOS_BEFORE] Face verification EXCEPTION: {type(e).__name__}: {str(e)}")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE] Face verification EXCEPTION: {type(e).__name__}: {str(e)}")
             raise HTTPException(status_code=400, detail="Ой! Похоже на фотографии не вы, но если это вы, то пожалуйста сделайте селфи как в профиле.")
 
         # 2) Если верификация успешна — сохраняем фото
         urls = list(rental.photos_before or [])
-        print(f"[UPLOAD_PHOTOS_BEFORE] Current photos_before count: {len(urls)}")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] Current photos_before count: {len(urls)}")
         
         # save selfie
-        print(f"[UPLOAD_PHOTOS_BEFORE] Saving selfie...")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] Saving selfie...")
         save_start = time.time()
         selfie_url = await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/before/selfie/")
         urls.append(selfie_url)
         uploaded_files.append(selfie_url)
-        print(f"[UPLOAD_PHOTOS_BEFORE] Selfie save TOTAL took {time.time() - save_start:.3f}s")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] Selfie save TOTAL took {time.time() - save_start:.3f}s")
         
         # save exterior
-        print(f"[UPLOAD_PHOTOS_BEFORE] Saving {len(car_photos)} car photos...")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] Saving {len(car_photos)} car photos...")
         for idx, p in enumerate(car_photos):
             photo_start = time.time()
-            print(f"[UPLOAD_PHOTOS_BEFORE] Saving car photo {idx+1}/{len(car_photos)}: {p.filename}")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE] Saving car photo {idx+1}/{len(car_photos)}: {p.filename}")
             car_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/car/")
             urls.append(car_url)
             uploaded_files.append(car_url)
-            print(f"[UPLOAD_PHOTOS_BEFORE] Car photo {idx+1} save TOTAL took {time.time() - photo_start:.3f}s")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE] Car photo {idx+1} save TOTAL took {time.time() - photo_start:.3f}s")
 
         rental.photos_before = urls
-        print(f"[UPLOAD_PHOTOS_BEFORE] Total photos_before after save: {len(urls)}")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] Total photos_before after save: {len(urls)}")
         
         # DB commit - закрываем транзакцию перед GPS операциями, чтобы не блокировать БД
         commit_start = time.time()
-        print(f"[UPLOAD_PHOTOS_BEFORE] Committing DB changes...")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] Committing DB changes...")
         db.commit()
         commit_duration = time.time() - commit_start
-        print(f"[UPLOAD_PHOTOS_BEFORE] DB commit took {commit_duration:.3f}s")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] DB commit took {commit_duration:.3f}s")
         
         # Получаем car из БД
         car_query_start = time.time()
         car = db.query(Car).get(rental.car_id)
         car_query_duration = time.time() - car_query_start
-        print(f"[UPLOAD_PHOTOS_BEFORE] Car query took {car_query_duration:.3f}s, car_id={rental.car_id}, gps_imei={car.gps_imei if car else 'None'}")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] Car query took {car_query_duration:.3f}s, car_id={rental.car_id}, gps_imei={car.gps_imei if car else 'None'}")
         
         if car and car.gps_imei:
             gps_start = time.time()
-            print(f"[UPLOAD_PHOTOS_BEFORE] Starting GPS sequence for imei={car.gps_imei}")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE] Starting GPS sequence for imei={car.gps_imei}")
             
             auth_start = time.time()
             auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
             auth_duration = time.time() - auth_start
-            print(f"[UPLOAD_PHOTOS_BEFORE] GPS auth took {auth_duration:.3f}s")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE] GPS auth took {auth_duration:.3f}s")
             
             # Универсальная последовательность: открыть замки → выдать ключ → открыть замки → забрать ключ
             sequence_start = time.time()
-            print(f"[UPLOAD_PHOTOS_BEFORE] Executing GPS sequence 'selfie_exterior'...")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE] Executing GPS sequence 'selfie_exterior'...")
             result = await execute_gps_sequence(car.gps_imei, auth_token, "selfie_exterior")
             sequence_duration = time.time() - sequence_start
-            print(f"[UPLOAD_PHOTOS_BEFORE] GPS sequence took {sequence_duration:.3f}s, success={result.get('success', False)}")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE] GPS sequence took {sequence_duration:.3f}s, success={result.get('success', False)}")
             
             if not result["success"]:
                 error_msg = result.get('error', 'Unknown error')
-                print(f"[UPLOAD_PHOTOS_BEFORE] GPS sequence FAILED: {error_msg}")
+                logger.info(f"[UPLOAD_PHOTOS_BEFORE] GPS sequence FAILED: {error_msg}")
                 logger.error(f"Ошибка GPS последовательности для селфи+кузов: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
             else:
                 # Логируем только краткую информацию, без детального списка команд
-                print(f"[UPLOAD_PHOTOS_BEFORE] GPS sequence SUCCESS for car_id={car.id}")
+                logger.info(f"[UPLOAD_PHOTOS_BEFORE] GPS sequence SUCCESS for car_id={car.id}")
                 logger.info(f"GPS последовательность 'selfie_exterior' успешно выполнена для авто {car.id}")
         else:
-            print(f"[UPLOAD_PHOTOS_BEFORE] Skipping GPS sequence (car={car is not None}, gps_imei={car.gps_imei if car else 'None'})")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE] Skipping GPS sequence (car={car is not None}, gps_imei={car.gps_imei if car else 'None'})")
         
         # Обновляем все данные из БД для получения свежих данных (после всех операций)
         refresh_start = time.time()
-        print(f"[UPLOAD_PHOTOS_BEFORE] Refreshing DB objects...")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] Refreshing DB objects...")
         db.expire_all()
         db.refresh(rental)
         db.refresh(current_user)
@@ -2189,25 +2288,25 @@ async def upload_photos_before(
             if owner:
                 db.refresh(owner)
         refresh_duration = time.time() - refresh_start
-        print(f"[UPLOAD_PHOTOS_BEFORE] DB refresh took {refresh_duration:.3f}s")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] DB refresh took {refresh_duration:.3f}s")
         
         # Отправляем WebSocket уведомления в самом конце, после всех операций
         ws_start = time.time()
-        print(f"[UPLOAD_PHOTOS_BEFORE] Sending WebSocket notifications...")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] Sending WebSocket notifications...")
         try:
             await notify_user_status_update(str(current_user.id))
             if car and car.owner_id:
                 await notify_user_status_update(str(car.owner_id))
             ws_duration = time.time() - ws_start
-            print(f"[UPLOAD_PHOTOS_BEFORE] WebSocket notifications sent in {ws_duration:.3f}s")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE] WebSocket notifications sent in {ws_duration:.3f}s")
             logger.info(f"WebSocket user_status notification sent for user {current_user.id} after uploading photos before")
         except Exception as e:
             ws_duration = time.time() - ws_start
-            print(f"[UPLOAD_PHOTOS_BEFORE] WebSocket notification ERROR after {ws_duration:.3f}s: {e}")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE] WebSocket notification ERROR after {ws_duration:.3f}s: {e}")
             logger.error(f"Error sending WebSocket notification: {e}");
         
         total_duration = time.time() - start_time
-        print(f"[UPLOAD_PHOTOS_BEFORE] ========== SUCCESS TOTAL: {total_duration:.3f}s ==========")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] ========== SUCCESS TOTAL: {total_duration:.3f}s ==========")
         
         return {"message": "Photos before (selfie+car) uploaded", "photo_count": len(urls)}
     except HTTPException:
@@ -2246,7 +2345,7 @@ async def upload_photos_before_interior(
     """
     import time
     start_time = time.time()
-    print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] ========== START ========== user_id={current_user.id}")
+    logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] ========== START ========== user_id={current_user.id}")
     
     # Получаем rental из БД
     query_start = time.time()
@@ -2255,60 +2354,60 @@ async def upload_photos_before_interior(
         RentalHistory.rental_status.in_([RentalStatus.RESERVED, RentalStatus.IN_USE])
     ).first()
     query_duration = time.time() - query_start
-    print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] DB query for rental took {query_duration:.3f}s")
+    logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] DB query for rental took {query_duration:.3f}s")
     
     if not rental:
-        print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] ERROR: No active rental found for user {current_user.id}")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] ERROR: No active rental found for user {current_user.id}")
         raise HTTPException(status_code=404, detail="No active rental found")
     
-    print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Found rental_id={rental.id}, status={rental.rental_status}")
+    logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Found rental_id={rental.id}, status={rental.rental_status}")
 
     # Требуем, чтобы перед салоном были загружены внешние фото
     check_start = time.time()
     existing = rental.photos_before or []
     has_exterior = any(('/before/car/' in p) or ('\\before\\car\\' in p) for p in existing)
     check_duration = time.time() - check_start
-    print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Exterior check took {check_duration:.3f}s, has_exterior={has_exterior}, existing_count={len(existing)}")
+    logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Exterior check took {check_duration:.3f}s, has_exterior={has_exterior}, existing_count={len(existing)}")
     
     if not has_exterior:
-        print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] ERROR: Exterior photos not found, cannot upload interior")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] ERROR: Exterior photos not found, cannot upload interior")
         raise HTTPException(status_code=400, detail="Сначала загрузите внешние фото")
 
     # Валидация фото
     validate_start = time.time()
     validate_photos(interior_photos, 'interior_photos')
     validate_duration = time.time() - validate_start
-    print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Photo validation took {validate_duration:.3f}s, count={len(interior_photos)}")
+    logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Photo validation took {validate_duration:.3f}s, count={len(interior_photos)}")
 
     uploaded_files = []
     
     try:
         urls = list(rental.photos_before or [])
-        print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Current photos_before count: {len(urls)}")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Current photos_before count: {len(urls)}")
         
         # Сохранение interior фото
-        print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Saving {len(interior_photos)} interior photos...")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Saving {len(interior_photos)} interior photos...")
         for idx, p in enumerate(interior_photos):
             photo_start = time.time()
-            print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Saving interior photo {idx+1}/{len(interior_photos)}: {p.filename}")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Saving interior photo {idx+1}/{len(interior_photos)}: {p.filename}")
             interior_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/interior/")
             urls.append(interior_url)
             uploaded_files.append(interior_url)
-            print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Interior photo {idx+1} save TOTAL took {time.time() - photo_start:.3f}s")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Interior photo {idx+1} save TOTAL took {time.time() - photo_start:.3f}s")
         
         rental.photos_before = urls
-        print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Total photos_before after save: {len(urls)}")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Total photos_before after save: {len(urls)}")
         
         # DB commit
         commit_start = time.time()
-        print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Committing DB changes...")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Committing DB changes...")
         db.commit()
         commit_duration = time.time() - commit_start
-        print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] DB commit took {commit_duration:.3f}s")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] DB commit took {commit_duration:.3f}s")
         
         # Обновляем все данные из БД для получения свежих данных (после всех операций)
         refresh_start = time.time()
-        print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Refreshing DB objects...")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Refreshing DB objects...")
         db.expire_all()
         db.refresh(rental)
         db.refresh(current_user)
@@ -2320,25 +2419,25 @@ async def upload_photos_before_interior(
             if owner:
                 db.refresh(owner)
         refresh_duration = time.time() - refresh_start
-        print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] DB refresh took {refresh_duration:.3f}s")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] DB refresh took {refresh_duration:.3f}s")
         
         # Отправляем WebSocket уведомления в самом конце, после всех операций
         ws_start = time.time()
-        print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Sending WebSocket notifications...")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Sending WebSocket notifications...")
         try:
             await notify_user_status_update(str(current_user.id))
             if car and car.owner_id:
                 await notify_user_status_update(str(car.owner_id))
             ws_duration = time.time() - ws_start
-            print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] WebSocket notifications sent in {ws_duration:.3f}s")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] WebSocket notifications sent in {ws_duration:.3f}s")
             logger.info(f"WebSocket user_status notification sent for user {current_user.id} after uploading photos before interior")
         except Exception as e:
             ws_duration = time.time() - ws_start
-            print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] WebSocket notification ERROR after {ws_duration:.3f}s: {e}")
+            logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] WebSocket notification ERROR after {ws_duration:.3f}s: {e}")
             logger.error(f"Error sending WebSocket notification: {e}")
         
         total_duration = time.time() - start_time
-        print(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] ========== SUCCESS TOTAL: {total_duration:.3f}s ==========")
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] ========== SUCCESS TOTAL: {total_duration:.3f}s ==========")
         
         return {"message": "Photos before (interior) uploaded", "photo_count": len(interior_photos)}
     except Exception as e:
@@ -2438,18 +2537,18 @@ async def upload_photos_after(
         
         # После загрузки селфи+салона: заблокировать двигатель → забрать ключ → закрыть замки
         car = db.query(Car).get(rental.car_id)
-        print(f"[DEBUG] Car found: {car is not None}, GPS IMEI: {car.gps_imei if car else 'N/A'}")
+        logger.info(f"[DEBUG] Car found: {car is not None}, GPS IMEI: {car.gps_imei if car else 'N/A'}")
         if car and car.gps_imei:
-            print(f"[DEBUG] Calling GPS sequence complete_selfie_interior for {car.gps_imei}")
+            logger.info(f"[DEBUG] Calling GPS sequence complete_selfie_interior for {car.gps_imei}")
             auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
             # Универсальная последовательность: заблокировать двигатель → забрать ключ → закрыть замки
             result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_selfie_interior")
             if not result["success"]:
                 error_msg = result.get('error', 'Unknown error')
-                print(f"Ошибка GPS последовательности для завершения селфи+салон: {error_msg}")
+                logger.error(f"Ошибка GPS последовательности для завершения селфи+салон: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
         else:
-            print(f"[DEBUG] Skipping GPS sequence - no car or no IMEI")
+            logger.info(f"[DEBUG] Skipping GPS sequence - no car or no IMEI")
         
         # Обновляем все данные из БД для получения свежих данных (после всех операций)
         db.expire_all()
@@ -2581,7 +2680,7 @@ async def upload_photos_after_car(
             result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_exterior")
             if not result["success"]:
                 error_msg = result.get('error', 'Unknown error')
-                print(f"Ошибка GPS последовательности для завершения кузова: {error_msg}")
+                logger.error(f"Ошибка GPS последовательности для завершения кузова: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
         
         # Обновляем все данные из БД для получения свежих данных (после всех операций)
@@ -2671,11 +2770,11 @@ async def upload_photos_before_owner(
                 open_result = await send_open(car.gps_imei, auth_token)
                 command_id = open_result.get('command_id')
                 if command_id:
-                    print(f"Замки успешно открыты для владельца. Command ID: {command_id}")
+                    logger.info(f"Замки успешно открыты для владельца. Command ID: {command_id}")
                 else:
-                    print(f"Предупреждение: команда отправлена, но command_id не получен")
+                    logger.warning(f"Команда отправлена, но command_id не получен")
             except Exception as gps_error:
-                print(f"Ошибка GPS при открытии замков: {str(gps_error)}")
+                logger.error(f"Ошибка GPS при открытии замков: {str(gps_error)}")
                 # Не прерываем процесс загрузки фото, только логируем ошибку
                 try:
                     await log_error_to_telegram(
@@ -2828,7 +2927,7 @@ async def upload_photos_after_owner(
             result = await execute_gps_sequence(car.gps_imei, auth_token, "complete_selfie_interior")
             if not result["success"]:
                 error_msg = result.get('error', 'Unknown error')
-                print(f"Ошибка GPS последовательности для завершения салона владельцем: {error_msg}")
+                logger.error(f"Ошибка GPS последовательности для завершения салона владельцем: {error_msg}")
                 raise Exception(f"GPS sequence failed: {error_msg}")
         
         return {"message": "Owner photos after (interior) uploaded", "photo_count": len(interior_photos)}
@@ -3379,54 +3478,40 @@ async def complete_rental(
             
             if abs(difference) > 0.01:  # Есть разница
                 if difference > 0:
-                    # Нужно доплатить
-                    if current_user.wallet_balance >= difference:
-                        balance_before = float(current_user.wallet_balance)
-                        current_user.wallet_balance -= difference
-                        
-                        existing_waiting_tx.amount = -waiting_fee
-                        existing_waiting_tx.description = f"Платное ожидание {int(extra_minutes)} мин"
-                        existing_waiting_tx.balance_before = balance_before
-                        existing_waiting_tx.balance_after = float(current_user.wallet_balance)
-                    else:
-                        logger.warning(
-                            f"⚠️ Недостаточно средств для доплаты платного ожидания аренды {rental.id}: "
-                            f"требуется {difference}₸, баланс {current_user.wallet_balance}₸"
-                        )
-                        waiting_fee = already_charged  # Используем уже списанную сумму
+                    # Нужно доплатить - разрешаем списание даже при отрицательном балансе
+                    balance_before = float(current_user.wallet_balance)
+                    current_user.wallet_balance -= Decimal(str(difference))
+                    
+                    existing_waiting_tx.amount = -waiting_fee
+                    existing_waiting_tx.description = f"Платное ожидание {int(extra_minutes)} мин"
+                    existing_waiting_tx.balance_before = balance_before
+                    existing_waiting_tx.balance_after = float(current_user.wallet_balance)
                 else:
                     # Переплата - возвращаем разницу (в теории не должно быть, но на всякий случай)
                     refund = abs(difference)
                     balance_before = float(current_user.wallet_balance)
-                    current_user.wallet_balance += refund
+                    current_user.wallet_balance += Decimal(str(refund))
                     
                     existing_waiting_tx.amount = -waiting_fee
                     existing_waiting_tx.description = f"Платное ожидание {int(extra_minutes)} мин (перерасчёт)"
                     existing_waiting_tx.balance_before = balance_before
                     existing_waiting_tx.balance_after = float(current_user.wallet_balance)
         else:
-            # Создаём новую транзакцию
-            if current_user.wallet_balance >= waiting_fee:
-                balance_before = float(current_user.wallet_balance)
-                current_user.wallet_balance -= waiting_fee
-                
-                waiting_tx = WalletTransaction(
-                    user_id=current_user.id,
-                    amount=-waiting_fee,
-                    transaction_type=WalletTransactionType.RENT_WAITING_FEE,
-                    description=f"Платное ожидание {int(extra_minutes)} мин",
-                    balance_before=balance_before,
-                    balance_after=float(current_user.wallet_balance),
-                    related_rental_id=rental.id,
-                    created_at=get_local_time()
-                )
-                db.add(waiting_tx)
-            else:
-                logger.warning(
-                    f"⚠️ Недостаточно средств для списания платного ожидания аренды {rental.id}: "
-                    f"требуется {waiting_fee}₸, баланс {current_user.wallet_balance}₸"
-                )
-                waiting_fee = 0  # Не списываем, если недостаточно средств
+            # Создаём новую транзакцию - разрешаем списание даже при отрицательном балансе
+            balance_before = float(current_user.wallet_balance)
+            current_user.wallet_balance -= Decimal(str(waiting_fee))
+            
+            waiting_tx = WalletTransaction(
+                user_id=current_user.id,
+                amount=-waiting_fee,
+                transaction_type=WalletTransactionType.RENT_WAITING_FEE,
+                description=f"Платное ожидание {int(extra_minutes)} мин",
+                balance_before=balance_before,
+                balance_after=float(current_user.wallet_balance),
+                related_rental_id=rental.id,
+                created_at=get_local_time()
+            )
+            db.add(waiting_tx)
     
     rental.waiting_fee = waiting_fee
 
@@ -3483,27 +3568,20 @@ async def complete_rental(
                                 price_per_liter = FUEL_PRICE_PER_LITER
                             fuel_fee = int(fuel_consumed * price_per_liter)
                             
-                            # Проверяем баланс перед списанием
-                            if current_user.wallet_balance >= fuel_fee:
-                                balance_before_fuel = float(current_user.wallet_balance)
-                                current_user.wallet_balance -= fuel_fee
-                                tx = WalletTransaction(
-                                    user_id=current_user.id,
-                                    amount=-fuel_fee,
-                                    transaction_type=WalletTransactionType.RENT_FUEL_FEE,
-                                    description=f"Оплата топлива: {int(fuel_consumed)} л × {price_per_liter}₸ = {fuel_fee:,}₸" if car.body_type != CarBodyType.ELECTRIC else f"Оплата заряда: {int(fuel_consumed)}% × {price_per_liter}₸ = {fuel_fee:,}₸",
-                                    balance_before=balance_before_fuel,
-                                    balance_after=float(current_user.wallet_balance),
-                                    related_rental_id=rental.id,
-                                    created_at=get_local_time()
-                                )
-                                db.add(tx)
-                            else:
-                                logger.warning(
-                                    f"Недостаточно средств для списания топлива: "
-                                    f"требуется {fuel_fee}₸, баланс {current_user.wallet_balance}₸"
-                                )
-                                fuel_fee = 0
+                            # Разрешаем списание даже при отрицательном балансе
+                            balance_before_fuel = float(current_user.wallet_balance)
+                            current_user.wallet_balance -= Decimal(str(fuel_fee))
+                            tx = WalletTransaction(
+                                user_id=current_user.id,
+                                amount=-fuel_fee,
+                                transaction_type=WalletTransactionType.RENT_FUEL_FEE,
+                                description=f"Оплата топлива: {int(fuel_consumed)} л × {price_per_liter}₸ = {fuel_fee:,}₸" if car.body_type != CarBodyType.ELECTRIC else f"Оплата заряда: {int(fuel_consumed)}% × {price_per_liter}₸ = {fuel_fee:,}₸",
+                                balance_before=balance_before_fuel,
+                                balance_after=float(current_user.wallet_balance),
+                                related_rental_id=rental.id,
+                                created_at=get_local_time()
+                            )
+                            db.add(tx)
             else:
                 # Аренда завершилась в пределах основного тарифа
                 # Топливо считаем по разнице fuel_before и fuel_after
@@ -3519,27 +3597,20 @@ async def complete_rental(
                                 price_per_liter = FUEL_PRICE_PER_LITER
                             fuel_fee = int(fuel_consumed * price_per_liter)
                             
-                            # Проверяем баланс перед списанием
-                            if current_user.wallet_balance >= fuel_fee:
-                                balance_before_fuel = float(current_user.wallet_balance)
-                                current_user.wallet_balance -= fuel_fee
-                                tx = WalletTransaction(
-                                    user_id=current_user.id,
-                                    amount=-fuel_fee,
-                                    transaction_type=WalletTransactionType.RENT_FUEL_FEE,
-                                    description=f"Оплата топлива: {int(fuel_consumed)} л × {price_per_liter}₸ = {fuel_fee:,}₸" if car.body_type != CarBodyType.ELECTRIC else f"Оплата заряда: {int(fuel_consumed)}% × {price_per_liter}₸ = {fuel_fee:,}₸",
-                                    balance_before=balance_before_fuel,
-                                    balance_after=float(current_user.wallet_balance),
-                                    related_rental_id=rental.id,
-                                    created_at=get_local_time()
-                                )
-                                db.add(tx)
-                            else:
-                                logger.warning(
-                                    f"Недостаточно средств для списания топлива: "
-                                    f"требуется {fuel_fee}₸, баланс {current_user.wallet_balance}₸"
-                                )
-                                fuel_fee = 0
+                            # Разрешаем списание даже при отрицательном балансе
+                            balance_before_fuel = float(current_user.wallet_balance)
+                            current_user.wallet_balance -= Decimal(str(fuel_fee))
+                            tx = WalletTransaction(
+                                user_id=current_user.id,
+                                amount=-fuel_fee,
+                                transaction_type=WalletTransactionType.RENT_FUEL_FEE,
+                                description=f"Оплата топлива: {int(fuel_consumed)} л × {price_per_liter}₸ = {fuel_fee:,}₸" if car.body_type != CarBodyType.ELECTRIC else f"Оплата заряда: {int(fuel_consumed)}% × {price_per_liter}₸ = {fuel_fee:,}₸",
+                                balance_before=balance_before_fuel,
+                                balance_after=float(current_user.wallet_balance),
+                                related_rental_id=rental.id,
+                                created_at=get_local_time()
+                            )
+                            db.add(tx)
 
     if car.owner_id == current_user.id:
         rental.base_price = 0
@@ -3684,48 +3755,31 @@ async def complete_rental(
                     # Возвращаем старую сумму в баланс
                     balance_before_correction = float(current_user.wallet_balance or 0) + float(abs(minute_charge_tx.amount) if minute_charge_tx.amount else 0)
                     
-                    # Проверяем баланс перед корректировкой
-                    if balance_before_correction >= expected_total_cost:
-                        current_user.wallet_balance = balance_before_correction - expected_total_cost
-                        
-                        minute_charge_tx.amount = -expected_total_cost
-                        minute_charge_tx.description = f"Поминутное списание {rounded_minutes} мин"
-                        minute_charge_tx.balance_before = balance_before_correction
-                        minute_charge_tx.balance_after = float(current_user.wallet_balance)
-                    else:
-                        logger.warning(
-                            f"⚠️ Недостаточно средств для корректировки поминутной аренды {rental.id}: "
-                            f"требуется {expected_total_cost}₸, баланс {balance_before_correction}₸"
-                        )
-                        # Используем уже списанную сумму
-                        expected_total_cost = actual_charged
-                        rental.base_price = expected_total_cost
+                    # Разрешаем списание даже при отрицательном балансе
+                    current_user.wallet_balance = Decimal(str(balance_before_correction - expected_total_cost))
+                    
+                    minute_charge_tx.amount = -expected_total_cost
+                    minute_charge_tx.description = f"Поминутное списание {rounded_minutes} мин"
+                    minute_charge_tx.balance_before = balance_before_correction
+                    minute_charge_tx.balance_after = float(current_user.wallet_balance)
                 else:
                     # Создаём новую транзакцию, если её не было
                     balance_before_correction = float(current_user.wallet_balance)
                     
-                    if balance_before_correction >= expected_total_cost:
-                        current_user.wallet_balance -= expected_total_cost
-                        
-                        minute_charge_tx = WalletTransaction(
-                            user_id=current_user.id,
-                            amount=-expected_total_cost,
-                            transaction_type=WalletTransactionType.RENT_MINUTE_CHARGE,
-                            description=f"Поминутное списание {rounded_minutes} мин",
-                            balance_before=balance_before_correction,
-                            balance_after=float(current_user.wallet_balance),
-                            related_rental_id=rental.id,
-                            created_at=get_local_time()
-                        )
-                        db.add(minute_charge_tx)
-                    else:
-                        logger.warning(
-                            f"⚠️ Недостаточно средств для создания транзакции поминутной аренды {rental.id}: "
-                            f"требуется {expected_total_cost}₸, баланс {balance_before_correction}₸"
-                        )
-                        # Не списываем, если недостаточно средств
-                        expected_total_cost = 0
-                        rental.base_price = 0
+                    # Разрешаем списание даже при отрицательном балансе
+                    current_user.wallet_balance -= Decimal(str(expected_total_cost))
+                    
+                    minute_charge_tx = WalletTransaction(
+                        user_id=current_user.id,
+                        amount=-expected_total_cost,
+                        transaction_type=WalletTransactionType.RENT_MINUTE_CHARGE,
+                        description=f"Поминутное списание {rounded_minutes} мин",
+                        balance_before=balance_before_correction,
+                        balance_after=float(current_user.wallet_balance),
+                        related_rental_id=rental.id,
+                        created_at=get_local_time()
+                    )
+                    db.add(minute_charge_tx)
                 
                 # Обновить аренду
                 if expected_total_cost > 0:
@@ -3804,45 +3858,31 @@ async def complete_rental(
                     # Обновляем существующую транзакцию
                     balance_before_correction = float(current_user.wallet_balance or 0) + float(abs(base_charge_tx.amount) if base_charge_tx.amount else 0)
                     
-                    if balance_before_correction >= expected_base_price:
-                        current_user.wallet_balance = balance_before_correction - expected_base_price
-                        
-                        base_charge_tx.amount = -expected_base_price
-                        base_charge_tx.description = f"Оплата аренды: {original_duration} {'час(ов)' if rental.rental_type == RentalType.HOURS else 'день(дней)'} (перерасчёт)"
-                        base_charge_tx.balance_before = balance_before_correction
-                        base_charge_tx.balance_after = float(current_user.wallet_balance)
-                    else:
-                        logger.warning(
-                            f"⚠️ Недостаточно средств для корректировки base_price аренды {rental.id}: "
-                            f"требуется {expected_base_price}₸, баланс {balance_before_correction}₸"
-                        )
-                        expected_base_price = actual_base_charged
-                        rental.base_price = expected_base_price
+                    # Разрешаем списание даже при отрицательном балансе
+                    current_user.wallet_balance = Decimal(str(balance_before_correction - expected_base_price))
+                    
+                    base_charge_tx.amount = -expected_base_price
+                    base_charge_tx.description = f"Оплата аренды: {original_duration} {'час(ов)' if rental.rental_type == RentalType.HOURS else 'день(дней)'} (перерасчёт)"
+                    base_charge_tx.balance_before = balance_before_correction
+                    base_charge_tx.balance_after = float(current_user.wallet_balance)
                 else:
                     # Создаём новую транзакцию, если её не было
                     balance_before_correction = float(current_user.wallet_balance)
                     
-                    if balance_before_correction >= expected_base_price:
-                        current_user.wallet_balance -= expected_base_price
-                        
-                        base_charge_tx = WalletTransaction(
-                            user_id=current_user.id,
-                            amount=-expected_base_price,
-                            transaction_type=WalletTransactionType.RENT_BASE_CHARGE,
-                            description=f"Оплата аренды: {original_duration} {'час(ов)' if rental.rental_type == RentalType.HOURS else 'день(дней)'}",
-                            balance_before=balance_before_correction,
-                            balance_after=float(current_user.wallet_balance),
-                            related_rental_id=rental.id,
-                            created_at=get_local_time()
-                        )
-                        db.add(base_charge_tx)
-                    else:
-                        logger.warning(
-                            f"⚠️ Недостаточно средств для создания транзакции base_price аренды {rental.id}: "
-                            f"требуется {expected_base_price}₸, баланс {balance_before_correction}₸"
-                        )
-                        expected_base_price = 0
-                        rental.base_price = 0
+                    # Разрешаем списание даже при отрицательном балансе
+                    current_user.wallet_balance -= Decimal(str(expected_base_price))
+                    
+                    base_charge_tx = WalletTransaction(
+                        user_id=current_user.id,
+                        amount=-expected_base_price,
+                        transaction_type=WalletTransactionType.RENT_BASE_CHARGE,
+                        description=f"Оплата аренды: {original_duration} {'час(ов)' if rental.rental_type == RentalType.HOURS else 'день(дней)'}",
+                        balance_before=balance_before_correction,
+                        balance_after=float(current_user.wallet_balance),
+                        related_rental_id=rental.id,
+                        created_at=get_local_time()
+                    )
+                    db.add(base_charge_tx)
                 
                 # Обновляем base_price в аренде
                 rental.base_price = expected_base_price
@@ -3898,10 +3938,10 @@ async def complete_rental(
                         f"разница {difference}₸"
                     )
                     
-                    # Откорректировать транзакцию
+                    # Откорректировать транзакцию - разрешаем списание даже при отрицательном балансе
                     if overtime_tx:
                         balance_before_correction = float(current_user.wallet_balance or 0) + float(overtime_tx.amount if overtime_tx.amount else 0)
-                        current_user.wallet_balance = balance_before_correction - expected_overtime_cost
+                        current_user.wallet_balance = Decimal(str(balance_before_correction - expected_overtime_cost))
                         
                         overtime_tx.amount = -expected_overtime_cost
                         overtime_tx.description = f"Сверхтариф {expected_overtime_minutes} мин (перерасчёт)"
@@ -3909,7 +3949,7 @@ async def complete_rental(
                         overtime_tx.balance_after = float(current_user.wallet_balance or 0)
                     else:
                         balance_before_correction = float(current_user.wallet_balance or 0)
-                        current_user.wallet_balance -= expected_overtime_cost
+                        current_user.wallet_balance -= Decimal(str(expected_overtime_cost))
                         
                         overtime_tx = WalletTransaction(
                             user_id=current_user.id,
@@ -3917,7 +3957,7 @@ async def complete_rental(
                             transaction_type=WalletTransactionType.RENT_OVERTIME_FEE,
                             description=f"Сверхтариф {expected_overtime_minutes} мин",
                             balance_before=balance_before_correction,
-                            balance_after=current_user.wallet_balance,
+                            balance_after=float(current_user.wallet_balance),
                             related_rental_id=rental.id,
                             created_at=get_local_time()
                         )
@@ -4009,7 +4049,7 @@ async def complete_rental(
             plate_number=car.plate_number
         )
     except Exception as e:
-        print(e)
+        logger.error(f"Ошибка отправки уведомления механикам: {e}", exc_info=True)
 
     # try:
     #     name_parts = []
@@ -4034,9 +4074,9 @@ async def complete_rental(
     #         plate_number=car.plate_number,
     #         car_name=car.name
     #     )
-    #     print(f"SMS отправлена клиенту {current_user.phone_number} при завершении аренды")
+    #     logger.debug(f"SMS отправлена клиенту {current_user.phone_number} при завершении аренды")
     # except Exception as e:
-    #     print(f"Ошибка отправки SMS при завершении аренды: {e}")
+    #     logger.error(f"Ошибка отправки SMS при завершении аренды: {e}")
 
     schedule_notifications(
         user_ids=[current_user.id, car.owner_id],
@@ -4311,7 +4351,7 @@ async def cancel_booking(
         # Возвращаем предоплату
         refund_amount = rental.already_payed
         record_wallet_transaction(db, user=current_user, amount=refund_amount, ttype=WalletTransactionType.REFUND, description="Возврат предоплаты при отмене бронирования")
-        current_user.wallet_balance += refund_amount
+        current_user.wallet_balance += Decimal(str(refund_amount))
         rental.already_payed = 0
 
     # 4) Отменяем бронирование

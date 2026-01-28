@@ -1,4 +1,6 @@
 import httpx
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
 from typing import Union, Dict
 
 from fastapi import HTTPException
@@ -9,8 +11,8 @@ from app.core.config import logger
 from app.utils.telegram_logger import log_error_to_telegram
 import asyncio
 
-LOCK_ENGINE_DISABLED_IMEIS = {"860803068143045", "860803068139548"}  # CLA45s, Hongqi
-LOCK_ENGINE_DISABLED_VEHICLE_IDS = {800212421, 800283232}  # CLA45s, Hongqi
+LOCK_ENGINE_DISABLED_IMEIS = {"860803068143045", "860803068139548", "860803068133152"}  # CLA45s, Hongqi, Mercedes W222
+LOCK_ENGINE_DISABLED_VEHICLE_IDS = {800212421, 800283232, 800412252}  # CLA45s, Hongqi, Mercedes W222
 
 
 async def get_last_vehicles_data():
@@ -43,7 +45,7 @@ async def send_command_to_terminal(
     """
     import time
     cmd_start = time.time()
-    print(f"[GPS CMD] Sending '{command}' to vehicle {vehicle_id}")
+    logger.info(f"[GPS CMD] Sending '{command}' to vehicle {vehicle_id}")
     
     url = "https://regions.glonasssoft.ru/api/v3/Vehicles/cmd/create"
     headers = {
@@ -65,12 +67,12 @@ async def send_command_to_terminal(
         response.raise_for_status()
         command_id = response.text.strip('"')
         cmd_duration = time.time() - cmd_start
-        print(f"[GPS CMD] Command '{command}' completed in {cmd_duration:.2f}s")
+        logger.info(f"[GPS CMD] Command '{command}' completed in {cmd_duration:.2f}s")
         return {"command_id": command_id}
 
     except Exception as e:
         cmd_duration = time.time() - cmd_start
-        print(f"[GPS CMD] Command '{command}' FAILED after {cmd_duration:.2f}s: {e}")
+        logger.info(f"[GPS CMD] Command '{command}' FAILED after {cmd_duration:.2f}s: {e}")
         logger.error(f"Ошибка отправки команды для {vehicle_id}, {command}, {e}")
         try:
             await log_error_to_telegram(
@@ -355,11 +357,11 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
     """
     import time
     sequence_start = time.time()
-    print(f"[GPS SEQUENCE] ========== START sequence_type={sequence_type}, imei={imei} ==========")
+    logger.info(f"[GPS SEQUENCE] ========== START sequence_type={sequence_type}, imei={imei} ==========")
     
     commands = get_commands_by_imei(imei)
     if not commands:
-        print(f"[GPS SEQUENCE] ERROR: Команды для IMEI {imei} не найдены")
+        logger.info(f"[GPS SEQUENCE] ERROR: Команды для IMEI {imei} не найдены")
         return {"success": False, "error": f"Команды для IMEI {imei} не найдены"}
     
     results = {"success": True, "executed_commands": [], "errors": []}
@@ -374,7 +376,7 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
             
             # 1. Открыть замки
             step1_start = time.time()
-            print(f"[GPS SEQUENCE] Step 1/4: Opening locks...")
+            logger.info(f"[GPS SEQUENCE] Step 1/4: Opening locks...")
             try:
                 open_cmd = commands.get("open", "")
                 if open_cmd:
@@ -382,24 +384,24 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
                     result = await send_command_to_terminal(vehicle_id, open_cmd, token)
                     results["executed_commands"].append({"step": 1, "action": "open_locks", "result": result})
                     step1_duration = time.time() - step1_start
-                    print(f"[GPS SEQUENCE] Step 1/4 completed in {step1_duration:.3f}s")
+                    logger.info(f"[GPS SEQUENCE] Step 1/4 completed in {step1_duration:.3f}s")
                     logger.info(f"Замки автомобиля {imei} открыты")
                     
                     sleep_start = time.time()
-                    print(f"[GPS SEQUENCE] Sleeping 2s after step 1...")
+                    logger.info(f"[GPS SEQUENCE] Sleeping 2s after step 1...")
                     await asyncio.sleep(2)  # Пауза между командами
                     sleep_duration = time.time() - sleep_start
-                    print(f"[GPS SEQUENCE] Sleep completed in {sleep_duration:.3f}s")
+                    logger.info(f"[GPS SEQUENCE] Sleep completed in {sleep_duration:.3f}s")
             except Exception as e:
                 step1_duration = time.time() - step1_start
-                print(f"[GPS SEQUENCE] Step 1/4 FAILED after {step1_duration:.3f}s: {e}")
+                logger.info(f"[GPS SEQUENCE] Step 1/4 FAILED after {step1_duration:.3f}s: {e}")
                 error_msg = f"Ошибка открытия замков: {e}"
                 results["errors"].append(error_msg)
                 logger.error(error_msg)
             
             # 2. Выдать ключ
             step2_start = time.time()
-            print(f"[GPS SEQUENCE] Step 2/4: Giving key...")
+            logger.info(f"[GPS SEQUENCE] Step 2/4: Giving key...")
             try:
                 give_key_cmd = commands.get("give_key", "")
                 if give_key_cmd:
@@ -407,24 +409,24 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
                     result = await send_command_to_terminal(vehicle_id, give_key_cmd, token)
                     results["executed_commands"].append({"step": 2, "action": "give_key", "result": result})
                     step2_duration = time.time() - step2_start
-                    print(f"[GPS SEQUENCE] Step 2/4 completed in {step2_duration:.3f}s")
+                    logger.info(f"[GPS SEQUENCE] Step 2/4 completed in {step2_duration:.3f}s")
                     logger.info(f"Ключ автомобиля {imei} выдан")
                     
                     sleep_start = time.time()
-                    print(f"[GPS SEQUENCE] Sleeping 2s after step 2...")
+                    logger.info(f"[GPS SEQUENCE] Sleeping 2s after step 2...")
                     await asyncio.sleep(2)
                     sleep_duration = time.time() - sleep_start
-                    print(f"[GPS SEQUENCE] Sleep completed in {sleep_duration:.3f}s")
+                    logger.info(f"[GPS SEQUENCE] Sleep completed in {sleep_duration:.3f}s")
             except Exception as e:
                 step2_duration = time.time() - step2_start
-                print(f"[GPS SEQUENCE] Step 2/4 FAILED after {step2_duration:.3f}s: {e}")
+                logger.info(f"[GPS SEQUENCE] Step 2/4 FAILED after {step2_duration:.3f}s: {e}")
                 error_msg = f"Ошибка выдачи ключа: {e}"
                 results["errors"].append(error_msg)
                 logger.error(error_msg)
             
             # 3. Снова открыть замки
             step3_start = time.time()
-            print(f"[GPS SEQUENCE] Step 3/4: Opening locks again...")
+            logger.info(f"[GPS SEQUENCE] Step 3/4: Opening locks again...")
             try:
                 open_cmd = commands.get("open", "")
                 if open_cmd:
@@ -432,24 +434,24 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
                     result = await send_command_to_terminal(vehicle_id, open_cmd, token)
                     results["executed_commands"].append({"step": 3, "action": "open_locks_again", "result": result})
                     step3_duration = time.time() - step3_start
-                    print(f"[GPS SEQUENCE] Step 3/4 completed in {step3_duration:.3f}s")
+                    logger.info(f"[GPS SEQUENCE] Step 3/4 completed in {step3_duration:.3f}s")
                     logger.info(f"Замки автомобиля {imei} открыты повторно")
                     
                     sleep_start = time.time()
-                    print(f"[GPS SEQUENCE] Sleeping 2s after step 3...")
+                    logger.info(f"[GPS SEQUENCE] Sleeping 2s after step 3...")
                     await asyncio.sleep(2)
                     sleep_duration = time.time() - sleep_start
-                    print(f"[GPS SEQUENCE] Sleep completed in {sleep_duration:.3f}s")
+                    logger.info(f"[GPS SEQUENCE] Sleep completed in {sleep_duration:.3f}s")
             except Exception as e:
                 step3_duration = time.time() - step3_start
-                print(f"[GPS SEQUENCE] Step 3/4 FAILED after {step3_duration:.3f}s: {e}")
+                logger.info(f"[GPS SEQUENCE] Step 3/4 FAILED after {step3_duration:.3f}s: {e}")
                 error_msg = f"Ошибка повторного открытия замков: {e}"
                 results["errors"].append(error_msg)
                 logger.error(error_msg)
             
             # 4. Забрать ключ
             step4_start = time.time()
-            print(f"[GPS SEQUENCE] Step 4/4: Taking key...")
+            logger.info(f"[GPS SEQUENCE] Step 4/4: Taking key...")
             try:
                 take_key_cmd = commands.get("take_key", "")
                 if take_key_cmd:
@@ -457,11 +459,11 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
                     result = await send_command_to_terminal(vehicle_id, take_key_cmd, token)
                     results["executed_commands"].append({"step": 4, "action": "take_key", "result": result})
                     step4_duration = time.time() - step4_start
-                    print(f"[GPS SEQUENCE] Step 4/4 completed in {step4_duration:.3f}s")
+                    logger.info(f"[GPS SEQUENCE] Step 4/4 completed in {step4_duration:.3f}s")
                     logger.info(f"Ключ автомобиля {imei} забран")
             except Exception as e:
                 step4_duration = time.time() - step4_start
-                print(f"[GPS SEQUENCE] Step 4/4 FAILED after {step4_duration:.3f}s: {e}")
+                logger.info(f"[GPS SEQUENCE] Step 4/4 FAILED after {step4_duration:.3f}s: {e}")
                 error_msg = f"Ошибка забора ключа: {e}"
                 results["errors"].append(error_msg)
                 logger.error(error_msg)
@@ -521,29 +523,29 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
             # 2. Забрать ключ
             # 3. Закрыть замки
             
-            print(f"[GPS SEQ] Starting complete_selfie_interior for {imei}")
+            logger.info(f"[GPS SEQ] Starting complete_selfie_interior for {imei}")
             
             # 1. Заблокировать двигатель
             try:
                 vehicle_id = get_vehicle_id_by_imei(imei)
                 if imei in LOCK_ENGINE_DISABLED_IMEIS or vehicle_id in LOCK_ENGINE_DISABLED_VEHICLE_IDS:
-                    print(f"[GPS SEQ] Step 1: Lock engine SKIPPED (disabled for this vehicle)")
+                    logger.info(f"[GPS SEQ] Step 1: Lock engine SKIPPED (disabled for this vehicle)")
                     logger.info(f"Lock engine command skipped in execute_gps_sequence for IMEI {imei} (vehicle_id {vehicle_id})")
                     results["executed_commands"].append({"step": 1, "action": "lock_engine", "result": {"skipped": True, "reason": "lock_engine_disabled"}})
                 else:
                     lock_engine_cmd = commands.get("lock_engine", "")
                     if lock_engine_cmd:
-                        print(f"[GPS SEQ] Step 1: Locking engine with command '{lock_engine_cmd}'")
+                        logger.info(f"[GPS SEQ] Step 1: Locking engine with command '{lock_engine_cmd}'")
                         result = await send_command_to_terminal(vehicle_id, lock_engine_cmd, token)
                         results["executed_commands"].append({"step": 1, "action": "lock_engine", "result": result})
                         logger.info(f"Двигатель автомобиля {imei} заблокирован")
-                        print(f"[GPS SEQ] Step 1: Lock engine completed, waiting 2s")
+                        logger.info(f"[GPS SEQ] Step 1: Lock engine completed, waiting 2s")
                     else:
-                        print(f"[GPS SEQ] Step 1: Lock engine command not found")
+                        logger.info(f"[GPS SEQ] Step 1: Lock engine command not found")
                 await asyncio.sleep(2)
             except Exception as e:
                 error_msg = f"Ошибка блокировки двигателя: {e}"
-                print(f"[GPS SEQ] Step 1 ERROR: {error_msg}")
+                logger.info(f"[GPS SEQ] Step 1 ERROR: {error_msg}")
                 results["errors"].append(error_msg)
                 logger.error(error_msg)
             
@@ -551,18 +553,18 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
             try:
                 take_key_cmd = commands.get("take_key", "")
                 if take_key_cmd:
-                    print(f"[GPS SEQ] Step 2: Taking key with command '{take_key_cmd}'")
+                    logger.info(f"[GPS SEQ] Step 2: Taking key with command '{take_key_cmd}'")
                     vehicle_id = get_vehicle_id_by_imei(imei)
                     result = await send_command_to_terminal(vehicle_id, take_key_cmd, token)
                     results["executed_commands"].append({"step": 2, "action": "take_key", "result": result})
                     logger.info(f"Ключ автомобиля {imei} забран")
-                    print(f"[GPS SEQ] Step 2: Take key completed, waiting 2s")
+                    logger.info(f"[GPS SEQ] Step 2: Take key completed, waiting 2s")
                 else:
-                    print(f"[GPS SEQ] Step 2: Take key command not found")
+                    logger.info(f"[GPS SEQ] Step 2: Take key command not found")
                 await asyncio.sleep(2)
             except Exception as e:
                 error_msg = f"Ошибка забора ключа: {e}"
-                print(f"[GPS SEQ] Step 2 ERROR: {error_msg}")
+                logger.info(f"[GPS SEQ] Step 2 ERROR: {error_msg}")
                 results["errors"].append(error_msg)
                 logger.error(error_msg)
             
@@ -570,17 +572,17 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
             try:
                 close_cmd = commands.get("close", "")
                 if close_cmd:
-                    print(f"[GPS SEQ] Step 3: Closing locks with command '{close_cmd}'")
+                    logger.info(f"[GPS SEQ] Step 3: Closing locks with command '{close_cmd}'")
                     vehicle_id = get_vehicle_id_by_imei(imei)
                     result = await send_command_to_terminal(vehicle_id, close_cmd, token)
                     results["executed_commands"].append({"step": 3, "action": "close_locks", "result": result})
                     logger.info(f"Замки автомобиля {imei} закрыты")
-                    print(f"[GPS SEQ] Step 3: Close locks completed")
+                    logger.info(f"[GPS SEQ] Step 3: Close locks completed")
                 else:
-                    print(f"[GPS SEQ] Step 3: Close command not found")
+                    logger.info(f"[GPS SEQ] Step 3: Close command not found")
             except Exception as e:
                 error_msg = f"Ошибка закрытия замков: {e}"
-                print(f"[GPS SEQ] Step 3 ERROR: {error_msg}")
+                logger.info(f"[GPS SEQ] Step 3 ERROR: {error_msg}")
                 results["errors"].append(error_msg)
                 logger.error(error_msg)
                 
@@ -664,13 +666,13 @@ async def execute_gps_sequence(imei: str, token: str, sequence_type: str) -> Dic
         results["errors"].append(error_msg)
         results["success"] = False
         logger.error(error_msg)
-        print(f"[GPS SEQUENCE] EXCEPTION: {error_msg}")
+        logger.info(f"[GPS SEQUENCE] EXCEPTION: {error_msg}")
     
     sequence_duration = time.time() - sequence_start
     success_status = results.get("success", False)
     errors_count = len(results.get("errors", []))
     commands_count = len(results.get("executed_commands", []))
-    print(f"[GPS SEQUENCE] ========== END sequence_type={sequence_type}, imei={imei} ==========")
-    print(f"[GPS SEQUENCE] TOTAL duration: {sequence_duration:.3f}s, success={success_status}, commands={commands_count}, errors={errors_count}")
+    logger.info(f"[GPS SEQUENCE] ========== END sequence_type={sequence_type}, imei={imei} ==========")
+    logger.info(f"[GPS SEQUENCE] TOTAL duration: {sequence_duration:.3f}s, success={success_status}, commands={commands_count}, errors={errors_count}")
     
     return results
