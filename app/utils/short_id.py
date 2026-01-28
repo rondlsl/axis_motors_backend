@@ -92,6 +92,10 @@ def safe_sid_to_uuid(sid: str) -> uuid.UUID:
         >>> safe_sid_to_uuid('invalid')
         ValueError: Неверный формат Short ID: invalid
     """
+    # Уже UUID — возвращаем как есть (например, из SQLAlchemy model)
+    if isinstance(sid, uuid.UUID):
+        return sid
+    sid = str(sid)
     # Проверяем, не является ли это уже полным UUID (с дефисами или без)
     # UUID формат: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (36 символов с дефисами)
     # или 32 hex символа без дефисов
