@@ -2489,6 +2489,26 @@ async def upload_car_photos(
     }
 
 
+def normalize_photo_url_for_comparison(url: str) -> str:
+    """Нормализует URL фотографии для сравнения (извлекает путь без домена)"""
+    if not url:
+        return url
+    # Удаляем домен MinIO, если есть
+    minio_domains = [
+        "https://msmain.azvmotors.kz",
+        "http://msmain.azvmotors.kz",
+        "https://msmain.azvmotors.kz/",
+        "http://msmain.azvmotors.kz/",
+    ]
+    for domain in minio_domains:
+        if url.startswith(domain):
+            url = url[len(domain):]
+            break
+    # Убираем ведущий слеш если есть
+    url = url.lstrip("/")
+    return url
+
+
 @cars_router.delete("/{car_id}/photos/one", summary="Удалить одну фотографию автомобиля")
 async def delete_car_photo_one(
     car_id: str,
@@ -2511,11 +2531,27 @@ async def delete_car_photo_one(
         raise HTTPException(status_code=400, detail="photo_url не может быть пустым")
 
     photos = car.photos or []
-    if photo_url not in photos:
+    
+    # Нормализуем URL для сравнения
+    normalized_input = normalize_photo_url_for_comparison(photo_url)
+    
+    # Ищем соответствующее фото в списке (сравниваем нормализованные URL)
+    matching_photo = None
+    for p in photos:
+        if normalize_photo_url_for_comparison(p) == normalized_input:
+            matching_photo = p
+            break
+    
+    if not matching_photo:
+        logger.warning(f"[delete_car_photo_one] Photo not found. Input: {photo_url}, Normalized: {normalized_input}")
+        logger.warning(f"[delete_car_photo_one] Available photos: {photos}")
         raise HTTPException(
             status_code=404,
             detail="Фотография не найдена среди фотографий этого автомобиля"
         )
+    
+    # Используем оригинальный URL из базы для удаления
+    photo_url = matching_photo
 
     try:
         minio = get_minio_service()
