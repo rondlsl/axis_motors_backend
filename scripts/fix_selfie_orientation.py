@@ -16,6 +16,7 @@ from typing import List, Tuple, Optional, Dict
 from collections import defaultdict
 import time
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Добавляем корневую директорию проекта в путь
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -381,14 +382,19 @@ def collect_selfie_urls(engine) -> List[dict]:
     return selfies
 
 
-def fix_single_selfie(s3_client, selfie: dict, dry_run: bool) -> dict:
-    """Исправить ориентацию одного селфи"""
+def fix_single_selfie(args: tuple) -> dict:
+    """Исправить ориентацию одного селфи (для параллельной обработки)"""
+    selfie, dry_run = args
+    
+    # Каждый поток создаёт свой S3 клиент
+    s3_client = get_s3_client()
+    
     webp_url = selfie['webp_url']
     
     # Парсим путь
     bucket, webp_key = parse_db_path(webp_url)
     if not bucket or not webp_key:
-        return {'status': 'error', 'error': 'Invalid path'}
+        return {'status': 'error', 'error': 'Invalid path', 'selfie': selfie}
     
     # Ищем оригинал
     original_keys = get_original_key(webp_key)
@@ -405,15 +411,15 @@ def fix_single_selfie(s3_client, selfie: dict, dry_run: bool) -> dict:
             continue
     
     if not original_content:
-        return {'status': 'no_original', 'error': f'Original not found for {webp_key}'}
+        return {'status': 'no_original', 'error': f'Original not found for {webp_key}', 'selfie': selfie}
     
     if dry_run:
-        return {'status': 'would_fix', 'original': found_key}
+        return {'status': 'would_fix', 'original': found_key, 'selfie': selfie}
     
     # Конвертируем с правильной ориентацией
     webp_content = convert_with_exif(original_content)
     if not webp_content:
-        return {'status': 'error', 'error': 'Conversion failed'}
+        return {'status': 'error', 'error': 'Conversion failed', 'selfie': selfie}
     
     # Перезаписываем webp файл
     try:
@@ -425,20 +431,22 @@ def fix_single_selfie(s3_client, selfie: dict, dry_run: bool) -> dict:
             ContentLength=len(webp_content)
         )
     except Exception as e:
-        return {'status': 'error', 'error': f'Upload failed: {e}'}
+        return {'status': 'error', 'error': f'Upload failed: {e}', 'selfie': selfie}
     
     return {
         'status': 'fixed',
         'original_size': len(original_content),
         'new_size': len(webp_content),
         'table': selfie.get('table'),
-        'column': selfie.get('column')
+        'column': selfie.get('column'),
+        'selfie': selfie
     }
 
 
 def main():
     parser = argparse.ArgumentParser(description='Исправление ориентации селфи')
     parser.add_argument('--dry-run', action='store_true', help='Без реальных изменений')
+    parser.add_argument('--workers', type=int, default=8, help='Количество параллельных воркеров (default: 8)')
     args = parser.parse_args()
     
     # Заголовок
@@ -446,9 +454,10 @@ def main():
     print(f"{Colors.BOLD}{Colors.CYAN}  🖼️  ИСПРАВЛЕНИЕ ОРИЕНТАЦИИ СЕЛФИ {'(DRY-RUN)' if args.dry_run else ''}{Colors.END}")
     print(f"{Colors.BOLD}{Colors.CYAN}{'═' * 70}{Colors.END}")
     
-    print(f"\n{Colors.BOLD}  📋 Источники:{Colors.END}")
+    print(f"\n{Colors.BOLD}  📋 Источники:{Colors.END}")    
     print(f"     • users: {', '.join(USER_SELFIE_COLUMNS)}")
     print(f"     • rental_history: {len(RENTAL_PHOTO_COLUMNS)} колонок (только /selfie/)")
+    print(f"\n{Colors.BOLD}  ⚡ Воркеров:{Colors.END} {args.workers}")
     
     # Подключение к БД
     print(f"\n{Colors.BOLD}{Colors.BLUE}🔌 Подключение к БД...{Colors.END}")
@@ -470,16 +479,27 @@ def main():
         print(f"\n{Colors.GREEN}✓ Нет селфи для исправления{Colors.END}\n")
         return
     
-    # Исправление
-    print(f"\n{Colors.BOLD}{Colors.BLUE}🔧 Обработка файлов...{Colors.END}\n")
+    # Исправление с параллельной обработкой
+    print(f"\n{Colors.BOLD}{Colors.BLUE}🔧 Обработка файлов ({args.workers} потоков)...{Colors.END}\n")
     
-    s3_client = get_s3_client()
     tracker = ProgressTracker(len(selfies), args.dry_run)
     
-    for selfie in selfies:
-        result = fix_single_selfie(s3_client, selfie, args.dry_run)
-        tracker.update(result, selfie)
-        tracker.print_status()
+    # Подготовка задач
+    tasks = [(selfie, args.dry_run) for selfie in selfies]
+    
+    # Параллельная обработка
+    with ThreadPoolExecutor(max_workers=args.workers) as executor:
+        futures = {executor.submit(fix_single_selfie, task): task[0] for task in tasks}
+        
+        for future in as_completed(futures):
+            selfie = futures[future]
+            try:
+                result = future.result()
+                tracker.update(result, result.get('selfie', selfie))
+            except Exception as e:
+                tracker.update({'status': 'error', 'error': str(e)}, selfie)
+            
+            tracker.print_status()
     
     # Финальный отчёт
     tracker.print_final_report()
