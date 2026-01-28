@@ -32,6 +32,7 @@ from app.gps_api.utils.car_data import send_lock_engine
 from app.utils.telegram_logger import telegram_error_logger
 from app.websocket.notifications import notify_user_status_update
 from app.utils.time_utils import get_local_time
+from app.rent.utils.billing_lock import BillingLock
 
 FUEL_PRICE_PER_LITER = 400
 ELECTRIC_FUEL_PRICE_PER_LITER = 100
@@ -54,12 +55,24 @@ def _get_websocket_semaphore() -> asyncio.Semaphore:
 
 async def billing_job():
     """
-    Periodic billing job:
-      1) Process rentals sync to get push and telegram alerts.
-      2) Send push notifications by user_id (fire-and-forget).
-      3) Send telegram alerts.
-      4) Yield control to event loop.
+    Periodic billing job with distributed lock.
+    Гарантирует, что только один инстанс выполняет биллинг.
+      1) Acquire distributed lock (skip if another instance is running)
+      2) Process rentals sync to get push and telegram alerts.
+      3) Send push notifications by user_id (fire-and-forget).
+      4) Send telegram alerts.
+      5) Yield control to event loop.
     """
+    async with BillingLock.acquire() as acquired:
+        if not acquired:
+            logger.debug("Billing job skipped - another instance is running")
+            return
+
+        await _billing_job_impl()
+
+
+async def _billing_job_impl():
+    """Реализация billing job (вызывается только если лок получен)."""
     push_notifications, telegram_alerts, lock_requests = await asyncio.to_thread(process_rentals_sync)
 
     db = None  

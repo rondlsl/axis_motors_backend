@@ -31,6 +31,9 @@ websockets~=13.1
 # MinIO / S3 Storage
 boto3~=1.35.0
 
+# Redis Cache
+redis[hiredis]>=5.0.0
+
 # Telegram Bot
 python-telegram-bot~=20.7
 
@@ -52,6 +55,15 @@ Pillow~=10.4.0
 # Version Comparison
 packaging~=24.2
 pytz
+# OpenTelemetry (Tracing)
+opentelemetry-api>=1.20.0
+opentelemetry-sdk>=1.20.0
+opentelemetry-exporter-otlp>=1.20.0
+opentelemetry-instrumentation-fastapi>=0.41b0
+opentelemetry-instrumentation-sqlalchemy>=0.41b0
+opentelemetry-instrumentation-requests>=0.41b0
+opentelemetry-instrumentation-httpx>=0.41b0
+
 # Face Verification (currently disabled - code exists but always returns True)
 # Uncomment if you want to enable face verification:
 # deepface~=0.0.91

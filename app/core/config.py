@@ -50,6 +50,15 @@ MINIO_BUCKET_BACKUPS = getenv('MINIO_BUCKET_BACKUPS', 'backups')
 MINIO_PUBLIC_URL = getenv('MINIO_PUBLIC_URL', 'https://msmain.azvmotors.kz')
 MINIO_USE_SSL = getenv('MINIO_USE_SSL', 'true').lower() == 'true'
 
+# === REDIS ===
+REDIS_HOST = getenv('REDIS_HOST', 'localhost')
+REDIS_PORT = int(getenv('REDIS_PORT', '6379'))
+REDIS_DB = int(getenv('REDIS_DB', '0'))
+REDIS_PASSWORD = getenv('REDIS_PASSWORD', None)
+REDIS_ENABLED = getenv('REDIS_ENABLED', 'true').lower() == 'true'
+REDIS_POOL_SIZE = int(getenv('REDIS_POOL_SIZE', '10'))
+REDIS_TIMEOUT = int(getenv('REDIS_TIMEOUT', '5'))
+
 # === LOGGING ===
 logging.basicConfig(level=logging.ERROR, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)

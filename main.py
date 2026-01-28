@@ -78,6 +78,11 @@ app = FastAPI(
     }
 )
 
+# === OpenTelemetry Tracing ===
+from app.core.telemetry import setup_telemetry
+from app.dependencies.database.database import engine
+tracer = setup_telemetry(app, engine)
+
 almaty_tz = pytz.FixedOffset(300)  # GMT+5 = 300 минут
 scheduler = AsyncIOScheduler(timezone=almaty_tz)
 
@@ -92,6 +97,9 @@ try:
     print("✅ MinIO service initialized")
 except Exception as e:
     print(f"⚠️ MinIO service initialization warning: {e}")
+
+# Redis service будет инициализирован в startup_event
+from app.services.redis_service import init_redis, shutdown_redis
 
 
 def run_migrations():
@@ -257,6 +265,16 @@ def init_app(app: FastAPI):
         print("Проверка")
         run_migrations()
 
+        # Инициализируем Redis
+        try:
+            redis_available = await init_redis()
+            if redis_available:
+                print("✅ Redis service initialized")
+            else:
+                print("⚠️ Redis unavailable, using database fallback")
+        except Exception as e:
+            print(f"⚠️ Redis initialization error: {e}")
+
         db_gen = get_db()
         db = next(db_gen)
         scheduler.add_job(
@@ -397,7 +415,7 @@ def init_app(app: FastAPI):
     @app.on_event("shutdown")
     async def shutdown_event():
         print("Приложение остановлено")
-        
+
         # Останавливаем HangWatchdog
         try:
             from app.utils.hang_watchdog import get_hang_watchdog
@@ -406,7 +424,13 @@ def init_app(app: FastAPI):
                 await hang_watchdog.stop()
         except Exception as e:
             logger.error(f"Ошибка остановки HangWatchdog: {e}")
-        
+
+        # Закрываем Redis
+        try:
+            await shutdown_redis()
+        except Exception as e:
+            logger.error(f"Ошибка остановки Redis: {e}")
+
         try:
             scheduler.shutdown()
         except Exception as e:

@@ -13,6 +13,9 @@ services:
       start_period: 40s
     environment:
       - DEBUG_API_ERRORS=1
+      - OTEL_ENABLED=true
+      - OTEL_SERVICE_NAME=azv-motors-api
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317
     env_file:
       - .env
     depends_on:

@@ -51,6 +51,7 @@ from app.utils.time_utils import get_local_time
 # Временно закомментировано: генерация FCM токенов
 # from app.utils.fcm_token import ensure_user_has_unique_fcm_token, ensure_unique_fcm_token
 from app.websocket.notifications import notify_user_status_update
+from app.auth.rate_limit import SMSRateLimit
 import traceback
 import asyncio
 
@@ -58,75 +59,6 @@ Auth_router = APIRouter(prefix="/auth", tags=["Auth"])
 
 ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/jpg"]
 CERT_ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/jpg", "application/pdf"]
-
-SMS_COOLDOWN_SECONDS = 60  # Минимальный интервал между SMS
-SMS_HOURLY_LIMIT = 5  # Максимум SMS в час
-sms_rate_limit_cache: dict = {} 
-
-
-def check_sms_rate_limit(phone_number: str) -> tuple[bool, str]:
-    """
-    Проверяет rate limit для SMS.
-    Возвращает (can_send, error_message)
-    """
-    # Системные номера телефонов, для которых не применяется rate limit
-    SYSTEM_PHONE_NUMBERS = [
-        "70000000000",   # админ
-        "71234567890",   # механик
-        "71234567898",   # МВД
-        "71234567899",   # финансист
-        "79999999999",   # бухгалтер
-        "71231111111",   # владелец автомобилей
-    ]
-    
-    # Для системных пользователей пропускаем rate limit
-    if phone_number in SYSTEM_PHONE_NUMBERS:
-        return True, ""
-    
-    now = get_local_time()
-    
-    if phone_number not in sms_rate_limit_cache:
-        return True, ""
-    
-    cache = sms_rate_limit_cache[phone_number]
-    
-    last_sent = cache.get("last_sent")
-    if last_sent:
-        elapsed = (now - last_sent).total_seconds()
-        if elapsed < SMS_COOLDOWN_SECONDS:
-            remaining = int(SMS_COOLDOWN_SECONDS - elapsed)
-            return False, f"Подождите {remaining} секунд перед повторной отправкой SMS"
-    
-    hour_start = cache.get("hour_start")
-    if hour_start and (now - hour_start).total_seconds() < 3600:
-        hourly_count = cache.get("hourly_count", 0)
-        if hourly_count >= SMS_HOURLY_LIMIT:
-            return False, f"Превышен лимит SMS. Попробуйте через час."
-    
-    return True, ""
-
-
-def update_sms_rate_limit(phone_number: str) -> None:
-    """Обновляет счётчики rate limit после отправки SMS"""
-    now = get_local_time()
-    
-    if phone_number not in sms_rate_limit_cache:
-        sms_rate_limit_cache[phone_number] = {
-            "last_sent": now,
-            "hourly_count": 1,
-            "hour_start": now
-        }
-    else:
-        cache = sms_rate_limit_cache[phone_number]
-        hour_start = cache.get("hour_start")
-        
-        if not hour_start or (now - hour_start).total_seconds() >= 3600:
-            cache["hour_start"] = now
-            cache["hourly_count"] = 1
-        else:
-            cache["hourly_count"] = cache.get("hourly_count", 0) + 1
-        
-        cache["last_sent"] = now
 
 
 def generate_email_verification_code() -> str:
@@ -332,7 +264,7 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
             # Если что-то пошло не так, просто возвращаем успех
             return SendSmsResponse(message="SMS code sent successfully", fcm_token=None)
 
-    can_send, error_msg = check_sms_rate_limit(phone_number)
+    can_send, error_msg = await SMSRateLimit.check(phone_number)
     if not can_send:
         raise HTTPException(status_code=429, detail=error_msg)
 
@@ -485,7 +417,7 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
         try:
             if SMS_TOKEN:
                 await send_sms_mobizon(phone_number, sms_text, f"{SMS_TOKEN}", sender="AZV Motors")
-                update_sms_rate_limit(phone_number)
+                await SMSRateLimit.update(phone_number)
             else:
                 logger.warning("SMS_TOKEN is not configured; skipping Mobizon send")
         except Exception as e:
