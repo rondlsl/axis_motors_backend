@@ -6816,30 +6816,13 @@ async def send_notification_to_user(
     body = request.body.strip()
     
     try:
-        # Сохраняем уведомление в БД
-        notification = Notification(
+        # send_push_to_user_by_id сохраняет уведомление в БД и отправляет push
+        push_sent = await send_push_to_user_by_id(
+            db_session=db,
             user_id=user.id,
             title=title,
             body=body
         )
-        db.add(notification)
-        db.flush()
-        
-        notification_id = uuid_to_sid(notification.id)
-        
-        # Отправляем только push (без повторного сохранения в notifications — запись уже создана выше)
-        push_sent = False
-        try:
-            devices_tokens = get_user_push_tokens(db, user.id)
-            if devices_tokens:
-                tasks = [
-                    send_push_notification_async(token=t, title=title, body=body)
-                    for t in devices_tokens
-                ]
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                push_sent = any(r is True for r in results)
-        except Exception as push_error:
-            logger.warning(f"Push notification failed for user {user_id}: {push_error}")
         
         log_action(
             db,
@@ -6850,7 +6833,6 @@ async def send_notification_to_user(
             details={
                 "title": title,
                 "body": body,
-                "notification_id": notification_id,
                 "push_sent": push_sent
             }
         )
@@ -6858,9 +6840,8 @@ async def send_notification_to_user(
         
         return SendUserNotificationResponse(
             success=True,
-            message="Уведомление успешно отправлено" + (" и сохранено" if not push_sent else ""),
+            message="Уведомление успешно отправлено",
             user_id=user_id,
-            notification_id=notification_id,
             push_sent=push_sent
         )
     except Exception as e:
