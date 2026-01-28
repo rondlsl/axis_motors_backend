@@ -3982,22 +3982,27 @@ async def get_user_owned_cars(
     db: Session = Depends(get_db)
 ):
     """Получение списка автомобилей, где пользователь является владельцем (owner_id)"""
+    print(f"[owned-cars] GET user_id={user_id}")
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
     user_uuid = safe_sid_to_uuid(user_id)
+    print(f"[owned-cars] user_uuid={user_uuid}")
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
+        print(f"[owned-cars] user not found user_id={user_id}")
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
     # Получаем автомобили, где пользователь является владельцем
     cars = db.query(Car).filter(Car.owner_id == user_uuid).all()
+    print(f"[owned-cars] cars_count={len(cars)} user_id={user_id}")
     
     result = []
     now = datetime.now()
     current_month_start = datetime(now.year, now.month, 1)
     
     for car in cars:
+        print(f"[owned-cars] car id={uuid_to_sid(car.id)} name={car.name} plate={car.plate_number}")
         # Рассчитываем доступные минуты для текущего месяца
         available_minutes = _calculate_month_availability_minutes(
             car_id=car.id,
@@ -4022,6 +4027,7 @@ async def get_user_owned_cars(
             color=car.color
         ))
     
+    print(f"[owned-cars] OK user_id={user_id} result_count={len(result)}")
     return result
 
 
