@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Body, Request
 from math import ceil, floor
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
@@ -23,7 +23,7 @@ from app.admin.cars.schemas import (
     CarAvailabilityTimerSchema, CarCurrentUserSchema,
     CarListResponseSchema, CarMapResponseSchema, CarStatisticsSchema,
     CarListItemSchema, CarMapItemSchema, OwnerSchema, CurrentRenterSchema,
-    CarCreateSchema, CarCreateResponseSchema
+    CarCreateSchema, CarCreateResponseSchema, CarDeletePhotoSchema
 )
 from app.admin.cars.utils import car_to_detail_schema, status_display, _get_drive_type_display, sort_car_photos
 from app.gps_api.utils.route_data import get_gps_route_data
@@ -40,6 +40,7 @@ from app.utils.time_utils import get_local_time, parse_datetime_to_local
 from app.owner.availability import update_car_availability_snapshot
 from app.owner.router import calculate_owner_earnings, calculate_fuel_cost, calculate_delivery_cost
 import asyncio
+import json
 import uuid
 import httpx
 from app.models.contract_model import UserContractSignature, ContractFile, ContractType
@@ -79,13 +80,18 @@ def to_utc_for_glonass(dt: datetime) -> str | None:
 @cars_router.patch("/{car_id}", response_model=CarDetailSchema)
 async def edit_car(
     car_id: str,
-    body: CarEditSchema,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     Редактировать автомобиль.
-    
+
+    - Не удаляет фотографии. Удаление — только через DELETE /{car_id}/photos/one.
+    - Может добавлять новые фото: multipart/form-data с полем «data» (JSON) и «new_photos» (файлы).
+      Новые файлы загружаются в MinIO, их URL дописываются в car.photos.
+    - Может менять порядок фото: в «data» передать «photos» — массив URL в нужном порядке.
+
     Если изменяется gps_imei:
     1. Удаляет старую машину из azv_motors_cars_v2 по старому IMEI
     2. Получает данные от Glonass API по новому IMEI
@@ -98,9 +104,50 @@ async def edit_car(
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
+    content_type = request.headers.get("content-type", "")
+    new_photos_files: List[UploadFile] = []
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        data_raw = form.get("data")
+        data_dict: dict = {}
+        if data_raw is not None:
+            try:
+                data_dict = json.loads(data_raw) if isinstance(data_raw, str) else data_raw
+            except (json.JSONDecodeError, TypeError) as e:
+                raise HTTPException(status_code=400, detail=f"Невалидный JSON в «data»: {e}")
+        body = CarEditSchema(**data_dict)
+        for v in form.getlist("new_photos"):
+            if hasattr(v, "read") and hasattr(v, "filename"):
+                new_photos_files.append(v)
+    else:
+        try:
+            raw = await request.json()
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Ожидается JSON или multipart: {e}")
+        body = CarEditSchema(**raw)
+
     update_fields = body.model_dump(exclude_unset=True)
-    logger.info(f"[edit_car] Received update_fields: {update_fields}")
+    logger.info(f"[edit_car] Received update_fields: {list(update_fields.keys())}")
     logger.info(f"[edit_car] Photos in update_fields: {update_fields.get('photos', 'NOT PRESENT')}")
+
+    # Добавление новых фото: загрузка в MinIO и добавление URL в car.photos
+    if new_photos_files:
+        from app.services.minio_service import get_minio_service
+        minio = get_minio_service()
+        normalized_plate = normalize_plate_number(car.plate_number) if car.plate_number else str(car.id)
+        folder = f"cars/{normalized_plate}"
+        saved_urls: List[str] = []
+        for f in new_photos_files:
+            try:
+                url = await minio.upload_file(f, car.id, folder)
+                saved_urls.append(url)
+            except Exception as e:
+                logger.error(f"[edit_car] Ошибка загрузки фото {getattr(f, 'filename', '?')}: {e}")
+        if saved_urls:
+            base = update_fields.get("photos") if "photos" in update_fields else (car.photos or [])
+            update_fields["photos"] = list(base) + saved_urls
+            logger.info(f"[edit_car] Загружено в MinIO и добавлено в photos: {len(saved_urls)} файлов")
     
     # Сохраняем старый IMEI для проверки изменений
     old_gps_imei = car.gps_imei
@@ -120,37 +167,19 @@ async def edit_car(
         else:
             update_fields["owner_id"] = None
     
-    # Обработка photos (изменение порядка, добавление, удаление)
+    # Обработка photos: только добавление новых URL и смена порядка. Удаление не выполняем.
     if "photos" in update_fields:
         new_photos = update_fields.pop("photos")
         if new_photos is not None:
             old_photos = car.photos or []
-            old_photos_set = set(old_photos)
-            new_photos_set = set(new_photos)
-            
-            # Находим фотографии для удаления (есть в old, но нет в new)
-            photos_to_delete = [p for p in old_photos if p not in new_photos_set]
-            
-            # Находим добавленные фотографии (есть в new, но нет в old)
-            photos_added = [p for p in new_photos if p not in old_photos_set]
-            
-            # Удаляем фотографии из MinIO если есть что удалять
-            if photos_to_delete:
-                try:
-                    from app.services.minio_service import get_minio_service
-                    minio = get_minio_service()
-                    minio.delete_files(photos_to_delete)
-                    logger.info(f"Удалены фотографии из MinIO: {photos_to_delete}")
-                except Exception as e:
-                    logger.error(f"Ошибка удаления фотографий из MinIO: {e}")
-            
-            # Обновляем массив photos (новый порядок)
+            old_set = set(old_photos)
+            added = [u for u in new_photos if u not in old_set]
+            reordered = list(old_photos) != new_photos and set(old_photos) == set(new_photos)
             update_fields["photos"] = new_photos
-            
-            if photos_to_delete or photos_added:
-                logger.info(f"Обновлены фотографии машины {car_id}: удалено {len(photos_to_delete)}, добавлено {len(photos_added)}, итого: {len(new_photos)} фото")
-            else:
-                logger.info(f"Изменен порядок фотографий машины {car_id}: {len(new_photos)} фото")
+            if added:
+                logger.info(f"[edit_car] Добавлены фото: {len(added)}, итого: {len(new_photos)}")
+            elif reordered:
+                logger.info(f"[edit_car] Изменён порядок фото, итого: {len(new_photos)}")
     
     # Проверяем уникальность нового IMEI
     if gps_imei_changed and new_gps_imei:
@@ -2458,6 +2487,67 @@ async def upload_car_photos(
         "added": saved_urls,
         "total_photos": len(car.photos or [])
     }
+
+
+@cars_router.delete("/{car_id}/photos/one", summary="Удалить одну фотографию автомобиля")
+async def delete_car_photo_one(
+    car_id: str,
+    body: CarDeletePhotoSchema = Body(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Удалить одну фотографию автомобиля из MinIO и из списка photos при редактировании"""
+    from app.services.minio_service import get_minio_service
+
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+
+    car = get_car_by_id(db, car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+
+    photo_url = body.photo_url.strip()
+    if not photo_url:
+        raise HTTPException(status_code=400, detail="photo_url не может быть пустым")
+
+    photos = car.photos or []
+    if photo_url not in photos:
+        raise HTTPException(
+            status_code=404,
+            detail="Фотография не найдена среди фотографий этого автомобиля"
+        )
+
+    try:
+        minio = get_minio_service()
+        ok = minio.delete_file(photo_url)
+        if not ok:
+            logger.warning(f"Не удалось удалить файл из MinIO: {photo_url}")
+
+        car.photos = [p for p in photos if p != photo_url]
+
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="delete_car_photo_one",
+            entity_type="car",
+            entity_id=car.id,
+            details={"photo_url": photo_url, "remaining_count": len(car.photos or [])},
+        )
+        db.commit()
+        db.refresh(car)
+
+        return {
+            "message": "Фотография удалена",
+            "car_id": uuid_to_sid(car.id),
+            "deleted_url": photo_url,
+            "remaining_count": len(car.photos or []),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Ошибка удаления фотографии: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка удаления фотографии: {e}")
 
 
 @cars_router.delete("/{car_id}/photos", summary="Удалить все фотографии автомобиля")

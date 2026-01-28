@@ -270,6 +270,11 @@ class CarEditSchema(BaseModel):
     photos: Optional[List[str]] = None  # Массив URL фотографий (для изменения порядка/удаления)
 
 
+class CarDeletePhotoSchema(BaseModel):
+    """Схема для удаления одной фотографии автомобиля"""
+    photo_url: str = Field(..., min_length=1, description="URL фотографии для удаления")
+
+
 class CarCommentSchema(SidMixin):
     """Схема комментария к автомобилю"""
     id: str
