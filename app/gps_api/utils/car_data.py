@@ -11,8 +11,8 @@ from app.core.config import logger
 from app.utils.telegram_logger import log_error_to_telegram
 import asyncio
 
-LOCK_ENGINE_DISABLED_IMEIS = {"860803068143045", "860803068139548"}  # CLA45s, Hongqi
-LOCK_ENGINE_DISABLED_VEHICLE_IDS = {800212421, 800283232}  # CLA45s, Hongqi
+LOCK_ENGINE_DISABLED_IMEIS = {"860803068143045", "860803068139548", "860803068133152"}  # CLA45s, Hongqi, Mercedes W222
+LOCK_ENGINE_DISABLED_VEHICLE_IDS = {800212421, 800283232, 800412252}  # CLA45s, Hongqi, Mercedes W222
 
 
 async def get_last_vehicles_data():
