@@ -290,6 +290,7 @@ class SupportBot:
         
         db_gen = self.db_session_factory()
         db = next(db_gen)
+        chat = None  # Сохраняем chat для отправки в группу
         try:
             support_service = SupportService(db)
             
@@ -305,10 +306,8 @@ class SupportBot:
             saved_message.telegram_chat_id = update.message.chat.id
             db.commit()
             
-            # Отправляем уведомление в группу поддержки
+            # Получаем чат для отправки уведомления
             chat = support_service.get_chat_by_sid(chat_id)
-            if chat:
-                await self.send_message_notification_to_support_group(chat, message_text)
             
             await update.message.reply_text("✅ Сообщение отправлено!")
             
@@ -318,6 +317,23 @@ class SupportBot:
             await update.message.reply_text("❌ Ошибка при отправке сообщения")
         finally:
             db.close()
+        
+        # ВСЕГДА отправляем уведомление в группу поддержки (вне try/except БД)
+        # Даже если произошла ошибка в БД, пытаемся уведомить группу
+        try:
+            if chat:
+                await self.send_message_notification_to_support_group(chat, message_text)
+            else:
+                # Если чат не найден, всё равно отправляем базовое уведомление
+                logger.warning(f"Chat not found for chat_id={chat_id}, sending fallback notification")
+                await self.send_fallback_notification_to_support_group(
+                    user_id=user_id,
+                    chat_id=chat_id,
+                    message_text=message_text
+                )
+        except Exception as e:
+            logger.error(f"Error sending notification to support group: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
 
     async def handle_media(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка медиа файлов (фото, документы, видео, аудио)"""
@@ -400,12 +416,24 @@ class SupportBot:
             await update.message.reply_text("❌ Не удалось обработать медиа файл")
             return
         
+        chat = None  # Сохраняем chat для отправки в группу
         try:
             # Скачиваем файл
             media_url = await self.download_telegram_file(file_obj, media_type)
             
             if not media_url:
                 await update.message.reply_text("❌ Ошибка при сохранении файла")
+                # Всё равно пытаемся отправить уведомление в группу
+                try:
+                    await self.send_fallback_media_notification_to_support_group(
+                        user_id=user_id,
+                        chat_id=chat_id,
+                        media_type=media_type,
+                        file_name=file_name,
+                        caption=caption
+                    )
+                except Exception as notify_error:
+                    logger.error(f"Error sending fallback media notification: {notify_error}")
                 return
             
             # Сохраняем сообщение в БД
@@ -430,10 +458,8 @@ class SupportBot:
                 saved_message.telegram_chat_id = message.chat.id
                 db.commit()
                 
-                # Отправляем медиа в группу поддержки
+                # Получаем чат для отправки уведомления
                 chat = support_service.get_chat_by_sid(chat_id)
-                if chat:
-                    await self.send_media_to_support_group(chat, file_obj, media_type, file_name, caption)
                 
                 await update.message.reply_text("✅ Медиа файл отправлен!")
                 
@@ -443,6 +469,24 @@ class SupportBot:
                 await update.message.reply_text("❌ Ошибка при отправке медиа файла")
             finally:
                 db.close()
+            
+            # ВСЕГДА отправляем медиа в группу поддержки (вне try/except БД)
+            try:
+                if chat:
+                    await self.send_media_to_support_group(chat, file_obj, media_type, file_name, caption)
+                else:
+                    # Если чат не найден, отправляем fallback уведомление
+                    logger.warning(f"Chat not found for chat_id={chat_id}, sending fallback media notification")
+                    await self.send_fallback_media_notification_to_support_group(
+                        user_id=user_id,
+                        chat_id=chat_id,
+                        media_type=media_type,
+                        file_name=file_name,
+                        caption=caption
+                    )
+            except Exception as e:
+                logger.error(f"Error sending media to support group: {e}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
                 
         except Exception as e:
             logger.error(f"Error handling media: {e}")
@@ -556,9 +600,11 @@ class SupportBot:
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             await self.send_to_support_group(notification_text, reply_markup=reply_markup)
+            logger.info(f"New chat notification sent to support group for chat {chat.sid}")
             
         except Exception as e:
             logger.error(f"Error sending notification: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
 
     async def send_media_to_support_group(self, chat, file_obj, media_type: str, file_name: str, caption: str = ""):
         """Отправить медиа файл в группу поддержки"""
@@ -638,6 +684,9 @@ class SupportBot:
                 else:
                     logger.warning(f"Неизвестный тип медиа: {media_type}")
                     return
+                
+                logger.info(f"Media ({media_type}) sent to support group for chat {chat.sid}")
+                
             except Exception as send_error:
                 logger.error(f"Ошибка отправки медиа в группу: {send_error}")
                 logger.error(f"Traceback: {traceback.format_exc()}")
@@ -675,9 +724,70 @@ class SupportBot:
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             await self.send_to_support_group(notification_text, reply_markup=reply_markup)
+            logger.info(f"Message notification sent to support group for chat {chat.sid}")
             
         except Exception as e:
             logger.error(f"Error sending message notification: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            # Не пробрасываем исключение - уведомление вторично
+
+    async def send_fallback_notification_to_support_group(self, user_id: int, chat_id: str, message_text: str):
+        """Отправить базовое уведомление, если не удалось получить полные данные чата"""
+        try:
+            notification_text = (
+                f"💬 Новое сообщение от клиента\n\n"
+                f"📱 Telegram ID: {user_id}\n"
+                f"💬 Сообщение: {message_text}\n\n"
+                f"ID чата: {chat_id}\n"
+                f"⚠️ Полные данные клиента недоступны"
+            )
+            
+            keyboard = [
+                [InlineKeyboardButton("💬 Ответить", callback_data=f"reply_{chat_id}")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await self.send_to_support_group(notification_text, reply_markup=reply_markup)
+            logger.info(f"Fallback notification sent for chat {chat_id}")
+            
+        except Exception as e:
+            logger.error(f"Error sending fallback notification: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+
+    async def send_fallback_media_notification_to_support_group(
+        self, 
+        user_id: int, 
+        chat_id: str, 
+        media_type: str, 
+        file_name: str, 
+        caption: str = ""
+    ):
+        """Отправить базовое уведомление о медиа, если не удалось получить полные данные чата"""
+        try:
+            notification_text = (
+                f"📎 Новый медиа файл от клиента\n\n"
+                f"📱 Telegram ID: {user_id}\n"
+                f"📎 Тип: {media_type.upper()}\n"
+                f"📄 Файл: {file_name}\n"
+            )
+            if caption:
+                notification_text += f"💬 Подпись: {caption}\n"
+            notification_text += (
+                f"\nID чата: {chat_id}\n"
+                f"⚠️ Полные данные клиента недоступны"
+            )
+            
+            keyboard = [
+                [InlineKeyboardButton("💬 Ответить", callback_data=f"reply_{chat_id}")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await self.send_to_support_group(notification_text, reply_markup=reply_markup)
+            logger.info(f"Fallback media notification sent for chat {chat_id}")
+            
+        except Exception as e:
+            logger.error(f"Error sending fallback media notification: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
 
     async def send_to_support_group(self, text: str, reply_markup=None):
         """Отправить сообщение в группу поддержки (с разбивкой на части, если превышает лимит Telegram)"""
