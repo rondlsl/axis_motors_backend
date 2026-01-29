@@ -1,6 +1,8 @@
 """
 Router для работы с завершёнными арендами в админ панели
 """
+import sys
+import traceback
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, desc
@@ -22,6 +24,15 @@ from app.core.logging_config import get_logger
 
 rentals_router = APIRouter(tags=["Admin Rentals"])
 logger = get_logger(__name__)
+
+
+def _log_delete_rental_stdout(message: str) -> None:
+    """Пишет строку в stdout и сбрасывает буфер — всегда видна в логах (Docker/K8s), не зависит от LOG_LEVEL."""
+    try:
+        sys.stdout.write(f"[DELETE_RENTAL] {message}\n")
+        sys.stdout.flush()
+    except Exception:
+        pass
 
 
 def _get_tariff_display(rental_type_value: str) -> str:
@@ -279,6 +290,7 @@ async def delete_rental_by_id(
     - отзыв по аренде (rental_id)
     - запись аренды (rental_history)
     """
+    _log_delete_rental_stdout(f"start rental_id={rental_id} admin_id={current_user.id}")
     logger.info(
         "delete_rental_by_id: start rental_id=%s admin_id=%s",
         rental_id,
@@ -367,13 +379,19 @@ async def delete_rental_by_id(
         raise
     except Exception as e:
         db.rollback()
+        exc_type = type(e).__name__
+        exc_msg = str(e)
+        tb = traceback.format_exc()
+        # Всегда видно в логах (stdout), не зависит от LOG_LEVEL
+        _log_delete_rental_stdout(f"ERROR rental_id={rental_id} exception_type={exc_type} exception_msg={exc_msg}")
+        _log_delete_rental_stdout(f"traceback:\n{tb}")
         logger.error(
             "delete_rental_by_id: rollback done rental_id=%s admin_id=%s exception_type=%s exception_msg=%s",
             rental_id,
             str(current_user.id),
-            type(e).__name__,
-            str(e),
-            extra={"rental_id": rental_id, "admin_id": str(current_user.id), "error": str(e)},
+            exc_type,
+            exc_msg,
+            extra={"rental_id": rental_id, "admin_id": str(current_user.id), "error": exc_msg},
         )
         logger.exception("Delete rental failed: rental_id=%s admin_id=%s", rental_id, str(current_user.id))
         raise HTTPException(status_code=500, detail="Ошибка удаления аренды")
