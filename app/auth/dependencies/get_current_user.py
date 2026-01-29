@@ -1,7 +1,10 @@
+from uuid import UUID
+
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.auth.security.auth_bearer import JWTBearer
+from app.auth.dependencies.token_cache import TokenCache
 from app.models.user_model import User, UserRole
 from app.models.token_model import TokenRecord
 from app.dependencies.database.database import get_db
@@ -19,13 +22,28 @@ async def get_current_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Could not validate credentials"
         )
-    # Ищем только активного пользователя
+    if not raw_token:
+        raise HTTPException(status_code=401, detail="Token not provided")
+
+    # === Шаг 1: Проверяем кэш ===
+    cached_user_id = await TokenCache.get_token_user_id(raw_token)
+    if cached_user_id:
+        # Токен найден в кэше - загружаем пользователя по ID
+        user = db.query(User).filter(
+            User.id == UUID(cached_user_id),
+            User.is_active == True
+        ).first()
+        if user:
+            return user
+        # Пользователь не найден или неактивен - инвалидируем кэш
+        await TokenCache.invalidate_token(raw_token)
+
+    # === Шаг 2: Cache MISS - идем в БД (как раньше) ===
     user = db.query(User).filter(User.phone_number == phone_number, User.is_active == True).first()
     if user is None:
         raise HTTPException(status_code=404, detail="User not found or inactive")
+
     # Проверяем, что токен существует в БД (access или refresh)
-    if not raw_token:
-        raise HTTPException(status_code=401, detail="Token not provided")
     token_row = (
         db.query(TokenRecord)
         .filter(
@@ -37,7 +55,11 @@ async def get_current_user(
     )
     if token_row is None:
         raise HTTPException(status_code=401, detail="Token is not valid")
-    # обновляем last_used_at
+
+    # === Шаг 3: Кэшируем для следующих запросов ===
+    await TokenCache.set_token_user_id(raw_token, user.id)
+
+    # Обновляем last_used_at
     token_row.last_used_at = get_local_time()
     db.add(token_row)
     db.commit()

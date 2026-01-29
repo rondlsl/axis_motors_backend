@@ -7,11 +7,11 @@ from fastapi import FastAPI
 from app.support.router import router as support_router
 from app.support.telegram_bot import start_support_bot
 from app.support.notification_service import support_notification_service
+from app.core.logging_config import get_logger
 import asyncio
-import logging
 import traceback
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 def setup_support_system(app: FastAPI, db_session_factory):
     """Настройка системы поддержки"""

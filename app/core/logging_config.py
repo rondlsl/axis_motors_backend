@@ -109,47 +109,50 @@ def setup_logging(
     json_format: bool = None
 ) -> None:
     """
-    Настройка логирования для всего приложения.
-    
+    Настройка логирования. Один handler в stdout.
+    По умолчанию LOG_LEVEL=DEBUG — видны все логи. Приглушён только APScheduler.
+
+    ENV: LOG_LEVEL=DEBUG | INFO | WARNING | ERROR (по умолчанию DEBUG), LOG_FORMAT=text | json
+
     Args:
         level: Уровень логирования (DEBUG, INFO, WARNING, ERROR)
         json_format: Использовать JSON формат (для production)
     """
-    # Определяем уровень
+    # По умолчанию DEBUG — видны все логи (DEBUG, INFO, WARNING, ERROR). LOG_LEVEL=INFO уменьшит шум.
     if level is None:
-        level = getenv('LOG_LEVEL', 'INFO')
+        level = getenv('LOG_LEVEL', 'DEBUG')
     
-    log_level = getattr(logging, level.upper(), logging.INFO)
+    log_level = getattr(logging, level.upper(), logging.DEBUG)
     
     # Определяем формат
     if json_format is None:
         json_format = getenv('LOG_FORMAT', 'text').lower() == 'json'
     
-    # Создаём handler
-    handler = logging.StreamHandler(sys.stdout)
-    
+    # Создаём handler; line_buffering чтобы каждая строка сразу уходила в stdout (Docker/K8s)
+    stream = sys.stdout
+    try:
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(line_buffering=True)
+    except Exception:
+        pass
+    handler = logging.StreamHandler(stream)
+    handler.setLevel(log_level)
+
     if json_format:
         handler.setFormatter(JSONFormatter())
     else:
         handler.setFormatter(ColoredFormatter())
     
-    # Настраиваем root logger
+    # Root logger — один handler в stdout, уровень из LOG_LEVEL. Ничего больше не трогаем.
     root_logger = logging.getLogger()
     root_logger.setLevel(log_level)
-    
-    # Удаляем старые handlers
     root_logger.handlers = []
     root_logger.addHandler(handler)
     
-    # Уменьшаем шум от библиотек
-    logging.getLogger('httpx').setLevel(logging.WARNING)
-    logging.getLogger('httpcore').setLevel(logging.WARNING)
-    logging.getLogger('urllib3').setLevel(logging.WARNING)
-    logging.getLogger('asyncio').setLevel(logging.WARNING)
-    logging.getLogger('uvicorn.access').setLevel(logging.WARNING)
-    logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
-    logging.getLogger('botocore').setLevel(logging.WARNING)
-    logging.getLogger('boto3').setLevel(logging.WARNING)
+    # Единственное исключение: APScheduler пишет каждую секунду и забивает лог.
+    # Только его приглушаем до WARNING. Все остальные логи (запросы, app, uvicorn и т.д.) — как есть.
+    for name in ("apscheduler", "apscheduler.executors.default"):
+        logging.getLogger(name).setLevel(logging.WARNING)
 
 
 def get_logger(name: str) -> logging.Logger:

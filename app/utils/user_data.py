@@ -16,8 +16,10 @@ from app.rent.utils.calculate_price import get_open_price
 from app.owner.utils import ALMATY_TZ
 from app.owner.availability import update_car_availability_snapshot
 from app.admin.cars.utils import sort_car_photos
-from app.core.config import logger
+from app.core.logging_config import get_logger
 from app.utils.time_utils import get_local_time
+
+logger = get_logger(__name__)
 import traceback
 
 

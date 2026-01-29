@@ -9,8 +9,10 @@ import traceback
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole
-from app.core.config import logger
+from app.core.logging_config import get_logger
 from app.utils.action_logger import log_action
+
+logger = get_logger(__name__)
 
 
 admin_auth_router = APIRouter(tags=["Admin Auth"])

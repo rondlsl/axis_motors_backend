@@ -9,7 +9,9 @@ import sys
 from typing import Optional, Dict, Any
 from datetime import datetime
 
-from app.core.config import logger
+from app.core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 def get_all_thread_stacks() -> str:

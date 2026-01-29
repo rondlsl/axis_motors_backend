@@ -1,14 +1,14 @@
 import httpx
-from app.core.logging_config import get_logger
-logger = get_logger(__name__)
 from typing import Union, Dict
 
 from fastapi import HTTPException
 from httpx import Response
 
 from app.RateLimitedHTTPClient import RateLimitedHTTPClient
-from app.core.config import logger
+from app.core.logging_config import get_logger
 from app.utils.telegram_logger import log_error_to_telegram
+
+logger = get_logger(__name__)
 import asyncio
 
 LOCK_ENGINE_DISABLED_IMEIS = {"860803068143045", "860803068139548", "860803068133152"}  # CLA45s, Hongqi, Mercedes W222

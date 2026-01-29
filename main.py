@@ -42,8 +42,7 @@ import logging
 setup_logging()
 logger = get_logger(__name__)
 
-logging.getLogger("apscheduler").setLevel(logging.ERROR)
-logging.getLogger("apscheduler.executors.default").setLevel(logging.ERROR)
+# Уровень логов apscheduler и остальных задаётся в app.core.logging_config (LOG_LEVEL, LOG_QUIET_LIBRARIES)
 from app.gps_api.router import Vehicle_Router
 from app.mechanic.router import MechanicRouter
 from app.seed.init_data import init_test_data
@@ -78,6 +77,11 @@ app = FastAPI(
     }
 )
 
+# === OpenTelemetry Tracing ===
+from app.core.telemetry import setup_telemetry
+from app.dependencies.database.database import engine
+tracer = setup_telemetry(app, engine)
+
 almaty_tz = pytz.FixedOffset(300)  # GMT+5 = 300 минут
 scheduler = AsyncIOScheduler(timezone=almaty_tz)
 
@@ -92,6 +96,9 @@ try:
     print("✅ MinIO service initialized")
 except Exception as e:
     print(f"⚠️ MinIO service initialization warning: {e}")
+
+# Redis service будет инициализирован в startup_event
+from app.services.redis_service import init_redis, shutdown_redis
 
 
 def run_migrations():
@@ -257,6 +264,16 @@ def init_app(app: FastAPI):
         print("Проверка")
         run_migrations()
 
+        # Инициализируем Redis
+        try:
+            redis_available = await init_redis()
+            if redis_available:
+                print("✅ Redis service initialized")
+            else:
+                print("⚠️ Redis unavailable, using database fallback")
+        except Exception as e:
+            print(f"⚠️ Redis initialization error: {e}")
+
         db_gen = get_db()
         db = next(db_gen)
         scheduler.add_job(
@@ -364,16 +381,16 @@ def init_app(app: FastAPI):
         except Exception as e:
             logger.error(f"Ошибка запуска планировщика задач: {e}")
         
-        # Запускаем систему поддержки
+        # Запускаем систему поддержки (бот в фоне)
         try:
             from app.dependencies.database.database import SessionLocal
             start_support_task = setup_support_system(app, SessionLocal)
             await start_support_task()
-            print("Система поддержки запущена успешно")
+            logger.info("Система поддержки запущена успешно")
         except Exception as e:
-            print(f"Ошибка запуска системы поддержки: {e}")
+            logger.error(f"Ошибка запуска системы поддержки: {e}")
             import traceback
-            print(f"Traceback: {traceback.format_exc()}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
         
         # Запускаем HangWatchdog для детектирования зависаний
         try:
@@ -393,11 +410,20 @@ def init_app(app: FastAPI):
             logger.error(f"❌ Ошибка запуска HangWatchdog: {e}")
             import traceback
             logger.error(traceback.format_exc())
+        
+        # В самом конце startup — восстанавливаем логирование (бот/библиотеки могли его менять).
+        # Все логи в stdout; приглушён только APScheduler в logging_config.
+        try:
+            from app.core.logging_config import setup_logging
+            setup_logging()
+            logger.info("Логирование применено (все логи в stdout)")
+        except Exception as e:
+            logger.error(f"Ошибка применения логирования: {e}")
 
     @app.on_event("shutdown")
     async def shutdown_event():
         print("Приложение остановлено")
-        
+
         # Останавливаем HangWatchdog
         try:
             from app.utils.hang_watchdog import get_hang_watchdog
@@ -406,7 +432,13 @@ def init_app(app: FastAPI):
                 await hang_watchdog.stop()
         except Exception as e:
             logger.error(f"Ошибка остановки HangWatchdog: {e}")
-        
+
+        # Закрываем Redis
+        try:
+            await shutdown_redis()
+        except Exception as e:
+            logger.error(f"Ошибка остановки Redis: {e}")
+
         try:
             scheduler.shutdown()
         except Exception as e:
