@@ -109,20 +109,20 @@ def setup_logging(
     json_format: bool = None
 ) -> None:
     """
-    Настройка логирования. Один handler в stdout, уровень из LOG_LEVEL.
-    Приглушён только APScheduler (WARNING), остальные логи не трогаем.
+    Настройка логирования. Один handler в stdout.
+    По умолчанию LOG_LEVEL=DEBUG — видны все логи. Приглушён только APScheduler.
 
-    ENV: LOG_LEVEL=INFO | DEBUG | WARNING | ERROR, LOG_FORMAT=text | json
+    ENV: LOG_LEVEL=DEBUG | INFO | WARNING | ERROR (по умолчанию DEBUG), LOG_FORMAT=text | json
 
     Args:
         level: Уровень логирования (DEBUG, INFO, WARNING, ERROR)
         json_format: Использовать JSON формат (для production)
     """
-    # Определяем уровень
+    # По умолчанию DEBUG — видны все логи (DEBUG, INFO, WARNING, ERROR). LOG_LEVEL=INFO уменьшит шум.
     if level is None:
-        level = getenv('LOG_LEVEL', 'INFO')
+        level = getenv('LOG_LEVEL', 'DEBUG')
     
-    log_level = getattr(logging, level.upper(), logging.INFO)
+    log_level = getattr(logging, level.upper(), logging.DEBUG)
     
     # Определяем формат
     if json_format is None:
