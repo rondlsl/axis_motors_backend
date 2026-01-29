@@ -125,9 +125,16 @@ def setup_logging(
     if json_format is None:
         json_format = getenv('LOG_FORMAT', 'text').lower() == 'json'
     
-    # Создаём handler
-    handler = logging.StreamHandler(sys.stdout)
-    
+    # Создаём handler; line_buffering чтобы каждая строка сразу уходила в stdout (Docker/K8s)
+    stream = sys.stdout
+    try:
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(line_buffering=True)
+    except Exception:
+        pass
+    handler = logging.StreamHandler(stream)
+    handler.setLevel(log_level)
+
     if json_format:
         handler.setFormatter(JSONFormatter())
     else:

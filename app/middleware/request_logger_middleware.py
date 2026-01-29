@@ -2,6 +2,8 @@
 Middleware для автоматического логирования всех HTTP запросов
 Логирует: method, path, status, duration_ms, trace_id, user_id, vehicle_id
 """
+import logging
+import sys
 import time
 import traceback
 import uuid
@@ -14,6 +16,18 @@ from app.core.logging_config import get_logger
 from app.auth.security.tokens import verify_token
 
 logger = get_logger(__name__)
+
+
+def _flush_log_handlers():
+    """Принудительно сбросить буфер логгеров (для Docker/K8s, чтобы логи сразу попадали в вывод)."""
+    try:
+        root = logging.getLogger()
+        for h in root.handlers:
+            h.flush()
+        if hasattr(sys.stdout, "flush"):
+            sys.stdout.flush()
+    except Exception:
+        pass
 
 # Context variable для trace_id - доступен во всем приложении
 trace_id_var: ContextVar[Optional[str]] = ContextVar('trace_id', default=None)
@@ -110,7 +124,7 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
             if vehicle_id:
                 log_data["vehicle_id"] = vehicle_id
             
-            # Определяем уровень логирования
+            # Определяем уровень логирования (всегда логируем каждый запрос)
             if exception_occurred:
                 # ERROR для исключений
                 log_message = (
@@ -123,7 +137,7 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
                 if vehicle_id:
                     log_message += f" vehicle_id={vehicle_id}"
                 
-                logger.error(log_message)
+                logger.error(log_message, extra=log_data)
                 if exception_traceback:
                     logger.error(f"Exception traceback:\n{exception_traceback}")
                     
@@ -139,7 +153,7 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
                 if vehicle_id:
                     log_message += f" vehicle_id={vehicle_id}"
                 
-                logger.warning(log_message)
+                logger.warning(log_message, extra=log_data)
             else:
                 # INFO для обычных запросов
                 log_message = (
@@ -152,7 +166,10 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
                 if vehicle_id:
                     log_message += f" vehicle_id={vehicle_id}"
                 
-                logger.info(log_message)
+                logger.info(log_message, extra=log_data)
+
+            # Сброс буфера, чтобы логи сразу попадали в stdout (важно в Docker/K8s)
+            _flush_log_handlers()
     
     def _extract_vehicle_id_from_path(self, path: str) -> Optional[str]:
         """
