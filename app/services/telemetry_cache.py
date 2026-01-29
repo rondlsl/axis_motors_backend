@@ -228,7 +228,8 @@ async def update_cache(
         
         async with redis.client.pipeline(transaction=True) as pipe:
             await pipe.hset(key, mapping=mapping)
-            await pipe.expire(key, CACHE_TTL)
+            if db_updated:
+                await pipe.expire(key, CACHE_TTL)
             await pipe.execute()
         
         return True
@@ -362,7 +363,10 @@ async def save_telemetry_batch(
                     mapping['last_db_update'] = now.isoformat()
                 
                 await pipe.hset(key, mapping=mapping)
-                await pipe.expire(key, CACHE_TTL)
+                # TTL обновляем только при значимом изменении (db_updated).
+                # Иначе TTL бы сбрасывался каждую секунду и ключ никогда не истекал.
+                if db_updated:
+                    await pipe.expire(key, CACHE_TTL)
                 saved += 1
             
             await pipe.execute()
