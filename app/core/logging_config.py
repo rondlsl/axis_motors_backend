@@ -114,7 +114,9 @@ def setup_logging(
     Переменные окружения:
         LOG_LEVEL=INFO     — уровень (DEBUG, INFO, WARNING, ERROR). По умолчанию INFO.
         LOG_FORMAT=text   — text или json. По умолчанию text.
-        LOG_QUIET_LIBRARIES=0 — по умолчанию все логи видны (uvicorn, sqlalchemy и т.д.).
+        LOG_APSCHEDULER_VERBOSE=0 — по умолчанию APScheduler на WARNING (не забивает лог).
+                                    =1 — показывать INFO по job'ам (Running/executed successfully).
+        LOG_QUIET_LIBRARIES=0 — по умолчанию все остальные логи видны (uvicorn, sqlalchemy и т.д.).
                                =1 приглушает библиотеки (только WARNING и выше от них).
 
     Args:
@@ -153,6 +155,12 @@ def setup_logging(
     # Удаляем старые handlers
     root_logger.handlers = []
     root_logger.addHandler(handler)
+    
+    # APScheduler по умолчанию приглушён: job'ы каждую секунду/минуту забивают лог,
+    # из-за чего не видно запросов и остальных логов. LOG_APSCHEDULER_VERBOSE=1 — вернуть INFO.
+    if getenv("LOG_APSCHEDULER_VERBOSE", "0").strip().lower() not in ("1", "true", "yes"):
+        for name in ("apscheduler", "apscheduler.executors.default"):
+            logging.getLogger(name).setLevel(logging.WARNING)
     
     # Опционально приглушить шум от библиотек (по умолчанию все логи видны)
     # LOG_QUIET_LIBRARIES=1 — скрыть INFO от uvicorn/httpx/sqlalchemy/telegram и т.д.
