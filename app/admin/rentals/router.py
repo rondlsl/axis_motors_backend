@@ -10,14 +10,18 @@ from math import ceil, floor
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole
-from app.models.history_model import RentalHistory, RentalStatus
+from app.models.history_model import RentalHistory, RentalStatus, RentalReview
 from app.models.car_model import Car, CarBodyType
 from app.models.wallet_transaction_model import WalletTransaction
+from app.models.rental_actions_model import RentalAction
+from app.models.contract_model import UserContractSignature
 from app.utils.short_id import uuid_to_sid, safe_sid_to_uuid
 from app.admin.cars.utils import sort_car_photos
 from app.rent.utils.calculate_price import FUEL_PRICE_PER_LITER, ELECTRIC_FUEL_PRICE_PER_LITER
+from app.core.logging_config import get_logger
 
 rentals_router = APIRouter(tags=["Admin Rentals"])
+logger = get_logger(__name__)
 
 
 def _get_tariff_display(rental_type_value: str) -> str:
@@ -257,4 +261,88 @@ async def get_completed_rentals(
         "limit": limit,
         "pages": ceil(total / limit) if limit > 0 else 0
     }
+
+
+@rentals_router.delete("/{rental_id}", summary="Удалить аренду по ID")
+async def delete_rental_by_id(
+    rental_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    Удалить аренду по ID (только для администраторов и поддержки).
+    
+    Удаляются в порядке:
+    - транзакции кошелька (related_rental_id)
+    - подписи договоров (rental_id)
+    - действия по аренде (rental_id)
+    - отзыв по аренде (rental_id)
+    - запись аренды (rental_history)
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+
+    try:
+        rental_uuid = safe_sid_to_uuid(rental_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Некорректный ID аренды")
+
+    # 1) Строковая блокировка: SELECT ... FOR UPDATE — блокировка до конца транзакции (commit/rollback).
+    # Billing job при попытке прочитать эту аренду будет ждать; после commit аренды уже не будет.
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).with_for_update().first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Аренда не найдена")
+
+    try:
+        # Удаление связанных сущностей (порядок не меняем)
+        transactions = db.query(WalletTransaction).filter(
+            WalletTransaction.related_rental_id == rental_uuid
+        ).all()
+        for tx in transactions:
+            db.delete(tx)
+
+        signatures = db.query(UserContractSignature).filter(
+            UserContractSignature.rental_id == rental_uuid
+        ).all()
+        for sig in signatures:
+            db.delete(sig)
+
+        actions = db.query(RentalAction).filter(
+            RentalAction.rental_id == rental_uuid
+        ).all()
+        for action in actions:
+            db.delete(action)
+
+        review = db.query(RentalReview).filter(
+            RentalReview.rental_id == rental_uuid
+        ).first()
+        if review:
+            db.delete(review)
+
+        db.delete(rental)
+        db.commit()
+
+        # 3) Аудит: факт удаления — только в application-лог (rental_id, admin_id; timestamp даёт logger).
+        logger.info(
+            "Admin deleted rental: rental_id=%s admin_id=%s",
+            rental_id,
+            str(current_user.id),
+            extra={"rental_id": rental_id, "admin_id": str(current_user.id)},
+        )
+
+        return {
+            "message": "Аренда успешно удалена",
+            "rental_id": rental_id,
+            "deleted_wallet_transactions": len(transactions),
+            "deleted_contract_signatures": len(signatures),
+            "deleted_rental_actions": len(actions),
+            "deleted_rental_review": 1 if review else 0,
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        db.rollback()
+        # 2) Полный stacktrace только в лог; клиенту — общее сообщение без внутренних деталей.
+        logger.exception("Delete rental failed: rental_id=%s admin_id=%s", rental_id, str(current_user.id))
+        raise HTTPException(status_code=500, detail="Ошибка удаления аренды")
 
