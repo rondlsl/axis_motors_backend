@@ -387,10 +387,6 @@ def init_app(app: FastAPI):
             start_support_task = setup_support_system(app, SessionLocal)
             await start_support_task()
             logger.info("Система поддержки запущена успешно")
-            # Восстанавливаем настройки логирования после старта бота:
-            # python-telegram-bot и зависимости могут менять root logger — возвращаем наш handler и уровень
-            from app.core.logging_config import setup_logging
-            setup_logging()
         except Exception as e:
             logger.error(f"Ошибка запуска системы поддержки: {e}")
             import traceback
@@ -414,6 +410,15 @@ def init_app(app: FastAPI):
             logger.error(f"❌ Ошибка запуска HangWatchdog: {e}")
             import traceback
             logger.error(traceback.format_exc())
+        
+        # В самом конце startup — восстанавливаем логирование (бот/библиотеки могли его менять).
+        # Все логи в stdout; приглушён только APScheduler в logging_config.
+        try:
+            from app.core.logging_config import setup_logging
+            setup_logging()
+            logger.info("Логирование применено (все логи в stdout)")
+        except Exception as e:
+            logger.error(f"Ошибка применения логирования: {e}")
 
     @app.on_event("shutdown")
     async def shutdown_event():

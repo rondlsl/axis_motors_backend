@@ -109,15 +109,10 @@ def setup_logging(
     json_format: bool = None
 ) -> None:
     """
-    Настройка логирования для всего приложения.
+    Настройка логирования. Один handler в stdout, уровень из LOG_LEVEL.
+    Приглушён только APScheduler (WARNING), остальные логи не трогаем.
 
-    Переменные окружения:
-        LOG_LEVEL=INFO     — уровень (DEBUG, INFO, WARNING, ERROR). По умолчанию INFO.
-        LOG_FORMAT=text   — text или json. По умолчанию text.
-        LOG_APSCHEDULER_VERBOSE=0 — по умолчанию APScheduler на WARNING (не забивает лог).
-                                    =1 — показывать INFO по job'ам (Running/executed successfully).
-        LOG_QUIET_LIBRARIES=0 — по умолчанию все остальные логи видны (uvicorn, sqlalchemy и т.д.).
-                               =1 приглушает библиотеки (только WARNING и выше от них).
+    ENV: LOG_LEVEL=INFO | DEBUG | WARNING | ERROR, LOG_FORMAT=text | json
 
     Args:
         level: Уровень логирования (DEBUG, INFO, WARNING, ERROR)
@@ -148,31 +143,16 @@ def setup_logging(
     else:
         handler.setFormatter(ColoredFormatter())
     
-    # Настраиваем root logger — все логгеры наследуют уровень и handler
+    # Root logger — один handler в stdout, уровень из LOG_LEVEL. Ничего больше не трогаем.
     root_logger = logging.getLogger()
     root_logger.setLevel(log_level)
-    
-    # Удаляем старые handlers
     root_logger.handlers = []
     root_logger.addHandler(handler)
     
-    # APScheduler по умолчанию приглушён: job'ы каждую секунду/минуту забивают лог,
-    # из-за чего не видно запросов и остальных логов. LOG_APSCHEDULER_VERBOSE=1 — вернуть INFO.
-    if getenv("LOG_APSCHEDULER_VERBOSE", "0").strip().lower() not in ("1", "true", "yes"):
-        for name in ("apscheduler", "apscheduler.executors.default"):
-            logging.getLogger(name).setLevel(logging.WARNING)
-    
-    # Опционально приглушить шум от библиотек (по умолчанию все логи видны)
-    # LOG_QUIET_LIBRARIES=1 — скрыть INFO от uvicorn/httpx/sqlalchemy/telegram и т.д.
-    if getenv("LOG_QUIET_LIBRARIES", "0").strip().lower() in ("1", "true", "yes"):
-        for name in (
-            "httpx", "httpcore", "urllib3", "asyncio",
-            "uvicorn.access", "uvicorn.error",
-            "sqlalchemy.engine", "botocore", "boto3",
-            "apscheduler", "apscheduler.executors.default",
-            "telegram", "telegram.ext", "telegram.ext._application",
-        ):
-            logging.getLogger(name).setLevel(logging.WARNING)
+    # Единственное исключение: APScheduler пишет каждую секунду и забивает лог.
+    # Только его приглушаем до WARNING. Все остальные логи (запросы, app, uvicorn и т.д.) — как есть.
+    for name in ("apscheduler", "apscheduler.executors.default"):
+        logging.getLogger(name).setLevel(logging.WARNING)
 
 
 def get_logger(name: str) -> logging.Logger:
