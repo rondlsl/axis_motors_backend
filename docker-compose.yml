@@ -13,6 +13,8 @@ services:
       start_period: 40s
     environment:
       - DEBUG_API_ERRORS=1
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=json
       - OTEL_ENABLED=true
       - OTEL_SERVICE_NAME=azv-motors-api
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317

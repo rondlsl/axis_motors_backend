@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from app.core.logging_config import get_logger
 logger = get_logger(__name__)
 from sqlalchemy.orm import Session
@@ -17,7 +17,6 @@ from app.models.history_model import RentalHistory, RentalStatus
 from app.models.car_model import Car
 from app.rent.utils.user_utils import get_user_available_auto_classes
 from app.models.user_device_model import UserDevice
-from app.core.config import logger
 
 from starlette import status
 import traceback
@@ -41,7 +40,6 @@ from app.models.application_model import Application, ApplicationStatus
 from app.models.notification_model import Notification
 from app.rent.utils.calculate_price import get_open_price
 from app.owner.utils import calculate_month_availability_minutes, ALMATY_TZ
-from app.core.config import logger
 from app.models.guarantor_model import Guarantor
 from app.admin.cars.utils import sort_car_photos
 from app.utils.digital_signature import generate_digital_signature
@@ -147,11 +145,7 @@ async def resend_email_code(current_user: User = Depends(get_current_user), db: 
                 server.login(smtp_user, smtp_pass)
                 server.send_message(msg)
         else:
-            try:
-                from app.core.config import logger
-                logger.warning(f"SMTP not configured; verification code for {current_user.email}: {code}")
-            except Exception:
-                pass
+            logger.warning(f"SMTP not configured; verification code for {current_user.email}: {code}")
     except Exception as e:
         try:
             await log_error_to_telegram(
@@ -166,11 +160,7 @@ async def resend_email_code(current_user: User = Depends(get_current_user), db: 
             )
         except:
             pass
-    try:
-        from app.core.config import logger
-        logger.warning(f"Email verification code for {current_user.email}: {code}")
-    except Exception:
-        pass
+    logger.warning(f"Email verification code for {current_user.email}: {code}")
 
     db.commit()
     return {"message": "Код подтверждения повторно отправлен."}
@@ -207,31 +197,59 @@ class UpdateNameResponse(BaseModel):
         }
 
 
+def _get_client_ip(http_request) -> str:
+    """Извлечь реальный IP клиента (с учётом прокси)."""
+    # X-Forwarded-For может содержать несколько IP через запятую
+    forwarded = http_request.headers.get("X-Forwarded-For")
+    if forwarded:
+        # Берём первый IP (реальный клиент)
+        return forwarded.split(",")[0].strip()
+    # X-Real-IP (nginx)
+    real_ip = http_request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip.strip()
+    # Fallback на прямой IP
+    if http_request.client:
+        return http_request.client.host
+    return ""
+
+
 @Auth_router.post("/send_sms/", response_model=SendSmsResponse)
-async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
+async def send_sms(
+    request: SendSmsRequest,
+    http_request: Request,
+    db: Session = Depends(get_db)
+):
     """
     Отправка смс по номеру телефона:
     - Если имеется активный аккаунт, для него обновляется sms-код (только phone_number).
     - Если активного аккаунта нет, но есть неактивный (удаленный), он автоматически восстанавливается (только phone_number).
     - Если вообще нет пользователя с таким номером, создаётся новый (обязательно указать first_name и last_name).
-    
+
     Для существующих или восстановленных пользователей:
     {
         "phone_number": "77771234567",
-        "email": "user@example.com"  
+        "email": "user@example.com"
     }
-    
+
     Для новых пользователей:
     {
         "phone_number": "77771234567",
         "first_name": "Иван",
         "last_name": "Иванов",
         "middle_name": "Петрович",  // опционально
-        "email": "user@example.com"  
+        "email": "user@example.com"
     }
-    
+
     Если указан email, код подтверждения будет отправлен на email в дополнение к SMS.
+
+    Rate limiting:
+    - По номеру телефона: 60 сек cooldown, макс 5 SMS/час
+    - По IP адресу: макс 10 SMS/мин, 50 SMS/час, 200 SMS/сутки
     """
+    # Извлекаем IP для rate limiting
+    client_ip = _get_client_ip(http_request)
+
     totp = pyotp.TOTP(
         pyotp.random_base32(),
         digits=4,
@@ -264,7 +282,7 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
             # Если что-то пошло не так, просто возвращаем успех
             return SendSmsResponse(message="SMS code sent successfully", fcm_token=None)
 
-    can_send, error_msg = await SMSRateLimit.check(phone_number)
+    can_send, error_msg = await SMSRateLimit.check(phone_number, client_ip)
     if not can_send:
         raise HTTPException(status_code=429, detail=error_msg)
 
@@ -417,7 +435,7 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
         try:
             if SMS_TOKEN:
                 await send_sms_mobizon(phone_number, sms_text, f"{SMS_TOKEN}", sender="AZV Motors")
-                await SMSRateLimit.update(phone_number)
+                await SMSRateLimit.update(phone_number, client_ip)
             else:
                 logger.warning("SMS_TOKEN is not configured; skipping Mobizon send")
         except Exception as e:
@@ -503,12 +521,8 @@ async def send_sms(request: SendSmsRequest, db: Session = Depends(get_db)):
                 )
             except:
                 pass
-        try:
-            from app.core.config import logger
-            logger.warning(f"Email verification code for {email}: {email_code}")
-        except Exception:
-            pass
-        
+        logger.warning(f"Email verification code for {email}: {email_code}")
+
         db.commit()
 
     # Возвращаем fcm_token из базы данных
@@ -1507,24 +1521,12 @@ async def request_change_email(
                 server.login(smtp_user, smtp_pass)
                 server.send_message(msg)
         else:
-            try:
-                from app.core.config import logger
-                logger.warning(f"SMTP not configured; verification code for {new_email}: {code}")
-            except Exception:
-                pass
+            logger.warning(f"SMTP not configured; verification code for {new_email}: {code}")
     except Exception as e:
-        try:
-            from app.core.config import logger
-            logger.error(f"Failed to send email: {e}")
-        except Exception:
-            pass
-    
-    try:
-        from app.core.config import logger
-        logger.warning(f"Email change verification code for {new_email}: {code}")
-    except Exception:
-        pass
-    
+        logger.error(f"Failed to send email: {e}")
+
+    logger.warning(f"Email change verification code for {new_email}: {code}")
+
     db.commit()
     
     return ChangeEmailResponse(
@@ -1598,9 +1600,12 @@ async def delete_account(
     """
     Мягкое удаление аккаунта:
       - Устанавливаем current_user.is_active = False.
+      - Инвалидируем все токены в Redis-кэше.
       - Все связи сохраняются, история не удаляется.
       - После этого все эндпоинты, зависящие от get_current_user, будут недоступны для данного аккаунта.
     """
+    from app.auth.dependencies.token_cache import TokenCache
+
     # Проверяем отрицательный баланс
     if getattr(current_user, "wallet_balance", 0) < 0:
         raise HTTPException(
@@ -1610,8 +1615,11 @@ async def delete_account(
 
     current_user.is_active = False
     db.commit()
-    
+
+    # Инвалидируем все токены пользователя в Redis
+    await TokenCache.invalidate_all_user_tokens(current_user.id)
+
     asyncio.create_task(notify_user_status_update(str(current_user.id)))
-    
+
     return {"message": "Аккаунт помечен как неактивный."}
 

@@ -60,7 +60,8 @@ REDIS_POOL_SIZE = int(getenv('REDIS_POOL_SIZE', '10'))
 REDIS_TIMEOUT = int(getenv('REDIS_TIMEOUT', '5'))
 
 # === LOGGING ===
-logging.basicConfig(level=logging.ERROR, format="%(asctime)s - %(levelname)s - %(message)s")
+# Настройка логирования перенесена в logging_config.py
+# НЕ вызываем basicConfig здесь - это конфликтует с централизованной настройкой
 logger = logging.getLogger(__name__)
 
 POLYGON_COORDS = [

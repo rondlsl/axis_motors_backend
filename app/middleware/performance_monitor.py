@@ -1,8 +1,10 @@
 import time
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
-from app.core.config import logger
+from app.core.logging_config import get_logger
 from app.utils.telegram_logger import telegram_error_logger
+
+logger = get_logger(__name__)
 import asyncio
 
 class PerformanceMonitoringMiddleware(BaseHTTPMiddleware):

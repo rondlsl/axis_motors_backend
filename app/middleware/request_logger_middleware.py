@@ -10,8 +10,10 @@ from typing import Optional
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.core.config import logger
+from app.core.logging_config import get_logger
 from app.auth.security.tokens import verify_token
+
+logger = get_logger(__name__)
 
 # Context variable для trace_id - доступен во всем приложении
 trace_id_var: ContextVar[Optional[str]] = ContextVar('trace_id', default=None)

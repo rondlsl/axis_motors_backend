@@ -8,7 +8,9 @@ import time
 from typing import Set, Optional
 from datetime import datetime
 
-from app.core.config import logger
+from app.core.logging_config import get_logger
+
+logger = get_logger(__name__)
 from app.middleware.hang_detector_middleware import get_hang_detector_instance
 from app.utils.hang_logger import save_hang_to_db_async, get_all_thread_stacks
 

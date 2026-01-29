@@ -31,7 +31,10 @@ from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.car_data import send_open, send_close, send_give_key, send_take_key, send_lock_engine, send_unlock_engine
 from app.gps_api.utils.glonassoft_client import glonassoft_client
 from app.gps_api.utils.telemetry_processor import process_glonassoft_data
-from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD, logger
+from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
+from app.core.logging_config import get_logger
+
+logger = get_logger(__name__)
 from app.models.support_action_model import SupportAction
 from app.utils.plate_normalizer import normalize_plate_number
 from app.utils.telegram_logger import log_error_to_telegram
