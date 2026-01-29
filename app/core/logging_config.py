@@ -110,7 +110,13 @@ def setup_logging(
 ) -> None:
     """
     Настройка логирования для всего приложения.
-    
+
+    Переменные окружения:
+        LOG_LEVEL=INFO     — уровень (DEBUG, INFO, WARNING, ERROR). По умолчанию INFO.
+        LOG_FORMAT=text   — text или json. По умолчанию text.
+        LOG_QUIET_LIBRARIES=0 — по умолчанию все логи видны (uvicorn, sqlalchemy и т.д.).
+                               =1 приглушает библиотеки (только WARNING и выше от них).
+
     Args:
         level: Уровень логирования (DEBUG, INFO, WARNING, ERROR)
         json_format: Использовать JSON формат (для production)
@@ -140,7 +146,7 @@ def setup_logging(
     else:
         handler.setFormatter(ColoredFormatter())
     
-    # Настраиваем root logger
+    # Настраиваем root logger — все логгеры наследуют уровень и handler
     root_logger = logging.getLogger()
     root_logger.setLevel(log_level)
     
@@ -148,15 +154,16 @@ def setup_logging(
     root_logger.handlers = []
     root_logger.addHandler(handler)
     
-    # Уменьшаем шум от библиотек
-    logging.getLogger('httpx').setLevel(logging.WARNING)
-    logging.getLogger('httpcore').setLevel(logging.WARNING)
-    logging.getLogger('urllib3').setLevel(logging.WARNING)
-    logging.getLogger('asyncio').setLevel(logging.WARNING)
-    logging.getLogger('uvicorn.access').setLevel(logging.WARNING)
-    logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
-    logging.getLogger('botocore').setLevel(logging.WARNING)
-    logging.getLogger('boto3').setLevel(logging.WARNING)
+    # Опционально приглушить шум от библиотек (по умолчанию все логи видны)
+    # LOG_QUIET_LIBRARIES=1 — скрыть INFO от uvicorn/httpx/sqlalchemy и т.д.
+    if getenv("LOG_QUIET_LIBRARIES", "0").strip().lower() in ("1", "true", "yes"):
+        for name in (
+            "httpx", "httpcore", "urllib3", "asyncio",
+            "uvicorn.access", "uvicorn.error",
+            "sqlalchemy.engine", "botocore", "boto3",
+            "apscheduler", "apscheduler.executors.default",
+        ):
+            logging.getLogger(name).setLevel(logging.WARNING)
 
 
 def get_logger(name: str) -> logging.Logger:

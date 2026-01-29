@@ -42,8 +42,7 @@ import logging
 setup_logging()
 logger = get_logger(__name__)
 
-logging.getLogger("apscheduler").setLevel(logging.ERROR)
-logging.getLogger("apscheduler.executors.default").setLevel(logging.ERROR)
+# Уровень логов apscheduler и остальных задаётся в app.core.logging_config (LOG_LEVEL, LOG_QUIET_LIBRARIES)
 from app.gps_api.router import Vehicle_Router
 from app.mechanic.router import MechanicRouter
 from app.seed.init_data import init_test_data
