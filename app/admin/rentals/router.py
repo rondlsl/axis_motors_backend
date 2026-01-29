@@ -345,8 +345,12 @@ async def delete_rental_by_id(
         ).delete(synchronize_session=False)
         logger.info("delete_rental_by_id: rental_review deleted=%s", deleted_rental_review)
 
+        # Удаляем запись аренды массовым DELETE, без db.delete(rental), чтобы не загружать
+        # связь rental.actions (cascade delete-orphan) — иначе SQLAlchemy подгружает RentalAction
+        # и падает на enum actionstatus ('success' в БД vs SUCCESS в Python).
         logger.info("delete_rental_by_id: deleting rental row")
-        db.delete(rental)
+        db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).delete(synchronize_session=False)
+        db.expunge(rental)  # убираем из сессии, т.к. строка уже удалена массовым DELETE
         db.commit()
         logger.info("delete_rental_by_id: commit ok")
 
