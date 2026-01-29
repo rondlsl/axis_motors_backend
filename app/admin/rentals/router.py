@@ -323,36 +323,27 @@ async def delete_rental_by_id(
         extra={"rental_id": rental_id, "car_id": rental.car_id},
     )
 
-    review = None
     try:
-        # Удаление связанных сущностей (порядок не меняем)
-        transactions = db.query(WalletTransaction).filter(
+        # Массовое удаление без загрузки строк — избегаем LookupError по enum (в БД может быть 'success', в Python — ActionStatus.SUCCESS).
+        deleted_wallet_transactions = db.query(WalletTransaction).filter(
             WalletTransaction.related_rental_id == rental_uuid
-        ).all()
-        logger.info("delete_rental_by_id: wallet_transactions count=%s", len(transactions))
-        for tx in transactions:
-            db.delete(tx)
+        ).delete(synchronize_session=False)
+        logger.info("delete_rental_by_id: wallet_transactions deleted=%s", deleted_wallet_transactions)
 
-        signatures = db.query(UserContractSignature).filter(
+        deleted_contract_signatures = db.query(UserContractSignature).filter(
             UserContractSignature.rental_id == rental_uuid
-        ).all()
-        logger.info("delete_rental_by_id: contract_signatures count=%s", len(signatures))
-        for sig in signatures:
-            db.delete(sig)
+        ).delete(synchronize_session=False)
+        logger.info("delete_rental_by_id: contract_signatures deleted=%s", deleted_contract_signatures)
 
-        actions = db.query(RentalAction).filter(
+        deleted_rental_actions = db.query(RentalAction).filter(
             RentalAction.rental_id == rental_uuid
-        ).all()
-        logger.info("delete_rental_by_id: rental_actions count=%s", len(actions))
-        for action in actions:
-            db.delete(action)
+        ).delete(synchronize_session=False)
+        logger.info("delete_rental_by_id: rental_actions deleted=%s", deleted_rental_actions)
 
-        review = db.query(RentalReview).filter(
+        deleted_rental_review = db.query(RentalReview).filter(
             RentalReview.rental_id == rental_uuid
-        ).first()
-        logger.info("delete_rental_by_id: rental_review found=%s", review is not None)
-        if review:
-            db.delete(review)
+        ).delete(synchronize_session=False)
+        logger.info("delete_rental_by_id: rental_review deleted=%s", deleted_rental_review)
 
         logger.info("delete_rental_by_id: deleting rental row")
         db.delete(rental)
@@ -370,10 +361,10 @@ async def delete_rental_by_id(
         return {
             "message": "Аренда успешно удалена",
             "rental_id": rental_id,
-            "deleted_wallet_transactions": len(transactions),
-            "deleted_contract_signatures": len(signatures),
-            "deleted_rental_actions": len(actions),
-            "deleted_rental_review": 1 if review else 0,
+            "deleted_wallet_transactions": deleted_wallet_transactions,
+            "deleted_contract_signatures": deleted_contract_signatures,
+            "deleted_rental_actions": deleted_rental_actions,
+            "deleted_rental_review": deleted_rental_review,
         }
     except HTTPException:
         raise
