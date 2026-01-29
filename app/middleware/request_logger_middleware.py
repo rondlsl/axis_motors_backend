@@ -29,6 +29,20 @@ def _flush_log_handlers():
     except Exception:
         pass
 
+
+def _write_request_line(log_data: dict):
+    """Пишет одну строку о запросе напрямую в stdout. Не зависит от logging — всегда видна в логах."""
+    try:
+        line = (
+            f"[REQUEST] {log_data.get('method', '?')} {log_data.get('path', '?')} "
+            f"status={log_data.get('status', 0)} duration_ms={log_data.get('duration_ms', 0)} "
+            f"trace_id={log_data.get('trace_id', '')}\n"
+        )
+        sys.stdout.write(line)
+        sys.stdout.flush()
+    except Exception:
+        pass
+
 # Context variable для trace_id - доступен во всем приложении
 trace_id_var: ContextVar[Optional[str]] = ContextVar('trace_id', default=None)
 
@@ -167,6 +181,9 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
                     log_message += f" vehicle_id={vehicle_id}"
                 
                 logger.info(log_message, extra=log_data)
+
+            # Дублируем в stdout напрямую — даже если что-то перезаписало logging во время запроса, строка будет видна
+            _write_request_line(log_data)
 
             # Сброс буфера, чтобы логи сразу попадали в stdout (важно в Docker/K8s)
             _flush_log_handlers()
