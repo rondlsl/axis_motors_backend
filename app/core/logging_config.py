@@ -155,13 +155,14 @@ def setup_logging(
     root_logger.addHandler(handler)
     
     # Опционально приглушить шум от библиотек (по умолчанию все логи видны)
-    # LOG_QUIET_LIBRARIES=1 — скрыть INFO от uvicorn/httpx/sqlalchemy и т.д.
+    # LOG_QUIET_LIBRARIES=1 — скрыть INFO от uvicorn/httpx/sqlalchemy/telegram и т.д.
     if getenv("LOG_QUIET_LIBRARIES", "0").strip().lower() in ("1", "true", "yes"):
         for name in (
             "httpx", "httpcore", "urllib3", "asyncio",
             "uvicorn.access", "uvicorn.error",
             "sqlalchemy.engine", "botocore", "boto3",
             "apscheduler", "apscheduler.executors.default",
+            "telegram", "telegram.ext", "telegram.ext._application",
         ):
             logging.getLogger(name).setLevel(logging.WARNING)
 

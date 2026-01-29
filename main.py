@@ -381,16 +381,20 @@ def init_app(app: FastAPI):
         except Exception as e:
             logger.error(f"Ошибка запуска планировщика задач: {e}")
         
-        # Запускаем систему поддержки
+        # Запускаем систему поддержки (бот в фоне)
         try:
             from app.dependencies.database.database import SessionLocal
             start_support_task = setup_support_system(app, SessionLocal)
             await start_support_task()
-            print("Система поддержки запущена успешно")
+            logger.info("Система поддержки запущена успешно")
+            # Восстанавливаем настройки логирования после старта бота:
+            # python-telegram-bot и зависимости могут менять root logger — возвращаем наш handler и уровень
+            from app.core.logging_config import setup_logging
+            setup_logging()
         except Exception as e:
-            print(f"Ошибка запуска системы поддержки: {e}")
+            logger.error(f"Ошибка запуска системы поддержки: {e}")
             import traceback
-            print(f"Traceback: {traceback.format_exc()}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
         
         # Запускаем HangWatchdog для детектирования зависаний
         try:

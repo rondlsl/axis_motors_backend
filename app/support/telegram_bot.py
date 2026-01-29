@@ -1,5 +1,4 @@
 import asyncio
-import logging
 import os
 import uuid
 import traceback
@@ -10,12 +9,13 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
 from app.core.config import TELEGRAM_BOT_TOKEN_2
+from app.core.logging_config import get_logger
 from app.services.support_service import SupportService
 from app.models.support_chat_model import SupportChatStatus
 from app.models.support_message_model import SupportMessageSenderType
 from app.schemas.support_schemas import SupportChatCreate, SupportMessageCreate
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class BotState:
     WAITING_FOR_NAME = "waiting_for_name"
