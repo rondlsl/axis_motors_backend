@@ -1,10 +1,15 @@
+from __future__ import annotations
+
 import asyncio
 import base64
 import os
 import faulthandler
 import sys
-from typing import Dict, Any
+from typing import Dict, Any, TYPE_CHECKING
 from datetime import datetime
+
+if TYPE_CHECKING:
+    from app.services.telemetry_cache import TelemetryData
 
 import anyio
 import httpx
@@ -124,15 +129,60 @@ async def get_last_vehicles_data():
         return []
 
 
-def _update_vehicle_data_sync(vehicles_data: list, db: Session, loop=None) -> int:
+def _update_vehicle_data_sync(
+    vehicles_data: list, 
+    db: Session, 
+    telemetry_cache: dict[str, 'TelemetryData'],
+    loop=None
+) -> tuple[int, list[tuple[str, float | None, float | None, float | None, float | None, bool]]]:
+    """
+    Синхронное обновление данных машин с использованием telemetry cache.
+    
+    Теперь UPDATE в БД происходит только при значимых изменениях:
+    - Координаты изменились более чем на 10 метров
+    - Топливо изменилось более чем на 0.5 л
+    - Пробег увеличился
+    - Прошло более 60 секунд с последнего DB update
+    
+    Args:
+        vehicles_data: Данные от GPS API
+        db: Сессия БД
+        telemetry_cache: Предзагруженный кэш {gps_id: TelemetryData}
+        loop: Event loop для async операций
+        
+    Returns:
+        (updated_count, cache_updates) - количество обновлений в БД и список для обновления кэша
+    """
+    from app.services.telemetry_cache import is_significant_change, TelemetryData, TelemetryStats
+    
     updated = 0
+    cache_updates: list[tuple[str, float | None, float | None, float | None, float | None, bool]] = []
+    
     try:
         for vehicle in vehicles_data:
             vehicle_id = str(vehicle["vehicle_id"])
             car = db.query(Car).filter(Car.gps_id == vehicle_id).first()
-            if car:
-                lat = vehicle.get("latitude")
-                lon = vehicle.get("longitude")
+            if not car:
+                continue
+            
+            lat = vehicle.get("latitude")
+            lon = vehicle.get("longitude")
+            fuel = vehicle.get("fuel_level")
+            mileage = vehicle.get("mileage")
+            
+            # Получаем cached данные
+            cached = telemetry_cache.get(vehicle_id, TelemetryData())
+            
+            # Проверяем, нужно ли обновлять БД
+            should_update, reason = is_significant_change(
+                cached, lat, lon, fuel, mileage
+            )
+            
+            # Записываем статистику
+            TelemetryStats.record_update(should_update)
+            
+            if should_update:
+                # Значимое изменение - обновляем БД
                 coordinates_updated = False
                 if lat is not None and lon is not None:
                     if lat != 0.0 or lon != 0.0:
@@ -149,18 +199,15 @@ def _update_vehicle_data_sync(vehicles_data: list, db: Session, loop=None) -> in
                 if coordinates_updated:
                     car.updated_at = get_local_time()
                 
-                # Обновляем fuel_level, если пришло валидное значение (не null и не 0)
-                fuel = vehicle.get("fuel_level")
+                # Обновляем fuel_level
                 if fuel is not None and fuel != 0 and fuel != 0.0:
                     old_fuel = car.fuel_level
-                    # Обнаружение заправки: если топливо увеличилось более чем на 10%
+                    # Обнаружение заправки
                     if old_fuel is not None and old_fuel > 0 and fuel > old_fuel:
                         fuel_increase = fuel - old_fuel
                         fuel_increase_percent = (fuel_increase / old_fuel) * 100
                         
-                        # Если увеличение больше 10%, это заправка
                         if fuel_increase_percent > 10:
-                            # Находим активную аренду
                             from app.gps_api.utils.get_active_rental import get_active_rental_by_car_id
                             from app.models.user_model import User
                             from app.push.utils import send_localized_notification_to_user_async, get_global_push_notification_semaphore
@@ -182,49 +229,103 @@ def _update_vehicle_data_sync(vehicles_data: list, db: Session, loop=None) -> in
                                                 except Exception as e:
                                                     logger.error(f"Ошибка отправки уведомления о заправке пользователю {user.id}: {e}")
                                         
-                                        # Запускаем корутину из другого потока
                                         asyncio.run_coroutine_threadsafe(_send_fuel_notification(), loop)
                             except Exception:
-                                pass 
+                                pass
                     
                     car.fuel_level = fuel
                 
-                # Обновляем пробег всегда
-                if vehicle.get("mileage") is not None:
-                    car.mileage = vehicle["mileage"]
+                # Обновляем пробег
+                if mileage is not None:
+                    car.mileage = mileage
+                
                 updated += 1
-        db.commit()
+                logger.debug(f"DB update for {vehicle_id}: {reason}")
+            
+            # Добавляем в список для обновления кэша (независимо от DB update)
+            cache_updates.append((vehicle_id, lat, lon, fuel, mileage, should_update))
+        
+        if updated > 0:
+            db.commit()
+            
     except Exception as e:
         logger.error(f"Ошибка при обновлении данных машин в БД: {e}")
-    return updated
+        db.rollback()
+    
+    return updated, cache_updates
 
 
-def _update_in_thread(vehicles_data: list, loop=None) -> int:
+def _update_in_thread(
+    vehicles_data: list, 
+    telemetry_cache: dict[str, 'TelemetryData'],
+    loop=None
+) -> tuple[int, list[tuple[str, float | None, float | None, float | None, float | None, bool]]]:
+    """Thread-safe обёртка для обновления данных машин."""
     db_gen = get_db()
     db = next(db_gen)
     try:
-        return _update_vehicle_data_sync(vehicles_data, db, loop)
+        return _update_vehicle_data_sync(vehicles_data, db, telemetry_cache, loop)
     except Exception as e:
         logger.error(f"Ошибка в потоке обновления данных: {e}")
-        return 0
+        return 0, []
     finally:
         db.close()
 
 
 async def update_vehicle_data():
+    """
+    Основная функция обновления данных машин с GPS.
+    
+    Оптимизирована с использованием Redis telemetry cache:
+    1. Загружаем кэш телеметрии из Redis
+    2. Выполняем синхронную обработку в thread pool
+    3. Сохраняем обновлённый кэш в Redis
+    4. UPDATE в БД только при значимых изменениях
+    """
+    from app.services.telemetry_cache import (
+        load_telemetry_batch, 
+        save_telemetry_batch,
+        TelemetryStats
+    )
+    
     vehicles_data = await get_last_vehicles_data()
     if not vehicles_data:
         return
 
     try:
-        loop = asyncio.get_event_loop()
-        updated = await loop.run_in_executor(None, _update_in_thread, vehicles_data, loop)
+        # Шаг 1: Получаем список gps_id и загружаем кэш из Redis
+        gps_ids = [str(v["vehicle_id"]) for v in vehicles_data]
+        telemetry_cache = await load_telemetry_batch(gps_ids)
         
+        # Шаг 2: Обработка в thread pool с переданным кэшем
+        loop = asyncio.get_event_loop()
+        updated, cache_updates = await loop.run_in_executor(
+            None, 
+            _update_in_thread, 
+            vehicles_data, 
+            telemetry_cache,
+            loop
+        )
+        
+        # Шаг 3: Сохраняем обновлённый кэш в Redis
+        if cache_updates:
+            await save_telemetry_batch(cache_updates)
+        
+        # Шаг 4: Уведомляем WebSocket клиентов (только если были DB updates)
         if updated > 0:
             from app.websocket.notifications import notify_vehicles_list_update
             asyncio.create_task(notify_vehicles_list_update())
+        
+        # Логируем статистику периодически (каждые 100 обновлений)
+        stats = TelemetryStats.get_stats()
+        if stats["total_updates"] > 0 and stats["total_updates"] % 100 == 0:
+            logger.info(
+                f"Telemetry cache stats: {stats['db_updates']}/{stats['total_updates']} DB updates "
+                f"({stats['db_reduction_percent']}% reduction)"
+            )
+            
     except Exception as e:
-        logger.error(f"Ошибка в процессе run_in_executor: {e}")
+        logger.error(f"Ошибка в процессе обновления данных машин: {e}")
 
 
 async def check_vehicle_conditions():
@@ -273,6 +374,17 @@ def init_app(app: FastAPI):
                 print("⚠️ Redis unavailable, using database fallback")
         except Exception as e:
             print(f"⚠️ Redis initialization error: {e}")
+
+        # Инициализируем WebSocket Pub/Sub для кластерного режима
+        try:
+            from app.websocket.manager import connection_manager
+            pubsub_ready = await connection_manager.init_pubsub()
+            if pubsub_ready:
+                print("✅ WebSocket Pub/Sub initialized for cluster mode")
+            else:
+                print("ℹ️ WebSocket running in single-instance mode")
+        except Exception as e:
+            print(f"⚠️ WebSocket Pub/Sub initialization error: {e}")
 
         db_gen = get_db()
         db = next(db_gen)
@@ -432,6 +544,13 @@ def init_app(app: FastAPI):
                 await hang_watchdog.stop()
         except Exception as e:
             logger.error(f"Ошибка остановки HangWatchdog: {e}")
+
+        # Останавливаем WebSocket Pub/Sub
+        try:
+            from app.websocket.manager import connection_manager
+            await connection_manager.shutdown_pubsub()
+        except Exception as e:
+            logger.error(f"Ошибка остановки WebSocket Pub/Sub: {e}")
 
         # Закрываем Redis
         try:
