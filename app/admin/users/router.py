@@ -4530,6 +4530,7 @@ async def admin_upload_user_documents(
     pension_contributions_certificate: Optional[UploadFile] = File(None, description="Справка о пенсионных отчислениях"),
     # Персональные данные
     first_name: Optional[str] = Form(None, description="Имя (1-50 символов)", min_length=1, max_length=50),
+    middle_name: Optional[str] = Form(None, description="Отчество (1-50 символов)", min_length=1, max_length=50),
     last_name: Optional[str] = Form(None, description="Фамилия (1-50 символов)", min_length=1, max_length=50),
     birth_date: Optional[str] = Form(None, description="Дата рождения в формате YYYY-MM-DD"),
     iin: Optional[str] = Form(None, description="ИИН из 12 цифр без пробелов"),
@@ -4577,6 +4578,10 @@ async def admin_upload_user_documents(
     if last_name is not None:
         user.last_name = last_name.strip()
         updated_fields["last_name"] = last_name.strip()
+    
+    if middle_name is not None:
+        user.middle_name = middle_name.strip()
+        updated_fields["middle_name"] = middle_name.strip()
     
     if birth_date is not None:
         try:
