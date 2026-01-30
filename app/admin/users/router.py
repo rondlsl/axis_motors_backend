@@ -4527,6 +4527,109 @@ async def edit_user_full(
     }
 
 
+@users_router.post("/{user_id}/upload-documents", summary="Загрузка документов пользователю (Admin)")
+async def admin_upload_user_documents(
+    user_id: str,
+    selfie: Optional[UploadFile] = File(None, description="Селфи"),
+    selfie_with_license: Optional[UploadFile] = File(None, description="Селфи с правами"),
+    drivers_license: Optional[UploadFile] = File(None, description="Водительские права"),
+    id_card_front: Optional[UploadFile] = File(None, description="Лицевая сторона ID карты"),
+    id_card_back: Optional[UploadFile] = File(None, description="Обратная сторона ID карты"),
+    psych_neurology_certificate: Optional[UploadFile] = File(None, description="Справка из ПНД"),
+    narcology_certificate: Optional[UploadFile] = File(None, description="Справка из НД"),
+    pension_contributions_certificate: Optional[UploadFile] = File(None, description="Справка о пенсионных отчислениях"),
+    notify_user: bool = Form(False, description="Отправить уведомление пользователю"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Эндпоинт для администратора для загрузки документов пользователю.
+    Все файлы опциональны - можно загрузить только нужные документы.
+    Поддерживаемые форматы: JPEG, PNG, WebP, PDF.
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    ALLOWED_FILE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/jpg", "application/pdf"]
+
+    files_mapping = {
+        "selfie_url": selfie,
+        "selfie_with_license_url": selfie_with_license,
+        "drivers_license_url": drivers_license,
+        "id_card_front_url": id_card_front,
+        "id_card_back_url": id_card_back,
+        "psych_neurology_certificate_url": psych_neurology_certificate,
+        "narcology_certificate_url": narcology_certificate,
+        "pension_contributions_certificate_url": pension_contributions_certificate,
+    }
+
+    uploaded_documents = {}
+
+    for field_name, file in files_mapping.items():
+        if file is None or file.filename is None or file.filename == "":
+            continue
+
+        if file.content_type not in ALLOWED_FILE_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Файл {file.filename} имеет недопустимый тип. Допустимые: JPEG, PNG, WebP, PDF"
+            )
+
+        try:
+            url = await save_file(file, user.id, "documents")
+            setattr(user, field_name, url)
+            uploaded_documents[field_name] = url
+        except Exception as e:
+            logger.error(f"Ошибка загрузки файла {field_name}: {e}")
+            raise HTTPException(status_code=500, detail=f"Ошибка загрузки файла: {str(e)}")
+
+    if not uploaded_documents:
+        raise HTTPException(status_code=400, detail="Не предоставлено ни одного файла для загрузки")
+
+    user.upload_document_at = get_local_time()
+
+    db.commit()
+
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="admin_upload_user_documents",
+        entity_type="user",
+        entity_id=user.id,
+        details={
+            "documents_uploaded": len(uploaded_documents),
+            "fields": list(uploaded_documents.keys())
+        }
+    )
+
+    db.commit()
+
+    if notify_user:
+        try:
+            await send_push_to_user_by_id(
+                db_session=db,
+                user_id=user.id,
+                title="Документы загружены",
+                body="Администратор загрузил ваши документы"
+            )
+        except Exception as e:
+            logger.error(f"Ошибка отправки push уведомления: {e}")
+
+        asyncio.create_task(notify_user_status_update(str(user.id)))
+
+    return {
+        "message": "Документы успешно загружены",
+        "user_id": uuid_to_sid(user.id),
+        "documents_uploaded": len(uploaded_documents),
+        "uploaded_documents": uploaded_documents
+    }
+
+
 @users_router.patch("/{user_id}/block")
 async def block_user(
     user_id: str,
