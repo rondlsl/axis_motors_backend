@@ -4592,6 +4592,24 @@ async def admin_upload_user_documents(
         raise HTTPException(status_code=400, detail="Не предоставлено ни одного файла для загрузки")
 
     user.upload_document_at = get_local_time()
+    user.documents_verified = True
+
+    # Создаем/обновляем заявку для проверки документов
+    existing_application = db.query(Application).filter(Application.user_id == user.id).first()
+
+    if not existing_application:
+        application = Application(
+            user_id=user.id,
+            created_at=get_local_time(),
+            updated_at=get_local_time()
+        )
+        db.add(application)
+    else:
+        existing_application.updated_at = get_local_time()
+
+    # Меняем статус пользователя на PENDINGTOFIRST (ожидает проверки финансистом)
+    if user.role not in [UserRole.PENDINGTOFIRST, UserRole.PENDINGTOSECOND]:
+        user.role = UserRole.PENDINGTOFIRST
 
     db.commit()
 
@@ -4603,7 +4621,8 @@ async def admin_upload_user_documents(
         entity_id=user.id,
         details={
             "documents_uploaded": len(uploaded_documents),
-            "fields": list(uploaded_documents.keys())
+            "fields": list(uploaded_documents.keys()),
+            "user_role_changed_to": user.role.value
         }
     )
 
