@@ -3900,39 +3900,116 @@ async def get_car_ownership_status(
     summary="Список свободных машин (без владельца)"
 )
 async def get_free_cars(
+    page: int = Query(1, ge=1, description="Номер страницы"),
+    page_size: int = Query(20, ge=1, le=100, description="Количество на странице"),
+    search: Optional[str] = Query(None, description="Поиск по названию или номеру"),
+    status: Optional[str] = Query(None, description="Фильтр по статусу (FREE, SERVICE, etc)"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    Получение списка машин без владельца.
+    Получение списка машин без владельца с пагинацией.
 
     Возвращает машины, которым можно назначить владельца.
     Сортировка: сначала FREE, потом остальные статусы.
+
+    **Параметры:**
+    - page: номер страницы (начиная с 1)
+    - page_size: количество записей на странице (1-100)
+    - search: поиск по названию или номеру машины
+    - status: фильтр по статусу машины
     """
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
-    # Машины без владельца, сортируем: FREE первыми
-    cars = db.query(Car).filter(
-        Car.owner_id == None
-    ).order_by(
-        # FREE статус первым
+    # Базовый запрос - машины без владельца
+    query = db.query(Car).filter(Car.owner_id == None)
+
+    # Фильтр по поиску
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            or_(
+                Car.name.ilike(search_term),
+                Car.plate_number.ilike(search_term),
+                Car.vin.ilike(search_term)
+            )
+        )
+
+    # Фильтр по статусу
+    if status:
+        try:
+            status_enum = CarStatus(status.upper())
+            query = query.filter(Car.status == status_enum)
+        except ValueError:
+            pass  # Игнорируем невалидный статус
+
+    # Общее количество
+    total = query.count()
+
+    # Сортировка: FREE первыми, потом по имени
+    query = query.order_by(
         (Car.status != CarStatus.FREE).asc(),
         Car.name.asc()
-    ).all()
+    )
 
+    # Пагинация
+    offset = (page - 1) * page_size
+    cars = query.offset(offset).limit(page_size).all()
+
+    # Формируем полную информацию о машинах
     result = []
     for car in cars:
-        result.append({
+        car_data = {
             "id": uuid_to_sid(car.id),
             "name": car.name,
             "plate_number": car.plate_number,
+            "vin": car.vin,
+            "color": car.color,
             "status": car.status.value if car.status else "FREE",
+            "status_display": status_display(car.status),
             "has_owner": False,
-            "created_at": car.created_at.isoformat() if car.created_at else None
-        })
+            "owner_id": None,
+            # Цены
+            "price_per_minute": car.price_per_minute,
+            "price_per_hour": car.price_per_hour,
+            "price_per_day": car.price_per_day,
+            "open_fee": car.open_fee,
+            # Характеристики
+            "auto_class": car.auto_class.value if car.auto_class else None,
+            "body_type": car.body_type.value if car.body_type else None,
+            "transmission_type": car.transmission_type.value if car.transmission_type else None,
+            "engine_volume": car.engine_volume,
+            "year": car.year,
+            "drive_type": car.drive_type,
+            # GPS и местоположение
+            "latitude": car.latitude,
+            "longitude": car.longitude,
+            "gps_id": car.gps_id,
+            "gps_imei": car.gps_imei,
+            "fuel_level": car.fuel_level,
+            "mileage": car.mileage,
+            # Медиа
+            "photos": sort_car_photos(car.photos or []),
+            "description": car.description,
+            "rating": car.rating,
+            # Аренда
+            "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
+            "available_minutes": car.available_minutes or 0,
+            # Даты
+            "created_at": car.created_at.isoformat() if car.created_at else None,
+            "updated_at": car.updated_at.isoformat() if car.updated_at else None,
+        }
+        result.append(car_data)
+
+    total_pages = ceil(total / page_size) if total > 0 else 1
 
     return {
-        "total": len(result),
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+        "has_next": page < total_pages,
+        "has_prev": page > 1,
         "cars": result
     }
