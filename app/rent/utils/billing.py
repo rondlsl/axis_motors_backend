@@ -33,7 +33,6 @@ from app.utils.telegram_logger import telegram_error_logger
 from app.websocket.notifications import notify_user_status_update
 from app.utils.time_utils import get_local_time
 from app.rent.utils.billing_lock import BillingLock
-from app.rent.utils import notification_flags as nf
 
 FUEL_PRICE_PER_LITER = 400
 ELECTRIC_FUEL_PRICE_PER_LITER = 100
@@ -42,8 +41,7 @@ ELECTRIC_FUEL_PRICE_PER_LITER = 100
 DRIVER_FEE_PER_HOUR = 2000  # 2000₸ за каждый час (поминутный/часовой тариф)
 DRIVER_FEE_PER_DAY = 20000  # 20000₸ за каждые сутки (суточный тариф)
 
-# REMOVED: _notification_flags: dict[int, dict[str, object]] = {}
-# Теперь используется Redis через app.rent.utils.notification_flags
+_notification_flags: dict[int, dict[str, object]] = {}
 
 _websocket_notification_semaphore: asyncio.Semaphore | None = None
 
@@ -76,19 +74,7 @@ async def billing_job():
 
 async def _billing_job_impl():
     """Реализация billing job (вызывается только если лок получен)."""
-    active_rental_ids = await asyncio.to_thread(_get_active_rental_ids)
-    
-    flags_cache = await nf.load_flags_batch(active_rental_ids)
-    
-    push_notifications, telegram_alerts, lock_requests, updated_flags, inactive_ids = await asyncio.to_thread(
-        process_rentals_sync, flags_cache
-    )
-    
-    if updated_flags:
-        await nf.save_flags_batch(updated_flags)
-    
-    if inactive_ids:
-        await nf.delete_flags_batch(list(inactive_ids))
+    push_notifications, telegram_alerts, lock_requests = await asyncio.to_thread(process_rentals_sync)
 
     db = None  
 
@@ -270,39 +256,7 @@ async def _billing_job_impl():
     await asyncio.sleep(0)
 
 
-def _get_active_rental_ids() -> list[int]:
-    """
-    Получить список ID активных аренд для предварительной загрузки флагов.
-    Вызывается в отдельном потоке.
-    """
-    db = SessionLocal()
-    try:
-        rental_ids = db.query(RentalHistory.id).filter(
-            RentalHistory.rental_status.in_([
-                RentalStatus.RESERVED,
-                RentalStatus.IN_USE,
-                RentalStatus.DELIVERING,
-                RentalStatus.DELIVERY_RESERVED,
-                RentalStatus.DELIVERING_IN_PROGRESS
-            ])
-        ).all()
-        return [r[0] for r in rental_ids]
-    except Exception as e:
-        logger.error(f"Error getting active rental IDs: {e}")
-        return []
-    finally:
-        db.close()
-
-
-def process_rentals_sync(
-    flags_cache: dict[int, dict[str, object]]
-) -> tuple[
-    list[tuple[int, str, str]],  # push_notifications
-    list[str],  # telegram_alerts
-    list[tuple[str, str, int]],  # lock_requests
-    dict[int, dict[str, object]],  # updated_flags (для сохранения в Redis)
-    set[int]  # inactive_ids (для удаления из Redis)
-]:
+def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[tuple[str, str, int]]]:
     """
     Синхронная часть биллинга:
       1) RESERVED → за 1 мин до ожидания + первое платное списание
@@ -312,30 +266,22 @@ def process_rentals_sync(
       3) Уведомления о низком и нулевом балансе
       4) Штрафы механиков за задержку доставки
 
-    Args:
-      flags_cache: Предзагруженные флаги из Redis {rent_id: {flag_name: value}}
-
     Returns:
       push_notifications: list of (user_id, title, body)
       telegram_alerts: list of telegram messages
       lock_requests: list of (imei, car_name, user_id)
-      updated_flags: dict of updated flags to save to Redis
-      inactive_ids: set of rent_ids to delete from Redis
     """
     db = SessionLocal()
     now = get_local_time()
     push_notifications: list[tuple[uuid.UUID, str, str]] = []
     telegram_alerts: list[str] = []
     lock_requests: list[tuple[str, str, uuid.UUID]] = []  # (imei, car_name, user_id)
-    
-    # Локальная копия флагов для изменений
-    updated_flags: dict[int, dict[str, object]] = {}
 
     rental_count = db.query(RentalHistory).count()
     if rental_count == 0:
         logger.debug("ℹ️ Таблица rental_history пуста, пропускаем billing_job")
         db.close()
-        return [], [], [], {}, set()
+        return [], [], []
     
     rentals = (
         db.query(RentalHistory)
@@ -366,9 +312,7 @@ def process_rentals_sync(
             car = rental.car
             rid = rental.id
 
-            # Получаем флаги из кэша или создаём новые
-            # Redis кэш уже предзагружен в flags_cache
-            flags = flags_cache.setdefault(rid, {
+            flags = _notification_flags.setdefault(rid, {
                 "pre_waiting": False,
                 "waiting": False,
                 "pre_overtime": False,
@@ -378,8 +322,6 @@ def process_rentals_sync(
                 "telegram_10min_alert": False,
                 "low_fuel_alert": False,
             })
-            # Отмечаем что флаги этой аренды были изменены
-            updated_flags[rid] = flags
 
             if rental.rental_status == RentalStatus.RESERVED:
                 if rental.delivery_end_time:
@@ -1169,9 +1111,10 @@ def process_rentals_sync(
         logger.info(f"[Delivery penalty error]: {e}")
         db.rollback()
 
-    # Определяем ID аренд для очистки из Redis
-    # (те что были в flags_cache, но не в active_ids)
-    inactive_ids = set(flags_cache.keys()) - active_ids
+    # Очистка флагов для завершённых/отменённых аренд
+    for rid in list(_notification_flags):
+        if rid not in active_ids:
+            _notification_flags.pop(rid)
 
     db.close()
-    return push_notifications, telegram_alerts, lock_requests, updated_flags, inactive_ids
+    return push_notifications, telegram_alerts, lock_requests
