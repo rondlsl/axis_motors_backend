@@ -3559,3 +3559,385 @@ async def create_car_with_photos(
     )
     
     return await create_car(car_data=car_data, photos=photos, current_user=current_user, db=db)
+
+
+# ============================================================================
+# OWNER MANAGEMENT ENDPOINTS
+# ============================================================================
+
+class AssignOwnerRequest(BaseModel):
+    """Запрос на назначение владельца машине"""
+    owner_id: str = Field(..., description="ID владельца (SID)")
+
+
+class AssignOwnerResponse(BaseModel):
+    """Ответ на назначение владельца"""
+    message: str
+    car_id: str
+    owner_id: Optional[str]
+    previous_owner_id: Optional[str]
+
+
+class ReleaseOwnerResponse(BaseModel):
+    """Ответ на освобождение машины от владельца"""
+    message: str
+    car_id: str
+    released_owner_id: Optional[str]
+    car_status: str
+
+
+class CarOwnershipStatus(BaseModel):
+    """Статус владения машиной"""
+    car_id: str
+    car_name: str
+    plate_number: str
+    has_owner: bool
+    owner_id: Optional[str]
+    owner_name: Optional[str]
+    owner_phone: Optional[str]
+    status: str
+
+
+from pydantic import BaseModel
+
+
+@cars_router.post(
+    "/{car_id}/assign-owner",
+    response_model=AssignOwnerResponse,
+    summary="Назначение владельца машине"
+)
+async def assign_owner_to_car(
+    car_id: str,
+    request: AssignOwnerRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Назначение владельца машине.
+
+    - Если машина уже имеет владельца, возвращается ошибка 409 (Conflict)
+    - Для переназначения владельца сначала используйте release-owner
+    - Машина должна существовать
+    - Владелец должен существовать и быть активным
+
+    **HTTP коды:**
+    - 200: Владелец успешно назначен
+    - 400: Некорректный запрос
+    - 404: Машина или владелец не найден
+    - 409: Машина уже имеет владельца
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+
+    # Получаем машину
+    car_uuid = safe_sid_to_uuid(car_id)
+    car = db.query(Car).filter(Car.id == car_uuid).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Машина не найдена")
+
+    # Проверяем, что машина ещё не имеет владельца
+    if car.owner_id is not None:
+        existing_owner = db.query(User).filter(User.id == car.owner_id).first()
+        owner_info = f"{existing_owner.first_name} {existing_owner.last_name}" if existing_owner else "Unknown"
+        raise HTTPException(
+            status_code=409,
+            detail=f"Машина уже имеет владельца: {owner_info}. Сначала освободите машину через release-owner"
+        )
+
+    # Получаем нового владельца
+    owner_uuid = safe_sid_to_uuid(request.owner_id)
+    new_owner = db.query(User).filter(User.id == owner_uuid).first()
+    if not new_owner:
+        raise HTTPException(status_code=404, detail="Владелец не найден")
+
+    if new_owner.is_deleted:
+        raise HTTPException(status_code=400, detail="Нельзя назначить удалённого пользователя владельцем")
+
+    # Назначаем владельца
+    previous_owner_id = None
+    car.owner_id = new_owner.id
+
+    db.commit()
+
+    # Логируем действие
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="assign_car_owner",
+        entity_type="car",
+        entity_id=car.id,
+        details={
+            "owner_id": str(new_owner.id),
+            "owner_name": f"{new_owner.first_name} {new_owner.last_name}",
+            "plate_number": car.plate_number
+        }
+    )
+    db.commit()
+
+    # Уведомляем об обновлении списка машин
+    try:
+        asyncio.create_task(notify_vehicles_list_update())
+    except Exception as e:
+        logger.error(f"Error notifying vehicles update: {e}")
+
+    return AssignOwnerResponse(
+        message=f"Владелец {new_owner.first_name} {new_owner.last_name} успешно назначен машине {car.plate_number}",
+        car_id=uuid_to_sid(car.id),
+        owner_id=uuid_to_sid(new_owner.id),
+        previous_owner_id=previous_owner_id
+    )
+
+
+@cars_router.post(
+    "/{car_id}/release-owner",
+    response_model=ReleaseOwnerResponse,
+    summary="Освобождение машины от владельца"
+)
+async def release_owner_from_car(
+    car_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Освобождение машины от владельца.
+
+    - Машина становится "свободной" (FREE)
+    - Если машина была в статусе OWNER, статус меняется на FREE
+    - Машина продолжает существовать и отображается в системе
+    - Возможно последующее назначение нового владельца
+
+    **HTTP коды:**
+    - 200: Машина успешно освобождена
+    - 400: Машина не имеет владельца
+    - 404: Машина не найдена
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+
+    # Получаем машину
+    car_uuid = safe_sid_to_uuid(car_id)
+    car = db.query(Car).filter(Car.id == car_uuid).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Машина не найдена")
+
+    # Проверяем, что машина имеет владельца
+    if car.owner_id is None:
+        raise HTTPException(status_code=400, detail="Машина не имеет владельца")
+
+    # Запоминаем старого владельца для логирования
+    old_owner_id = car.owner_id
+    old_owner = db.query(User).filter(User.id == old_owner_id).first()
+    old_owner_name = f"{old_owner.first_name} {old_owner.last_name}" if old_owner else "Unknown"
+
+    # Освобождаем машину
+    car.owner_id = None
+
+    # Если машина была в статусе OWNER, переводим в FREE
+    old_status = car.status
+    if car.status == CarStatus.OWNER:
+        car.status = CarStatus.FREE
+
+    db.commit()
+
+    # Логируем действие
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="release_car_owner",
+        entity_type="car",
+        entity_id=car.id,
+        details={
+            "released_owner_id": str(old_owner_id),
+            "released_owner_name": old_owner_name,
+            "plate_number": car.plate_number,
+            "old_status": old_status.value if old_status else None,
+            "new_status": car.status.value if car.status else None
+        }
+    )
+    db.commit()
+
+    # Уведомляем об обновлении списка машин
+    try:
+        asyncio.create_task(notify_vehicles_list_update())
+    except Exception as e:
+        logger.error(f"Error notifying vehicles update: {e}")
+
+    return ReleaseOwnerResponse(
+        message=f"Машина {car.plate_number} освобождена от владельца {old_owner_name}",
+        car_id=uuid_to_sid(car.id),
+        released_owner_id=uuid_to_sid(old_owner_id),
+        car_status=car.status.value if car.status else "FREE"
+    )
+
+
+@cars_router.post(
+    "/{car_id}/reassign-owner",
+    response_model=AssignOwnerResponse,
+    summary="Переназначение владельца машины (принудительное)"
+)
+async def reassign_owner_to_car(
+    car_id: str,
+    request: AssignOwnerRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Принудительное переназначение владельца машины.
+
+    В отличие от assign-owner, этот эндпоинт:
+    - Автоматически отвязывает текущего владельца (если есть)
+    - Назначает нового владельца за одну операцию
+    - Используется когда нужно быстро сменить владельца
+
+    **HTTP коды:**
+    - 200: Владелец успешно переназначен
+    - 404: Машина или новый владелец не найден
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+
+    # Получаем машину
+    car_uuid = safe_sid_to_uuid(car_id)
+    car = db.query(Car).filter(Car.id == car_uuid).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Машина не найдена")
+
+    # Запоминаем предыдущего владельца
+    previous_owner_id = None
+    if car.owner_id:
+        previous_owner_id = uuid_to_sid(car.owner_id)
+
+    # Получаем нового владельца
+    owner_uuid = safe_sid_to_uuid(request.owner_id)
+    new_owner = db.query(User).filter(User.id == owner_uuid).first()
+    if not new_owner:
+        raise HTTPException(status_code=404, detail="Владелец не найден")
+
+    if new_owner.is_deleted:
+        raise HTTPException(status_code=400, detail="Нельзя назначить удалённого пользователя владельцем")
+
+    # Переназначаем владельца
+    car.owner_id = new_owner.id
+
+    db.commit()
+
+    # Логируем действие
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="reassign_car_owner",
+        entity_type="car",
+        entity_id=car.id,
+        details={
+            "new_owner_id": str(new_owner.id),
+            "new_owner_name": f"{new_owner.first_name} {new_owner.last_name}",
+            "previous_owner_id": previous_owner_id,
+            "plate_number": car.plate_number
+        }
+    )
+    db.commit()
+
+    # Уведомляем об обновлении списка машин
+    try:
+        asyncio.create_task(notify_vehicles_list_update())
+    except Exception as e:
+        logger.error(f"Error notifying vehicles update: {e}")
+
+    return AssignOwnerResponse(
+        message=f"Владелец машины {car.plate_number} переназначен на {new_owner.first_name} {new_owner.last_name}",
+        car_id=uuid_to_sid(car.id),
+        owner_id=uuid_to_sid(new_owner.id),
+        previous_owner_id=previous_owner_id
+    )
+
+
+@cars_router.get(
+    "/{car_id}/ownership",
+    response_model=CarOwnershipStatus,
+    summary="Статус владения машиной"
+)
+async def get_car_ownership_status(
+    car_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Получение статуса владения машиной.
+
+    Возвращает информацию о текущем владельце машины или указывает,
+    что машина свободна (без владельца).
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.FINANCIER]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+
+    car_uuid = safe_sid_to_uuid(car_id)
+    car = db.query(Car).filter(Car.id == car_uuid).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Машина не найдена")
+
+    owner_id = None
+    owner_name = None
+    owner_phone = None
+    has_owner = False
+
+    if car.owner_id:
+        owner = db.query(User).filter(User.id == car.owner_id).first()
+        if owner and not owner.is_deleted:
+            has_owner = True
+            owner_id = uuid_to_sid(owner.id)
+            owner_name = f"{owner.first_name or ''} {owner.last_name or ''}".strip() or None
+            owner_phone = owner.phone_number
+
+    return CarOwnershipStatus(
+        car_id=uuid_to_sid(car.id),
+        car_name=car.name,
+        plate_number=car.plate_number,
+        has_owner=has_owner,
+        owner_id=owner_id,
+        owner_name=owner_name,
+        owner_phone=owner_phone,
+        status=car.status.value if car.status else "FREE"
+    )
+
+
+@cars_router.get(
+    "/free",
+    summary="Список свободных машин (без владельца)"
+)
+async def get_free_cars(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Получение списка машин без владельца.
+
+    Возвращает машины, которым можно назначить владельца.
+    Сортировка: сначала FREE, потом остальные статусы.
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+
+    # Машины без владельца, сортируем: FREE первыми
+    cars = db.query(Car).filter(
+        Car.owner_id == None
+    ).order_by(
+        # FREE статус первым
+        (Car.status != CarStatus.FREE).asc(),
+        Car.name.asc()
+    ).all()
+
+    result = []
+    for car in cars:
+        result.append({
+            "id": uuid_to_sid(car.id),
+            "name": car.name,
+            "plate_number": car.plate_number,
+            "status": car.status.value if car.status else "FREE",
+            "has_owner": False,
+            "created_at": car.created_at.isoformat() if car.created_at else None
+        })
+
+    return {
+        "total": len(result),
+        "cars": result
+    }

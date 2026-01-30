@@ -6594,14 +6594,24 @@ async def delete_user(
         user.is_deleted = True
         user.deleted_at = get_local_time()
         deleted_at_str = user.deleted_at.isoformat()
-        
+
         if delete_data.reason:
             delete_reason = f"Удалён: {delete_data.reason}"
             if user.admin_comment:
                 user.admin_comment = f"{user.admin_comment}\n{delete_reason}"
             else:
                 user.admin_comment = delete_reason
-        
+
+        # Освобождаем все машины владельца (машины становятся FREE)
+        owned_cars = db.query(Car).filter(Car.owner_id == user.id).all()
+        released_cars_count = 0
+        for car in owned_cars:
+            car.owner_id = None
+            # Если машина была в статусе OWNER (у владельца), переводим в FREE
+            if car.status == CarStatus.OWNER:
+                car.status = CarStatus.FREE
+            released_cars_count += 1
+
         db.commit()
         
         log_action(
@@ -6616,7 +6626,19 @@ async def delete_user(
         message = "Пользователь мягко удалён"
         
         
-    else: 
+    else:
+        # Освобождаем все машины владельца ПЕРЕД удалением user (иначе FK constraint)
+        owned_cars = db.query(Car).filter(Car.owner_id == user.id).all()
+        for car in owned_cars:
+            car.owner_id = None
+            if car.status == CarStatus.OWNER:
+                car.status = CarStatus.FREE
+
+        # Освобождаем машины где user был арендатором
+        rented_cars = db.query(Car).filter(Car.current_renter_id == user.id).all()
+        for car in rented_cars:
+            car.current_renter_id = None
+
         db.query(Application).filter(Application.user_id == user.id).delete(synchronize_session=False)
         db.query(RentalHistory).filter(RentalHistory.user_id == user.id).delete(synchronize_session=False)
         db.query(WalletTransaction).filter(WalletTransaction.user_id == user.id).delete(synchronize_session=False)
@@ -6626,7 +6648,7 @@ async def delete_user(
         db.query(GuarantorRequest).filter(GuarantorRequest.guarantor_id == user.id).delete(synchronize_session=False)
         db.query(UserDevice).filter(UserDevice.user_id == user.id).delete(synchronize_session=False)
         db.query(UserContractSignature).filter(UserContractSignature.user_id == user.id).delete(synchronize_session=False)
-        
+
         db.delete(user)
         
         log_action(
