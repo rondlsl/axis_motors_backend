@@ -6,6 +6,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 from decimal import Decimal
 import uuid
+import re
 from app.models.notification_model import Notification
 from app.core.logging_config import get_logger
 logger = get_logger(__name__)
@@ -4530,6 +4531,7 @@ async def edit_user_full(
 @users_router.post("/{user_id}/upload-documents", summary="Загрузка документов пользователю (Admin)")
 async def admin_upload_user_documents(
     user_id: str,
+    # Файлы документов
     selfie: Optional[UploadFile] = File(None, description="Селфи"),
     selfie_with_license: Optional[UploadFile] = File(None, description="Селфи с правами"),
     drivers_license: Optional[UploadFile] = File(None, description="Водительские права"),
@@ -4538,14 +4540,36 @@ async def admin_upload_user_documents(
     psych_neurology_certificate: Optional[UploadFile] = File(None, description="Справка из ПНД"),
     narcology_certificate: Optional[UploadFile] = File(None, description="Справка из НД"),
     pension_contributions_certificate: Optional[UploadFile] = File(None, description="Справка о пенсионных отчислениях"),
+    # Персональные данные
+    first_name: Optional[str] = Form(None, description="Имя (1-50 символов)", min_length=1, max_length=50),
+    last_name: Optional[str] = Form(None, description="Фамилия (1-50 символов)", min_length=1, max_length=50),
+    birth_date: Optional[str] = Form(None, description="Дата рождения в формате YYYY-MM-DD"),
+    iin: Optional[str] = Form(None, description="ИИН из 12 цифр без пробелов"),
+    passport_number: Optional[str] = Form(None, description="Номер паспорта (можно указать вместо ИИН)"),
+    id_card_expiry: Optional[str] = Form(None, description="Дата истечения ID карты в формате YYYY-MM-DD"),
+    drivers_license_expiry: Optional[str] = Form(None, description="Дата истечения прав в формате YYYY-MM-DD"),
+    email: Optional[str] = Form(None, description="Электронная почта"),
+    is_citizen_kz: Optional[bool] = Form(None, description="Гражданин Республики Казахстан"),
+    # Настройки
     notify_user: bool = Form(False, description="Отправить уведомление пользователю"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    Эндпоинт для администратора для загрузки документов пользователю.
-    Все файлы опциональны - можно загрузить только нужные документы.
-    Поддерживаемые форматы: JPEG, PNG, WebP, PDF.
+    Эндпоинт для администратора для загрузки документов и обновления данных пользователя.
+    Все поля опциональны - можно загрузить/обновить только нужные данные.
+    Поддерживаемые форматы файлов: JPEG, PNG, WebP, PDF.
+    
+    Персональные данные:
+    - first_name: Имя (1-50 символов). Пример: "Иван"
+    - last_name: Фамилия (1-50 символов). Пример: "Иванов"
+    - birth_date: Дата рождения в формате YYYY-MM-DD. Пример: "1990-05-15"
+    - iin: ИИН из 12 цифр без пробелов. Пример: "900515123456"
+    - passport_number: Номер паспорта (можно указать вместо ИИН)
+    - id_card_expiry: Дата истечения ID карты в формате YYYY-MM-DD. Пример: "2030-12-31"
+    - drivers_license_expiry: Дата истечения прав в формате YYYY-MM-DD. Пример: "2029-08-20"
+    - email: Электронная почта
+    - is_citizen_kz: Гражданин РК (true/false). Если true, справки обязательны
     """
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
@@ -4554,6 +4578,83 @@ async def admin_upload_user_documents(
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    # Обновление персональных данных
+    updated_fields = {}
+    
+    if first_name is not None:
+        user.first_name = first_name.strip()
+        updated_fields["first_name"] = first_name.strip()
+    
+    if last_name is not None:
+        user.last_name = last_name.strip()
+        updated_fields["last_name"] = last_name.strip()
+    
+    if birth_date is not None:
+        try:
+            parsed_birth_date = datetime.strptime(birth_date, "%Y-%m-%d").date()
+            user.birth_date = parsed_birth_date
+            updated_fields["birth_date"] = birth_date
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Неверный формат даты рождения. Используйте YYYY-MM-DD")
+    
+    if iin is not None:
+        iin_clean = iin.strip().replace(" ", "")
+        if not iin_clean.isdigit() or len(iin_clean) != 12:
+            raise HTTPException(status_code=400, detail="ИИН должен состоять из 12 цифр")
+        # Проверяем уникальность ИИН
+        existing_user = db.query(User).filter(User.iin == iin_clean, User.id != user.id).first()
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Пользователь с таким ИИН уже существует")
+        user.iin = iin_clean
+        updated_fields["iin"] = iin_clean
+    
+    if passport_number is not None:
+        passport_clean = passport_number.strip()
+        if passport_clean:
+            # Проверяем уникальность номера паспорта
+            existing_user = db.query(User).filter(User.passport_number == passport_clean, User.id != user.id).first()
+            if existing_user:
+                raise HTTPException(status_code=400, detail="Пользователь с таким номером паспорта уже существует")
+            user.passport_number = passport_clean
+            updated_fields["passport_number"] = passport_clean
+    
+    if id_card_expiry is not None:
+        try:
+            parsed_id_card_expiry = datetime.strptime(id_card_expiry, "%Y-%m-%d").date()
+            if parsed_id_card_expiry <= datetime.now().date():
+                raise HTTPException(status_code=400, detail="Дата истечения ID карты должна быть в будущем")
+            user.id_card_expiry = parsed_id_card_expiry
+            updated_fields["id_card_expiry"] = id_card_expiry
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Неверный формат даты истечения ID карты. Используйте YYYY-MM-DD")
+    
+    if drivers_license_expiry is not None:
+        try:
+            parsed_dl_expiry = datetime.strptime(drivers_license_expiry, "%Y-%m-%d").date()
+            if parsed_dl_expiry <= datetime.now().date():
+                raise HTTPException(status_code=400, detail="Дата истечения прав должна быть в будущем")
+            user.drivers_license_expiry = parsed_dl_expiry
+            updated_fields["drivers_license_expiry"] = drivers_license_expiry
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Неверный формат даты истечения прав. Используйте YYYY-MM-DD")
+    
+    if email is not None:
+        email_clean = email.strip().lower()
+        if email_clean:
+            # Простая валидация email
+            if not re.match(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", email_clean):
+                raise HTTPException(status_code=400, detail="Неверный формат email")
+            # Проверяем уникальность email
+            existing_user = db.query(User).filter(User.email == email_clean, User.id != user.id).first()
+            if existing_user:
+                raise HTTPException(status_code=400, detail="Пользователь с таким email уже существует")
+            user.email = email_clean
+            updated_fields["email"] = email_clean
+    
+    if is_citizen_kz is not None:
+        user.is_citizen_kz = is_citizen_kz
+        updated_fields["is_citizen_kz"] = is_citizen_kz
 
     ALLOWED_FILE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/jpg", "application/pdf"]
 
@@ -4588,8 +4689,8 @@ async def admin_upload_user_documents(
             logger.error(f"Ошибка загрузки файла {field_name}: {e}")
             raise HTTPException(status_code=500, detail=f"Ошибка загрузки файла: {str(e)}")
 
-    if not uploaded_documents:
-        raise HTTPException(status_code=400, detail="Не предоставлено ни одного файла для загрузки")
+    if not uploaded_documents and not updated_fields:
+        raise HTTPException(status_code=400, detail="Не предоставлено ни одного файла или данных для обновления")
 
     user.upload_document_at = get_local_time()
     user.documents_verified = True
@@ -4621,7 +4722,8 @@ async def admin_upload_user_documents(
         entity_id=user.id,
         details={
             "documents_uploaded": len(uploaded_documents),
-            "fields": list(uploaded_documents.keys()),
+            "document_fields": list(uploaded_documents.keys()),
+            "data_fields_updated": list(updated_fields.keys()),
             "user_role_changed_to": user.role.value
         }
     )
@@ -4642,10 +4744,12 @@ async def admin_upload_user_documents(
         asyncio.create_task(notify_user_status_update(str(user.id)))
 
     return {
-        "message": "Документы успешно загружены",
+        "message": "Данные успешно обновлены",
         "user_id": uuid_to_sid(user.id),
         "documents_uploaded": len(uploaded_documents),
-        "uploaded_documents": uploaded_documents
+        "uploaded_documents": uploaded_documents,
+        "fields_updated": len(updated_fields),
+        "updated_fields": updated_fields
     }
 
 
