@@ -266,7 +266,7 @@ async def get_vehicles_data_for_user(user: User, db: Session) -> Dict[str, Any]:
                 "body_type": car.body_type,
                 "auto_class": car.auto_class,
                 "photos": sort_car_photos(car.photos or []),
-                "owner_id": uuid_to_sid(car.owner_id),
+                "owner_id": uuid_to_sid(car.owner_id) if car.owner_id else None,
                 "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
                 "current_renter": current_renter_info,
                 "current_rental": current_rental_info,
