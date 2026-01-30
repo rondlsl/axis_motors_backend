@@ -3560,14 +3560,12 @@ async def create_car_with_photos(
     
     return await create_car(car_data=car_data, photos=photos, current_user=current_user, db=db)
 
+from pydantic import BaseModel, Field as PydanticField
 
-# ============================================================================
-# OWNER MANAGEMENT ENDPOINTS
-# ============================================================================
 
 class AssignOwnerRequest(BaseModel):
     """Запрос на назначение владельца машине"""
-    owner_id: str = Field(..., description="ID владельца (SID)")
+    owner_id: str = PydanticField(..., description="ID владельца (SID)")
 
 
 class AssignOwnerResponse(BaseModel):
@@ -3596,9 +3594,6 @@ class CarOwnershipStatus(BaseModel):
     owner_name: Optional[str]
     owner_phone: Optional[str]
     status: str
-
-
-from pydantic import BaseModel
 
 
 @cars_router.post(
