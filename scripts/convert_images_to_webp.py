@@ -265,8 +265,7 @@ def collect_all_urls_fast(engine, tables: Optional[List[str]] = None) -> Dict[st
             user_columns = [
                 'selfie_with_license_url', 'selfie_url', 'drivers_license_url',
                 'id_card_front_url', 'id_card_back_url',
-                'psych_neurology_certificate_url', 'narcology_certificate_url',
-                'pension_contributions_certificate_url'
+                'psych_neurology_certificate_url', 'pension_contributions_certificate_url'
             ]
             
             for col in user_columns:

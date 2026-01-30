@@ -569,7 +569,6 @@ async def get_user_me_data(db: Session, current_user: User) -> Dict[str, Any]:
                 "selfie_with_license_url": current_user.selfie_with_license_url,
                 "selfie_url": current_user.selfie_url,
                 "psych_neurology_certificate_url": getattr(current_user, "psych_neurology_certificate_url", None),
-                "narcology_certificate_url": getattr(current_user, "narcology_certificate_url", None),
                 "pension_contributions_certificate_url": getattr(current_user, "pension_contributions_certificate_url", None),
                 "drivers_license": {
                     "url": current_user.drivers_license_url,

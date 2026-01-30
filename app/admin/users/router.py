@@ -215,7 +215,6 @@ async def get_pending_users(
             "id_card_front_url": user.id_card_front_url,
             "id_card_back_url": user.id_card_back_url,
             "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
-            "narcology_certificate_url": user.narcology_certificate_url,
             "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
             "auto_class": user.auto_class or [],
             "rating": float(user.rating) if user.rating else None
@@ -308,7 +307,6 @@ async def get_all_users(
             "id_card_front_url": user.id_card_front_url,
             "id_card_back_url": user.id_card_back_url,
             "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
-            "narcology_certificate_url": user.narcology_certificate_url,
             "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
             "auto_class": user.auto_class or [],
             "rating": float(user.rating) if user.rating else None
@@ -354,7 +352,6 @@ async def get_all_clients(
             "id_card_front_url": user.id_card_front_url,
             "id_card_back_url": user.id_card_back_url,
             "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
-            "narcology_certificate_url": user.narcology_certificate_url,
             "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
             "auto_class": user.auto_class or [],
             "rating": float(user.rating) if user.rating else None
@@ -445,7 +442,6 @@ async def get_user_profile(
         id_card_front_url=user.id_card_front_url,
         id_card_back_url=user.id_card_back_url,
         psych_neurology_certificate_url=user.psych_neurology_certificate_url,
-        narcology_certificate_url=user.narcology_certificate_url,
         pension_contributions_certificate_url=user.pension_contributions_certificate_url,
         auto_class=auto_class_list,
         digital_signature=user.digital_signature,
@@ -1041,7 +1037,6 @@ async def get_user_card(
         "id_card_front_url": user.id_card_front_url,
         "id_card_back_url": user.id_card_back_url,
         "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
-        "narcology_certificate_url": user.narcology_certificate_url,
         "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
         "auto_class": auto_class_list,
         "wallet_balance": float(user.wallet_balance) if user.wallet_balance else 0.0,
@@ -4333,7 +4328,6 @@ async def edit_user_full(
     id_card_front: Optional[UploadFile] = File(None, description="Лицевая сторона ID карты"),
     id_card_back: Optional[UploadFile] = File(None, description="Обратная сторона ID карты"),
     psych_neurology_certificate: Optional[UploadFile] = File(None, description="Справка из ПНД"),
-    narcology_certificate: Optional[UploadFile] = File(None, description="Справка из НД"),
     pension_contributions_certificate: Optional[UploadFile] = File(None, description="Справка о пенсионных отчислениях"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -4495,11 +4489,6 @@ async def edit_user_full(
         if path:
             user.psych_neurology_certificate_url = path
     
-    if narcology_certificate:
-        path = await save_if_provided(narcology_certificate, "narcology_certificate_url")
-        if path:
-            user.narcology_certificate_url = path
-    
     if pension_contributions_certificate:
         path = await save_if_provided(pension_contributions_certificate, "pension_contributions_certificate_url")
         if path:
@@ -4538,7 +4527,6 @@ async def admin_upload_user_documents(
     id_card_front: Optional[UploadFile] = File(None, description="Лицевая сторона ID карты"),
     id_card_back: Optional[UploadFile] = File(None, description="Обратная сторона ID карты"),
     psych_neurology_certificate: Optional[UploadFile] = File(None, description="Справка из ПНД"),
-    narcology_certificate: Optional[UploadFile] = File(None, description="Справка из НД"),
     pension_contributions_certificate: Optional[UploadFile] = File(None, description="Справка о пенсионных отчислениях"),
     # Персональные данные
     first_name: Optional[str] = Form(None, description="Имя (1-50 символов)", min_length=1, max_length=50),
@@ -4665,7 +4653,6 @@ async def admin_upload_user_documents(
         "id_card_front_url": id_card_front,
         "id_card_back_url": id_card_back,
         "psych_neurology_certificate_url": psych_neurology_certificate,
-        "narcology_certificate_url": narcology_certificate,
         "pension_contributions_certificate_url": pension_contributions_certificate,
     }
 

@@ -113,7 +113,6 @@ async def get_pending_applications(
             },
             "certificates": {
                 "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
-                "narcology_certificate_url": user.narcology_certificate_url,
                 "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
             },
             "auto_class": app.user.auto_class,
@@ -193,7 +192,6 @@ async def get_approved_applications(
             },
             "certificates": {
                 "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
-                "narcology_certificate_url": user.narcology_certificate_url,
                 "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
             },
             "auto_class": app.user.auto_class,
@@ -276,7 +274,6 @@ async def get_rejected_applications(
             },
             "certificates": {
                 "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
-                "narcology_certificate_url": user.narcology_certificate_url,
                 "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
             },
             "auto_class": app.user.auto_class,

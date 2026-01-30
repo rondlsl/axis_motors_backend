@@ -1039,7 +1039,6 @@ async def refresh_token(db: Session = Depends(get_db), token: str = Depends(JWTB
 
 **Необязательные файлы (для граждан Казахстана обязательны):**
 - psych_neurology_certificate: Справка из психоневрологического диспансера (изображение/PDF)
-- narcology_certificate: Справка из наркологического диспансера (изображение/PDF)
 - pension_contributions_certificate: Справка о пенсионных отчислениях (изображение/PDF)
 
 **Требуемые данные:**
@@ -1065,7 +1064,6 @@ async def upload_documents(
 
         # Необязательные файлы справок
         psych_neurology_certificate: Optional[UploadFile] = File(None),
-        narcology_certificate: Optional[UploadFile] = File(None),
         pension_contributions_certificate: Optional[UploadFile] = File(None),
 
         # Данные формы
@@ -1100,8 +1098,6 @@ async def upload_documents(
     # Обрабатываем пустые файлы
     if isinstance(psych_neurology_certificate, str) and not psych_neurology_certificate:
         psych_neurology_certificate = None
-    if isinstance(narcology_certificate, str) and not narcology_certificate:
-        narcology_certificate = None
     if isinstance(pension_contributions_certificate, str) and not pension_contributions_certificate:
         pension_contributions_certificate = None
     
@@ -1117,7 +1113,6 @@ async def upload_documents(
     # Необязательные файлы справок (фильтруем None)
     cert_docs = [
         psych_neurology_certificate,
-        narcology_certificate,
         pension_contributions_certificate,
     ]
 
@@ -1206,13 +1201,10 @@ async def upload_documents(
 
         # Сохранение необязательных файлов справок (только если они предоставлены)
         psych_neuro_path = None
-        narcology_path = None
         pension_path = None
 
         if psych_neurology_certificate is not None:
             psych_neuro_path = await save_file(psych_neurology_certificate, current_user.id, "uploads/documents")
-        if narcology_certificate is not None:
-            narcology_path = await save_file(narcology_certificate, current_user.id, "uploads/documents")
         if pension_contributions_certificate is not None:
             pension_path = await save_file(pension_contributions_certificate, current_user.id, "uploads/documents")
 
@@ -1287,7 +1279,6 @@ async def upload_documents(
 
         # Привязываем пути к справкам (только если файлы были загружены)
         current_user.psych_neurology_certificate_url = psych_neuro_path
-        current_user.narcology_certificate_url = narcology_path
         current_user.pension_contributions_certificate_url = pension_path
 
         # Создаем/обновляем заявку для проверки документов (idempotent)
@@ -1457,7 +1448,6 @@ async def upload_documents(
                 "selfie_with_license_url": current_user.selfie_with_license_url,
                 "selfie_url": current_user.selfie_url,
                 "psych_neurology_certificate_url": current_user.psych_neurology_certificate_url,
-                "narcology_certificate_url": current_user.narcology_certificate_url,
                 "pension_contributions_certificate_url": current_user.pension_contributions_certificate_url,
                 "is_consent_to_data_processing": current_user.is_consent_to_data_processing,
                 "is_contract_read": current_user.is_contract_read,

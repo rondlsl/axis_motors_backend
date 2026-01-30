@@ -77,7 +77,6 @@ async def get_pending_applications(
             "is_verified_email": user.is_verified_email,
             "certificates": {
                 "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
-                "narcology_certificate_url": user.narcology_certificate_url,
                 "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
             },
             "documents": {
@@ -181,7 +180,6 @@ async def get_approved_applications(
             "is_verified_email": user.is_verified_email,
             "certificates": {
                 "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
-                "narcology_certificate_url": user.narcology_certificate_url,
                 "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
             },
             "documents": {
@@ -288,7 +286,6 @@ async def get_rejected_applications(
             "is_verified_email": user.is_verified_email,
             "certificates": {
                 "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
-                "narcology_certificate_url": user.narcology_certificate_url,
                 "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
             },
             "documents": {

@@ -26,7 +26,6 @@ class UserProfileSchema(SidMixin):
     id_card_front_url: Optional[str] = None
     id_card_back_url: Optional[str] = None
     psych_neurology_certificate_url: Optional[str] = None
-    narcology_certificate_url: Optional[str] = None
     pension_contributions_certificate_url: Optional[str] = None
     auto_class: List[str] = []
     digital_signature: Optional[str] = None
@@ -59,7 +58,6 @@ class UserCardSchema(SidMixin):
     id_card_front_url: Optional[str] = None
     id_card_back_url: Optional[str] = None
     psych_neurology_certificate_url: Optional[str] = None
-    narcology_certificate_url: Optional[str] = None
     pension_contributions_certificate_url: Optional[str] = None
     auto_class: List[str] = []
     digital_signature: Optional[str] = None
