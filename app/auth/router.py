@@ -270,8 +270,9 @@ async def send_sms(
         "71234567899",   # финансист
         "79999999999",   # бухгалтер
         "71231111111",   # владелец автомобилей
+        "70123456789",   # тестовый пользователь
     ]
-    
+
     if phone_number in SYSTEM_PHONE_NUMBERS:
         # Для системных пользователей сразу возвращаем успех без проверок
         try:
@@ -286,7 +287,11 @@ async def send_sms(
     if not can_send:
         raise HTTPException(status_code=429, detail=error_msg)
 
-    sms_code = totp.now()
+    # Используем фиксированный код для тестовых номеров, иначе генерируем случайный
+    TEST_PHONE_CODES = {
+        "70123456789": "1234",  # тестовый номер с фиксированным кодом 1234
+    }
+    sms_code = TEST_PHONE_CODES.get(phone_number, totp.now())
     # Проверяем блокировку по номеру телефона (REJECTSECOND - независимо от is_active)
     blocked_by_phone = db.query(User).filter(
         User.phone_number == phone_number,
@@ -456,20 +461,24 @@ async def send_sms(
 
     if request.email:
         email = request.email.strip().lower()
-        
+
         existing_user_with_email = db.query(User).filter(
             User.email == email,
             User.id != user.id,
             User.is_active == True
         ).first()
-        
+
         if existing_user_with_email:
             raise HTTPException(
                 status_code=400,
                 detail="Этот email уже используется другим пользователем"
             )
-        
-        email_code = generate_email_verification_code()
+
+        # Используем фиксированный код для тестовой почты, иначе генерируем случайный
+        TEST_EMAIL_CODES = {
+            "test@example.com": "123456",  # тестовая почта с фиксированным кодом 123456
+        }
+        email_code = TEST_EMAIL_CODES.get(email, generate_email_verification_code())
         
         email_verification_record = VerificationCode(
             phone_number=None,
