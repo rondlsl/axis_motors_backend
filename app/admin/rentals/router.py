@@ -1,6 +1,8 @@
 """
 Router для работы с завершёнными арендами в админ панели
 """
+import sys
+import traceback
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, desc
@@ -22,6 +24,15 @@ from app.core.logging_config import get_logger
 
 rentals_router = APIRouter(tags=["Admin Rentals"])
 logger = get_logger(__name__)
+
+
+def _log_delete_rental_stdout(message: str) -> None:
+    """Пишет строку в stdout и сбрасывает буфер — всегда видна в логах (Docker/K8s), не зависит от LOG_LEVEL."""
+    try:
+        sys.stdout.write(f"[DELETE_RENTAL] {message}\n")
+        sys.stdout.flush()
+    except Exception:
+        pass
 
 
 def _get_tariff_display(rental_type_value: str) -> str:
@@ -279,48 +290,69 @@ async def delete_rental_by_id(
     - отзыв по аренде (rental_id)
     - запись аренды (rental_history)
     """
+    _log_delete_rental_stdout(f"start rental_id={rental_id} admin_id={current_user.id}")
+    logger.info(
+        "delete_rental_by_id: start rental_id=%s admin_id=%s",
+        rental_id,
+        str(current_user.id),
+        extra={"rental_id": rental_id, "admin_id": str(current_user.id)},
+    )
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        logger.warning("delete_rental_by_id: forbidden role=%s", current_user.role)
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     try:
         rental_uuid = safe_sid_to_uuid(rental_id)
-    except Exception:
+        logger.info("delete_rental_by_id: parsed rental_uuid=%s", str(rental_uuid))
+    except Exception as e:
+        logger.warning("delete_rental_by_id: invalid rental_id=%s error=%s", rental_id, e)
         raise HTTPException(status_code=400, detail="Некорректный ID аренды")
 
     # 1) Строковая блокировка: SELECT ... FOR UPDATE — блокировка до конца транзакции (commit/rollback).
     # Billing job при попытке прочитать эту аренду будет ждать; после commit аренды уже не будет.
     rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).with_for_update().first()
     if not rental:
+        logger.warning("delete_rental_by_id: rental not found rental_id=%s", rental_id)
         raise HTTPException(status_code=404, detail="Аренда не найдена")
 
+    logger.info(
+        "delete_rental_by_id: rental found car_id=%s user_id=%s status=%s",
+        rental.car_id,
+        rental.user_id,
+        getattr(rental.rental_status, "value", str(rental.rental_status)),
+        extra={"rental_id": rental_id, "car_id": rental.car_id},
+    )
+
     try:
-        # Удаление связанных сущностей (порядок не меняем)
-        transactions = db.query(WalletTransaction).filter(
+        # Массовое удаление без загрузки строк — избегаем LookupError по enum (в БД может быть 'success', в Python — ActionStatus.SUCCESS).
+        deleted_wallet_transactions = db.query(WalletTransaction).filter(
             WalletTransaction.related_rental_id == rental_uuid
-        ).all()
-        for tx in transactions:
-            db.delete(tx)
+        ).delete(synchronize_session=False)
+        logger.info("delete_rental_by_id: wallet_transactions deleted=%s", deleted_wallet_transactions)
 
-        signatures = db.query(UserContractSignature).filter(
+        deleted_contract_signatures = db.query(UserContractSignature).filter(
             UserContractSignature.rental_id == rental_uuid
-        ).all()
-        for sig in signatures:
-            db.delete(sig)
+        ).delete(synchronize_session=False)
+        logger.info("delete_rental_by_id: contract_signatures deleted=%s", deleted_contract_signatures)
 
-        actions = db.query(RentalAction).filter(
+        deleted_rental_actions = db.query(RentalAction).filter(
             RentalAction.rental_id == rental_uuid
-        ).all()
-        for action in actions:
-            db.delete(action)
+        ).delete(synchronize_session=False)
+        logger.info("delete_rental_by_id: rental_actions deleted=%s", deleted_rental_actions)
 
-        review = db.query(RentalReview).filter(
+        deleted_rental_review = db.query(RentalReview).filter(
             RentalReview.rental_id == rental_uuid
-        ).first()
-        if review:
-            db.delete(review)
+        ).delete(synchronize_session=False)
+        logger.info("delete_rental_by_id: rental_review deleted=%s", deleted_rental_review)
 
-        db.delete(rental)
+        # Удаляем запись аренды массовым DELETE, без db.delete(rental), чтобы не загружать
+        # связь rental.actions (cascade delete-orphan) — иначе SQLAlchemy подгружает RentalAction
+        # и падает на enum actionstatus ('success' в БД vs SUCCESS в Python).
+        logger.info("delete_rental_by_id: deleting rental row")
+        db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).delete(synchronize_session=False)
+        db.expunge(rental)  # убираем из сессии, т.к. строка уже удалена массовым DELETE
         db.commit()
+        logger.info("delete_rental_by_id: commit ok")
 
         # 3) Аудит: факт удаления — только в application-лог (rental_id, admin_id; timestamp даёт logger).
         logger.info(
@@ -333,16 +365,29 @@ async def delete_rental_by_id(
         return {
             "message": "Аренда успешно удалена",
             "rental_id": rental_id,
-            "deleted_wallet_transactions": len(transactions),
-            "deleted_contract_signatures": len(signatures),
-            "deleted_rental_actions": len(actions),
-            "deleted_rental_review": 1 if review else 0,
+            "deleted_wallet_transactions": deleted_wallet_transactions,
+            "deleted_contract_signatures": deleted_contract_signatures,
+            "deleted_rental_actions": deleted_rental_actions,
+            "deleted_rental_review": deleted_rental_review,
         }
     except HTTPException:
         raise
-    except Exception:
+    except Exception as e:
         db.rollback()
-        # 2) Полный stacktrace только в лог; клиенту — общее сообщение без внутренних деталей.
+        exc_type = type(e).__name__
+        exc_msg = str(e)
+        tb = traceback.format_exc()
+        # Всегда видно в логах (stdout), не зависит от LOG_LEVEL
+        _log_delete_rental_stdout(f"ERROR rental_id={rental_id} exception_type={exc_type} exception_msg={exc_msg}")
+        _log_delete_rental_stdout(f"traceback:\n{tb}")
+        logger.error(
+            "delete_rental_by_id: rollback done rental_id=%s admin_id=%s exception_type=%s exception_msg=%s",
+            rental_id,
+            str(current_user.id),
+            exc_type,
+            exc_msg,
+            extra={"rental_id": rental_id, "admin_id": str(current_user.id), "error": exc_msg},
+        )
         logger.exception("Delete rental failed: rental_id=%s admin_id=%s", rental_id, str(current_user.id))
         raise HTTPException(status_code=500, detail="Ошибка удаления аренды")
 
