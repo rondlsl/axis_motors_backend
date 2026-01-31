@@ -381,6 +381,8 @@ async def update_employee_role(
     
     db.commit()
 
+    old_role = user.role
+    
     log_action(
         db,
         actor_id=current_user.id,
@@ -390,6 +392,23 @@ async def update_employee_role(
         details={"old_role": user.role.value, "new_role": role_data.role.value}
     )
     user.role = role_data.role
+    
+    # При смене роли на USER - обновляем статусы в applications на APPROVED
+    # чтобы пользователь мог арендовать машины
+    if role_data.role == UserRole.USER and old_role != role_data.role:
+        application = db.query(Application).filter(
+            Application.user_id == user.id
+        ).first()
+        if application:
+            print(
+                f"[update_employee_role] Updating application statuses for user_id={user.id}: "
+                f"financier_status {application.financier_status} -> APPROVED, "
+                f"mvd_status {application.mvd_status} -> APPROVED",
+                flush=True
+            )
+            application.financier_status = ApplicationStatus.APPROVED
+            application.mvd_status = ApplicationStatus.APPROVED
+    
     db.commit()
     
     return {"message": f"Роль пользователя изменена на {role_data.role.value}"}
@@ -4406,6 +4425,24 @@ async def edit_user_full(
                 and old_role != new_role):
                 from app.guarantor.router import cancel_guarantor_requests_on_rejection
                 await cancel_guarantor_requests_on_rejection(str(user.id), db)
+            
+            # При смене роли на USER - обновляем статусы в applications на APPROVED
+            # чтобы пользователь мог арендовать машины
+            if new_role == UserRole.USER and old_role != new_role:
+                application = db.query(Application).filter(
+                    Application.user_id == user.id
+                ).first()
+                if application:
+                    print(
+                        f"[update_user] Updating application statuses for user_id={user.id}: "
+                        f"financier_status {application.financier_status} -> APPROVED, "
+                        f"mvd_status {application.mvd_status} -> APPROVED",
+                        flush=True
+                    )
+                    application.financier_status = ApplicationStatus.APPROVED
+                    application.mvd_status = ApplicationStatus.APPROVED
+                    changes["application_financier_status"] = "APPROVED"
+                    changes["application_mvd_status"] = "APPROVED"
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Неверная роль: {role}")
     

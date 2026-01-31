@@ -238,18 +238,10 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
     else:
         print(f"[validate_user_can_rent] user_id={current_user.id} NO APPLICATION FOUND", flush=True)
     
-    # Если заявка существует и МВД отклонил, блокируем аренду
-    if application and application.mvd_status == ApplicationStatus.REJECTED:
-        print(
-            f"[validate_user_can_rent] BLOCKED - user_id={current_user.id}, "
-            f"reason=mvd_status REJECTED, mvd_status={application.mvd_status}, "
-            f"financier_status={application.financier_status}, role={current_user.role}",
-            flush=True
-        )
-        raise HTTPException(
-            status_code=403,
-            detail="Доступ к аренде недоступен. Обратитесь в поддержку."
-        )
+    # ПРИМЕЧАНИЕ: Проверка mvd_status == REJECTED убрана, так как:
+    # - Для роли USER есть отдельная проверка на APPROVED статусы ниже
+    # - Для роли REJECTFIRST есть отдельная проверка на MVD
+    # - При смене роли в админке статусы application обновляются автоматически
     
     # Блокированные пользователи не могут арендовать
     if current_user.role in [UserRole.REJECTSECOND]:
