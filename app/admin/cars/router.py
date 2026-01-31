@@ -1160,9 +1160,10 @@ async def get_car_history_summary(
     ).all()
     
     # Группируем поездки по месяцам
+    # owner_income по поездке = int((base_price + overtime_fee + waiting_fee) * 0.5 * 0.97) - вычеты
     monthly_data = defaultdict(lambda: {
         "total_income": 0,
-        "base_earnings": 0.0,
+        "owner_earnings": 0,  # сумма int((base_price + overtime_fee + waiting_fee) * 0.5 * 0.97) по поездкам
         "deductions": 0.0,
         "trips_count": 0
     })
@@ -1181,8 +1182,9 @@ async def get_car_history_summary(
             delivery_cost = calculate_delivery_cost(r, car, current_user)
             monthly_data[month_key]["deductions"] += (fuel_cost or 0) + (delivery_cost or 0)
         else:
-            components = calculate_owner_earnings(r, car, current_user, return_components=True)
-            monthly_data[month_key]["base_earnings"] += components["base_earnings"]
+            # (base_price + overtime_fee + waiting_fee) * 0.5 * 0.97 — как в calculate_owner_earnings
+            base_earnings = (r.base_price or 0) + (r.overtime_fee or 0) + (r.waiting_fee or 0)
+            monthly_data[month_key]["owner_earnings"] += int(base_earnings * 0.5 * 0.97)
     
     from app.models.car_model import CarAvailabilityHistory
     availability_history = db.query(CarAvailabilityHistory).filter(
@@ -1207,7 +1209,8 @@ async def get_car_history_summary(
     months_result = []
     for year, month in paginated_months:
         data = monthly_data[(year, month)]
-        owner_income = int(data["base_earnings"] * 0.5 * 0.97) - int(data["deductions"])
+        # owner_earnings уже = сумма int((base_price + overtime_fee + waiting_fee) * 0.5 * 0.97) по поездкам
+        owner_income = data["owner_earnings"] - int(data["deductions"])
         
         months_result.append({
             "year": year,
