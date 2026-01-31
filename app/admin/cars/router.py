@@ -1159,32 +1159,63 @@ async def get_car_history_summary(
         RentalHistory.car_id == car.id
     ).all()
     
+    print(f"[car_history/summary] car_id={car_id}, total_rentals={len(rentals)}", flush=True)
+    
     # Группируем поездки по месяцам
     # owner_income по поездке = int((base_price + overtime_fee + waiting_fee) * 0.5 * 0.97) - вычеты
     monthly_data = defaultdict(lambda: {
         "total_income": 0,
         "owner_earnings": 0,  # сумма int((base_price + overtime_fee + waiting_fee) * 0.5 * 0.97) по поездкам
         "deductions": 0.0,
-        "trips_count": 0
+        "trips_count": 0,
+        "_trip_details": []  # для отладки: список (rental_id, base_price, overtime_fee, waiting_fee, owner_part | deductions)
     })
     
     for r in rentals:
         # Используем end_time если есть, иначе start_time, иначе reservation_time
         date_for_grouping = r.end_time or r.start_time or r.reservation_time
         if not date_for_grouping:
+            print(f"[car_history/summary] SKIP rental_id={r.id} (no date)", flush=True)
             continue
         month_key = (date_for_grouping.year, date_for_grouping.month)
         monthly_data[month_key]["trips_count"] += 1
         monthly_data[month_key]["total_income"] += int(r.total_price or 0)
         
+        base_price = r.base_price or 0
+        overtime_fee = r.overtime_fee or 0
+        waiting_fee = r.waiting_fee or 0
+        
         if r.user_id == car.owner_id:
             fuel_cost = calculate_fuel_cost(r, car, current_user)
             delivery_cost = calculate_delivery_cost(r, car, current_user)
-            monthly_data[month_key]["deductions"] += (fuel_cost or 0) + (delivery_cost or 0)
+            ded = (fuel_cost or 0) + (delivery_cost or 0)
+            monthly_data[month_key]["deductions"] += ded
+            monthly_data[month_key]["_trip_details"].append({
+                "rental_id": str(r.id),
+                "date": str(date_for_grouping),
+                "is_owner": True,
+                "base_price": base_price,
+                "overtime_fee": overtime_fee,
+                "waiting_fee": waiting_fee,
+                "deductions": ded,
+                "total_price": r.total_price,
+            })
         else:
             # (base_price + overtime_fee + waiting_fee) * 0.5 * 0.97 — как в calculate_owner_earnings
-            base_earnings = (r.base_price or 0) + (r.overtime_fee or 0) + (r.waiting_fee or 0)
-            monthly_data[month_key]["owner_earnings"] += int(base_earnings * 0.5 * 0.97)
+            base_earnings = base_price + overtime_fee + waiting_fee
+            owner_part = int(base_earnings * 0.5 * 0.97)
+            monthly_data[month_key]["owner_earnings"] += owner_part
+            monthly_data[month_key]["_trip_details"].append({
+                "rental_id": str(r.id),
+                "date": str(date_for_grouping),
+                "is_owner": False,
+                "base_price": base_price,
+                "overtime_fee": overtime_fee,
+                "waiting_fee": waiting_fee,
+                "base_earnings_sum": base_earnings,
+                "owner_part": owner_part,
+                "total_price": r.total_price,
+            })
     
     from app.models.car_model import CarAvailabilityHistory
     availability_history = db.query(CarAvailabilityHistory).filter(
@@ -1211,6 +1242,23 @@ async def get_car_history_summary(
         data = monthly_data[(year, month)]
         # owner_earnings уже = сумма int((base_price + overtime_fee + waiting_fee) * 0.5 * 0.97) по поездкам
         owner_income = data["owner_earnings"] - int(data["deductions"])
+        
+        # Отладка: итоги по месяцу и поездки
+        print(
+            f"[car_history/summary] MONTH {year}-{month:02d}: trips={data['trips_count']}, "
+            f"total_income={data['total_income']}, owner_earnings={data['owner_earnings']}, "
+            f"deductions={int(data['deductions'])}, owner_income={owner_income}",
+            flush=True
+        )
+        for i, t in enumerate(data.get("_trip_details", [])[:10]):
+            print(
+                f"[car_history/summary]   trip[{i}] rental_id={t.get('rental_id', '')[:8]}... "
+                f"base_price={t.get('base_price')} overtime_fee={t.get('overtime_fee')} waiting_fee={t.get('waiting_fee')} "
+                f"owner_part={t.get('owner_part')} deductions={t.get('deductions')} total_price={t.get('total_price')}",
+                flush=True
+            )
+        if len(data.get("_trip_details", [])) > 10:
+            print(f"[car_history/summary]   ... и ещё {len(data['_trip_details']) - 10} поездок", flush=True)
         
         months_result.append({
             "year": year,
@@ -1265,7 +1313,7 @@ async def get_car_trips_list(
 
     base_query = (
         db.query(RentalHistory, User)
-        .join(User, User.id == RentalHistory.user_id)
+        .outerjoin(User, User.id == RentalHistory.user_id)  # LEFT JOIN чтобы показать все поездки даже без user
         .filter(
             RentalHistory.car_id == car.id,
             or_(
@@ -1367,12 +1415,12 @@ async def get_car_trips_list(
             "waiting_fee_owner": int((r.waiting_fee or 0) * 0.5 * 0.97),
             "overtime_fee_owner": int((r.overtime_fee or 0) * 0.5 * 0.97),
             "renter": {
-                "id": uuid_to_sid(renter.id),
-                "first_name": renter.first_name,
-                "last_name": renter.last_name,
-                "phone_number": renter.phone_number,
-                "selfie": renter.selfie_url,
-            }
+                "id": uuid_to_sid(renter.id) if renter else None,
+                "first_name": renter.first_name if renter else None,
+                "last_name": renter.last_name if renter else None,
+                "phone_number": renter.phone_number if renter else None,
+                "selfie": renter.selfie_url if renter else None,
+            } if renter else None
         })
 
 
