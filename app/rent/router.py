@@ -355,11 +355,13 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
             detail="Ваша заявка на рассмотрении. Дождитесь одобрения"
         )
     
-    # Для роли USER проверяем полную верификацию
+    # Для роли USER проверяем только верификацию документов.
+    # Статусы заявки (financier_status, mvd_status) не проверяем — если админ поставил роль USER,
+    # пользователь может арендовать (статусы application могут быть устаревшими после смены роли).
     if current_user.role == UserRole.USER:
         print(
             f"[validate_user_can_rent] user_id={current_user.id} has role USER, "
-            f"checking documents_verified and application status...",
+            f"checking documents_verified...",
             flush=True
         )
         if not bool(current_user.documents_verified):
@@ -371,21 +373,6 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
             raise HTTPException(
                 status_code=403, 
                 detail="Для аренды необходимо пройти верификацию документов"
-            )
-        
-        # Проверяем одобрение финансиста и МВД 
-        if not application or application.financier_status != ApplicationStatus.APPROVED or application.mvd_status != ApplicationStatus.APPROVED:
-            print(
-                f"[validate_user_can_rent] BLOCKED - user_id={current_user.id}, "
-                f"reason=application not fully approved, "
-                f"has_application={application is not None}, "
-                f"financier_status={application.financier_status if application else 'N/A'}, "
-                f"mvd_status={application.mvd_status if application else 'N/A'}",
-                flush=True
-            )
-            raise HTTPException(
-                status_code=403, 
-                detail="Для аренды требуется одобрение заявки"
             )
     
     print(f"[validate_user_can_rent] SUCCESS - user_id={current_user.id} can rent, role={current_user.role}", flush=True)

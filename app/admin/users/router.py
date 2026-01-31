@@ -4294,6 +4294,15 @@ async def edit_user(
             and old_role != edit_data.role):
             from app.guarantor.router import cancel_guarantor_requests_on_rejection
             await cancel_guarantor_requests_on_rejection(str(user.id), db)
+        
+        # При смене роли на USER - обновляем статусы в applications на APPROVED
+        if edit_data.role == UserRole.USER and old_role != edit_data.role:
+            application = db.query(Application).filter(
+                Application.user_id == user.id
+            ).first()
+            if application:
+                application.financier_status = ApplicationStatus.APPROVED
+                application.mvd_status = ApplicationStatus.APPROVED
     
     db.commit()
 
