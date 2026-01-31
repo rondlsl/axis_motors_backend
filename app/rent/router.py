@@ -206,16 +206,17 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
     Проверяет роль и статус заявки пользователя.
     """
     # Логируем все данные пользователя для диагностики
-    logger.warning(
+    print(
         f"[validate_user_can_rent] START - user_id={current_user.id}, "
         f"phone={current_user.phone_number}, role={current_user.role}, "
         f"documents_verified={current_user.documents_verified}, "
-        f"auto_class={getattr(current_user, 'auto_class', None)}"
+        f"auto_class={getattr(current_user, 'auto_class', None)}",
+        flush=True
     )
     
     # Владельцы могут арендовать свои машины всегда
     if current_user.role == UserRole.ADMIN:
-        logger.warning(f"[validate_user_can_rent] user_id={current_user.id} is ADMIN - access granted")
+        print(f"[validate_user_can_rent] user_id={current_user.id} is ADMIN - access granted", flush=True)
         return  # Админы могут всё
     
     # Проверяем статус заявки в applications для всех пользователей (кроме админов)
@@ -225,23 +226,25 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
     
     # Логируем статус заявки
     if application:
-        logger.warning(
+        print(
             f"[validate_user_can_rent] user_id={current_user.id} application found - "
             f"application_id={application.id}, "
             f"financier_status={application.financier_status}, "
             f"mvd_status={application.mvd_status}, "
             f"created_at={getattr(application, 'created_at', None)}, "
-            f"updated_at={getattr(application, 'updated_at', None)}"
+            f"updated_at={getattr(application, 'updated_at', None)}",
+            flush=True
         )
     else:
-        logger.warning(f"[validate_user_can_rent] user_id={current_user.id} NO APPLICATION FOUND")
+        print(f"[validate_user_can_rent] user_id={current_user.id} NO APPLICATION FOUND", flush=True)
     
     # Если заявка существует и МВД отклонил, блокируем аренду
     if application and application.mvd_status == ApplicationStatus.REJECTED:
-        logger.warning(
+        print(
             f"[validate_user_can_rent] BLOCKED - user_id={current_user.id}, "
             f"reason=mvd_status REJECTED, mvd_status={application.mvd_status}, "
-            f"financier_status={application.financier_status}, role={current_user.role}"
+            f"financier_status={application.financier_status}, role={current_user.role}",
+            flush=True
         )
         raise HTTPException(
             status_code=403,
@@ -250,9 +253,10 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
     
     # Блокированные пользователи не могут арендовать
     if current_user.role in [UserRole.REJECTSECOND]:
-        logger.warning(
+        print(
             f"[validate_user_can_rent] BLOCKED - user_id={current_user.id}, "
-            f"reason=role REJECTSECOND, role={current_user.role}"
+            f"reason=role REJECTSECOND, role={current_user.role}",
+            flush=True
         )
         raise HTTPException(
             status_code=403, 
@@ -261,9 +265,10 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
     
     # Пользователи без документов не могут арендовать
     if current_user.role == UserRole.CLIENT:
-        logger.warning(
+        print(
             f"[validate_user_can_rent] BLOCKED - user_id={current_user.id}, "
-            f"reason=role CLIENT (no documents), role={current_user.role}"
+            f"reason=role CLIENT (no documents), role={current_user.role}",
+            flush=True
         )
         raise HTTPException(
             status_code=403, 
@@ -272,9 +277,10 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
     
     # Пользователи с неправильными документами не могут арендовать
     if current_user.role == UserRole.REJECTFIRSTDOC:
-        logger.warning(
+        print(
             f"[validate_user_can_rent] BLOCKED - user_id={current_user.id}, "
-            f"reason=role REJECTFIRSTDOC, role={current_user.role}"
+            f"reason=role REJECTFIRSTDOC, role={current_user.role}",
+            flush=True
         )
         raise HTTPException(
             status_code=403, 
@@ -283,9 +289,10 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
     
     # Пользователи без сертификатов не могут арендовать
     if current_user.role == UserRole.REJECTFIRSTCERT:
-        logger.warning(
+        print(
             f"[validate_user_can_rent] BLOCKED - user_id={current_user.id}, "
-            f"reason=role REJECTFIRSTCERT, role={current_user.role}"
+            f"reason=role REJECTFIRSTCERT, role={current_user.role}",
+            flush=True
         )
         raise HTTPException(
             status_code=403, 
@@ -294,8 +301,9 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
     
     # Пользователи с финансовыми проблемами не могут арендовать
     if current_user.role == UserRole.REJECTFIRST:
-        logger.warning(
-            f"[validate_user_can_rent] user_id={current_user.id} has role REJECTFIRST, checking guarantor..."
+        print(
+            f"[validate_user_can_rent] user_id={current_user.id} has role REJECTFIRST, checking guarantor...",
+            flush=True
         )
         # Проверяем наличие активного гаранта с одобренным запросом
         active_guarantor = db.query(Guarantor).join(
@@ -309,19 +317,21 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
         ).first()
         
         if active_guarantor:
-            logger.warning(
+            print(
                 f"[validate_user_can_rent] user_id={current_user.id} guarantor found - "
                 f"guarantor_id={active_guarantor.guarantor_user_id if active_guarantor else None}, "
                 f"guarantor_user={active_guarantor.guarantor_user if active_guarantor else None}, "
-                f"guarantor_auto_class={active_guarantor.guarantor_user.auto_class if active_guarantor and active_guarantor.guarantor_user else None}"
+                f"guarantor_auto_class={active_guarantor.guarantor_user.auto_class if active_guarantor and active_guarantor.guarantor_user else None}",
+                flush=True
             )
         else:
-            logger.warning(f"[validate_user_can_rent] user_id={current_user.id} NO ACTIVE GUARANTOR found")
+            print(f"[validate_user_can_rent] user_id={current_user.id} NO ACTIVE GUARANTOR found", flush=True)
         
         if not active_guarantor or not active_guarantor.guarantor_user or not active_guarantor.guarantor_user.auto_class:
-            logger.warning(
+            print(
                 f"[validate_user_can_rent] BLOCKED - user_id={current_user.id}, "
-                f"reason=REJECTFIRST without valid guarantor, role={current_user.role}"
+                f"reason=REJECTFIRST without valid guarantor, role={current_user.role}",
+                flush=True
             )
             raise HTTPException(
                 status_code=403, 
@@ -330,10 +340,11 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
         
         # Проверяем, что МВД одобрил заявку
         if not application or application.mvd_status != ApplicationStatus.APPROVED:
-            logger.warning(
+            print(
                 f"[validate_user_can_rent] BLOCKED - user_id={current_user.id}, "
                 f"reason=REJECTFIRST but MVD not approved, "
-                f"mvd_status={application.mvd_status if application else 'NO APPLICATION'}"
+                f"mvd_status={application.mvd_status if application else 'NO APPLICATION'}",
+                flush=True
             )
             raise HTTPException(
                 status_code=403,
@@ -342,9 +353,10 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
     
     # Пользователи в процессе верификации не могут арендовать
     if current_user.role in [UserRole.PENDINGTOFIRST, UserRole.PENDINGTOSECOND]:
-        logger.warning(
+        print(
             f"[validate_user_can_rent] BLOCKED - user_id={current_user.id}, "
-            f"reason=role pending verification, role={current_user.role}"
+            f"reason=role pending verification, role={current_user.role}",
+            flush=True
         )
         raise HTTPException(
             status_code=403, 
@@ -353,14 +365,16 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
     
     # Для роли USER проверяем полную верификацию
     if current_user.role == UserRole.USER:
-        logger.warning(
+        print(
             f"[validate_user_can_rent] user_id={current_user.id} has role USER, "
-            f"checking documents_verified and application status..."
+            f"checking documents_verified and application status...",
+            flush=True
         )
         if not bool(current_user.documents_verified):
-            logger.warning(
+            print(
                 f"[validate_user_can_rent] BLOCKED - user_id={current_user.id}, "
-                f"reason=documents not verified, documents_verified={current_user.documents_verified}"
+                f"reason=documents not verified, documents_verified={current_user.documents_verified}",
+                flush=True
             )
             raise HTTPException(
                 status_code=403, 
@@ -369,19 +383,20 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
         
         # Проверяем одобрение финансиста и МВД 
         if not application or application.financier_status != ApplicationStatus.APPROVED or application.mvd_status != ApplicationStatus.APPROVED:
-            logger.warning(
+            print(
                 f"[validate_user_can_rent] BLOCKED - user_id={current_user.id}, "
                 f"reason=application not fully approved, "
                 f"has_application={application is not None}, "
                 f"financier_status={application.financier_status if application else 'N/A'}, "
-                f"mvd_status={application.mvd_status if application else 'N/A'}"
+                f"mvd_status={application.mvd_status if application else 'N/A'}",
+                flush=True
             )
             raise HTTPException(
                 status_code=403, 
                 detail="Для аренды требуется одобрение заявки"
             )
     
-    logger.warning(f"[validate_user_can_rent] SUCCESS - user_id={current_user.id} can rent, role={current_user.role}")
+    print(f"[validate_user_can_rent] SUCCESS - user_id={current_user.id} can rent, role={current_user.role}", flush=True)
 
 
 def apply_offset(dt: datetime) -> str | None:
@@ -1031,27 +1046,29 @@ async def reserve_car(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user),
 ):
-    logger.warning(
+    print(
         f"[reserve_car] START - car_id={car_id}, rental_type={rental_type}, "
         f"duration={duration}, with_driver={with_driver}, "
         f"user_id={current_user.id}, user_phone={current_user.phone_number}, "
-        f"user_role={current_user.role}"
+        f"user_role={current_user.role}",
+        flush=True
     )
     
     car_uuid = safe_sid_to_uuid(car_id)
     car_meta = db.query(Car.id, Car.owner_id, Car.status).filter(Car.id == car_uuid).first()
     if not car_meta:
-        logger.warning(f"[reserve_car] Car not found - car_id={car_id}")
+        print(f"[reserve_car] Car not found - car_id={car_id}", flush=True)
         raise HTTPException(status_code=404, detail="Car not found")
     
-    logger.warning(
+    print(
         f"[reserve_car] Car found - car_uuid={car_uuid}, owner_id={car_meta.owner_id}, "
-        f"status={car_meta.status}, is_owner={car_meta.owner_id == current_user.id}"
+        f"status={car_meta.status}, is_owner={car_meta.owner_id == current_user.id}",
+        flush=True
     )
 
     # Запреты по ролям/верификации для НЕ владельцев
     if car_meta.owner_id != current_user.id:
-        logger.warning(f"[reserve_car] User is not owner, calling validate_user_can_rent for user_id={current_user.id}")
+        print(f"[reserve_car] User is not owner, calling validate_user_can_rent for user_id={current_user.id}", flush=True)
         validate_user_can_rent(current_user, db)
         
         # Проверяем подписание договора о присоединении (MAIN_CONTRACT)
@@ -1060,22 +1077,24 @@ async def reserve_car(
             ContractFile.contract_type == ContractType.MAIN_CONTRACT
         ).first() is not None
         
-        logger.warning(
+        print(
             f"[reserve_car] Contract check - user_id={current_user.id}, "
-            f"main_contract_signed={main_contract_signed}"
+            f"main_contract_signed={main_contract_signed}",
+            flush=True
         )
         
         if not main_contract_signed:
-            logger.warning(
+            print(
                 f"[reserve_car] BLOCKED - user_id={current_user.id}, "
-                f"reason=main contract not signed"
+                f"reason=main contract not signed",
+                flush=True
             )
             raise HTTPException(
                 status_code=403,
                 detail="Необходимо подписать договор о присоединении перед бронированием автомобиля"
             )
         
-        logger.warning(f"[reserve_car] All validation passed for user_id={current_user.id}")
+        print(f"[reserve_car] All validation passed for user_id={current_user.id}", flush=True)
 
     # 1) Проверяем, нет ли у пользователя уже активной аренды
     active_rental = db.query(RentalHistory).filter(
