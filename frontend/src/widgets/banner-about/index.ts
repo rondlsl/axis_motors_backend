@@ -1,1 +1,0 @@
-export { BannerAbout } from "./ui";

@@ -1,1 +1,0 @@
-export { CardReview } from "./ui";

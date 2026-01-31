@@ -1,1 +1,0 @@
-export { BannerDownload } from "./ui";

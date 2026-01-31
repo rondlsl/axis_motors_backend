@@ -769,7 +769,6 @@ async def open_vehicle(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
-    validate_user_can_control_car(current_user, db)
     global AUTH_TOKEN
     rental = get_active_rental(db, current_user.id)
     car = db.get(Car, rental.car_id)
@@ -846,7 +845,6 @@ async def close_vehicle(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
-    validate_user_can_control_car(current_user, db)
     global AUTH_TOKEN
     rental = get_active_rental(db, current_user.id)
     car = db.get(Car, rental.car_id)
@@ -923,7 +921,6 @@ async def give_key(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
-    validate_user_can_control_car(current_user, db)
     global AUTH_TOKEN
     rental = get_active_rental(db, current_user.id)
     car = db.get(Car, rental.car_id)
@@ -972,7 +969,6 @@ async def take_key(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
-    validate_user_can_control_car(current_user, db)
     global AUTH_TOKEN
     rental = get_active_rental(db, current_user.id)
     car = db.get(Car, rental.car_id)
@@ -1012,7 +1008,6 @@ async def lock_engine(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
-    validate_user_can_control_car(current_user, db)
     """Заблокировать двигатель автомобиля"""
     global AUTH_TOKEN
     rental = get_active_rental(db, current_user.id)
@@ -1053,7 +1048,6 @@ async def unlock_engine(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
-    validate_user_can_control_car(current_user, db)
     """Разблокировать двигатель автомобиля"""
     global AUTH_TOKEN
     rental = get_active_rental(db, current_user.id)
@@ -1515,9 +1509,6 @@ async def open_vehicle_by_id(
 ):
     """Открыть автомобиль по ID"""
     car_uuid = safe_sid_to_uuid(car_id)
-    if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
-        raise HTTPException(status_code=403, detail="Только администраторы и механики могут управлять автомобилями")
-    
     # Получаем информацию об автомобиле
     car = db.query(Car).filter(Car.id == car_uuid).first()
     if not car:
@@ -1584,9 +1575,6 @@ async def close_vehicle_by_id(
 ):
     """Закрыть автомобиль по ID"""
     car_uuid = safe_sid_to_uuid(car_id)
-    if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
-        raise HTTPException(status_code=403, detail="Только администраторы и механики могут управлять автомобилями")
-    
     # Получаем информацию об автомобиле
     car = db.query(Car).filter(Car.id == car_uuid).first()
     if not car:
@@ -1654,9 +1642,6 @@ async def lock_engine_by_id(
 ):
     """Заблокировать двигатель автомобиля по ID"""
     car_uuid = safe_sid_to_uuid(car_id)
-    if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
-        raise HTTPException(status_code=403, detail="Только администраторы и механики могут управлять автомобилями")
-    
     # Получаем информацию об автомобиле
     car = db.query(Car).filter(Car.id == car_uuid).first()
     if not car:
@@ -1722,9 +1707,6 @@ async def unlock_engine_by_id(
 ):
     """Разблокировать двигатель автомобиля по ID"""
     car_uuid = safe_sid_to_uuid(car_id)
-    if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
-        raise HTTPException(status_code=403, detail="Только администраторы и механики могут управлять автомобилями")
-    
     # Получаем информацию об автомобиле
     car = db.query(Car).filter(Car.id == car_uuid).first()
     if not car:
@@ -1790,9 +1772,6 @@ async def give_key_by_id(
 ):
     """Выдать ключ автомобиля по ID"""
     car_uuid = safe_sid_to_uuid(car_id)
-    if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
-        raise HTTPException(status_code=403, detail="Только администраторы и механики могут управлять автомобилями")
-    
     # Получаем информацию об автомобиле
     car = db.query(Car).filter(Car.id == car_uuid).first()
     if not car:
@@ -1858,12 +1837,9 @@ async def take_key_by_id(
 ):
     car_uuid = safe_sid_to_uuid(car_id)
     """Забрать ключ автомобиля по ID
-    
+
     Если двигатель не выключен, сначала заблокирует двигатель, затем заберет ключ
     """
-    if current_user.role not in [UserRole.ADMIN, UserRole.MECHANIC]:
-        raise HTTPException(status_code=403, detail="Только администраторы и механики могут управлять автомобилями")
-    
     # Получаем информацию об автомобиле
     car = db.query(Car).filter(Car.id == car_uuid).first()
     if not car:

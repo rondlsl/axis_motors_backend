@@ -1,1 +1,0 @@
-export { BannerWhyUs } from "./ui";
