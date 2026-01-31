@@ -71,9 +71,6 @@ from app.services.face_verify import verify_user_upload_against_profile
 from app.websocket.notifications import notify_user_status_update, notify_vehicles_list_update
 from app.rent.utils.user_utils import get_user_available_auto_classes
 from app.rent.utils.balance_utils import recalculate_user_balance_before_rental, verify_and_fix_rental_balance
-import logging
-
-logger = logging.getLogger(__name__)
 
 
 def get_required_trips_for_class_upgrade(user_classes: List[str], target_class: str) -> int:
@@ -209,7 +206,7 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
     Проверяет роль и статус заявки пользователя.
     """
     # Логируем все данные пользователя для диагностики
-    logger.info(
+    logger.warning(
         f"[validate_user_can_rent] START - user_id={current_user.id}, "
         f"phone={current_user.phone_number}, role={current_user.role}, "
         f"documents_verified={current_user.documents_verified}, "
@@ -218,7 +215,7 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
     
     # Владельцы могут арендовать свои машины всегда
     if current_user.role == UserRole.ADMIN:
-        logger.info(f"[validate_user_can_rent] user_id={current_user.id} is ADMIN - access granted")
+        logger.warning(f"[validate_user_can_rent] user_id={current_user.id} is ADMIN - access granted")
         return  # Админы могут всё
     
     # Проверяем статус заявки в applications для всех пользователей (кроме админов)
@@ -228,7 +225,7 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
     
     # Логируем статус заявки
     if application:
-        logger.info(
+        logger.warning(
             f"[validate_user_can_rent] user_id={current_user.id} application found - "
             f"application_id={application.id}, "
             f"financier_status={application.financier_status}, "
@@ -297,7 +294,7 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
     
     # Пользователи с финансовыми проблемами не могут арендовать
     if current_user.role == UserRole.REJECTFIRST:
-        logger.info(
+        logger.warning(
             f"[validate_user_can_rent] user_id={current_user.id} has role REJECTFIRST, checking guarantor..."
         )
         # Проверяем наличие активного гаранта с одобренным запросом
@@ -312,7 +309,7 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
         ).first()
         
         if active_guarantor:
-            logger.info(
+            logger.warning(
                 f"[validate_user_can_rent] user_id={current_user.id} guarantor found - "
                 f"guarantor_id={active_guarantor.guarantor_user_id if active_guarantor else None}, "
                 f"guarantor_user={active_guarantor.guarantor_user if active_guarantor else None}, "
@@ -356,7 +353,7 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
     
     # Для роли USER проверяем полную верификацию
     if current_user.role == UserRole.USER:
-        logger.info(
+        logger.warning(
             f"[validate_user_can_rent] user_id={current_user.id} has role USER, "
             f"checking documents_verified and application status..."
         )
@@ -384,7 +381,7 @@ def validate_user_can_rent(current_user: User, db: Session) -> None:
                 detail="Для аренды требуется одобрение заявки"
             )
     
-    logger.info(f"[validate_user_can_rent] SUCCESS - user_id={current_user.id} can rent, role={current_user.role}")
+    logger.warning(f"[validate_user_can_rent] SUCCESS - user_id={current_user.id} can rent, role={current_user.role}")
 
 
 def apply_offset(dt: datetime) -> str | None:
@@ -1034,7 +1031,7 @@ async def reserve_car(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user),
 ):
-    logger.info(
+    logger.warning(
         f"[reserve_car] START - car_id={car_id}, rental_type={rental_type}, "
         f"duration={duration}, with_driver={with_driver}, "
         f"user_id={current_user.id}, user_phone={current_user.phone_number}, "
@@ -1047,14 +1044,14 @@ async def reserve_car(
         logger.warning(f"[reserve_car] Car not found - car_id={car_id}")
         raise HTTPException(status_code=404, detail="Car not found")
     
-    logger.info(
+    logger.warning(
         f"[reserve_car] Car found - car_uuid={car_uuid}, owner_id={car_meta.owner_id}, "
         f"status={car_meta.status}, is_owner={car_meta.owner_id == current_user.id}"
     )
 
     # Запреты по ролям/верификации для НЕ владельцев
     if car_meta.owner_id != current_user.id:
-        logger.info(f"[reserve_car] User is not owner, calling validate_user_can_rent for user_id={current_user.id}")
+        logger.warning(f"[reserve_car] User is not owner, calling validate_user_can_rent for user_id={current_user.id}")
         validate_user_can_rent(current_user, db)
         
         # Проверяем подписание договора о присоединении (MAIN_CONTRACT)
@@ -1063,7 +1060,7 @@ async def reserve_car(
             ContractFile.contract_type == ContractType.MAIN_CONTRACT
         ).first() is not None
         
-        logger.info(
+        logger.warning(
             f"[reserve_car] Contract check - user_id={current_user.id}, "
             f"main_contract_signed={main_contract_signed}"
         )
@@ -1078,7 +1075,7 @@ async def reserve_car(
                 detail="Необходимо подписать договор о присоединении перед бронированием автомобиля"
             )
         
-        logger.info(f"[reserve_car] All validation passed for user_id={current_user.id}")
+        logger.warning(f"[reserve_car] All validation passed for user_id={current_user.id}")
 
     # 1) Проверяем, нет ли у пользователя уже активной аренды
     active_rental = db.query(RentalHistory).filter(
