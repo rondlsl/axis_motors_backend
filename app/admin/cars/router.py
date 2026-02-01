@@ -4064,3 +4064,47 @@ async def get_free_cars(
         "has_prev": page > 1,
         "cars": result
     }
+
+
+@cars_router.post("/{car_id}/toggle-notifications")
+async def toggle_car_notifications(
+    car_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Включить/выключить уведомления для машины.
+    Доступно для ADMIN и SUPPORT.
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    car = get_car_by_id(db, car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Car not found")
+
+    car.notifications_disabled = not car.notifications_disabled
+    db.commit()
+    db.refresh(car)
+
+    log_action(
+        db=db,
+        actor_id=current_user.id,
+        action="toggle_notifications",
+        entity_type="car",
+        entity_id=car.id,
+        details={
+            "notifications_disabled": car.notifications_disabled,
+            "car_name": car.name,
+            "plate_number": car.plate_number
+        }
+    )
+
+    status_text = "отключены" if car.notifications_disabled else "включены"
+
+    return {
+        "success": True,
+        "car_id": uuid_to_sid(car.id),
+        "notifications_disabled": car.notifications_disabled,
+        "message": f"Уведомления для {car.name} ({car.plate_number}) {status_text}"
+    }

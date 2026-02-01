@@ -1,7 +1,7 @@
 from enum import Enum
 import uuid
 
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, JSON, Text, DateTime
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, JSON, Text, DateTime, Boolean
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -98,7 +98,8 @@ class Car(Base):
     availability_updated_at = Column(DateTime, default=get_local_time, nullable=True)
     created_at = Column(DateTime, default=get_local_time, nullable=False)
     updated_at = Column(DateTime, default=get_local_time, nullable=True)
-    rating = Column(Float, nullable=True) 
+    rating = Column(Float, nullable=True)
+    notifications_disabled = Column(Boolean, default=False, nullable=False)
 
     owner = relationship("User", foreign_keys=[owner_id], back_populates="owned_cars")
     current_renter = relationship("User", foreign_keys=[current_renter_id], back_populates="active_rental")
