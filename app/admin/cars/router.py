@@ -4074,6 +4074,7 @@ async def toggle_car_notifications(
 ):
     """
     Включить/выключить уведомления для машины.
+    Обновляет флаг в локальной БД и в car_api (azv_motors_cars_v2).
     Доступно для ADMIN и SUPPORT.
     """
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
@@ -4083,9 +4084,24 @@ async def toggle_car_notifications(
     if not car:
         raise HTTPException(status_code=404, detail="Car not found")
 
-    car.notifications_disabled = not car.notifications_disabled
+    # Toggle the flag
+    new_value = not car.notifications_disabled
+    car.notifications_disabled = new_value
     db.commit()
     db.refresh(car)
+
+    # Sync with car_api (azv_motors_cars_v2) if IMEI exists
+    car_api_synced = False
+    if car.gps_imei:
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.patch(
+                    f"{CARS_V2_API_URL}/by-imei/{car.gps_imei}/exclude-from-alerts",
+                    json={"excluded_from_alerts": new_value}
+                )
+                car_api_synced = response.status_code == 200
+        except Exception as e:
+            logger.warning(f"Failed to sync excluded_from_alerts with car_api: {e}")
 
     log_action(
         db=db,
@@ -4094,17 +4110,19 @@ async def toggle_car_notifications(
         entity_type="car",
         entity_id=car.id,
         details={
-            "notifications_disabled": car.notifications_disabled,
+            "notifications_disabled": new_value,
             "car_name": car.name,
-            "plate_number": car.plate_number
+            "plate_number": car.plate_number,
+            "car_api_synced": car_api_synced
         }
     )
 
-    status_text = "отключены" if car.notifications_disabled else "включены"
+    status_text = "отключены" if new_value else "включены"
 
     return {
         "success": True,
         "car_id": uuid_to_sid(car.id),
-        "notifications_disabled": car.notifications_disabled,
+        "notifications_disabled": new_value,
+        "car_api_synced": car_api_synced,
         "message": f"Уведомления для {car.name} ({car.plate_number}) {status_text}"
     }
