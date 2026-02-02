@@ -273,6 +273,11 @@ class CarEditSchema(BaseModel):
     can_exit_zone: Optional[bool] = None  # Разрешение на выезд за зону карты
 
 
+class DescriptionUpdateSchema(BaseModel):
+    """Схема для обновления описания автомобиля"""
+    description: str
+
+
 class CarDeletePhotoSchema(BaseModel):
     """Схема для удаления одной фотографии автомобиля"""
     photo_url: str = Field(..., min_length=1, description="URL фотографии для удаления")

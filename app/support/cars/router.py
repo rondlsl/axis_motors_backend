@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -17,6 +17,7 @@ from app.admin.cars.schemas import (
     CarCommentSchema,
     CarCommentCreateSchema,
     CarCommentUpdateSchema,
+    DescriptionUpdateSchema,
 )
 from app.admin.cars.router import (
     get_car_by_id,
@@ -147,7 +148,7 @@ async def toggle_car_notifications_support(
 @support_cars_router.patch("/{car_id}/description", summary="Изменить описание автомобиля")
 async def update_car_description_support(
     car_id: str,
-    body: dict = Body(..., embed=True),
+    body: DescriptionUpdateSchema,
     current_user: User = Depends(get_current_support),
     db: Session = Depends(get_db),
 ):
@@ -155,10 +156,7 @@ async def update_car_description_support(
     car = get_car_by_id(db, car_id)
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
-    description = body.get("description")
-    if description is None:
-        raise HTTPException(status_code=400, detail="Поле description обязательно")
-    car.description = description if isinstance(description, str) else str(description)
+    car.description = body.description
     db.commit()
     db.refresh(car)
     log_action(db=db, actor_id=current_user.id, action="update_car_description", entity_type="car",

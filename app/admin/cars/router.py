@@ -23,7 +23,8 @@ from app.admin.cars.schemas import (
     CarAvailabilityTimerSchema, CarCurrentUserSchema,
     CarListResponseSchema, CarMapResponseSchema, CarStatisticsSchema,
     CarListItemSchema, CarMapItemSchema, OwnerSchema, CurrentRenterSchema,
-    CarCreateSchema, CarCreateResponseSchema, CarDeletePhotoSchema
+    CarCreateSchema, CarCreateResponseSchema, CarDeletePhotoSchema,
+    DescriptionUpdateSchema,
 )
 from app.admin.cars.utils import car_to_detail_schema, status_display, _get_drive_type_display, sort_car_photos
 from app.gps_api.utils.route_data import get_gps_route_data
@@ -2499,6 +2500,32 @@ async def update_car(
         "updated_fields": list(update_data.keys())
     }
 
+
+@cars_router.patch("/{car_id}/description", summary="Изменить описание автомобиля")
+async def update_car_description_admin(
+    car_id: str,
+    body: DescriptionUpdateSchema,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Изменить описание автомобиля (admin)."""
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    car = get_car_by_id(db, car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    car.description = body.description
+    db.commit()
+    db.refresh(car)
+    log_action(
+        db=db,
+        actor_id=current_user.id,
+        action="update_car_description",
+        entity_type="car",
+        entity_id=car.id,
+        details={"car_name": car.name, "plate_number": car.plate_number},
+    )
+    return {"success": True, "car_id": uuid_to_sid(car.id), "description": car.description}
 
 
 @cars_router.post("/{car_id}/photos")
