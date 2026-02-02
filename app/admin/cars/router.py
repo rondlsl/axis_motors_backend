@@ -4248,3 +4248,72 @@ async def get_car_exit_zone_status(
         "car_id": uuid_to_sid(car.id),
         "can_exit_zone": car.can_exit_zone
     }
+
+
+@cars_router.post("/{car_id}/toggle-exit-zone")
+async def toggle_car_exit_zone(
+    car_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Включить/выключить разрешение на выезд за зону карты для машины.
+    Доступно для ADMIN и SUPPORT.
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    car = get_car_by_id(db, car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Car not found")
+
+    # Toggle the flag
+    new_value = not car.can_exit_zone
+    car.can_exit_zone = new_value
+    db.commit()
+    db.refresh(car)
+
+    log_action(
+        db=db,
+        actor_id=current_user.id,
+        action="toggle_exit_zone",
+        entity_type="car",
+        entity_id=car.id,
+        details={
+            "can_exit_zone": new_value,
+            "car_name": car.name,
+            "plate_number": car.plate_number
+        }
+    )
+
+    status_text = "разрешён" if new_value else "запрещён"
+
+    return {
+        "success": True,
+        "car_id": uuid_to_sid(car.id),
+        "can_exit_zone": new_value,
+        "message": f"Выезд за зону для {car.name} ({car.plate_number}) {status_text}"
+    }
+
+
+@cars_router.get("/{car_id}/exit-zone-status")
+async def get_car_exit_zone_status(
+    car_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Получить текущий статус разрешения на выезд за зону для машины.
+    Доступно для ADMIN и SUPPORT.
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    car = get_car_by_id(db, car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Car not found")
+
+    return {
+        "car_id": uuid_to_sid(car.id),
+        "can_exit_zone": car.can_exit_zone
+    }
