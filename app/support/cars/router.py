@@ -32,6 +32,7 @@ from app.gps_api.utils.car_data import (
     send_lock_engine,
     send_unlock_engine,
     send_give_key,
+    send_take_key,
 )
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.utils.action_logger import log_action
@@ -416,5 +417,25 @@ async def support_give_key(
         car = get_car_by_id(db, car_id)
         await log_error_to_telegram(error=e, request=None, user=current_user,
                                    additional_context={"action": "support_give_key", "car_id": car_id,
+                                                       "gps_imei": car.gps_imei if car else None})
+        raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
+
+
+@support_cars_router.post("/{car_id}/take_key", summary="Забрать ключ")
+async def support_take_key(
+    car_id: str,
+    current_user: User = Depends(get_current_support),
+    db: Session = Depends(get_db),
+):
+    """Забрать ключ автомобиля для SUPPORT."""
+    try:
+        result = await _send_gps_command(car_id, db, current_user, send_take_key, "take_key")
+        return {"message": "Команда на забор ключа отправлена", **result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        car = get_car_by_id(db, car_id)
+        await log_error_to_telegram(error=e, request=None, user=current_user,
+                                   additional_context={"action": "support_take_key", "car_id": car_id,
                                                        "gps_imei": car.gps_imei if car else None})
         raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
