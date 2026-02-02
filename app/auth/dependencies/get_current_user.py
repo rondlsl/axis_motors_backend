@@ -107,3 +107,24 @@ async def get_current_accountant(
         raise HTTPException(status_code=403, detail="Access denied. Accountant role required.")
 
     return user
+
+
+async def get_current_support(
+        db: Session = Depends(get_db),
+        token: str = Depends(JWTBearer(expected_token_type="access"))
+):
+    """Проверяет, что текущий пользователь — поддержка (SUPPORT)."""
+    phone_number: str = token.get("sub")
+    if phone_number is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Could not validate credentials"
+        )
+    user = db.query(User).filter(User.phone_number == phone_number, User.is_active == True).first()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found or inactive")
+
+    if user.role != UserRole.SUPPORT:
+        raise HTTPException(status_code=403, detail="Access denied. Support role required.")
+
+    return user
