@@ -34,6 +34,26 @@ MONITOR_GROUP_ID = getenv('MONITOR_GROUP_ID')
 
 SMS_TOKEN = getenv('SMS_TOKEN')
 
+# === SMTP (несколько аккаунтов для ротации при лимитах) ===
+SMTP_HOST = getenv('SMTP_HOST')
+SMTP_PORT = int(getenv('SMTP_PORT', '587'))
+SMTP_FROM = getenv('SMTP_FROM')
+
+def _smtp_accounts():
+    """Список (user, password) для SMTP. Порядок: основной, затем _2, _3, …"""
+    accounts = []
+    user = getenv('SMTP_USER')
+    password = getenv('SMTP_PASSWORD')
+    if user and password:
+        accounts.append((user.strip(), password))
+    for i in range(2, 10):
+        u, p = getenv(f'SMTP_USER_{i}'), getenv(f'SMTP_PASSWORD_{i}')
+        if u and p:
+            accounts.append((u.strip(), p))
+    return accounts
+
+SMTP_ACCOUNTS = _smtp_accounts()
+
 # === VEHICLES API ===
 VEHICLES_API_URL = getenv('VEHICLES_API_URL', 'http://195.93.152.69:8667')
 

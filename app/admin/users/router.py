@@ -72,8 +72,8 @@ from app.rent.utils.calculate_price import get_open_price, calc_required_balance
 from app.rent.utils.balance_utils import verify_and_fix_rental_balance
 from app.core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2, SMS_TOKEN
 from app.guarantor.sms_utils import send_sms_mobizon
-import smtplib
 from email.mime.text import MIMEText
+from app.core.smtp import send_email_with_fallback
 from app.models.application_model import Application
 from app.models.history_model import RentalHistory
 from app.models.wallet_transaction_model import WalletTransaction
@@ -7014,23 +7014,10 @@ async def send_email_to_user(
     body = request.body.strip()
     
     try:
-        smtp_host = os.getenv("SMTP_HOST")
-        smtp_port = int(os.getenv("SMTP_PORT", "587"))
-        smtp_user = os.getenv("SMTP_USER")
-        smtp_pass = os.getenv("SMTP_PASSWORD")
-        smtp_from = os.getenv("SMTP_FROM", smtp_user or "no-reply@azvmotors.kz")
-        
-        if smtp_host and smtp_user and smtp_pass:
-            msg = MIMEText(body, "plain", "utf-8")
-            msg["Subject"] = subject
-            msg["From"] = smtp_from
-            msg["To"] = email
-            
-            with smtplib.SMTP(smtp_host, smtp_port) as server:
-                server.starttls()
-                server.login(smtp_user, smtp_pass)
-                server.sendmail(smtp_from, [email], msg.as_string())
-            
+        msg = MIMEText(body, "plain", "utf-8")
+        msg["Subject"] = subject
+        msg["To"] = email
+        if send_email_with_fallback(msg, email):
             log_action(
                 db,
                 actor_id=current_user.id,
@@ -7040,22 +7027,20 @@ async def send_email_to_user(
                 details={"email": email, "subject": subject}
             )
             db.commit()
-            
             return SendUserEmailResponse(
                 success=True,
                 message="Email успешно отправлен",
                 user_id=user_id,
                 email=email
             )
-        else:
-            logger.warning(f"SMTP not configured; email to {email} with subject '{subject}' not sent")
-            return SendUserEmailResponse(
-                success=False,
-                message="SMTP не настроен",
-                user_id=user_id,
-                email=email,
-                error="SMTP configuration missing"
-            )
+        logger.warning(f"SMTP not configured or all accounts failed; email to {email} with subject '{subject}' not sent")
+        return SendUserEmailResponse(
+            success=False,
+            message="SMTP не настроен",
+            user_id=user_id,
+            email=email,
+            error="SMTP configuration missing"
+        )
     except Exception as e:
         logger.error(f"Email sending error: {e}")
         try:

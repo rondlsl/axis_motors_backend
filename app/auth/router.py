@@ -7,9 +7,9 @@ from datetime import datetime, timedelta
 import httpx
 from pydantic import BaseModel, Field
 from typing import Optional
-import smtplib
 from email.mime.text import MIMEText
 import os
+from app.core.smtp import send_email_with_fallback
 import random
 from app.utils.short_id import uuid_to_sid, safe_sid_to_uuid
 from app.models.contract_model import UserContractSignature, ContractFile, ContractType
@@ -128,24 +128,13 @@ async def resend_email_code(current_user: User = Depends(get_current_user), db: 
     )
     db.add(record)
 
-    # Пытаемся отправить письмо
+    # Пытаемся отправить письмо (с перебором SMTP-аккаунтов при лимитах)
     try:
-        smtp_host = os.getenv("SMTP_HOST")
-        smtp_port = int(os.getenv("SMTP_PORT", "587"))
-        smtp_user = os.getenv("SMTP_USER")
-        smtp_pass = os.getenv("SMTP_PASSWORD")
-        smtp_from = os.getenv("SMTP_FROM", smtp_user or "no-reply@example.com")
-        if smtp_host and smtp_user and smtp_pass:
-            msg = MIMEText(f"Ваш код подтверждения: {code}")
-            msg["Subject"] = "AZV Motors"
-            msg["From"] = smtp_from
-            msg["To"] = current_user.email
-            with smtplib.SMTP(smtp_host, smtp_port) as server:
-                server.starttls()
-                server.login(smtp_user, smtp_pass)
-                server.send_message(msg)
-        else:
-            logger.warning(f"SMTP not configured; verification code for {current_user.email}: {code}")
+        msg = MIMEText(f"Ваш код подтверждения: {code}")
+        msg["Subject"] = "AZV Motors"
+        msg["To"] = current_user.email
+        if not send_email_with_fallback(msg, current_user.email):
+            logger.warning(f"SMTP not configured or all accounts failed; verification code for {current_user.email}: {code}")
     except Exception as e:
         try:
             await log_error_to_telegram(
@@ -523,24 +512,12 @@ async def send_sms(
             user.is_verified_email = False  
         
         try:
-            smtp_host = os.getenv("SMTP_HOST")
-            smtp_port = int(os.getenv("SMTP_PORT", "587"))
-            smtp_user = os.getenv("SMTP_USER")
-            smtp_pass = os.getenv("SMTP_PASSWORD")
-            smtp_from = os.getenv("SMTP_FROM", smtp_user or "no-reply@example.com")
-            
-            if smtp_host and smtp_user and smtp_pass:
-                msg = MIMEText(f"Ваш код подтверждения: {email_code}")
-                msg["Subject"] = "AZV Motors"
-                msg["From"] = smtp_from
-                msg["To"] = email
-                with smtplib.SMTP(smtp_host, smtp_port) as server:
-                    server.starttls()
-                    server.login(smtp_user, smtp_pass)
-                    server.send_message(msg)
-            else:
+            msg = MIMEText(f"Ваш код подтверждения: {email_code}")
+            msg["Subject"] = "AZV Motors"
+            msg["To"] = email
+            if not send_email_with_fallback(msg, email):
                 try:
-                    logger.warning(f"SMTP not configured; verification code for {email}: {email_code}")
+                    logger.warning(f"SMTP not configured or all accounts failed; verification code for {email}: {email_code}")
                 except Exception:
                     pass
         except Exception as e:
@@ -1356,51 +1333,6 @@ async def upload_documents(
             # Продолжаем выполнение без обработки гарантов
             pass
 
-        # Записываем код подтверждения email и отправляем его на почту
-        # ЗАКОММЕНТИРОВАНО: отправка кода будет выполняться отдельным запросом
-        # try:
-        #     code = generate_email_verification_code()
-        #     record = VerificationCode(
-        #         phone_number=None,
-        #         email=current_user.email,
-        #         code=code,
-        #         purpose="email_verification",
-        #         is_used=False,
-        #         expires_at=get_local_time() + timedelta(minutes=15),
-        #     )
-        #     db.add(record)
-        #     # Пытаемся отправить письмо
-        #     try:
-        #         smtp_host = os.getenv("SMTP_HOST")
-        #         smtp_port = int(os.getenv("SMTP_PORT", "587"))
-        #         smtp_user = os.getenv("SMTP_USER")
-        #         smtp_pass = os.getenv("SMTP_PASSWORD")
-        #         smtp_from = os.getenv("SMTP_FROM", smtp_user or "no-reply@example.com")
-        #         if smtp_host and smtp_user and smtp_pass:
-        #             msg = MIMEText(f"Ваш код подтверждения: {code}")
-        #             msg["Subject"] = "AZV Motors"
-        #             msg["From"] = smtp_from
-        #             msg["To"] = current_user.email
-        #             with smtplib.SMTP(smtp_host, smtp_port) as server:
-        #                 server.starttls()
-        #                 server.login(smtp_user, smtp_pass)
-        #                 server.send_message(msg)
-        #         else:
-        #             try:
-        #                 from app.core.config import logger
-        #                 logger.warning(f"SMTP not configured; verification code for {current_user.email}: {code}")
-        #             except Exception:
-        #                 pass
-        #     except Exception:
-        #         pass
-        #     try:
-        #         from app.core.config import logger
-        #         logger.warning(f"Email verification code for {current_user.email}: {code}")
-        #     except Exception:
-        #         pass
-        # except Exception:
-        #     # Не блокируем основной флоу из-за ошибок записи кода
-        #     pass
 
         current_user.upload_document_at = get_local_time()
 
@@ -1529,26 +1461,13 @@ async def request_change_email(
     )
     db.add(record)
     
-    # Отправляем письмо с кодом
+    # Отправляем письмо с кодом (с перебором SMTP-аккаунтов при лимитах)
     try:
-        smtp_host = os.getenv("SMTP_HOST")
-        smtp_port = int(os.getenv("SMTP_PORT", "587"))
-        smtp_user = os.getenv("SMTP_USER")
-        smtp_pass = os.getenv("SMTP_PASSWORD")
-        smtp_from = os.getenv("SMTP_FROM", smtp_user or "no-reply@example.com")
-        
-        if smtp_host and smtp_user and smtp_pass:
-            msg = MIMEText(f"Ваш код для подтверждения изменения email: {code}")
-            msg["Subject"] = "AZV Motors - Изменение email"
-            msg["From"] = smtp_from
-            msg["To"] = new_email
-            
-            with smtplib.SMTP(smtp_host, smtp_port) as server:
-                server.starttls()
-                server.login(smtp_user, smtp_pass)
-                server.send_message(msg)
-        else:
-            logger.warning(f"SMTP not configured; verification code for {new_email}: {code}")
+        msg = MIMEText(f"Ваш код для подтверждения изменения email: {code}")
+        msg["Subject"] = "AZV Motors - Изменение email"
+        msg["To"] = new_email
+        if not send_email_with_fallback(msg, new_email):
+            logger.warning(f"SMTP not configured or all accounts failed; verification code for {new_email}: {code}")
     except Exception as e:
         logger.error(f"Failed to send email: {e}")
 
