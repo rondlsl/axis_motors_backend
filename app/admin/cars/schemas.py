@@ -244,6 +244,7 @@ class CarDetailSchema(BaseModel):
     is_handbrake_on: Optional[bool] = None
     are_lights_on: Optional[bool] = None
     is_light_auto_mode_on: Optional[bool] = None
+    can_exit_zone: bool = False  # Разрешение на выезд за зону карты
     
     class Config:
         from_attributes = True
@@ -268,6 +269,7 @@ class CarEditSchema(BaseModel):
     color: Optional[str] = None
     owner_id: Optional[str] = None  # ID владельца (short id)
     photos: Optional[List[str]] = None  # Массив URL фотографий (для изменения порядка/удаления)
+    can_exit_zone: Optional[bool] = None  # Разрешение на выезд за зону карты
 
 
 class CarDeletePhotoSchema(BaseModel):

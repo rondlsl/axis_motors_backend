@@ -1154,10 +1154,28 @@ def get_renter_by_plate(
     """
     Возвращает user_id арендатора по номеру машины и разрешение на выезд за зону.
     Используется cars сервисом для проверки разрешения на выезд за зону.
+    Выезд разрешён если can_exit_zone=True у машины ИЛИ у пользователя.
     """
     car = db.query(Car).filter(Car.plate_number == plate_number).first()
     if not car:
         return {"user_id": None, "can_exit_zone": False}
+    
+    # Если у самой машины разрешён выезд за зону — возвращаем True
+    if car.can_exit_zone:
+        user_id = car.current_renter_id
+        if not user_id:
+            statuses = [
+                RentalStatus.IN_USE,
+                RentalStatus.DELIVERING,
+                RentalStatus.DELIVERING_IN_PROGRESS
+            ]
+            active_rental = db.query(RentalHistory).filter(
+                RentalHistory.car_id == car.id,
+                RentalHistory.rental_status.in_(statuses)
+            ).first()
+            if active_rental:
+                user_id = active_rental.user_id
+        return {"user_id": uuid_to_sid(user_id) if user_id else None, "can_exit_zone": True}
     
     user_id = None
     can_exit_zone = False
@@ -1353,6 +1371,23 @@ def get_excluded_from_alerts_cars(
         excluded_plates.add(plate)
     
     return [{"plate_number": plate} for plate in excluded_plates]
+
+
+@Vehicle_Router.get("/zone-exit-allowed", summary="Список машин с разрешением выезда за зону")
+def get_zone_exit_allowed_cars(
+    key: str = Query(..., description="Секретный ключ доступа"),
+    db: Session = Depends(get_db)
+):
+    """
+    Возвращает список машин, для которых выезд за зону карты разрешён (can_exit_zone=True).
+    Блокировка двигателя при выходе за зону для этих машин не применяется.
+    Используется сервисом azv_motors_cars_v2.
+    """
+    if key != RENTED_CARS_ENDPOINT_KEY:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access key")
+
+    rows = db.query(Car.plate_number).filter(Car.can_exit_zone == True).all()
+    return [{"plate_number": plate} for (plate,) in rows]
 
 
 def _calculate_distance_meters(
@@ -1968,11 +2003,13 @@ async def notify_from_cars_v2(
     if notification_type not in notification_map:
         raise HTTPException(status_code=400, detail=f"Неизвестный тип уведомления: {notification_type}")
     
-    if notification_type == "zone_exit" and user.can_exit_zone:
+    # Проверяем разрешение на выезд за зону — у машины ИЛИ у пользователя
+    if notification_type == "zone_exit" and (car.can_exit_zone or user.can_exit_zone):
         return {
-            "message": "Пользователю разрешён выезд за зону (can_exit_zone=True), уведомление не отправлено",
+            "message": "Выезд за зону разрешён (can_exit_zone=True у машины или пользователя), уведомление не отправлено",
             "user_id": str(user.id),
-            "can_exit_zone": True
+            "car_can_exit_zone": car.can_exit_zone,
+            "user_can_exit_zone": user.can_exit_zone
         }
     
     translation_key, status_key = notification_map[notification_type]

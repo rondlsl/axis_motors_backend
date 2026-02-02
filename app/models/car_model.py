@@ -100,6 +100,7 @@ class Car(Base):
     updated_at = Column(DateTime, default=get_local_time, nullable=True)
     rating = Column(Float, nullable=True)
     notifications_disabled = Column(Boolean, default=False, nullable=False)
+    can_exit_zone = Column(Boolean, default=False, nullable=False, server_default="false")  # Разрешение на выезд за зону карты
 
     owner = relationship("User", foreign_keys=[owner_id], back_populates="owned_cars")
     current_renter = relationship("User", foreign_keys=[current_renter_id], back_populates="active_rental")

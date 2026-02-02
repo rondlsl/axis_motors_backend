@@ -159,6 +159,7 @@ def car_to_detail_schema(car: Car, db: Optional[Session] = None) -> CarDetailSch
         color=car.color,
         rating=car.rating,
         reservationtime=reservation_time_str,
+        can_exit_zone=car.can_exit_zone or False,
     )
 
 
