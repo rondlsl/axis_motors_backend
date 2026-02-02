@@ -1277,6 +1277,7 @@ def get_excluded_from_alerts_cars(
     - Машины со статусом SCHEDULED (забронированы заранее)
     - Машины со статусом IN_USE, RESERVED, DELIVERING (по статусу Car)
     - Все машины со статусом SERVICE (на обслуживании)
+    - Машины с отключёнными уведомлениями (notifications_disabled=True)
     """
     # 1) Проверяем ключ
     if key != RENTED_CARS_ENDPOINT_KEY:
@@ -1368,6 +1369,15 @@ def get_excluded_from_alerts_cars(
         .all()
     )
     for (plate,) in service_rows:
+        excluded_plates.add(plate)
+    
+    # 10) Машины с отключёнными уведомлениями (notifications_disabled=True)
+    notifications_disabled_rows = (
+        db.query(Car.plate_number)
+        .filter(Car.notifications_disabled == True)
+        .all()
+    )
+    for (plate,) in notifications_disabled_rows:
         excluded_plates.add(plate)
     
     return [{"plate_number": plate} for plate in excluded_plates]
