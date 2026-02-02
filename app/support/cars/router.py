@@ -1,6 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from math import ceil
 from sqlalchemy.orm import Session
+from sqlalchemy import or_, and_
 from typing import List
+from datetime import datetime
+from collections import defaultdict
 
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_support
@@ -25,6 +29,9 @@ from app.admin.cars.router import (
     change_car_status_impl,
     toggle_car_notifications_impl,
 )
+from app.models.car_model import CarAvailabilityHistory, CarStatus
+from app.owner.availability import update_car_availability_snapshot
+from app.owner.router import calculate_fuel_cost, calculate_delivery_cost
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.car_data import (
     send_open,
@@ -439,3 +446,256 @@ async def support_take_key(
                                    additional_context={"action": "support_take_key", "car_id": car_id,
                                                        "gps_imei": car.gps_imei if car else None})
         raise HTTPException(status_code=500, detail=f"Ошибка отправки команды: {e}")
+
+
+@support_cars_router.get("/{car_id}/history/summary")
+async def get_car_history_summary_support(
+    car_id: str,
+    page: int = Query(1, ge=1, description="Номер страницы"),
+    limit: int = Query(12, ge=1, le=60, description="Количество месяцев на странице"),
+    current_user: User = Depends(get_current_support),
+    db: Session = Depends(get_db),
+):
+    """
+    Агрегированные данные по месяцам для автомобиля (для SUPPORT).
+    Возвращает информацию по всем месяцам, в которых были поездки (все статусы).
+    """
+    from calendar import monthrange
+
+    car = get_car_by_id(db, car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+
+    rentals = db.query(RentalHistory).filter(RentalHistory.car_id == car.id).all()
+
+    monthly_data = defaultdict(lambda: {
+        "total_income": 0,
+        "owner_earnings": 0,
+        "deductions": 0.0,
+        "trips_count": 0,
+        "_trip_details": [],
+    })
+
+    for r in rentals:
+        date_for_grouping = r.end_time or r.start_time or r.reservation_time
+        if not date_for_grouping:
+            continue
+        month_key = (date_for_grouping.year, date_for_grouping.month)
+        monthly_data[month_key]["trips_count"] += 1
+        monthly_data[month_key]["total_income"] += int(r.total_price or 0)
+
+        base_price = r.base_price or 0
+        overtime_fee = r.overtime_fee or 0
+        waiting_fee = r.waiting_fee or 0
+
+        if r.user_id == car.owner_id:
+            fuel_cost = calculate_fuel_cost(r, car, current_user)
+            delivery_cost = calculate_delivery_cost(r, car, current_user)
+            ded = (fuel_cost or 0) + (delivery_cost or 0)
+            monthly_data[month_key]["deductions"] += ded
+            monthly_data[month_key]["_trip_details"].append({
+                "rental_id": str(r.id),
+                "date": str(date_for_grouping),
+                "is_owner": True,
+                "base_price": base_price,
+                "overtime_fee": overtime_fee,
+                "waiting_fee": waiting_fee,
+                "deductions": ded,
+                "total_price": r.total_price,
+            })
+        else:
+            base_earnings = base_price + overtime_fee + waiting_fee
+            owner_part = int(base_earnings * 0.5 * 0.97)
+            monthly_data[month_key]["owner_earnings"] += owner_part
+            monthly_data[month_key]["_trip_details"].append({
+                "rental_id": str(r.id),
+                "date": str(date_for_grouping),
+                "is_owner": False,
+                "base_price": base_price,
+                "overtime_fee": overtime_fee,
+                "waiting_fee": waiting_fee,
+                "base_earnings_sum": base_earnings,
+                "owner_part": owner_part,
+                "total_price": r.total_price,
+            })
+
+    availability_history = db.query(CarAvailabilityHistory).filter(
+        CarAvailabilityHistory.car_id == car.id
+    ).all()
+
+    availability_by_month = {}
+    for ah in availability_history:
+        availability_by_month[(ah.year, ah.month)] = ah.available_minutes
+
+    now = get_local_time()
+    current_month_key = (now.year, now.month)
+
+    update_car_availability_snapshot(car)
+    db.flush()
+    availability_by_month[current_month_key] = car.available_minutes or 0
+
+    sorted_months = sorted(monthly_data.keys(), reverse=True)
+    total_months = len(sorted_months)
+    paginated_months = sorted_months[(page - 1) * limit : page * limit]
+
+    months_result = []
+    for year, month in paginated_months:
+        data = monthly_data[(year, month)]
+        owner_income = data["owner_earnings"] - int(data["deductions"])
+
+        months_result.append({
+            "year": year,
+            "month": month,
+            "available_minutes": availability_by_month.get((year, month), 0),
+            "total_income": data["total_income"],
+            "owner_income": owner_income,
+            "trips_count": data["trips_count"],
+            "is_current_month": (year, month) == current_month_key,
+        })
+
+    return {
+        "car_id": uuid_to_sid(car.id),
+        "car_name": car.name,
+        "plate_number": car.plate_number,
+        "current_month": {"year": now.year, "month": now.month},
+        "months": months_result,
+        "total": total_months,
+        "page": page,
+        "limit": limit,
+        "pages": ceil(total_months / limit) if limit > 0 else 0,
+    }
+
+
+@support_cars_router.get("/{car_id}/history/trips")
+async def get_car_trips_list_support(
+    car_id: str,
+    month: int = Query(..., ge=1, le=12, description="Месяц (1-12)"),
+    year: int = Query(..., description="Год"),
+    page: int = Query(1, ge=1, description="Номер страницы"),
+    limit: int = Query(50, ge=1, le=200, description="Количество элементов на странице"),
+    current_user: User = Depends(get_current_support),
+    db: Session = Depends(get_db),
+):
+    """Список поездок автомобиля за выбранный месяц с пагинацией (для SUPPORT)"""
+    from calendar import monthrange
+
+    car = get_car_by_id(db, car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+
+    start_dt = datetime(year, month, 1)
+    end_dt = datetime(year, month, monthrange(year, month)[1], 23, 59, 59)
+
+    base_query = (
+        db.query(RentalHistory, User)
+        .outerjoin(User, User.id == RentalHistory.user_id)
+        .filter(
+            RentalHistory.car_id == car.id,
+            or_(
+                and_(RentalHistory.reservation_time >= start_dt, RentalHistory.reservation_time <= end_dt),
+                and_(RentalHistory.start_time >= start_dt, RentalHistory.start_time <= end_dt),
+                and_(RentalHistory.end_time >= start_dt, RentalHistory.end_time <= end_dt),
+            ),
+        )
+        .order_by(RentalHistory.reservation_time.desc())
+    )
+
+    total = base_query.count()
+    rentals = base_query.offset((page - 1) * limit).limit(limit).all()
+
+    def get_status_display(status, has_inspection=True, is_mechanic_inspecting=False, inspection_status=None):
+        if is_mechanic_inspecting or inspection_status == "IN_USE":
+            if inspection_status == "PENDING":
+                return "Требует осмотра"
+            elif inspection_status == "IN_PROGRESS" or inspection_status == "IN_USE":
+                return "Осмотр в процессе"
+            else:
+                return inspection_status or "Требует осмотра"
+
+        status_map = {
+            "reserved": "Забронирована",
+            "in_use": "В аренде",
+            "in_progress": "Осмотр в процессе",
+            "completed": "Завершена" if has_inspection else "Требует осмотра",
+            "cancelled": "Отменена",
+            "delivering": "Доставка",
+            "delivering_in_progress": "Доставляется",
+            "delivery_reserved": "Доставка забронирована",
+            "scheduled": "Запланирована",
+            "pending": "Требует осмотра",
+            "service": "Осмотр в процессе",
+        }
+        return status_map.get(status, status)
+
+    items = []
+    for r, renter in rentals:
+        duration_minutes = 0
+        if r.start_time and r.end_time:
+            duration_minutes = int((r.end_time - r.start_time).total_seconds() // 60)
+
+        tariff_display = ""
+        if r.rental_type:
+            tariff_value = r.rental_type.value if hasattr(r.rental_type, "value") else str(r.rental_type)
+            if tariff_value == "minutes":
+                tariff_display = "Минутный"
+            elif tariff_value == "hours":
+                tariff_display = "Часовой"
+            elif tariff_value == "days":
+                tariff_display = "Суточный"
+            else:
+                tariff_display = tariff_value
+
+        rental_status_value = r.rental_status.value if r.rental_status else None
+
+        has_inspection = (
+            r.mechanic_inspection_status == "COMPLETED"
+            or r.mechanic_inspector_id is not None
+            or (r.mechanic_photos_after and len(r.mechanic_photos_after) > 0)
+        )
+
+        is_mechanic_inspecting = (
+            car.status == CarStatus.SERVICE
+            and r.mechanic_inspector_id is not None
+            and r.mechanic_inspection_status is not None
+            and r.mechanic_inspection_status != "COMPLETED"
+            and r.mechanic_inspection_status != "CANCELLED"
+        )
+
+        if r.mechanic_inspection_status == "IN_USE":
+            display_rental_status = "in_progress"
+        elif is_mechanic_inspecting:
+            display_rental_status = "in_progress"
+        else:
+            display_rental_status = rental_status_value if has_inspection or rental_status_value != "completed" else "pending"
+
+        items.append({
+            "rental_id": uuid_to_sid(r.id),
+            "rental_status": display_rental_status,
+            "status_display": get_status_display(display_rental_status, has_inspection, is_mechanic_inspecting, r.mechanic_inspection_status),
+            "reservation_time": r.reservation_time.isoformat() if r.reservation_time else None,
+            "start_date": r.start_time.isoformat() if r.start_time else None,
+            "end_date": r.end_time.isoformat() if r.end_time else None,
+            "duration_minutes": duration_minutes,
+            "tariff": r.rental_type.value if r.rental_type else None,
+            "tariff_display": tariff_display,
+            "total_price": r.total_price,
+            "owner_earnings": int(((r.base_price or 0) + (r.waiting_fee or 0) + (r.overtime_fee or 0)) * 0.5 * 0.97),
+            "base_price_owner": int((r.base_price or 0) * 0.5 * 0.97),
+            "waiting_fee_owner": int((r.waiting_fee or 0) * 0.5 * 0.97),
+            "overtime_fee_owner": int((r.overtime_fee or 0) * 0.5 * 0.97),
+            "renter": {
+                "id": uuid_to_sid(renter.id) if renter else None,
+                "first_name": renter.first_name if renter else None,
+                "last_name": renter.last_name if renter else None,
+                "phone_number": renter.phone_number if renter else None,
+                "selfie": renter.selfie_url if renter else None,
+            } if renter else None,
+        })
+
+    return {
+        "trips": items,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": ceil(total / limit) if limit > 0 else 0,
+    }
