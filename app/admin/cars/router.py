@@ -4092,17 +4092,52 @@ async def toggle_car_notifications(
     db.refresh(car)
 
     # Sync with car_api (azv_motors_cars_v2) if IMEI exists
-    car_api_synced = False
+    car_api_sync_details = {
+        "attempted": False,
+        "success": False,
+        "has_imei": bool(car.gps_imei),
+        "imei": car.gps_imei,
+        "url": None,
+        "status_code": None,
+        "response_body": None,
+        "error": None
+    }
+
     if car.gps_imei:
+        car_api_sync_details["attempted"] = True
+        car_api_sync_details["url"] = f"{CARS_V2_API_URL}/by-imei/{car.gps_imei}/exclude-from-alerts"
+        
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 response = await client.patch(
-                    f"{CARS_V2_API_URL}/by-imei/{car.gps_imei}/exclude-from-alerts",
+                    car_api_sync_details["url"],
                     json={"excluded_from_alerts": new_value}
                 )
-                car_api_synced = response.status_code == 200
+                car_api_sync_details["status_code"] = response.status_code
+                car_api_sync_details["success"] = response.status_code == 200
+                
+                try:
+                    car_api_sync_details["response_body"] = response.json()
+                except:
+                    car_api_sync_details["response_body"] = response.text[:500]  # Первые 500 символов
+                
+                if not car_api_sync_details["success"]:
+                    car_api_sync_details["error"] = f"HTTP {response.status_code}: {car_api_sync_details['response_body']}"
+                    logger.warning(
+                        f"Failed to sync excluded_from_alerts with car_api for IMEI {car.gps_imei}: "
+                        f"Status {response.status_code}, Response: {car_api_sync_details['response_body']}"
+                    )
+        except httpx.TimeoutException as e:
+            car_api_sync_details["error"] = f"Timeout: {str(e)}"
+            logger.warning(f"Timeout syncing excluded_from_alerts with car_api for IMEI {car.gps_imei}: {e}")
+        except httpx.RequestError as e:
+            car_api_sync_details["error"] = f"Request error: {str(e)}"
+            logger.warning(f"Request error syncing excluded_from_alerts with car_api for IMEI {car.gps_imei}: {e}")
         except Exception as e:
-            logger.warning(f"Failed to sync excluded_from_alerts with car_api: {e}")
+            car_api_sync_details["error"] = f"Unexpected error: {str(e)}"
+            logger.warning(f"Failed to sync excluded_from_alerts with car_api for IMEI {car.gps_imei}: {e}")
+    else:
+        car_api_sync_details["error"] = "GPS IMEI не указан для этой машины"
 
     log_action(
         db=db,
@@ -4114,18 +4149,35 @@ async def toggle_car_notifications(
             "notifications_disabled": new_value,
             "car_name": car.name,
             "plate_number": car.plate_number,
-            "car_api_synced": car_api_synced
+            "car_api_synced": car_api_sync_details["success"],
+            "car_api_sync_details": car_api_sync_details
         }
     )
 
     status_text = "отключены" if new_value else "включены"
+    
+    # Формируем детальное сообщение
+    message_parts = [f"Уведомления для {car.name} ({car.plate_number}) {status_text}"]
+    
+    if not car.gps_imei:
+        message_parts.append("⚠️ GPS IMEI не указан — синхронизация с car_api не выполнена")
+    elif car_api_sync_details["success"]:
+        message_parts.append("✅ Синхронизация с car_api выполнена успешно")
+    else:
+        message_parts.append(f"❌ Ошибка синхронизации с car_api: {car_api_sync_details.get('error', 'Неизвестная ошибка')}")
 
     return {
         "success": True,
         "car_id": uuid_to_sid(car.id),
+        "car_name": car.name,
+        "plate_number": car.plate_number,
         "notifications_disabled": new_value,
-        "car_api_synced": car_api_synced,
-        "message": f"Уведомления для {car.name} ({car.plate_number}) {status_text}"
+        "notifications_status": status_text,
+        "car_api_sync": car_api_sync_details,
+        "message": ". ".join(message_parts),
+        "warnings": [] if car_api_sync_details["success"] or not car.gps_imei else [
+            f"Синхронизация с car_api не удалась: {car_api_sync_details.get('error', 'Неизвестная ошибка')}"
+        ]
     }
 
 
