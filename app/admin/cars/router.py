@@ -528,17 +528,8 @@ async def get_all_cars_for_admin(
     return {"cars": vehicles_data}
 
 
-@cars_router.patch("/{car_id}/status", summary="Изменить статус автомобиля")
-async def change_car_status(
-    car_id: str,
-    new_status: CarStatus,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Изменить статус автомобиля на любой из доступных"""
-    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Недостаточно прав")
-    
+async def change_car_status_impl(car_id: str, new_status: CarStatus, db: Session, current_user: User):
+    """Общая логика изменения статуса автомобиля (для admin и support)."""
     car = get_car_by_id(db, car_id)
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
@@ -695,6 +686,19 @@ async def change_car_status(
         except:
             pass
         raise HTTPException(status_code=500, detail=f"Ошибка изменения статуса: {e}")
+
+
+@cars_router.patch("/{car_id}/status", summary="Изменить статус автомобиля")
+async def change_car_status(
+    car_id: str,
+    new_status: CarStatus,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Изменить статус автомобиля на любой из доступных"""
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    return await change_car_status_impl(car_id, new_status, db, current_user)
 
 
 @cars_router.get("/{car_id}/status", summary="Получить текущий статус автомобиля")
@@ -4072,20 +4076,8 @@ async def get_free_cars(
     }
 
 
-@cars_router.post("/{car_id}/toggle-notifications")
-async def toggle_car_notifications(
-    car_id: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Включить/выключить уведомления для машины.
-    Обновляет флаг в локальной БД и в car_api (azv_motors_cars_v2).
-    Доступно для ADMIN и SUPPORT.
-    """
-    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Access denied")
-
+async def toggle_car_notifications_impl(car_id: str, db: Session, current_user: User):
+    """Общая логика включения/выключения уведомлений для машины (для admin и support)."""
     car = get_car_by_id(db, car_id)
     if not car:
         raise HTTPException(status_code=404, detail="Car not found")
@@ -4184,6 +4176,22 @@ async def toggle_car_notifications(
             f"Синхронизация с car_api не удалась: {car_api_sync_details.get('error', 'Неизвестная ошибка')}"
         ]
     }
+
+
+@cars_router.post("/{car_id}/toggle-notifications")
+async def toggle_car_notifications(
+    car_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Включить/выключить уведомления для машины.
+    Обновляет флаг в локальной БД и в car_api (azv_motors_cars_v2).
+    Доступно для ADMIN и SUPPORT.
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return await toggle_car_notifications_impl(car_id, db, current_user)
 
 
 @cars_router.post("/{car_id}/toggle-exit-zone")
