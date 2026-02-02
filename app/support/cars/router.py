@@ -1,13 +1,23 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session
+from typing import List
 
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_support
 from app.models.user_model import User
 from app.models.history_model import RentalHistory, RentalStatus
 from app.models.car_model import CarStatus
-from app.utils.short_id import uuid_to_sid
-from app.admin.cars.schemas import CarDetailSchema, CarAvailabilityTimerSchema
+from app.models.car_comment_model import CarComment
+from app.models.support_action_model import SupportAction
+from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
+from app.utils.time_utils import get_local_time
+from app.admin.cars.schemas import (
+    CarDetailSchema,
+    CarAvailabilityTimerSchema,
+    CarCommentSchema,
+    CarCommentCreateSchema,
+    CarCommentUpdateSchema,
+)
 from app.admin.cars.router import (
     get_car_by_id,
     get_car_details_response,
@@ -132,6 +142,152 @@ async def toggle_car_notifications_support(
 ):
     """Включить/выключить уведомления для машины (для роли SUPPORT)."""
     return await toggle_car_notifications_impl(car_id, db, current_user)
+
+
+@support_cars_router.patch("/{car_id}/description", summary="Изменить описание автомобиля")
+async def update_car_description_support(
+    car_id: str,
+    body: dict = Body(..., embed=True),
+    current_user: User = Depends(get_current_support),
+    db: Session = Depends(get_db),
+):
+    """Изменить описание автомобиля (для роли SUPPORT)."""
+    car = get_car_by_id(db, car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    description = body.get("description")
+    if description is None:
+        raise HTTPException(status_code=400, detail="Поле description обязательно")
+    car.description = description if isinstance(description, str) else str(description)
+    db.commit()
+    db.refresh(car)
+    log_action(db=db, actor_id=current_user.id, action="update_car_description", entity_type="car",
+               entity_id=car.id, details={"car_name": car.name, "plate_number": car.plate_number})
+    return {"success": True, "car_id": uuid_to_sid(car.id), "description": car.description}
+
+
+def _comment_to_schema(comment: CarComment, db: Session) -> CarCommentSchema:
+    """Преобразовать CarComment в CarCommentSchema."""
+    author = comment.author
+    author_name = f"{author.first_name or ''} {author.last_name or ''} {author.middle_name or ''}".strip() or author.phone_number
+    return CarCommentSchema(
+        id=comment.sid,
+        car_id=uuid_to_sid(comment.car_id),
+        author_id=str(comment.author_id),
+        author_name=author_name,
+        author_role=author.role.value,
+        comment=comment.comment,
+        created_at=comment.created_at.isoformat(),
+        is_internal=comment.is_internal,
+    )
+
+
+@support_cars_router.get("/{car_id}/comments", response_model=List[CarCommentSchema])
+async def get_car_comments_support(
+    car_id: str,
+    current_user: User = Depends(get_current_support),
+    db: Session = Depends(get_db),
+) -> List[CarCommentSchema]:
+    """Получить комментарии к автомобилю (для роли SUPPORT)."""
+    car = get_car_by_id(db, car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    comments = (
+        db.query(CarComment)
+        .filter(CarComment.car_id == car.id)
+        .order_by(CarComment.created_at.desc())
+        .all()
+    )
+    return [_comment_to_schema(c, db) for c in comments]
+
+
+@support_cars_router.post("/{car_id}/comments", response_model=CarCommentSchema)
+async def create_car_comment_support(
+    car_id: str,
+    comment_data: CarCommentCreateSchema,
+    current_user: User = Depends(get_current_support),
+    db: Session = Depends(get_db),
+) -> CarCommentSchema:
+    """Добавить комментарий к автомобилю (для роли SUPPORT)."""
+    car = get_car_by_id(db, car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    comment = CarComment(
+        car_id=car.id,
+        author_id=current_user.id,
+        comment=comment_data.comment,
+        is_internal=comment_data.is_internal,
+    )
+    db.add(comment)
+    log_action(db, actor_id=current_user.id, action="add_car_comment", entity_type="car_comment",
+               entity_id=comment.id, details={"car_id": car_id, "comment": comment.comment})
+    db.commit()
+    db.refresh(comment)
+    sa = SupportAction(user_id=current_user.id, action="create_car_comment", entity_type="car_comment", entity_id=comment.id)
+    db.add(sa)
+    db.commit()
+    return _comment_to_schema(comment, db)
+
+
+@support_cars_router.put("/{car_id}/comments/{comment_id}", response_model=CarCommentSchema)
+async def update_car_comment_support(
+    car_id: str,
+    comment_id: str,
+    comment_data: CarCommentUpdateSchema,
+    current_user: User = Depends(get_current_support),
+    db: Session = Depends(get_db),
+) -> CarCommentSchema:
+    """Обновить комментарий к автомобилю (для роли SUPPORT)."""
+    car = get_car_by_id(db, car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    comment_uuid = safe_sid_to_uuid(comment_id)
+    comment = db.query(CarComment).filter(
+        CarComment.id == comment_uuid,
+        CarComment.car_id == car.id,
+        CarComment.author_id == current_user.id,
+    ).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Комментарий не найден")
+    comment.comment = comment_data.comment
+    comment.updated_at = get_local_time()
+    db.commit()
+    log_action(db, actor_id=current_user.id, action="update_car_comment", entity_type="car_comment",
+               entity_id=comment.id, details={"car_id": car_id, "new_comment": comment.comment})
+    sa = SupportAction(user_id=current_user.id, action="update_car_comment", entity_type="car_comment", entity_id=comment.id)
+    db.add(sa)
+    db.commit()
+    db.refresh(comment)
+    return _comment_to_schema(comment, db)
+
+
+@support_cars_router.delete("/{car_id}/comments/{comment_id}")
+async def delete_car_comment_support(
+    car_id: str,
+    comment_id: str,
+    current_user: User = Depends(get_current_support),
+    db: Session = Depends(get_db),
+):
+    """Удалить комментарий к автомобилю (для роли SUPPORT)."""
+    car = get_car_by_id(db, car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    comment_uuid = safe_sid_to_uuid(comment_id)
+    comment = db.query(CarComment).filter(
+        CarComment.id == comment_uuid,
+        CarComment.car_id == car.id,
+        CarComment.author_id == current_user.id,
+    ).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Комментарий не найден")
+    db.delete(comment)
+    log_action(db, actor_id=current_user.id, action="delete_car_comment", entity_type="car_comment",
+               entity_id=comment_uuid, details={"car_id": car_id})
+    db.commit()
+    sa = SupportAction(user_id=current_user.id, action="delete_car_comment", entity_type="car_comment", entity_id=comment_uuid)
+    db.add(sa)
+    db.commit()
+    return {"message": "Комментарий удален"}
 
 
 async def _send_gps_command(car_id: str, db: Session, current_user: User, send_fn, log_action_name: str):
