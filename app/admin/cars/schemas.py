@@ -245,7 +245,8 @@ class CarDetailSchema(BaseModel):
     are_lights_on: Optional[bool] = None
     is_light_auto_mode_on: Optional[bool] = None
     can_exit_zone: bool = False  # Разрешение на выезд за зону карты
-    
+    notifications_disabled: bool = False  # Уведомления по машине отключены
+
     class Config:
         from_attributes = True
 

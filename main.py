@@ -69,6 +69,7 @@ from app.contracts.router import ContractsRouter
 from app.contracts.html_router import HTMLContractsRouter
 from app.support.router import router as SupportRouter
 from app.support.auth.router import support_auth_router
+from app.support.cars.router import support_cars_router
 from app.support import setup_support_system
 from app.monitoring.router import router as MonitoringRouter
 from app.websocket.router import websocket_router
@@ -692,6 +693,7 @@ app.include_router(FinancierRouter)
 app.include_router(MvdRouter)
 app.include_router(accountant_router)
 app.include_router(support_auth_router, prefix="/support/auth")
+app.include_router(support_cars_router, prefix="/support/cars")
 app.include_router(WalletRouter)
 app.include_router(ContractsRouter)
 app.include_router(HTMLContractsRouter)

@@ -315,16 +315,8 @@ async def edit_car(
     return car_to_detail_schema(car, db)
 
 
-@cars_router.get("/{car_id}/details", response_model=CarDetailSchema)
-async def get_car_details(
-    car_id: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-) -> CarDetailSchema:
-    """Получить детальную информацию об автомобиле"""
-    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Недостаточно прав")
-
+async def get_car_details_response(car_id: str, db: Session) -> CarDetailSchema:
+    """Общая логика получения деталей автомобиля (для admin и support)."""
     car = get_car_by_id(db, car_id)
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
@@ -463,7 +455,20 @@ async def get_car_details(
         are_lights_on=vehicle_status.get("are_lights_on"),
         is_light_auto_mode_on=vehicle_status.get("is_light_auto_mode_on"),
         can_exit_zone=car.can_exit_zone or False,
+        notifications_disabled=car.notifications_disabled or False,
     )
+
+
+@cars_router.get("/{car_id}/details", response_model=CarDetailSchema)
+async def get_car_details(
+    car_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> CarDetailSchema:
+    """Получить детальную информацию об автомобиле"""
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    return await get_car_details_response(car_id, db)
 
 
 @cars_router.get("", response_model=Dict[str, List[Dict[str, Any]]])
