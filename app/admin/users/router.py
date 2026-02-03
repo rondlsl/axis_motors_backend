@@ -571,32 +571,24 @@ def _calculate_owner_earnings(user: User, db: Session) -> Dict[str, float]:
     return {"current_month": current_month_earnings, "total": total_earnings}
 
 
-@users_router.get("/list", response_model=UserPaginatedResponse)
-async def get_users_list(
-    role: Optional[str] = Query(None, description="Фильтр по роли"),
-    search_query: Optional[str] = Query(None, description="Поиск по имени, фамилии, телефону, ИИН или паспорту"),
-    has_active_rental: Optional[bool] = Query(None, description="Фильтр по активной аренде"),
-    is_blocked: Optional[bool] = Query(None, description="Фильтр по заблокированным пользователям"),
-    mvd_approved: Optional[bool] = Query(None, description="Фильтр по МВД одобрению"),
-    car_status: Optional[str] = Query(None, description="Фильтр по статусу авто"),
-    auto_class: Optional[List[str]] = Query(None, description="Фильтр по классу авто (A, B, C, AB, ABC)"),
-    balance_filter: Optional[str] = Query(None, description="Фильтр по балансу (positive - все у кого есть деньги, negative - все у кого долг)"),
-    documents_verified: Optional[bool] = Query(None, description="Фильтр по проверке документов"),
-    is_active: Optional[bool] = Query(None, description="Фильтр по активности пользователя"),
-    is_verified_email: Optional[bool] = Query(None, description="Фильтр по подтверждению email"),
-
-    page: int = Query(1, ge=1, description="Номер страницы"),
-    limit: int = Query(50, ge=1, le=200, description="Количество элементов на странице"),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-) -> UserPaginatedResponse:
-    """Получение списка пользователей с фильтрацией и поиском"""
-    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Недостаточно прав")
-    
-    from sqlalchemy.orm import aliased
-    from sqlalchemy import literal_column
-    
+def get_users_list_impl(
+    db: Session,
+    *,
+    role: Optional[str] = None,
+    search_query: Optional[str] = None,
+    has_active_rental: Optional[bool] = None,
+    is_blocked: Optional[bool] = None,
+    mvd_approved: Optional[bool] = None,
+    car_status: Optional[str] = None,
+    auto_class: Optional[List[str]] = None,
+    balance_filter: Optional[str] = None,
+    documents_verified: Optional[bool] = None,
+    is_active: Optional[bool] = None,
+    is_verified_email: Optional[bool] = None,
+    page: int = 1,
+    limit: int = 50,
+) -> dict:
+    """Общая логика списка пользователей (используется admin и support)."""
     active_statuses = [
         RentalStatus.IN_USE, 
         RentalStatus.DELIVERING, 
@@ -897,15 +889,53 @@ async def get_users_list(
         
         converted_data = convert_uuid_response_to_sid(user_data, ["id"])
         result.append(UserListSchema(**converted_data))
-    
+
     return {
         "items": result,
         "total": total_count,
         "page": page,
         "limit": limit,
-        "pages": ceil(total_count / limit) if limit > 0 else 0
+        "pages": ceil(total_count / limit) if limit > 0 else 0,
     }
 
+
+@users_router.get("/list", response_model=UserPaginatedResponse)
+async def get_users_list(
+    role: Optional[str] = Query(None, description="Фильтр по роли"),
+    search_query: Optional[str] = Query(None, description="Поиск по имени, фамилии, телефону, ИИН или паспорту"),
+    has_active_rental: Optional[bool] = Query(None, description="Фильтр по активной аренде"),
+    is_blocked: Optional[bool] = Query(None, description="Фильтр по заблокированным пользователям"),
+    mvd_approved: Optional[bool] = Query(None, description="Фильтр по МВД одобрению"),
+    car_status: Optional[str] = Query(None, description="Фильтр по статусу авто"),
+    auto_class: Optional[List[str]] = Query(None, description="Фильтр по классу авто (A, B, C, AB, ABC)"),
+    balance_filter: Optional[str] = Query(None, description="Фильтр по балансу (positive - все у кого есть деньги, negative - все у кого долг)"),
+    documents_verified: Optional[bool] = Query(None, description="Фильтр по проверке документов"),
+    is_active: Optional[bool] = Query(None, description="Фильтр по активности пользователя"),
+    is_verified_email: Optional[bool] = Query(None, description="Фильтр по подтверждению email"),
+    page: int = Query(1, ge=1, description="Номер страницы"),
+    limit: int = Query(50, ge=1, le=200, description="Количество элементов на странице"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserPaginatedResponse:
+    """Получение списка пользователей с фильтрацией и поиском"""
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    return get_users_list_impl(
+        db,
+        role=role,
+        search_query=search_query,
+        has_active_rental=has_active_rental,
+        is_blocked=is_blocked,
+        mvd_approved=mvd_approved,
+        car_status=car_status,
+        auto_class=auto_class,
+        balance_filter=balance_filter,
+        documents_verified=documents_verified,
+        is_active=is_active,
+        is_verified_email=is_verified_email,
+        page=page,
+        limit=limit,
+    )
 
 
 @users_router.get("/map-positions", response_model=List[UserMapPositionSchema])

@@ -9,6 +9,8 @@ from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole
 from app.models.support_chat_model import SupportChatStatus
+from app.support.deps import require_support_role, require_admin_role
+from app.support.users.router import users_router
 from app.services.support_service import SupportService
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
 from app.utils.sid_converter import convert_uuid_response_to_sid
@@ -25,23 +27,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/support", tags=["Support"])
 
+router.include_router(users_router, prefix="/users")
+
 
 def get_support_service(db: Session = Depends(get_db)) -> SupportService:
     return SupportService(db)
-
-
-def require_support_role(current_user: User = Depends(get_current_user)) -> User:
-    """Проверка, что пользователь имеет роль SUPPORT или ADMIN"""
-    if current_user.role not in [UserRole.SUPPORT, UserRole.ADMIN]:
-        raise HTTPException(status_code=403, detail="Access denied. Support role required.")
-    return current_user
-
-
-def require_admin_role(current_user: User = Depends(get_current_user)) -> User:
-    """Проверка, что пользователь имеет роль ADMIN"""
-    if current_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Access denied. Admin role required.")
-    return current_user
 
 
 @router.post("/chats", response_model=SupportChatResponse)
