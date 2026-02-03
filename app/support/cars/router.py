@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from math import ceil
+from math import ceil, floor
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 from typing import List
@@ -9,7 +9,7 @@ from collections import defaultdict
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_support
 from app.models.user_model import User
-from app.models.history_model import RentalHistory, RentalStatus
+from app.models.history_model import RentalHistory, RentalStatus, RentalReview
 from app.models.car_model import CarStatus
 from app.models.car_comment_model import CarComment
 from app.models.support_action_model import SupportAction
@@ -29,7 +29,7 @@ from app.admin.cars.router import (
     change_car_status_impl,
     toggle_car_notifications_impl,
 )
-from app.models.car_model import CarAvailabilityHistory, CarStatus
+from app.models.car_model import CarAvailabilityHistory, CarStatus, CarBodyType
 from app.owner.availability import update_car_availability_snapshot
 from app.owner.router import calculate_fuel_cost, calculate_delivery_cost
 from app.gps_api.utils.auth_api import get_auth_token
@@ -43,6 +43,7 @@ from app.gps_api.utils.car_data import (
 )
 from app.core.config import GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.utils.action_logger import log_action
+from app.models.contract_model import UserContractSignature, ContractFile, ContractType
 from app.utils.telegram_logger import log_error_to_telegram
 
 BASE_URL = "https://regions.glonasssoft.ru"
@@ -699,3 +700,272 @@ async def get_car_trips_list_support(
         "limit": limit,
         "pages": ceil(total / limit) if limit > 0 else 0,
     }
+
+
+@support_cars_router.get("/{car_id}/history/trips/{rental_id}")
+async def get_trip_detail_support(
+    car_id: str,
+    rental_id: str,
+    current_user: User = Depends(get_current_support),
+    db: Session = Depends(get_db),
+):
+    """Детальная информация о поездке (для SUPPORT)"""
+    from app.rent.utils.calculate_price import FUEL_PRICE_PER_LITER, ELECTRIC_FUEL_PRICE_PER_LITER
+
+    rental_uuid = safe_sid_to_uuid(rental_id)
+    car = get_car_by_id(db, car_id)
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid, RentalHistory.car_id == car.id).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Поездка не найдена")
+    renter = db.query(User).filter(User.id == rental.user_id).first()
+
+    photos = {
+        "client_before": rental.photos_before or [],
+        "client_after": rental.photos_after or [],
+        "mechanic_before": rental.mechanic_photos_before or [],
+        "mechanic_after": rental.mechanic_photos_after or [],
+    }
+
+    review = db.query(RentalReview).filter(RentalReview.rental_id == rental.id).first()
+
+    fuel_fee = 0
+    if rental.fuel_before is not None and rental.fuel_after is not None and rental.fuel_after < rental.fuel_before:
+        fuel_consumed = ceil(rental.fuel_before) - floor(rental.fuel_after)
+        if fuel_consumed > 0:
+            fuel_price = ELECTRIC_FUEL_PRICE_PER_LITER if car.body_type == CarBodyType.ELECTRIC else FUEL_PRICE_PER_LITER
+            fuel_fee = int(fuel_consumed * fuel_price)
+
+    total_price_without_fuel = (
+        (rental.base_price or 0)
+        + (rental.open_fee or 0)
+        + (rental.delivery_fee or 0)
+        + (rental.waiting_fee or 0)
+        + (rental.overtime_fee or 0)
+        + (rental.distance_fee or 0)
+    )
+
+    tariff_display = ""
+    if rental.rental_type:
+        tariff_value = rental.rental_type.value if hasattr(rental.rental_type, "value") else str(rental.rental_type)
+        if tariff_value == "minutes":
+            tariff_display = "Минутный"
+        elif tariff_value == "hours":
+            tariff_display = "Часовой"
+        elif tariff_value == "days":
+            tariff_display = "Суточный"
+        else:
+            tariff_display = tariff_value
+
+    has_inspection = (
+        rental.mechanic_inspection_status == "COMPLETED"
+        or rental.mechanic_inspector_id is not None
+        or (rental.mechanic_photos_after and len(rental.mechanic_photos_after) > 0)
+    )
+
+    rental_status_value = rental.rental_status.value if rental.rental_status else None
+
+    is_mechanic_inspecting = (
+        car.status == CarStatus.SERVICE
+        and rental.mechanic_inspector_id is not None
+        and rental.mechanic_inspection_status is not None
+        and rental.mechanic_inspection_status != "COMPLETED"
+        and rental.mechanic_inspection_status != "CANCELLED"
+    )
+
+    if rental.mechanic_inspector_id is not None:
+        display_rental_status = "service"
+    elif rental.mechanic_inspection_status == "IN_USE":
+        display_rental_status = "in_progress"
+    elif is_mechanic_inspecting:
+        display_rental_status = "in_progress"
+    else:
+        display_rental_status = rental_status_value if has_inspection or rental_status_value != "completed" else "pending"
+
+    result = {
+        "rental_id": uuid_to_sid(rental.id),
+        "car_name": car.name,
+        "plate_number": car.plate_number,
+        "car_status": car.status.value if car.status else None,
+        "reservation_time": rental.reservation_time.isoformat() if rental.reservation_time else None,
+        "start_time": rental.start_time.isoformat() if rental.start_time else None,
+        "end_time": rental.end_time.isoformat() if rental.end_time else None,
+        "duration": rental.duration,
+        "duration_minutes": int((rental.end_time - rental.start_time).total_seconds() // 60) if rental.start_time and rental.end_time else 0,
+        "already_payed": rental.already_payed,
+        "total_price": rental.total_price,
+        "total_price_without_fuel": total_price_without_fuel,
+        "rental_status": display_rental_status,
+        "status_display": (
+            "Требует осмотра" if display_rental_status == "pending"
+            else "Осмотр в процессе" if display_rental_status == "in_progress"
+            else "На сервисе" if display_rental_status == "service"
+            else "Завершена" if display_rental_status == "completed"
+            else display_rental_status
+        ),
+        "rental_type": rental.rental_type.value if rental.rental_type else None,
+        "tariff": rental.rental_type.value if rental.rental_type else None,
+        "tariff_display": tariff_display,
+        "base_price": rental.base_price or 0,
+        "open_fee": rental.open_fee or 0,
+        "delivery_fee": rental.delivery_fee or 0,
+        "fuel_fee": fuel_fee,
+        "waiting_fee": rental.waiting_fee or 0,
+        "overtime_fee": rental.overtime_fee or 0,
+        "distance_fee": rental.distance_fee or 0,
+        "with_driver": rental.with_driver,
+        "driver_fee": rental.driver_fee or 0,
+        "rebooking_fee": rental.rebooking_fee or 0,
+        "base_price_owner": int((rental.base_price or 0) * 0.5 * 0.97),
+        "waiting_fee_owner": int((rental.waiting_fee or 0) * 0.5 * 0.97),
+        "overtime_fee_owner": int((rental.overtime_fee or 0) * 0.5 * 0.97),
+        "total_owner_earnings": int(((rental.base_price or 0) + (rental.waiting_fee or 0) + (rental.overtime_fee or 0)) * 0.5 * 0.97),
+        "fuel_before": rental.fuel_before,
+        "fuel_after": rental.fuel_after,
+        "fuel_after_main_tariff": rental.fuel_after_main_tariff,
+        "mileage_before": rental.mileage_before,
+        "mileage_after": rental.mileage_after,
+        "renter": {
+            "id": uuid_to_sid(renter.id),
+            "first_name": renter.first_name,
+            "last_name": renter.last_name,
+            "phone_number": renter.phone_number,
+            "selfie": renter.selfie_url,
+            "is_owner": car.owner_id == renter.id if car.owner_id else False,
+        } if renter else None,
+        "photos": photos,
+        "client_rating": review.rating if review else None,
+        "client_comment": review.comment if review else None,
+        "mechanic_rating": review.mechanic_rating if review else None,
+        "mechanic_comment": review.mechanic_comment if review else None,
+        "rating": rental.rating,
+        "delivery_route": {
+            "start_latitude": rental.delivery_start_latitude,
+            "start_longitude": rental.delivery_start_longitude,
+            "end_latitude": rental.delivery_end_latitude,
+            "end_longitude": rental.delivery_end_longitude,
+        },
+        "mechanic_inspection_route": {
+            "start_latitude": rental.mechanic_inspection_start_latitude,
+            "start_longitude": rental.mechanic_inspection_start_longitude,
+            "end_latitude": rental.mechanic_inspection_end_latitude,
+            "end_longitude": rental.mechanic_inspection_end_longitude,
+        },
+    }
+
+    if rental.mechanic_inspector_id:
+        mechanic_inspector = db.query(User).filter(User.id == rental.mechanic_inspector_id).first()
+        result["mechanic_inspector"] = {
+            "id": uuid_to_sid(mechanic_inspector.id) if mechanic_inspector else None,
+            "first_name": mechanic_inspector.first_name if mechanic_inspector else None,
+            "last_name": mechanic_inspector.last_name if mechanic_inspector else None,
+            "phone_number": mechanic_inspector.phone_number if mechanic_inspector else None,
+            "selfie": mechanic_inspector.selfie_url if mechanic_inspector else None,
+        }
+    else:
+        result["mechanic_inspector"] = None
+
+    if rental.delivery_mechanic_id:
+        delivery_mechanic = db.query(User).filter(User.id == rental.delivery_mechanic_id).first()
+        result["delivery_mechanic"] = {
+            "id": uuid_to_sid(delivery_mechanic.id) if delivery_mechanic else None,
+            "first_name": delivery_mechanic.first_name if delivery_mechanic else None,
+            "last_name": delivery_mechanic.last_name if delivery_mechanic else None,
+            "phone_number": delivery_mechanic.phone_number if delivery_mechanic else None,
+            "selfie": delivery_mechanic.selfie_url if delivery_mechanic else None,
+        }
+    else:
+        result["delivery_mechanic"] = None
+
+    result["mechanic_inspection"] = {
+        "status": rental.mechanic_inspection_status,
+        "status_display": {
+            "PENDING": "Ожидает осмотра",
+            "IN_PROGRESS": "Осмотр в процессе",
+            "IN_USE": "Осмотр в процессе",
+            "COMPLETED": "Осмотр завершён",
+            "CANCELLED": "Осмотр отменён",
+        }.get(rental.mechanic_inspection_status, rental.mechanic_inspection_status),
+        "start_time": rental.mechanic_inspection_start_time.isoformat() if rental.mechanic_inspection_start_time else None,
+        "end_time": rental.mechanic_inspection_end_time.isoformat() if rental.mechanic_inspection_end_time else None,
+        "comment": rental.mechanic_inspection_comment,
+        "photos_before": rental.mechanic_photos_before or [],
+        "photos_after": rental.mechanic_photos_after or [],
+    }
+
+    has_delivery = (
+        rental.delivery_start_time is not None
+        or rental.delivery_end_time is not None
+        or rental.delivery_mechanic_id is not None
+        or (rental.delivery_photos_before and len(rental.delivery_photos_before) > 0)
+        or (rental.delivery_photos_after and len(rental.delivery_photos_after) > 0)
+    )
+
+    if has_delivery:
+        result["reservation_time"] = rental.reservation_time.isoformat() if rental.reservation_time else None
+        result["delivery_start_time"] = rental.delivery_start_time.isoformat() if rental.delivery_start_time else None
+        result["delivery_end_time"] = rental.delivery_end_time.isoformat() if rental.delivery_end_time else None
+        result["delivery_photos_before"] = rental.delivery_photos_before or []
+        result["delivery_photos_after"] = rental.delivery_photos_after or []
+
+    signed_contracts = db.query(UserContractSignature).join(ContractFile).filter(
+        UserContractSignature.rental_id == rental.id
+    ).all()
+
+    signed_types = set()
+    for sig in signed_contracts:
+        if sig.contract_file:
+            signed_types.add(sig.contract_file.contract_type)
+
+    result["contracts"] = {
+        "main_contract": ContractType.RENTAL_MAIN_CONTRACT in signed_types or ContractType.MAIN_CONTRACT in signed_types,
+        "appendix_7_1": ContractType.APPENDIX_7_1 in signed_types,
+        "appendix_7_2": ContractType.APPENDIX_7_2 in signed_types,
+    }
+
+    mechanic_signed_types = set()
+    if rental.mechanic_inspector_id:
+        mechanic_contracts = db.query(UserContractSignature).join(ContractFile).filter(
+            UserContractSignature.rental_id == rental.id,
+            UserContractSignature.user_id == rental.mechanic_inspector_id,
+        ).all()
+        for sig in mechanic_contracts:
+            if sig.contract_file:
+                mechanic_signed_types.add(sig.contract_file.contract_type)
+
+    result["mechanic_contracts"] = {
+        "main_contract": ContractType.RENTAL_MAIN_CONTRACT in mechanic_signed_types or ContractType.MAIN_CONTRACT in mechanic_signed_types,
+        "appendix_7_1": ContractType.APPENDIX_7_1 in mechanic_signed_types,
+        "appendix_7_2": ContractType.APPENDIX_7_2 in mechanic_signed_types,
+    }
+
+    photos_before = rental.photos_before or []
+    photos_after = rental.photos_after or []
+
+    has_car_before = any("car" in p.lower() for p in photos_before) if photos_before else False
+    has_interior_before = any("interior" in p.lower() or "salon" in p.lower() for p in photos_before) if photos_before else False
+    has_car_after = any("car" in p.lower() for p in photos_after) if photos_after else False
+    has_interior_after = any("interior" in p.lower() or "salon" in p.lower() for p in photos_after) if photos_after else False
+
+    result["photo_status"] = {
+        "photo_before_car": has_car_before,
+        "photo_before_interior": has_interior_before,
+        "photo_after_car": has_car_after,
+        "photo_after_interior": has_interior_after,
+    }
+
+    mechanic_photos_before = rental.mechanic_photos_before or []
+    mechanic_photos_after = rental.mechanic_photos_after or []
+
+    mechanic_has_car_before = any("car" in p.lower() for p in mechanic_photos_before) if mechanic_photos_before else False
+    mechanic_has_interior_before = any("interior" in p.lower() or "salon" in p.lower() for p in mechanic_photos_before) if mechanic_photos_before else False
+    mechanic_has_car_after = any("car" in p.lower() for p in mechanic_photos_after) if mechanic_photos_after else False
+    mechanic_has_interior_after = any("interior" in p.lower() or "salon" in p.lower() for p in mechanic_photos_after) if mechanic_photos_after else False
+
+    result["mechanic_photo_status"] = {
+        "photo_before_car": mechanic_has_car_before,
+        "photo_before_interior": mechanic_has_interior_before,
+        "photo_after_car": mechanic_has_car_after,
+        "photo_after_interior": mechanic_has_interior_after,
+    }
+
+    return result
