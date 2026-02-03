@@ -7,6 +7,9 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 from app.dependencies.database.database import get_db
 from app.models.user_model import User, UserRole
 from app.models.wallet_transaction_model import WalletTransaction, WalletTransactionType

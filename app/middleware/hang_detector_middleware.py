@@ -7,6 +7,8 @@ from typing import Dict, Optional
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
 from app.middleware.request_logger_middleware import get_trace_id
 
 

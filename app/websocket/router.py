@@ -260,12 +260,15 @@ async def websocket_vehicle_telemetry(
                     break
                 except Exception:
                     logger.exception("Error in telemetry loop")
-                    await websocket.send_json({
-                        "type": "error",
-                        "message": "Error fetching telemetry data",
-                        "timestamp": get_local_time().isoformat()
-                    })
-                    await asyncio.sleep(2)
+                    try:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": "Error fetching telemetry data",
+                            "timestamp": get_local_time().isoformat()
+                        })
+                        await asyncio.sleep(2)
+                    except Exception:
+                        break  # Connection closed, exit loop
         finally:
             receive_task.cancel()
             try:
@@ -355,12 +358,15 @@ async def websocket_vehicles_list(
                     break
                 except Exception as e:
                     logger.error(f"Error in vehicles list loop: {e}")
-                    await websocket.send_json({
-                        "type": "error",
-                        "message": "Error fetching vehicles data",
-                        "timestamp": get_local_time().isoformat()
-                    })
-                    await asyncio.sleep(1)
+                    try:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": "Error fetching vehicles data",
+                            "timestamp": get_local_time().isoformat()
+                        })
+                        await asyncio.sleep(1)
+                    except Exception:
+                        break  # Connection closed, exit loop
         finally:
             receive_task.cancel()
             try:
@@ -451,12 +457,15 @@ async def websocket_user_status(
                     break
                 except Exception as e:
                     logger.error(f"Error in user status loop: {e}")
-                    await websocket.send_json({
-                        "type": "error",
-                        "message": "Error fetching user status data",
-                        "timestamp": get_local_time().isoformat()
-                    })
-                    await asyncio.sleep(2)
+                    try:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": "Error fetching user status data",
+                            "timestamp": get_local_time().isoformat()
+                        })
+                        await asyncio.sleep(2)
+                    except Exception:
+                        break  # Connection closed, exit loop
         finally:
             receive_task.cancel()
             try:
@@ -544,12 +553,15 @@ async def websocket_admin_cars_list(
                     break
                 except Exception as e:
                     logger.error(f"Error in admin cars list loop: {e}")
-                    await websocket.send_json({
-                        "type": "error",
-                        "message": "Error fetching admin cars data",
-                        "timestamp": get_local_time().isoformat()
-                    })
-                    await asyncio.sleep(2)
+                    try:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": "Error fetching admin cars data",
+                            "timestamp": get_local_time().isoformat()
+                        })
+                        await asyncio.sleep(2)
+                    except Exception:
+                        break  # Connection closed, exit loop
         finally:
             receive_task.cancel()
             try:
@@ -637,12 +649,15 @@ async def websocket_support_cars_list(
                     break
                 except Exception as e:
                     logger.error(f"Error in support cars list loop: {e}")
-                    await websocket.send_json({
-                        "type": "error",
-                        "message": "Error fetching support cars data",
-                        "timestamp": get_local_time().isoformat()
-                    })
-                    await asyncio.sleep(2)
+                    try:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": "Error fetching support cars data",
+                            "timestamp": get_local_time().isoformat()
+                        })
+                        await asyncio.sleep(2)
+                    except Exception:
+                        break  # Connection closed, exit loop
         finally:
             receive_task.cancel()
             try:
@@ -737,12 +752,15 @@ async def websocket_admin_users_list(
                     break
                 except Exception as e:
                     logger.error(f"Error in admin users list loop: {e}")
-                    await websocket.send_json({
-                        "type": "error",
-                        "message": "Error fetching users data",
-                        "timestamp": get_local_time().isoformat()
-                    })
-                    await asyncio.sleep(2)
+                    try:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": "Error fetching users data",
+                            "timestamp": get_local_time().isoformat()
+                        })
+                        await asyncio.sleep(2)
+                    except Exception:
+                        break  # Connection closed, exit loop
         finally:
             receive_task.cancel()
             try:

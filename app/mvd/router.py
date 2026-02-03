@@ -4,6 +4,9 @@ from sqlalchemy import and_, or_, exists, select
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 from app.dependencies.database.database import get_db
 from app.utils.short_id import uuid_to_sid, safe_sid_to_uuid
 from app.auth.dependencies.get_current_user import get_current_user
@@ -22,6 +25,7 @@ MvdRouter = APIRouter(prefix="/mvd", tags=["MVD"])
 def get_current_mvd_user(current_user: User = Depends(get_current_user)) -> User:
     """Проверяет, что текущий пользователь - сотрудник МВД"""
     if current_user.role != UserRole.MVD:
+        logger.warning("MVD: доступ запрещён, user_id=%s, role=%s", current_user.id, current_user.role)
         raise HTTPException(status_code=403, detail="Доступ запрещен. Требуются права МВД")
     return current_user
 
@@ -365,6 +369,7 @@ async def approve_application(
                 )
             )
     except Exception as e:
+        logger.error("MVD approve: ошибка отправки уведомления, application_id=%s, error=%s", application_uuid, e)
         try:
             await log_error_to_telegram(
                 error=e,
@@ -452,6 +457,7 @@ async def reject_application(
             "application_rejected_mvd"
         )
     except Exception as e:
+        logger.error("MVD reject: ошибка отправки уведомления, application_id=%s, error=%s", application_uuid, e)
         try:
             await log_error_to_telegram(
                 error=e,

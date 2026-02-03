@@ -6,6 +6,9 @@ import os
 import asyncio
 from datetime import datetime
 
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 from app.dependencies.database.database import get_db
 
 
@@ -253,7 +256,7 @@ async def get_rental_main_contract(
                     vin = vin or car.vin
                     color = color or car.color
         except Exception as e:
-            pass  
+            logger.debug("HTML contract rental_main: ошибка подстановки данных по rental_id=%s: %s", rental_id, e)
     
     html = process_html_placeholders(
         html,
@@ -330,8 +333,8 @@ async def get_acceptance_certificate(
                     body_type = body_type or (car.body_type.value if car.body_type else None)
                     vin = vin or car.vin
                     color = color or car.color
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("HTML contract acceptance: ошибка подстановки данных по rental_id=%s: %s", rental_id, e)
     
     html = process_html_placeholders(
         html,
@@ -408,8 +411,8 @@ async def get_return_certificate(
                     body_type = body_type or (car.body_type.value if car.body_type else None)
                     vin = vin or car.vin
                     color = color or car.color
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("HTML contract return: ошибка подстановки данных по rental_id=%s: %s", rental_id, e)
     
     html = process_html_placeholders(
         html,

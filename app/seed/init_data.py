@@ -4,6 +4,9 @@
 import os
 import uuid
 from sqlalchemy.orm import Session
+
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
 from app.models.car_model import Car, CarBodyType, CarAutoClass, CarStatus
 from app.models.user_model import User, UserRole
 from app.models.contract_model import ContractFile, ContractType
@@ -32,10 +35,10 @@ def init_test_data(db: Session) -> None:
         # Создаем файлы договоров
         create_contract_files(db)
         
-        print("Все тестовые данные успешно инициализированы")
+        logger.info("Все тестовые данные успешно инициализированы")
         
     except Exception as e:
-        print(f"Ошибка при инициализации тестовых данных: {e}")
+        logger.error("Ошибка при инициализации тестовых данных: %s", e)
         raise
 
 

@@ -40,24 +40,29 @@ async def send_custom_sms(
     """
     # Проверка прав администратора
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        logger.warning("Отказ в отправке SMS: недостаточно прав, user_id=%s", current_user.id)
         raise HTTPException(status_code=403, detail="Недостаточно прав. Только администраторы или техподдержка могут отправлять SMS.")
     
     # Валидация номера телефона
     phone_number = request.phone_number.strip()
     if not phone_number.isdigit():
+        logger.debug("SMS: невалидный номер (не цифры), phone=%s", request.phone_number)
         raise HTTPException(status_code=400, detail="Номер телефона должен содержать только цифры.")
     
     if len(phone_number) < 10 or len(phone_number) > 15:
+        logger.debug("SMS: невалидная длина номера, phone=%s", phone_number)
         raise HTTPException(status_code=400, detail="Номер телефона должен содержать от 10 до 15 цифр.")
     
     # Валидация текста сообщения
     message_text = request.message_text.strip()
     if not message_text:
+        logger.debug("SMS: пустой текст сообщения")
         raise HTTPException(status_code=400, detail="Текст сообщения не может быть пустым.")
     
     # Тестовый режим
     if SMS_TOKEN == "1010":
-        logger.debug(f"TEST SMS to {phone_number}: {message_text}")
+        logger.info("TEST SMS (режим теста): to=%s, admin_id=%s", phone_number, current_user.id)
+        logger.debug("TEST SMS to %s: %s", phone_number, message_text)
         return SendSmsResponse(
             success=True,
             message="TEST SMS sent successfully (test mode)",
@@ -77,6 +82,7 @@ async def send_custom_sms(
             details={"phone_number": phone_number, "message": message_text, "result": result}
         )
         db.commit()
+        logger.info("SMS отправлено: to=%s, admin_id=%s, result=%s", phone_number, current_user.id, result)
 
         return SendSmsResponse(
             success=True,
@@ -84,7 +90,7 @@ async def send_custom_sms(
             result=result
         )
     except Exception as e:
-        logger.debug(f"SMS sending error: {e}")
+        logger.error("Ошибка отправки SMS: to=%s, admin_id=%s, error=%s", phone_number, current_user.id, e)
         try:
             await log_error_to_telegram(
                 error=e,

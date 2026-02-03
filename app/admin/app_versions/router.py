@@ -2,6 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole
@@ -28,6 +31,7 @@ async def update_ai_status(
     Включить/выключить AI (только для админов)
     """
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        logger.warning("Admin app_versions ai-status: недостаточно прав, user_id=%s", current_user.id)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Недостаточно прав. Только администраторы или техподдержка могут изменять статус AI"
@@ -36,6 +40,7 @@ async def update_ai_status(
     app_version = db.query(AppVersion).first()
     
     if not app_version:
+        logger.debug("Admin app_versions ai-status: конфигурация не найдена")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Конфигурация версий приложения не найдена"

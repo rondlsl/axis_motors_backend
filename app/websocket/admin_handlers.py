@@ -4,6 +4,9 @@ from sqlalchemy import or_
 import asyncio
 import httpx
 
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 from app.models.car_model import Car, CarStatus
 from app.models.user_model import User
 from app.utils.short_id import uuid_to_sid

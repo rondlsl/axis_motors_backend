@@ -2,6 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from packaging import version
 
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User
@@ -120,6 +123,7 @@ async def create_app_version(
     Если запись уже существует, она будет обновлена.
     """
     if current_user.role != UserRole.ADMIN:
+        logger.warning("App versions create: недостаточно прав, user_id=%s", current_user.id)
         raise HTTPException(status_code=403, detail="Недостаточно прав")
         
     from app.utils.action_logger import log_action
@@ -202,6 +206,7 @@ async def get_app_version(
     app_version = db.query(AppVersion).first()
     
     if not app_version:
+        logger.debug("App version GET: запись не найдена")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="App version not found"
@@ -228,11 +233,13 @@ async def delete_app_version(
     Удалить запись о версиях приложения.
     """
     if current_user.role != UserRole.ADMIN:
+        logger.warning("App versions delete: недостаточно прав, user_id=%s", current_user.id)
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     app_version = db.query(AppVersion).first()
     
     if not app_version:
+        logger.debug("App version DELETE: запись не найдена")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="App version not found"

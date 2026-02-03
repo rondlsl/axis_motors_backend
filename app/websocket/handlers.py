@@ -2,6 +2,10 @@ import asyncio
 import httpx
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional
+
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 from app.models.user_model import User, UserRole
 from app.models.car_model import Car, CarStatus, CarAutoClass
 from app.models.history_model import RentalHistory, RentalStatus, RentalType, RentalReview
@@ -95,8 +99,8 @@ async def get_vehicles_data_for_user(user: User, db: Session) -> Dict[str, Any]:
                             car_speeds[car.id] = imei_to_speed[car.gps_imei]
                         else:
                             car_speeds[car.id] = None
-        except Exception:
-            # В случае ошибки просто не показываем скорость
+        except Exception as e:
+            logger.warning("WebSocket vehicles: ошибка получения скоростей с GPS API: %s", e)
             for car in cars:
                 car_speeds[car.id] = None
 

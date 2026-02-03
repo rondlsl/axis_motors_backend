@@ -4,6 +4,9 @@ from sqlalchemy import and_, or_
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 from app.dependencies.database.database import get_db
 from app.utils.short_id import uuid_to_sid, safe_sid_to_uuid
 from app.auth.dependencies.get_current_user import get_current_user
@@ -22,6 +25,7 @@ FinancierRouter = APIRouter(prefix="/financier", tags=["Financier"])
 def get_current_financier(current_user: User = Depends(get_current_user)) -> User:
     """Проверяет, что текущий пользователь - финансист"""
     if current_user.role != UserRole.FINANCIER:
+        logger.warning("Financier: доступ запрещён, user_id=%s, role=%s", current_user.id, current_user.role)
         raise HTTPException(status_code=403, detail="Доступ запрещен. Требуются права финансиста")
     return current_user
 
@@ -393,6 +397,7 @@ async def approve_application(
             auto_class=auto_class
         )
     except Exception as e:
+        logger.error("Financier approve: ошибка отправки уведомления, application_id=%s, error=%s", application_uuid, e)
         try:
             await log_error_to_telegram(
                 error=e,
@@ -523,6 +528,7 @@ async def reject_application(
             "application_rejected_financier"
         )
     except Exception as e:
+        logger.error("Financier reject: ошибка отправки уведомления, application_id=%s, error=%s", application_uuid, e)
         try:
             await log_error_to_telegram(
                 error=e,
@@ -639,6 +645,7 @@ async def request_documents_recheck(
             "documents_recheck_required"
         )
     except Exception as e:
+        logger.error("Financier request_recheck: ошибка отправки уведомления, application_id=%s, error=%s", application_uuid, e)
         try:
             await log_error_to_telegram(
                 error=e,

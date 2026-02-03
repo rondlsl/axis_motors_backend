@@ -3,6 +3,9 @@ import calendar
 import uuid
 from typing import Optional
 
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -155,6 +158,7 @@ def get_my_transactions(
             rental_uuid = safe_sid_to_uuid(rental_id)
             q = q.filter(WalletTransaction.related_rental_id == rental_uuid)
         except ValueError:
+            logger.debug("Wallet: неверный формат rental_id=%s", rental_id)
             raise HTTPException(status_code=400, detail="Неверный формат rental_id")
     if type is not None:
         q = q.filter(WalletTransaction.transaction_type == type)
@@ -394,6 +398,7 @@ def get_transaction_detail(
     try:
         transaction_uuid = safe_sid_to_uuid(transaction_id)
     except ValueError:
+        logger.debug("Wallet get_transaction: неверный формат ID=%s", transaction_id)
         raise HTTPException(status_code=400, detail="Неверный формат ID")
     
     tx = (
@@ -402,6 +407,7 @@ def get_transaction_detail(
         .first()
     )
     if not tx:
+        logger.debug("Wallet get_transaction: транзакция не найдена, id=%s", transaction_id)
         raise HTTPException(status_code=404, detail="Транзакция не найдена")
     return WalletTransactionOut(
         id=tx.sid,
@@ -421,6 +427,7 @@ def get_transaction_detail(
 
 def _ensure_admin(user: User):
     if user.role != UserRole.ADMIN:
+        logger.warning("Wallet: доступ запрещён, user_id=%s, role=%s", user.id, user.role)
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
 
@@ -443,6 +450,7 @@ def get_transactions_by_user(
     try:
         user_uuid = safe_sid_to_uuid(user_id)
     except ValueError:
+        logger.debug("Wallet get_transactions_by_user: неверный формат user_id=%s", user_id)
         raise HTTPException(status_code=400, detail="Неверный формат ID")
     
     q = db.query(WalletTransaction).filter(WalletTransaction.user_id == user_uuid)
@@ -492,6 +500,7 @@ def get_transactions_summary_by_user(
     try:
         user_uuid = safe_sid_to_uuid(user_id)
     except ValueError:
+        logger.debug("Wallet get_transactions_summary_by_user: неверный формат user_id=%s", user_id)
         raise HTTPException(status_code=400, detail="Неверный формат ID")
     
     q = db.query(WalletTransaction).filter(WalletTransaction.user_id == user_uuid)

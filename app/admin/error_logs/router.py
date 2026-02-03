@@ -9,6 +9,9 @@ from datetime import datetime, timedelta
 from pydantic import BaseModel
 from uuid import UUID
 
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole
@@ -65,6 +68,7 @@ async def get_error_logs(
 ):
     """Get error logs with filtering by period"""
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        logger.debug("Error logs list: доступ только для админа/поддержки, user_id=%s", current_user.id)
         return {"data": [], "total": 0, "page": 1, "per_page": per_page, "total_pages": 0}
     
     query = db.query(ErrorLog)

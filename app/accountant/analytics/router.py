@@ -9,6 +9,9 @@ from sqlalchemy import func
 from collections import defaultdict
 from math import ceil
 
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 from app.dependencies.database.database import get_db
 from app.models.user_model import User
 from app.models.wallet_transaction_model import WalletTransaction, WalletTransactionType

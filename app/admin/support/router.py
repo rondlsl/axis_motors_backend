@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import uuid
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
 from app.utils.sid_converter import convert_uuid_response_to_sid
 
@@ -30,6 +32,7 @@ async def list_support_actions(
     current_user: User = Depends(get_current_user)
 ) -> SupportActionsListResponse:
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        logger.warning("Admin support actions: недостаточно прав, user_id=%s", current_user.id)
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     q = db.query(SupportAction)

@@ -7,6 +7,9 @@ from sqlalchemy import desc
 from typing import List, Optional, Dict, Any
 from math import ceil, floor
 
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_accountant
 from app.models.user_model import User

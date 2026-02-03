@@ -3,6 +3,8 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import DATABASE_URL
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
 
 engine = create_engine(
     DATABASE_URL,
@@ -25,4 +27,7 @@ def get_db():
     try:
         yield db
     finally:
-        db.close()
+        try:
+            db.close()
+        except Exception as e:
+            logger.error("Ошибка закрытия сессии БД: %s", e)

@@ -8,6 +8,9 @@ from math import ceil, floor
 from datetime import datetime
 from collections import defaultdict
 
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.get_current_user import get_current_accountant
 from app.models.user_model import User
@@ -41,6 +44,7 @@ async def get_user_transactions(
     user_uuid = safe_sid_to_uuid(user_id)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
+        logger.debug("Accountant users transactions: пользователь не найден, user_id=%s", user_id)
         raise HTTPException(status_code=404, detail="Пользователь не найден")
         
     query = db.query(WalletTransaction).filter(WalletTransaction.user_id == user.id)
@@ -92,6 +96,7 @@ async def get_user_transactions_grouped(
     user_uuid = safe_sid_to_uuid(user_id)
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
+        logger.debug("Accountant users transactions-grouped: пользователь не найден, user_id=%s", user_id)
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
     # Получаем все транзакции пользователя с сортировкой по created_at и id для стабильности
