@@ -10,7 +10,6 @@ from app.auth.dependencies.get_current_user import get_current_user
 from app.models.user_model import User, UserRole
 from app.models.support_chat_model import SupportChatStatus
 from app.support.deps import require_support_role, require_admin_role
-from app.support.users.router import users_router
 from app.services.support_service import SupportService
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
 from app.utils.sid_converter import convert_uuid_response_to_sid
@@ -26,8 +25,6 @@ from app.utils.action_logger import log_action
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/support", tags=["Support"])
-
-router.include_router(users_router, prefix="/users")
 
 
 def get_support_service(db: Session = Depends(get_db)) -> SupportService:
