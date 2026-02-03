@@ -1260,6 +1260,28 @@ def is_owner_trip(
     return {"is_owner_trip": is_owner}
 
 
+@Vehicle_Router.get("/notifications-disabled", summary="Список машин с отключёнными уведомлениями")
+def get_notifications_disabled_cars(
+    key: str = Query(..., description="Секретный ключ доступа"),
+    db: Session = Depends(get_db)
+):
+    """
+    Возвращает список машин с notifications_disabled=True.
+    Используется cache-модулем cars-сервиса для синхронизации списка машин, исключённых из алертов.
+    """
+    if key != RENTED_CARS_ENDPOINT_KEY:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access key")
+    rows = (
+        db.query(Car.plate_number, Car.gps_imei)
+        .filter(Car.notifications_disabled == True)
+        .all()
+    )
+    return [
+        {"plate_number": plate, "gps_imei": gps_imei}
+        for (plate, gps_imei) in rows
+    ]
+
+
 @Vehicle_Router.get("/excluded-from-alerts", summary="Список машин, исключённых из уведомлений")
 def get_excluded_from_alerts_cars(
     key: str = Query(..., description="Секретный ключ доступа"),

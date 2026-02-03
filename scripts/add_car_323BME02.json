@@ -1,0 +1,19 @@
+{
+  "name": "HAN",
+  "plate_number": "323BME02",
+  "gps_imei": "860803068133152",
+  "price_per_minute": 50,
+  "price_per_hour": 3000,
+  "price_per_day": 35000,
+  "open_fee": 5000,
+  "auto_class": "A",
+  "body_type": "SEDAN",
+  "transmission_type": "manual",
+  "color": null,
+  "vin": null,
+  "description": null,
+  "engine_volume": null,
+  "year": null,
+  "drive_type": null,
+  "owner_id": null
+}
