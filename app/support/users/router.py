@@ -1,13 +1,15 @@
-"""Support users — список, бронирование и отмена аренды (тот же контракт, что /admin/users)."""
+"""Support users — список, бронирование, отмена аренды, загрузка фото (тот же контракт, что /admin/users)."""
 import asyncio
 import logging
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Form
+from fastapi import APIRouter, Depends, HTTPException, Query, Form, File, UploadFile
 from sqlalchemy.orm import Session
 
 from app.dependencies.database.database import get_db
+from app.auth.dependencies.save_documents import save_file, validate_photos
+from app.utils.atomic_operations import delete_uploaded_files
 from app.admin.users.router import get_users_list_impl
 from app.admin.users.schemas import (
     UserPaginatedResponse,
@@ -253,3 +255,140 @@ async def support_cancel_reservation(
         previous_status=previous_status,
         client_id=client_id
     )
+
+
+@users_router.post("/rentals/{rental_id}/admin-upload-photos-before")
+async def support_upload_photos_before(
+    rental_id: str,
+    selfie: Optional[UploadFile] = File(None, description="Селфи клиента (необязательно для владельца)"),
+    car_photos: List[UploadFile] = File(..., description="Фотографии кузова автомобиля"),
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+):
+    """
+    Загрузить фотографии ДО начала аренды от имени клиента (support).
+    Аналог POST /admin/users/rentals/{rental_id}/admin-upload-photos-before.
+    """
+    try:
+        rental_uuid = safe_sid_to_uuid(rental_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Неверный формат rental_id: {str(e)}")
+
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Аренда не найдена")
+
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+
+    validate_photos(car_photos, "car_photos")
+    if selfie:
+        validate_photos([selfie], "selfie")
+
+    uploaded_files = []
+    try:
+        urls = list(rental.photos_before or [])
+
+        if selfie:
+            selfie_url = await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/before/selfie/")
+            urls.append(selfie_url)
+            uploaded_files.append(selfie_url)
+
+        for p in car_photos:
+            car_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/car/")
+            urls.append(car_url)
+            uploaded_files.append(car_url)
+
+        rental.photos_before = urls
+        db.commit()
+
+        db.expire_all()
+        db.refresh(rental)
+
+        try:
+            if rental.user_id:
+                await notify_user_status_update(str(rental.user_id))
+            if car.owner_id:
+                await notify_user_status_update(str(car.owner_id))
+        except Exception as e:
+            logger.error("Error sending WebSocket notifications: %s", e)
+
+        return {
+            "message": "Фотографии до аренды (selfie+car) загружены",
+            "rental_id": rental_id,
+            "photo_count": len(urls),
+            "selfie_uploaded": selfie is not None,
+        }
+    except HTTPException:
+        db.rollback()
+        delete_uploaded_files(uploaded_files)
+        raise
+    except Exception as e:
+        db.rollback()
+        delete_uploaded_files(uploaded_files)
+        raise HTTPException(status_code=500, detail=f"Ошибка при загрузке фотографий: {str(e)}") from e
+
+
+@users_router.post("/rentals/{rental_id}/admin-upload-photos-before-interior")
+async def support_upload_photos_before_interior(
+    rental_id: str,
+    interior_photos: List[UploadFile] = File(..., description="Фотографии салона автомобиля"),
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+):
+    """
+    Загрузить фотографии салона ДО начала аренды от имени клиента (support).
+    Аналог POST /admin/users/rentals/{rental_id}/admin-upload-photos-before-interior.
+    """
+    try:
+        rental_uuid = safe_sid_to_uuid(rental_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Неверный формат rental_id: {str(e)}")
+
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Аренда не найдена")
+
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+
+    validate_photos(interior_photos, "interior_photos")
+
+    uploaded_files = []
+    try:
+        urls = list(rental.photos_before or [])
+
+        for p in interior_photos:
+            interior_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/interior/")
+            urls.append(interior_url)
+            uploaded_files.append(interior_url)
+
+        rental.photos_before = urls
+        db.commit()
+
+        db.expire_all()
+        db.refresh(rental)
+
+        try:
+            if rental.user_id:
+                await notify_user_status_update(str(rental.user_id))
+            if car.owner_id:
+                await notify_user_status_update(str(car.owner_id))
+        except Exception as e:
+            logger.error("Error sending WebSocket notifications: %s", e)
+
+        return {
+            "message": "Фотографии салона до аренды загружены",
+            "rental_id": rental_id,
+            "photo_count": len(interior_photos),
+        }
+    except HTTPException:
+        db.rollback()
+        delete_uploaded_files(uploaded_files)
+        raise
+    except Exception as e:
+        db.rollback()
+        delete_uploaded_files(uploaded_files)
+        raise HTTPException(status_code=500, detail=f"Ошибка при загрузке фотографий салона: {str(e)}") from e
