@@ -100,9 +100,9 @@ scheduler = AsyncIOScheduler(timezone=almaty_tz)
 from app.services.minio_service import get_minio_service
 try:
     _minio = get_minio_service()
-    print("✅ MinIO service initialized")
+    logger.info("MinIO service initialized")
 except Exception as e:
-    print(f"⚠️ MinIO service initialization warning: {e}")
+    logger.warning("MinIO service initialization warning: %s", e)
 
 # Redis service будет инициализирован в startup_event
 from app.services.redis_service import init_redis, shutdown_redis
@@ -363,30 +363,30 @@ async def auto_close_support_chats():
 def init_app(app: FastAPI):
     @app.on_event("startup")
     async def startup_event():
-        print("Приложение запущено")
-        print("Проверка")
-        run_migrations()
+        logger.info("Приложение запущено")
+        # run_migrations()  # авто миграция отключена; запускать вручную: alembic upgrade head
+        logger.info("Авто миграция отключена (для применения миграций: alembic upgrade head)")
 
         # Инициализируем Redis
         try:
             redis_available = await init_redis()
             if redis_available:
-                print("✅ Redis service initialized")
+                logger.info("Redis service initialized")
             else:
-                print("⚠️ Redis unavailable, using database fallback")
+                logger.warning("Redis unavailable, using database fallback")
         except Exception as e:
-            print(f"⚠️ Redis initialization error: {e}")
+            logger.warning("Redis initialization error: %s", e)
 
         # Инициализируем WebSocket Pub/Sub для кластерного режима
         try:
             from app.websocket.manager import connection_manager
             pubsub_ready = await connection_manager.init_pubsub()
             if pubsub_ready:
-                print("✅ WebSocket Pub/Sub initialized for cluster mode")
+                logger.info("WebSocket Pub/Sub initialized for cluster mode")
             else:
-                print("ℹ️ WebSocket running in single-instance mode")
+                logger.info("WebSocket running in single-instance mode")
         except Exception as e:
-            print(f"⚠️ WebSocket Pub/Sub initialization error: {e}")
+            logger.warning("WebSocket Pub/Sub initialization error: %s", e)
 
         db_gen = get_db()
         db = next(db_gen)
@@ -536,7 +536,7 @@ def init_app(app: FastAPI):
 
     @app.on_event("shutdown")
     async def shutdown_event():
-        print("Приложение остановлено")
+        logger.info("Приложение остановлено")
 
         # Останавливаем HangWatchdog
         try:
