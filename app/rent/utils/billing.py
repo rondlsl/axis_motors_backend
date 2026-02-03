@@ -66,15 +66,22 @@ async def billing_job():
     """
     async with BillingLock.acquire() as acquired:
         if not acquired:
-            logger.debug("Billing job skipped - another instance is running")
+            logger.info("Billing job: пропуск — лок занят другим инстансом")
             return
 
+        logger.info("Billing job: старт (лок получен)")
         await _billing_job_impl()
+        logger.info("Billing job: завершён")
 
 
 async def _billing_job_impl():
     """Реализация billing job (вызывается только если лок получен)."""
     push_notifications, telegram_alerts, lock_requests = await asyncio.to_thread(process_rentals_sync)
+
+    logger.info(
+        "Billing job: process_rentals_sync вернул push=%s, telegram=%s, lock_requests=%s",
+        len(push_notifications), len(telegram_alerts), len(lock_requests)
+    )
 
     db = None  
 
@@ -102,7 +109,7 @@ async def _billing_job_impl():
                     return await _send_notification_with_retry(notification, retry_count + 1)
                 else:
                     if not is_db_error:
-                        logger.error(f" отправки push-уведомления: {e}")
+                        logger.error("Billing job: ошибка отправки push-уведомления: %s", e)
     
     # Отправляем уведомления батчами с ограничением параллелизма
     BATCH_SIZE = 20
@@ -110,14 +117,20 @@ async def _billing_job_impl():
     MAX_RETRIES = 3
     RETRY_DELAY = 1.0
     
+    total_batches = (len(push_notifications) + BATCH_SIZE - 1) // BATCH_SIZE if push_notifications else 0
     for i in range(0, len(push_notifications), BATCH_SIZE):
         batch = push_notifications[i:i + BATCH_SIZE]
+        batch_num = (i // BATCH_SIZE) + 1
+        logger.debug("Billing job: отправка push batch %s/%s, уведомлений=%s", batch_num, total_batches, len(batch))
         batch_tasks = [asyncio.create_task(_send_notification_with_retry(notif)) for notif in batch]
         
         await asyncio.gather(*batch_tasks, return_exceptions=True)
         
         if i + BATCH_SIZE < len(push_notifications):
             await asyncio.sleep(BATCH_DELAY)
+
+    if telegram_alerts:
+        logger.info("Billing job: отправка %s сообщений в Telegram", len(telegram_alerts))
 
     # 4) Fire-and-forget Telegram alerts - ОБА БОТА
     async def _send_telegram(text: str, chat_id: int, bot_token: str):
@@ -141,8 +154,10 @@ async def _billing_job_impl():
     try:
         db = SessionLocal()  
         if lock_requests:
+            logger.info("Billing job: блокировка двигателя для %s авто (IMEI)", len(lock_requests))
             auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
             for imei, car_name, user_id in lock_requests:
+                logger.info("Billing job: lock_engine imei=%s car=%s user_id=%s", imei, car_name, user_id)
                 try:
                     await send_lock_engine(imei, auth_token)
                     # Уведомим пользователя в приложение (с ограничением параллелизма)
@@ -170,6 +185,7 @@ async def _billing_job_impl():
                     for chat_id in (965048905, 5941825713, 860991388, 1594112444, 808277096, 7656716395, 964255811, 8522837235, 797693964):
                         asyncio.create_task(_send_telegram(note, chat_id, TELEGRAM_BOT_TOKEN_2))
                 except Exception as e:
+                    logger.error("Billing job: ошибка блокировки двигателя imei=%s car=%s: %s", imei, car_name, e)
                     err = f"⚠️ Ошибка блокировки двигателя (IMEI {imei}): {e}"
                     # Отправка в первый бот
                     for chat_id in (965048905, 5941825713, 860991388, 1594112444, 808277096, 7656716395, 964255811, 8522837235, 797693964):
@@ -197,6 +213,7 @@ async def _billing_job_impl():
                         }
                     ))
     except Exception as e:
+        logger.error("Billing job: ошибка при обработке блокировок двигателя: %s", e)
         error_msg = f"⚠️ Ошибка при обработке блокировок двигателя: {e}"
         
         # Отправка в первый бот
@@ -229,6 +246,9 @@ async def _billing_job_impl():
             ])
         ).all()
         
+        if active_rentals:
+            logger.info("Billing job: WebSocket notify для %s пользователей по активным арендам", len(active_rentals))
+        
         user_ids = set()
         for rental in active_rentals:
             if rental.user_id:
@@ -243,12 +263,12 @@ async def _billing_job_impl():
                 try:
                     await notify_user_status_update(user_id)
                 except Exception as e:
-                    logger.error(f" отправки уведомления пользователю {user_id}: {e}")
+                    logger.error("Billing job: ошибка WebSocket уведомления user_id=%s: %s", user_id, e)
         
         for user_id in user_ids:
             asyncio.create_task(_notify_with_semaphore(user_id))
     except Exception as e:
-        logger.error(f" sending WebSocket notifications in billing_job: {e}")
+        logger.error("Billing job: ошибка при отправке WebSocket уведомлений: %s", e)
     finally:
         if db:
             db.close()
@@ -279,9 +299,11 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
 
     rental_count = db.query(RentalHistory).count()
     if rental_count == 0:
-        logger.debug("ℹ️ Таблица rental_history пуста, пропускаем billing_job")
+        logger.info("Billing process_rentals_sync: аренд нет, выход")
         db.close()
         return [], [], []
+
+    logger.info("Billing process_rentals_sync: старт, всего аренд в БД=%s", rental_count)
     
     rentals = (
         db.query(RentalHistory)
@@ -305,6 +327,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
         .all()
     )
     active_ids = {r.id for r in rentals}
+    logger.info("Billing process_rentals_sync: активных аренд к обработке=%s (RESERVED/IN_USE/DELIVERING...)", len(rentals))
 
     for rental in rentals:
         try:
@@ -338,6 +361,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
 
                 if 14 <= waited < 15 and not flags["pre_waiting"] and should_notify and user_has_push_tokens(db, user.id):
                     mins_left = math.ceil(15 - waited)
+                    logger.debug("Billing rental_id=%s RESERVED: pre_waiting_alert (waited=%.1f min)", rid, waited)
                     push_notifications.append((
                         user.id,
                         "pre_waiting_alert",
@@ -436,6 +460,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
 
                             if user.wallet_balance <= 0 and not flags["low_balance_zero"] and should_notify and user_has_push_tokens(db, user.id):
                                 flags["low_balance_zero"] = True
+                                logger.info("Billing rental_id=%s RESERVED: баланс 0, push balance_exhausted + telegram", rid)
                                 push_notifications.append((
                                     user.id,
                                     "balance_exhausted",
@@ -713,6 +738,10 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                 )
                                 db.add(tx)
                             
+                            logger.info(
+                                "Billing rental_id=%s IN_USE: списание за водителя %s ч, -%s ₸",
+                                rid, new_hours, driver_charge
+                            )
                             flags["driver_hours_paid"] = elapsed_hours
                             db.commit()
                     
@@ -750,6 +779,10 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                 )
                                 db.add(tx)
                             
+                            logger.info(
+                                "Billing rental_id=%s IN_USE: списание за водителя %s сут, -%s ₸",
+                                rid, new_days, driver_charge
+                            )
                             flags["driver_days_paid"] = elapsed_days
                             db.commit()
 
@@ -787,6 +820,10 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                         new_minutes_charged = prev_minutes_charged + new_minutes
                         flags["minutes_charged"] = new_minutes_charged
                         due = new_minutes_charged * car.price_per_minute
+                        logger.info(
+                            "Billing rental_id=%s IN_USE MINUTES: списание %s мин, -%s ₸, баланс после=%s",
+                            rid, new_minutes, total_charge, user.wallet_balance
+                        )
                         rental.overtime_fee = due
                         rental.total_price = (
                                 (rental.base_price or 0) +
@@ -867,6 +904,10 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                                     flags["engine_lock_scheduled"] = True
                                     if car.gps_imei:
                                         lock_requests.append((car.gps_imei, car.name, user.id))
+                                        logger.info(
+                                            "Billing rental_id=%s IN_USE: нулевой баланс 10+ мин, добавлен lock_request imei=%s",
+                                            rid, car.gps_imei
+                                        )
                                         telegram_alerts.append(
                                             f"⏱️ 10 минут с нулевого баланса истекли. Планируется блокировка двигателя. Авто: {car.name} (IMEI {car.gps_imei})."
                                         )
@@ -963,6 +1004,10 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                             new_ov_minutes_charged = prev_ov_minutes_charged + new_ov_minutes
                             flags["overtime_minutes_charged"] = new_ov_minutes_charged
                             fee_total_ov = new_ov_minutes_charged * car.price_per_minute
+                            logger.info(
+                                "Billing rental_id=%s IN_USE HOURS/DAYS: сверхтариф +%s мин, -%s ₸, баланс после=%s",
+                                rid, new_ov_minutes, total_charge, user.wallet_balance
+                            )
                             rental.overtime_fee = fee_total_ov
                             rental.total_price = (
                                 (rental.base_price or 0)
@@ -1058,7 +1103,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
 
         except Exception as e:
             db.rollback()
-            logger.debug("[Billing error] rental={rental.id}: {e}")
+            logger.warning("Billing process_rentals_sync: ошибка по аренде rental_id=%s: %s", rental.id, e)
 
     # Обработка штрафов механиков за задержку доставки
     try:
@@ -1081,6 +1126,10 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                     mechanic = db.query(User).filter(User.id == rental.delivery_mechanic_id).first()
                     if mechanic:
                         # Списываем штраф с механика
+                        logger.info(
+                            "Billing: штраф за доставку rental_id=%s mechanic_id=%s penalty=%s ₸ (%.1f мин)",
+                            rental.id, mechanic.id, penalty_fee, penalty_minutes
+                        )
                         record_wallet_transaction(db, user=mechanic, amount=-penalty_fee, ttype=WalletTransactionType.DELIVERY_PENALTY, description=f"Штраф за задержку доставки {penalty_minutes:.1f} мин", related_rental=rental)
                         mechanic.wallet_balance -= penalty_fee
                         rental.delivery_penalty_fee = penalty_fee
@@ -1109,7 +1158,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
                         db.commit()
                         
     except Exception as e:
-        logger.info(f"[Delivery penalty error]: {e}")
+        logger.warning("Billing process_rentals_sync: ошибка штрафов за доставку: %s", e)
         db.rollback()
 
     # Очистка флагов для завершённых/отменённых аренд
@@ -1117,5 +1166,9 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
         if rid not in active_ids:
             _notification_flags.pop(rid)
 
+    logger.info(
+        "Billing process_rentals_sync: конец — push=%s, telegram=%s, lock_requests=%s",
+        len(push_notifications), len(telegram_alerts), len(lock_requests)
+    )
     db.close()
     return push_notifications, telegram_alerts, lock_requests
