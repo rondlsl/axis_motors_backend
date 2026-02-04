@@ -1,4 +1,5 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from starlette.websockets import WebSocketState
 from fastapi.encoders import jsonable_encoder
 from typing import Optional, Dict, Any
 import logging
@@ -520,7 +521,7 @@ async def websocket_admin_cars_list(
             while True:
                 try:
                     data = await websocket.receive_json()
-                    if data.get("type") == "ping":
+                    if data.get("type") == "ping" and websocket.client_state == WebSocketState.CONNECTED:
                         await websocket.send_json({
                             "type": "pong",
                             "timestamp": get_local_time().isoformat()
@@ -536,11 +537,15 @@ async def websocket_admin_cars_list(
         try:
             while True:
                 try:
+                    if websocket.client_state != WebSocketState.CONNECTED:
+                        break
                     db.expire_all()
                     
                     # Получаем данные (аналогично HTTP эндпоинту)
                     cars_data = await get_admin_cars_list_data(db, status, search_query)
                     
+                    if websocket.client_state != WebSocketState.CONNECTED:
+                        break
                     await websocket.send_json({
                         "type": "admin_cars_list",
                         "data": cars_data,
@@ -553,15 +558,16 @@ async def websocket_admin_cars_list(
                     break
                 except Exception as e:
                     logger.error(f"Error in admin cars list loop: {e}")
-                    try:
-                        await websocket.send_json({
-                            "type": "error",
-                            "message": "Error fetching admin cars data",
-                            "timestamp": get_local_time().isoformat()
-                        })
-                        await asyncio.sleep(2)
-                    except Exception:
-                        break  # Connection closed, exit loop
+                    if websocket.client_state == WebSocketState.CONNECTED:
+                        try:
+                            await websocket.send_json({
+                                "type": "error",
+                                "message": "Error fetching admin cars data",
+                                "timestamp": get_local_time().isoformat()
+                            })
+                        except Exception:
+                            pass
+                    await asyncio.sleep(2)
         finally:
             receive_task.cancel()
             try:
@@ -617,7 +623,7 @@ async def websocket_support_cars_list(
             while True:
                 try:
                     data = await websocket.receive_json()
-                    if data.get("type") == "ping":
+                    if data.get("type") == "ping" and websocket.client_state == WebSocketState.CONNECTED:
                         await websocket.send_json({
                             "type": "pong",
                             "timestamp": get_local_time().isoformat()
@@ -633,10 +639,14 @@ async def websocket_support_cars_list(
         try:
             while True:
                 try:
+                    if websocket.client_state != WebSocketState.CONNECTED:
+                        break
                     db.expire_all()
 
                     cars_data = await get_admin_cars_list_data(db, status, search_query)
 
+                    if websocket.client_state != WebSocketState.CONNECTED:
+                        break
                     await websocket.send_json({
                         "type": "support_cars_list",
                         "data": cars_data,
@@ -649,15 +659,16 @@ async def websocket_support_cars_list(
                     break
                 except Exception as e:
                     logger.error(f"Error in support cars list loop: {e}")
-                    try:
-                        await websocket.send_json({
-                            "type": "error",
-                            "message": "Error fetching support cars data",
-                            "timestamp": get_local_time().isoformat()
-                        })
-                        await asyncio.sleep(2)
-                    except Exception:
-                        break  # Connection closed, exit loop
+                    if websocket.client_state == WebSocketState.CONNECTED:
+                        try:
+                            await websocket.send_json({
+                                "type": "error",
+                                "message": "Error fetching support cars data",
+                                "timestamp": get_local_time().isoformat()
+                            })
+                        except Exception:
+                            pass
+                    await asyncio.sleep(2)
         finally:
             receive_task.cancel()
             try:

@@ -41,7 +41,6 @@ from app.utils.plate_normalizer import normalize_plate_number
 from app.utils.telegram_logger import log_error_to_telegram
 from app.websocket.notifications import notify_vehicles_list_update, notify_user_status_update
 from app.utils.time_utils import get_local_time, parse_datetime_to_local
-from app.owner.availability import update_car_availability_snapshot
 from app.owner.router import calculate_owner_earnings, calculate_fuel_cost, calculate_delivery_cost
 import asyncio
 import json
@@ -322,8 +321,6 @@ async def get_car_details_response(car_id: str, db: Session) -> CarDetailSchema:
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
-    update_car_availability_snapshot(car)
-    db.flush()
     available_minutes = car.available_minutes or 0
 
     # Получаем информацию о владельце
@@ -1239,11 +1236,8 @@ async def get_car_history_summary(
     
     now = get_local_time()
     current_month_key = (now.year, now.month)
-    
-    update_car_availability_snapshot(car)
-    db.flush()
     availability_by_month[current_month_key] = car.available_minutes or 0
-    
+
     sorted_months = sorted(monthly_data.keys(), reverse=True)
     total_months = len(sorted_months)
     paginated_months = sorted_months[(page - 1) * limit : page * limit]

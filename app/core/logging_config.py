@@ -149,12 +149,15 @@ def setup_logging(
     root_logger.handlers = []
     root_logger.addHandler(handler)
     
-    # Приглушаем шумные логгеры: APScheduler и httpx/httpcore (DEBUG trace/ssl).
+    # Приглушаем шумные логгеры: APScheduler, httpx/httpcore, OpenTelemetry exporter.
+    # OTLP exporter при недоступности Tempo пишет ERROR (Failed to export traces) — не спамим.
     for name in (
         "apscheduler",
         "apscheduler.executors.default",
         "httpx",
         "httpcore",
+        "opentelemetry.exporter.otlp",
+        "opentelemetry.exporter.otlp.proto.grpc",
     ):
         logging.getLogger(name).setLevel(logging.WARNING)
 

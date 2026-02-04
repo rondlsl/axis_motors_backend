@@ -1,7 +1,11 @@
 # app/core/telemetry.py
 """
 OpenTelemetry configuration for distributed tracing.
-Exports traces to Tempo via OTLP protocol.
+Exports traces to Tempo via OTLP/gRPC (port 4317).
+
+Если Tempo недоступен или возвращает FAILED_PRECONDITION:
+- задать OTEL_ENABLED=false в .env, чтобы отключить трейсинг;
+- либо проверить, что Tempo слушает OTLP gRPC на 4317 и доступен по OTEL_EXPORTER_OTLP_ENDPOINT.
 """
 import os
 from opentelemetry import trace

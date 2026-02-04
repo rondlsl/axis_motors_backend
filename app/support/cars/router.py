@@ -30,7 +30,6 @@ from app.admin.cars.router import (
     toggle_car_notifications_impl,
 )
 from app.models.car_model import CarAvailabilityHistory, CarStatus, CarBodyType
-from app.owner.availability import update_car_availability_snapshot
 from app.owner.router import calculate_fuel_cost, calculate_delivery_cost
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.route_data import get_gps_route_data
@@ -531,9 +530,7 @@ async def get_car_history_summary_support(
 
     now = get_local_time()
     current_month_key = (now.year, now.month)
-
-    update_car_availability_snapshot(car)
-    db.flush()
+    # Текущий месяц: берём из БД (обновляется планировщиком update_cars_availability_job)
     availability_by_month[current_month_key] = car.available_minutes or 0
 
     sorted_months = sorted(monthly_data.keys(), reverse=True)
