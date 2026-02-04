@@ -17,10 +17,14 @@ from app.admin.users.schemas import (
     AdminCancelReservationResponse,
     AdminRentalReviewRequest,
     AdminRentalReviewResponse,
+    AdminAssignMechanicRequest,
+    AssignMechanicResponse,
 )
 from app.support.deps import require_support_role
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
-from app.models.user_model import User
+from app.utils.action_logger import log_action
+from app.models.user_model import User, UserRole
+from app.push.utils import user_has_push_tokens, send_localized_notification_to_user_async
 from app.models.history_model import RentalHistory, RentalStatus, RentalType
 from app.models.car_model import Car, CarStatus
 from app.rent.utils.calculate_price import get_open_price, calc_required_balance
@@ -544,3 +548,79 @@ async def support_submit_rental_review(
     Аналог POST /admin/users/rentals/review.
     """
     return await submit_rental_review_impl(db, request)
+
+
+@users_router.post("/rentals/{rental_id}/assign-mechanic", response_model=AssignMechanicResponse)
+async def support_assign_mechanic(
+    rental_id: str,
+    request: AdminAssignMechanicRequest,
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+) -> AssignMechanicResponse:
+    """
+    Назначить механика для осмотра автомобиля (support).
+    Аналог POST /admin/users/rentals/{rental_id}/assign-mechanic.
+    """
+    rental_uuid = safe_sid_to_uuid(rental_id)
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Аренда не найдена")
+
+    mechanic_uuid = safe_sid_to_uuid(request.mechanic_id)
+    mechanic = db.query(User).filter(User.id == mechanic_uuid).first()
+    if not mechanic:
+        raise HTTPException(status_code=404, detail="Механик не найден")
+
+    if mechanic.role != UserRole.MECHANIC:
+        raise HTTPException(status_code=400, detail="Указанный пользователь не является механиком")
+
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+
+    rental.mechanic_inspector_id = mechanic.id
+    rental.mechanic_inspection_status = "PENDING"
+
+    car.status = CarStatus.SERVICE
+    car.current_renter_id = mechanic.id
+
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="assign_mechanic",
+        entity_type="rental",
+        entity_id=rental.id,
+        details={"mechanic_id": str(mechanic.id), "mechanic_name": f"{mechanic.first_name} {mechanic.last_name}"},
+    )
+
+    db.commit()
+
+    try:
+        await notify_user_status_update(str(mechanic.id))
+        if rental.user_id:
+            await notify_user_status_update(str(rental.user_id))
+        if car.owner_id:
+            await notify_user_status_update(str(car.owner_id))
+    except Exception as e:
+        logger.error("Error sending WebSocket notifications: %s", e)
+
+    try:
+        if user_has_push_tokens(db, mechanic.id):
+            await send_localized_notification_to_user_async(
+                mechanic.id,
+                "inspection_assigned_by_admin",
+                "inspection_assigned_by_admin",
+                car_name=car.name,
+                plate_number=car.plate_number,
+            )
+    except Exception as e:
+        logger.error("Error sending push notification: %s", e)
+
+    return AssignMechanicResponse(
+        message="Механик назначен",
+        rental_id=rental_id,
+        mechanic_id=request.mechanic_id,
+        mechanic_name=f"{mechanic.first_name or ''} {mechanic.last_name or ''}".strip(),
+        car_name=car.name,
+        plate_number=car.plate_number,
+    )
