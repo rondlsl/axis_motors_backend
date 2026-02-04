@@ -149,9 +149,13 @@ def setup_logging(
     root_logger.handlers = []
     root_logger.addHandler(handler)
     
-    # Единственное исключение: APScheduler пишет каждую секунду и забивает лог.
-    # Только его приглушаем до WARNING. Все остальные логи (запросы, app, uvicorn и т.д.) — как есть.
-    for name in ("apscheduler", "apscheduler.executors.default"):
+    # Приглушаем шумные логгеры: APScheduler и httpx/httpcore (DEBUG trace/ssl).
+    for name in (
+        "apscheduler",
+        "apscheduler.executors.default",
+        "httpx",
+        "httpcore",
+    ):
         logging.getLogger(name).setLevel(logging.WARNING)
 
 

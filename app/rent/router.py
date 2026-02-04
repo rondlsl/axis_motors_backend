@@ -39,7 +39,7 @@ from app.rent.exceptions import InsufficientBalanceException
 from app.wallet.utils import record_wallet_transaction
 from app.models.wallet_transaction_model import WalletTransactionType, WalletTransaction
 from app.push.enums import NotificationStatus
-from app.rent.utils.calculate_price import calculate_total_price, get_open_price, calc_required_balance, calculate_rental_cost_breakdown, calculate_rental_cost_breakdown
+from app.rent.utils.calculate_price import calculate_total_price, get_open_price, calc_required_balance, calculate_rental_cost_breakdown
 from app.gps_api.utils.route_data import get_gps_route_data
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.car_data import auto_lock_vehicle_after_rental, execute_gps_sequence, send_open, send_unlock_engine

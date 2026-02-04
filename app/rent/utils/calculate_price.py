@@ -57,6 +57,20 @@ def calculate_total_price(
     return int(base * (1 - discount))
 
 
+def get_days_discount_multiplier(duration: int) -> float:
+    """
+    Множитель к базовой цене за сутки с учётом скидки по длительности.
+    < 3 дней — 1.0, >= 3 дней — 0.95, >= 7 дней — 0.90, >= 30 дней — 0.85.
+    """
+    if duration >= 30:
+        return 0.85
+    if duration >= 7:
+        return 0.90
+    if duration >= 3:
+        return 0.95
+    return 1.0
+
+
 DELIVERY_EXTRA_FEE = 10_000
 
 
@@ -115,18 +129,9 @@ def calc_required_balance(
         if duration is None:
             raise HTTPException(status_code=400,
                                 detail="duration обязателен для посуточной аренды.")
-        # Дневной: price_per_day * duration + price_per_minute * 60 + топливо
-        # base = car.price_per_day * duration
-        # if duration >= 30:
-        #     discount = 0.15
-        # elif duration >= 7:
-        #     discount = 0.10
-        # elif duration >= 3:
-        #     discount = 0.05
-        # else:
-        #     discount = 0.0
-        # base_price = int(base * (1 - discount))
-        base_price = car.price_per_day * duration
+        # Дневной: (price_per_day * duration) с учётом скидки + price_per_minute * 60 + топливо
+        base = car.price_per_day * duration
+        base_price = int(base * get_days_discount_multiplier(duration))
         
         one_hour_minute_cost = car.price_per_minute * 60
         
@@ -205,12 +210,13 @@ def calculate_rental_cost_breakdown(
         
         driver_fee = DRIVER_FEE_PER_HOUR * duration if with_driver else 0
         total_minimum_balance = int(open_fee + base_price + minute_cost_reserve + fuel_cost + delivery_fee + driver_fee)
-    else:  
+    else:  # RentalType.DAYS
         if duration is None:
             raise HTTPException(status_code=400,
                                 detail="duration обязателен для посуточной аренды.")
-        base_price = car.price_per_day * duration
-        minute_cost_reserve = car.price_per_minute * 60 
+        base = car.price_per_day * duration
+        base_price = int(base * get_days_discount_multiplier(duration))
+        minute_cost_reserve = car.price_per_minute * 60
         
         # Топливо: электрички 50л, бензиновые 20л (синхронизировано с calc_required_balance)
         if car.body_type == CarBodyType.ELECTRIC:
