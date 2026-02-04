@@ -19,6 +19,8 @@ from app.admin.users.schemas import (
     AdminRentalReviewResponse,
     AdminAssignMechanicRequest,
     AssignMechanicResponse,
+    MechanicStartInspectionResponse,
+    MechanicPhotoUploadResponse,
 )
 from app.support.deps import require_support_role
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
@@ -623,4 +625,156 @@ async def support_assign_mechanic(
         mechanic_name=f"{mechanic.first_name or ''} {mechanic.last_name or ''}".strip(),
         car_name=car.name,
         plate_number=car.plate_number,
+    )
+
+
+@users_router.post("/rentals/{rental_id}/mechanic-start-inspection", response_model=MechanicStartInspectionResponse)
+async def support_mechanic_start_inspection(
+    rental_id: str,
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+) -> MechanicStartInspectionResponse:
+    """
+    Начать осмотр механиком (support). Аналог POST /admin/users/rentals/{rental_id}/mechanic-start-inspection.
+    """
+    rental_uuid = safe_sid_to_uuid(rental_id)
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Аренда не найдена")
+
+    if not rental.mechanic_inspector_id:
+        raise HTTPException(status_code=400, detail="Механик-инспектор не назначен для этой аренды")
+
+    if rental.mechanic_inspection_status != "PENDING":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Осмотр может быть начат только со статусом PENDING. Текущий статус: {rental.mechanic_inspection_status}",
+        )
+
+    car = db.query(Car).filter(Car.id == rental.car_id).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+
+    mechanic_id = rental.mechanic_inspector_id
+
+    if not rental.mechanic_inspection_start_time:
+        rental.mechanic_inspection_start_time = get_local_time()
+        rental.mechanic_inspection_start_latitude = car.latitude
+        rental.mechanic_inspection_start_longitude = car.longitude
+
+    rental.mechanic_inspection_status = "IN_USE"
+
+    car.status = CarStatus.IN_USE
+    car.current_renter_id = mechanic_id
+
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="mechanic_start_inspection",
+        entity_type="rental",
+        entity_id=rental.id,
+        details={"status": "IN_USE", "mechanic_id": str(mechanic_id)},
+    )
+
+    db.commit()
+
+    try:
+        await notify_user_status_update(str(mechanic_id))
+        if rental.user_id:
+            await notify_user_status_update(str(rental.user_id))
+    except Exception as e:
+        logger.error("Error sending WebSocket notifications: %s", e)
+
+    return MechanicStartInspectionResponse(
+        message="Осмотр начат",
+        rental_id=rental_id,
+        inspection_status="IN_USE",
+    )
+
+
+@users_router.post("/rentals/{rental_id}/mechanic-photos-before", response_model=MechanicPhotoUploadResponse)
+async def support_mechanic_upload_photos_before(
+    rental_id: str,
+    selfie: Optional[UploadFile] = File(None),
+    car_photos: List[UploadFile] = File(...),
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+) -> MechanicPhotoUploadResponse:
+    """
+    Загрузка фото ДО осмотра: селфи (опционально) + кузов (support).
+    Аналог POST /admin/users/rentals/{rental_id}/mechanic-photos-before.
+    """
+    rental_uuid = safe_sid_to_uuid(rental_id)
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Аренда не найдена")
+
+    validate_photos(car_photos, "car_photos")
+    urls = list(rental.mechanic_photos_before or [])
+
+    if selfie:
+        validate_photos([selfie], "selfie")
+        selfie_url = await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/mechanic/before/selfie/")
+        urls.append(selfie_url)
+
+    for p in car_photos:
+        photo_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/mechanic/before/car/")
+        urls.append(photo_url)
+
+    rental.mechanic_photos_before = urls
+
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="mechanic_upload_photos_before",
+        entity_type="rental",
+        entity_id=rental.id,
+        details={"photo_count": len(urls)},
+    )
+    db.commit()
+
+    return MechanicPhotoUploadResponse(
+        message="Фото до осмотра (селфи+кузов) загружены",
+        photo_count=len(urls),
+    )
+
+
+@users_router.post("/rentals/{rental_id}/mechanic-photos-before-interior", response_model=MechanicPhotoUploadResponse)
+async def support_mechanic_upload_photos_before_interior(
+    rental_id: str,
+    interior_photos: List[UploadFile] = File(...),
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+) -> MechanicPhotoUploadResponse:
+    """
+    Загрузка фото салона ДО осмотра (support).
+    Аналог POST /admin/users/rentals/{rental_id}/mechanic-photos-before-interior.
+    """
+    rental_uuid = safe_sid_to_uuid(rental_id)
+    rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Аренда не найдена")
+
+    validate_photos(interior_photos, "interior_photos")
+    urls = list(rental.mechanic_photos_before or [])
+
+    for p in interior_photos:
+        photo_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/mechanic/before/interior/")
+        urls.append(photo_url)
+
+    rental.mechanic_photos_before = urls
+
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="mechanic_upload_photos_before_interior",
+        entity_type="rental",
+        entity_id=rental.id,
+        details={"photo_count": len(urls)},
+    )
+    db.commit()
+
+    return MechanicPhotoUploadResponse(
+        message="Фото салона до осмотра загружены",
+        photo_count=len(urls),
     )
