@@ -5553,26 +5553,8 @@ async def admin_upload_photos_after_car(
         raise HTTPException(status_code=500, detail=f"Ошибка при загрузке фотографий кузова: {str(e)}")
 
 
-
-@users_router.post("/rentals/review", response_model=AdminRentalReviewResponse)
-async def admin_submit_rental_review(
-    request: AdminRentalReviewRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-) -> AdminRentalReviewResponse:
-    """
-    Добавить/обновить оценку и комментарий к аренде от имени клиента (только для админа).
-    После добавления отзыва аренда автоматически завершается, а машина переходит в статус PENDING.
-    
-    - rental_id: ID аренды
-    - rating: оценка от 1 до 5
-    - comment: текстовый комментарий (опционально)
-    """
-    logger.info(f"[REVIEW] Начало обработки. rental_id={request.rental_id}, rating={request.rating}")
-    
-    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
-        raise HTTPException(status_code=403, detail="Только администратор или техподдержка может добавлять оценки от имени клиентов")
-    
+async def submit_rental_review_impl(db: Session, request: AdminRentalReviewRequest) -> dict:
+    """Общая логика добавления отзыва и завершения аренды. Используется admin и support."""
     try:
         rental_uuid = safe_sid_to_uuid(request.rental_id)
         logger.info(f"[REVIEW] rental_uuid={rental_uuid}")
@@ -5965,6 +5947,21 @@ async def admin_submit_rental_review(
         logger.info(f"[REVIEW] Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Ошибка при завершении аренды: {str(e)}")
 
+
+@users_router.post("/rentals/review", response_model=AdminRentalReviewResponse)
+async def admin_submit_rental_review(
+    request: AdminRentalReviewRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> AdminRentalReviewResponse:
+    """
+    Добавить/обновить оценку и комментарий к аренде от имени клиента (только для админа).
+    После добавления отзыва аренда автоматически завершается, а машина переходит в статус PENDING.
+    """
+    logger.info(f"[REVIEW] Начало обработки. rental_id={request.rental_id}, rating={request.rating}")
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT]:
+        raise HTTPException(status_code=403, detail="Только администратор или техподдержка может добавлять оценки от имени клиентов")
+    return await submit_rental_review_impl(db, request)
 
 
 @users_router.post("/rentals/cancel", response_model=AdminCancelReservationResponse)
