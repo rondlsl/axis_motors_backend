@@ -77,6 +77,7 @@ from app.monitoring.router import router as MonitoringRouter
 from app.websocket.router import websocket_router
 from app.app_versions.router import router as AppVersionsRouter
 from app.admin.error_logs.router import router as ErrorLogsRouter
+from app.device_location.router import router as DeviceLocationRouter
 
 # === APP ===
 app = FastAPI(
@@ -706,6 +707,7 @@ app.include_router(MonitoringRouter)
 app.include_router(websocket_router)
 app.include_router(AppVersionsRouter)
 app.include_router(ErrorLogsRouter, prefix="/admin")
+app.include_router(DeviceLocationRouter)
 
 @app.get("/")
 async def root(db: Session = Depends(get_db)):
