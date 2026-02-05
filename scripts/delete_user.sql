@@ -10,12 +10,12 @@
 -- 1. НАЙТИ ПОЛЬЗОВАТЕЛЯ по номеру телефона
 SELECT id, phone_number, email, first_name, last_name, role
 FROM users
-WHERE phone_number = '77056478662';  -- <-- замени на нужный номер
+WHERE phone_number = '77471327844';  -- <-- замени на нужный номер
 
 -- 2. НАЙТИ ПОЛЬЗОВАТЕЛЯ по почте
 SELECT id, phone_number, email, first_name, last_name, role
 FROM users
-WHERE email = 'rayoknu@gmail.com';  -- <-- замени на нужный email
+WHERE email = 'kcctoo@mail.ru';  -- <-- замени на нужный email
 
 -- 3. УДАЛИТЬ по номеру телефона (один пользователь)
 -- DELETE FROM users WHERE phone_number = '+77001234567';

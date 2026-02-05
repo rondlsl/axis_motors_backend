@@ -1,63 +1,183 @@
 """
-Отправка email через SMTP с перебором аккаунтов при ошибке (лимиты и т.д.).
-Таймаут и перехват всех исключений — чтобы недоступность SMTP не роняла сервер.
+Отправка email через SMTP с перебором серверов/портов и аккаунтов при ошибке.
+Жёсткий лимит 10 секунд на всю операцию — чтобы бекенд не зависал.
 """
 import smtplib
+import time
+import socket
+from email.message import EmailMessage
+from typing import List, Tuple, Optional
 
 from app.core.config import SMTP_HOST, SMTP_PORT, SMTP_ACCOUNTS, SMTP_FROM
 from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# Таймаут в секундах: без него при "Network is unreachable" соединение может висеть минуты и блокировать воркеры
-SMTP_TIMEOUT = 10
+# Максимум 10 секунд на всю отправку
+SMTP_TOTAL_TIMEOUT = 10
 
+# Fallback: несколько серверов/портов
+SMTP_SERVERS = [
+    ("smtp.gmail.com", 587),           # основной TLS
+    ("smtp.gmail.com", 465),           # SSL
+    ("smtp.gmail.com", 25),            # резервный порт
+    ("smtp-relay.gmail.com", 587),     # альтернативный сервер
+]
 
-def send_email_with_fallback(msg, to_address, from_override: str | None = None) -> bool:
+def _test_port(host: str, port: int, timeout: float = 2.0) -> bool:
+    """Быстрая проверка доступности порта."""
+    try:
+        sock = socket.create_connection((host, port), timeout=timeout)
+        sock.close()
+        return True
+    except (socket.timeout, ConnectionRefusedError, OSError):
+        return False
+
+def _get_smtp_servers() -> List[Tuple[str, int]]:
+    """Список (host, port) для перебора: сначала из env, затем fallback."""
+    servers = []
+    
+    # Основной из конфига
+    if SMTP_HOST and SMTP_PORT:
+        servers.append((SMTP_HOST, SMTP_PORT))
+    
+    # Добавляем fallback, исключая дубликаты
+    for host, port in SMTP_SERVERS:
+        if (host, port) not in servers:
+            servers.append((host, port))
+    
+    return servers
+
+def send_email_with_fallback(
+    msg: EmailMessage, 
+    to_address: str | List[str], 
+    from_override: Optional[str] = None
+) -> bool:
     """
-    Отправить письмо (MIMEText/MIMEMultipart). Пробует по очереди SMTP_ACCOUNTS;
-    при ошибке (лимит, отказ, сеть недоступна) переходит к следующему аккаунту.
-    Исключения не пробрасываются — возвращается False, сервер не падает.
-
+    Отправить письмо. Перебирает серверы (host, port) и аккаунты.
+    Общее время всех попыток не превышает SMTP_TOTAL_TIMEOUT секунд.
+    
     :param msg: готовое сообщение (Subject, From, To уже заданы у msg)
     :param to_address: email получателя или список адресов
-    :param from_override: если задан, используется как From для всех попыток
-    :return: True если отправка прошла хотя бы одним аккаунтом, иначе False
+    :param from_override: если задан, используется как From
+    :return: True если отправка прошла, иначе False
     """
     try:
-        if not SMTP_HOST or not SMTP_ACCOUNTS:
-            logger.warning("SMTP not configured: no SMTP_HOST or no SMTP accounts")
+        if not SMTP_ACCOUNTS:
+            logger.warning("SMTP not configured: no SMTP accounts")
+            return False
+
+        servers = _get_smtp_servers()
+        if not servers:
+            logger.warning("SMTP not configured: no servers")
             return False
 
         to_list = [to_address] if isinstance(to_address, str) else list(to_address)
         to_display = to_list[0] if len(to_list) == 1 else ",".join(to_list[:3])
-        logger.info("SMTP: отправка email на to=%s", to_display)
+        
+        logger.info("SMTP: отправка email на to=%s (макс %ss)", to_display, SMTP_TOTAL_TIMEOUT)
 
+        deadline = time.monotonic() + SMTP_TOTAL_TIMEOUT
         last_error = None
-        for smtp_user, smtp_pass in SMTP_ACCOUNTS:
-            from_addr = from_override or SMTP_FROM or smtp_user
-            try:
-                msg["From"] = from_addr
-                if msg.get("To") is None and len(to_list) == 1:
-                    msg["To"] = to_list[0]
-                # timeout — чтобы при "Network is unreachable" не висеть минутами и не ронять воркеры
-                with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=SMTP_TIMEOUT) as server:
-                    server.starttls()
-                    server.login(smtp_user, smtp_pass)
-                    server.sendmail(from_addr, to_list, msg.as_string())
-                logger.info("SMTP: email отправлен на to=%s через %s", to_display, smtp_user)
-                return True
-            except Exception as e:
-                last_error = e
-                logger.warning("SMTP send failed for %s (to=%s): %s", smtp_user, to_display, e)
+        network_errors = 0
+        auth_errors = 0
+        
+        # Быстрая проверка: есть ли вообще сетевой доступ
+        if deadline - time.monotonic() > 1:
+            test_host, test_port = servers[0]
+            if not _test_port(test_host, test_port, timeout=1):
+                logger.warning("SMTP: базовый тест сети не пройден (%s:%s)", test_host, test_port)
+                # Не прерываем, пробуем остальные серверы
 
+        for host, port in servers:
+            if time.monotonic() >= deadline:
+                logger.warning("SMTP: превышен общий таймаут %ss, прерываем", SMTP_TOTAL_TIMEOUT)
+                break
+            
+            # Быстрая проверка порта перед попыткой отправки
+            time_left = deadline - time.monotonic()
+            if time_left > 0.5:  # Если осталось время
+                if not _test_port(host, port, timeout=min(1.0, time_left)):
+                    logger.debug("SMTP: порт %s:%s недоступен, пропускаем", host, port)
+                    continue
+            
+            for smtp_user, smtp_pass in SMTP_ACCOUNTS:
+                if time.monotonic() >= deadline:
+                    break
+                
+                from_addr = from_override or SMTP_FROM or smtp_user
+                
+                try:
+                    # Устанавливаем заголовки
+                    msg["From"] = from_addr
+                    if msg.get("To") is None and len(to_list) == 1:
+                        msg["To"] = to_list[0]
+                    
+                    # Определяем таймаут для этой попытки
+                    attempt_timeout = max(1, min(3, int(deadline - time.monotonic())))
+                    
+                    if port == 465:  # SSL
+                        # SMTP_SSL может игнорировать timeout в конструкторе
+                        server = smtplib.SMTP_SSL(host, port, timeout=attempt_timeout)
+                        try:
+                            server.login(smtp_user, smtp_pass)
+                            server.sendmail(from_addr, to_list, msg.as_string())
+                            logger.info("SMTP: email отправлен на to=%s через %s@%s:%s", 
+                                       to_display, smtp_user, host, port)
+                            return True
+                        finally:
+                            try:
+                                server.quit()
+                            except Exception:
+                                pass
+                    else:  # TLS или plain
+                        server = smtplib.SMTP(host, port, timeout=attempt_timeout)
+                        try:
+                            server.starttls()
+                            server.login(smtp_user, smtp_pass)
+                            server.sendmail(from_addr, to_list, msg.as_string())
+                            logger.info("SMTP: email отправлен на to=%s через %s@%s:%s", 
+                                       to_display, smtp_user, host, port)
+                            return True
+                        finally:
+                            try:
+                                server.quit()
+                            except Exception:
+                                pass
+                            
+                except smtplib.SMTPAuthenticationError as e:
+                    auth_errors += 1
+                    last_error = e
+                    logger.warning("SMTP auth failed %s@%s:%s (to=%s): %s", 
+                                  smtp_user, host, port, to_display, e)
+                except (socket.error, ConnectionError, TimeoutError) as e:
+                    network_errors += 1
+                    last_error = e
+                    logger.warning("SMTP network error %s@%s:%s (to=%s): %s", 
+                                  smtp_user, host, port, to_display, e)
+                except Exception as e:
+                    last_error = e
+                    logger.warning("SMTP failed %s@%s:%s (to=%s): %s", 
+                                  smtp_user, host, port, to_display, e)
+
+        # Анализ причины ошибки
         if last_error:
-            logger.error("SMTP: все аккаунты недоступны; last error (to=%s): %s", to_display, last_error)
+            if network_errors > 0 and auth_errors == 0:
+                error_msg = "Сетевая ошибка: возможно, нет доступа к интернету или порты заблокированы"
+            elif auth_errors > 0:
+                error_msg = "Ошибки аутентификации: проверьте учетные данные SMTP"
+            else:
+                error_msg = "Все попытки отправки не удались"
+                
+            logger.error("SMTP: %s; network_errors=%d, auth_errors=%d, last error (to=%s): %s",
+                        error_msg, network_errors, auth_errors, to_display, last_error)
+        
         return False
+        
     except Exception as e:
         try:
             to_fallback = to_address if isinstance(to_address, str) else (list(to_address)[0] if to_address else "?")
         except Exception:
             to_fallback = "?"
-        logger.error("SMTP: неожиданная ошибка при отправке (to=%s): %s", to_fallback, e, exc_info=True)
+        logger.error("SMTP: неожиданная ошибка (to=%s): %s", to_fallback, e, exc_info=True)
         return False
