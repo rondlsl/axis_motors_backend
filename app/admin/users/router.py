@@ -6967,6 +6967,7 @@ async def send_sms_to_user(
         )
     
     try:
+        logger.info("Mobizon: отправка SMS пользователю user_id=%s, phone=%s (admin users)", user_id, phone_number)
         result = await send_sms_mobizon(phone_number, message_text, SMS_TOKEN)
         
         log_action(
@@ -6987,7 +6988,7 @@ async def send_sms_to_user(
             result=result
         )
     except Exception as e:
-        logger.error(f"SMS sending error: {e}")
+        logger.error("SMS sending error (Mobizon): user_id=%s, phone=%s, error=%s", user_id, phone_number, e, exc_info=True)
         try:
             await log_error_to_telegram(
                 error=e,

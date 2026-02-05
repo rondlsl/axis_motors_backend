@@ -1,8 +1,8 @@
 import httpx
-import logging
 from app.core.config import SMS_TOKEN
+from app.core.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 async def send_sms_mobizon(recipient: str, sms_text: str, api_key: str, sender: str = None):
@@ -11,7 +11,7 @@ async def send_sms_mobizon(recipient: str, sms_text: str, api_key: str, sender: 
         error_msg = "SMS_TOKEN не настроен. Проверьте переменную окружения SMS_TOKEN."
         logger.error(error_msg)
         raise ValueError(error_msg)
-    
+
     url = "https://api.mobizon.kz/service/message/sendsmsmessage"
     params = {
         "recipient": recipient,
@@ -20,7 +20,9 @@ async def send_sms_mobizon(recipient: str, sms_text: str, api_key: str, sender: 
     }
     if sender:
         params["from"] = sender
-    
+
+    logger.info("Mobizon: отправка SMS на recipient=%s, длина_текста=%s, sender=%s", recipient, len(sms_text), sender)
+
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(url, params=params)
@@ -54,15 +56,15 @@ async def send_sms_mobizon(recipient: str, sms_text: str, api_key: str, sender: 
             
     except httpx.TimeoutException as e:
         error_msg = f"Таймаут при отправке SMS на {recipient}: {e}"
-        logger.error(error_msg)
+        logger.error(error_msg, exc_info=True)
         raise Exception(error_msg)
     except httpx.RequestError as e:
         error_msg = f"Ошибка сети при отправке SMS на {recipient}: {e}"
-        logger.error(error_msg)
+        logger.error(error_msg, exc_info=True)
         raise Exception(error_msg)
     except Exception as e:
         error_msg = f"Неожиданная ошибка при отправке SMS на {recipient}: {e}"
-        logger.error(error_msg)
+        logger.error(error_msg, exc_info=True)
         raise
 
 
@@ -98,12 +100,13 @@ Google play:
         error_msg = "SMS_TOKEN не настроен"
         logger.error(error_msg)
         return {"message": "SMS sending failed", "error": error_msg}
-    
+
     try:
+        logger.info("Mobizon: отправка SMS (guarantor_invitation) на %s", guarantor_phone)
         result = await send_sms_mobizon(guarantor_phone, sms_text, SMS_TOKEN)
         return {"message": "SMS sent successfully", "result": result}
     except Exception as e:
-        logger.error(f"SMS sending error: {e}", exc_info=True)
+        logger.error("SMS sending error (guarantor_invitation): recipient=%s, error=%s", guarantor_phone, e, exc_info=True)
         return {"message": "SMS sending failed", "error": str(e)}
 
 
@@ -120,12 +123,13 @@ async def send_user_rejection_with_guarantor_sms(user_phone: str, user_name: str
         error_msg = "SMS_TOKEN не настроен"
         logger.error(error_msg)
         return {"message": "SMS sending failed", "error": error_msg}
-    
+
     try:
+        logger.info("Mobizon: отправка SMS (user_rejection_guarantor) на %s", user_phone)
         result = await send_sms_mobizon(user_phone, sms_text, SMS_TOKEN)
         return {"message": "SMS sent successfully", "result": result}
     except Exception as e:
-        logger.error(f"SMS sending error: {e}", exc_info=True)
+        logger.error("SMS sending error (user_rejection_guarantor): recipient=%s, error=%s", user_phone, e, exc_info=True)
         return {"message": "SMS sending failed", "error": str(e)}
 
 
@@ -155,12 +159,13 @@ Google Play: Скоро будет доступно
         error_msg = "SMS_TOKEN не настроен"
         logger.error(error_msg)
         return {"message": "SMS sending failed", "error": error_msg}
-    
+
     try:
+        logger.info("Mobizon: отправка SMS (guarantor_approval) на %s", guarantor_phone)
         result = await send_sms_mobizon(guarantor_phone, sms_text, SMS_TOKEN)
         return {"message": "SMS sent successfully", "result": result}
     except Exception as e:
-        logger.error(f"SMS sending error: {e}", exc_info=True)
+        logger.error("SMS sending error (guarantor_approval): recipient=%s, error=%s", guarantor_phone, e, exc_info=True)
         return {"message": "SMS sending failed", "error": str(e)}
 
 
@@ -195,12 +200,13 @@ ID машины: {car_id}
         error_msg = "SMS_TOKEN не настроен"
         logger.error(error_msg)
         return {"message": "SMS sending failed", "error": error_msg}
-    
+
     try:
+        logger.info("Mobizon: отправка SMS (rental_start) на %s, rent_id=%s", client_phone, rent_id)
         result = await send_sms_mobizon(client_phone, sms_text, SMS_TOKEN)
         return {"message": "SMS sent successfully", "result": result}
     except Exception as e:
-        logger.error(f"SMS sending error: {e}", exc_info=True)
+        logger.error("SMS sending error (rental_start): recipient=%s, error=%s", client_phone, e, exc_info=True)
         return {"message": "SMS sending failed", "error": str(e)}
 
 
@@ -235,12 +241,13 @@ ID машины: {car_id}
         error_msg = "SMS_TOKEN не настроен"
         logger.error(error_msg)
         return {"message": "SMS sending failed", "error": error_msg}
-    
+
     try:
+        logger.info("Mobizon: отправка SMS (rental_complete) на %s, rent_id=%s", client_phone, rent_id)
         result = await send_sms_mobizon(client_phone, sms_text, SMS_TOKEN)
         return {"message": "SMS sent successfully", "result": result}
     except Exception as e:
-        logger.error(f"SMS sending error: {e}", exc_info=True)
+        logger.error("SMS sending error (rental_complete): recipient=%s, error=%s", client_phone, e, exc_info=True)
         return {"message": "SMS sending failed", "error": str(e)}
 
 
@@ -263,12 +270,13 @@ async def send_guarantor_contract_signed_sms(
         error_msg = "SMS_TOKEN не настроен"
         logger.error(error_msg)
         return {"message": "SMS sending failed", "error": error_msg}
-    
+
     try:
+        logger.info("Mobizon: отправка SMS (guarantor_contract_signed) на %s", guarantor_phone)
         result = await send_sms_mobizon(guarantor_phone, sms_text, SMS_TOKEN)
         return {"message": "SMS sent successfully", "result": result}
     except Exception as e:
-        logger.error(f"SMS sending error: {e}", exc_info=True)
+        logger.error("SMS sending error (guarantor_contract_signed): recipient=%s, error=%s", guarantor_phone, e, exc_info=True)
         return {"message": "SMS sending failed", "error": str(e)}
 
 
@@ -292,10 +300,11 @@ async def send_client_guarantor_confirmed_sms(
         error_msg = "SMS_TOKEN не настроен"
         logger.error(error_msg)
         return {"message": "SMS sending failed", "error": error_msg}
-    
+
     try:
+        logger.info("Mobizon: отправка SMS (client_guarantor_confirmed) на %s", client_phone)
         result = await send_sms_mobizon(client_phone, sms_text, SMS_TOKEN)
         return {"message": "SMS sent successfully", "result": result}
     except Exception as e:
-        logger.error(f"SMS sending error: {e}", exc_info=True)
+        logger.error("SMS sending error (client_guarantor_confirmed): recipient=%s, error=%s", client_phone, e, exc_info=True)
         return {"message": "SMS sending failed", "error": str(e)}

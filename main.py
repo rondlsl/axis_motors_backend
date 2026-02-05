@@ -744,7 +744,7 @@ async def health_check_cars():
         # Send Telegram alert
         try:
             alert_message = f"🚨 <b>Cars Service is DOWN!</b>\n\nError: {str(e)}\nURL: {cars_url}\nTime: {datetime.now().isoformat()}"
-            await send_telegram_message(alert_message, TELEGRAM_BOT_TOKEN_2)
+            await send_telegram_message(alert_message, TELEGRAM_BOT_TOKEN_2)  # pyright: ignore[reportUndefinedVariable]
         except:
             pass
         

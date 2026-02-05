@@ -71,6 +71,7 @@ async def send_custom_sms(
     
     # Отправка SMS
     try:
+        logger.info("Mobizon: отправка SMS на phone=%s (admin SMS), admin_id=%s", phone_number, current_user.id)
         result = await send_sms_mobizon(phone_number, message_text, SMS_TOKEN)
         
         log_action(
@@ -90,7 +91,7 @@ async def send_custom_sms(
             result=result
         )
     except Exception as e:
-        logger.error("Ошибка отправки SMS: to=%s, admin_id=%s, error=%s", phone_number, current_user.id, e)
+        logger.error("Ошибка отправки SMS (Mobizon): to=%s, admin_id=%s, error=%s", phone_number, current_user.id, e, exc_info=True)
         try:
             await log_error_to_telegram(
                 error=e,

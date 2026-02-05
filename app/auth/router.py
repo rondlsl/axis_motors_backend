@@ -447,12 +447,13 @@ async def send_sms(
     else:
         try:
             if SMS_TOKEN:
+                logger.info("Mobizon: отправка SMS кода на phone=%s (auth)", phone_number)
                 await send_sms_mobizon(phone_number, sms_text, f"{SMS_TOKEN}", sender="AZV Motors")
                 await SMSRateLimit.update(phone_number, client_ip)
             else:
                 logger.warning("SMS_TOKEN is not configured; skipping Mobizon send")
         except Exception as e:
-            logger.error(f"Mobizon send error: {e}")
+            logger.error("Mobizon send error: phone=%s, error=%s", phone_number, e, exc_info=True)
             try:
                 await log_error_to_telegram(
                     error=e,
