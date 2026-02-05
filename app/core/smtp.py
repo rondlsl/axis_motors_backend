@@ -5,6 +5,7 @@
 import smtplib
 import time
 import socket
+import urllib.request
 from email.message import EmailMessage
 from typing import List, Tuple, Optional
 
@@ -48,6 +49,39 @@ def _get_smtp_servers() -> List[Tuple[str, int]]:
     
     return servers
 
+
+def network_diagnostics() -> bool:
+    """Проверка DNS, порта 443 и доступа в интернет. Результаты пишутся в лог."""
+    tests = []
+
+    # 1. Проверка DNS
+    try:
+        ip = socket.gethostbyname("google.com")
+        tests.append(f"✓ DNS работает: google.com -> {ip}")
+    except Exception:
+        tests.append("✗ DNS не работает")
+
+    # 2. Проверка порта 443 (HTTPS)
+    try:
+        sock = socket.create_connection(("google.com", 443), timeout=5)
+        sock.close()
+        tests.append("✓ Порт 443 (HTTPS) доступен")
+    except Exception:
+        tests.append("✗ Порт 443 заблокирован")
+
+    # 3. Проверка доступа к интернету
+    try:
+        urllib.request.urlopen("https://google.com", timeout=5)
+        tests.append("✓ Интернет доступен")
+    except Exception:
+        tests.append("✗ Нет доступа к интернету")
+
+    for test in tests:
+        logger.info("Диагностика сети: %s", test)
+
+    return all("✓" in test for test in tests)
+
+
 def send_email_with_fallback(
     msg: EmailMessage, 
     to_address: str | List[str], 
@@ -72,6 +106,10 @@ def send_email_with_fallback(
             logger.warning("SMTP not configured: no servers")
             return False
 
+        if not network_diagnostics():
+            logger.error("SMTP: Сеть полностью недоступна!")
+            return False
+
         to_list = [to_address] if isinstance(to_address, str) else list(to_address)
         to_display = to_list[0] if len(to_list) == 1 else ",".join(to_list[:3])
         
@@ -81,6 +119,7 @@ def send_email_with_fallback(
         last_error = None
         network_errors = 0
         auth_errors = 0
+        relay_errors = 0  # 550 Mail relay denied и т.п.
         
         # Быстрая проверка: есть ли вообще сетевой доступ
         if deadline - time.monotonic() > 1:
@@ -148,29 +187,46 @@ def send_email_with_fallback(
                 except smtplib.SMTPAuthenticationError as e:
                     auth_errors += 1
                     last_error = e
-                    logger.warning("SMTP auth failed %s@%s:%s (to=%s): %s", 
+                    logger.warning("SMTP auth failed %s@%s:%s (to=%s): %s",
                                   smtp_user, host, port, to_display, e)
+                except smtplib.SMTPException as e:
+                    relay_errors += 1
+                    last_error = e
+                    err_str = str(e).lower()
+                    if "relay denied" in err_str or "5.7.0" in str(e):
+                        logger.warning("SMTP relay denied %s@%s:%s (to=%s): зарегистрируйте IP сервера в Google Workspace → SMTP Relay Settings. %s",
+                                      smtp_user, host, port, to_display, e)
+                    else:
+                        logger.warning("SMTP response error %s@%s:%s (to=%s): %s",
+                                      smtp_user, host, port, to_display, e)
                 except (socket.error, ConnectionError, TimeoutError) as e:
                     network_errors += 1
                     last_error = e
-                    logger.warning("SMTP network error %s@%s:%s (to=%s): %s", 
+                    logger.warning("SMTP network error %s@%s:%s (to=%s): %s",
                                   smtp_user, host, port, to_display, e)
                 except Exception as e:
                     last_error = e
-                    logger.warning("SMTP failed %s@%s:%s (to=%s): %s", 
+                    logger.warning("SMTP failed %s@%s:%s (to=%s): %s",
                                   smtp_user, host, port, to_display, e)
 
         # Анализ причины ошибки
         if last_error:
-            if network_errors > 0 and auth_errors == 0:
-                error_msg = "Сетевая ошибка: возможно, нет доступа к интернету или порты заблокированы"
+            err_str = str(last_error).lower()
+            if "relay denied" in err_str or "5.7.0" in str(last_error):
+                error_msg = (
+                    "Gmail SMTP Relay: зарегистрируйте IP сервера в Google Workspace "
+                    "(Admin → Apps → Google Workspace → Gmail → Routing → SMTP relay). "
+                    "См. https://support.google.com/a/answer/6140680"
+                )
+            elif network_errors > 0 and auth_errors == 0 and relay_errors == 0:
+                error_msg = "Сетевая ошибка: возможно, нет доступа к интернету или порты 587/465 заблокированы"
             elif auth_errors > 0:
                 error_msg = "Ошибки аутентификации: проверьте учетные данные SMTP"
             else:
                 error_msg = "Все попытки отправки не удались"
-                
-            logger.error("SMTP: %s; network_errors=%d, auth_errors=%d, last error (to=%s): %s",
-                        error_msg, network_errors, auth_errors, to_display, last_error)
+
+            logger.error("SMTP: %s; network_errors=%d, auth_errors=%d, relay_errors=%d, last error (to=%s): %s",
+                        error_msg, network_errors, auth_errors, relay_errors, to_display, last_error)
         
         return False
         

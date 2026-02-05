@@ -10,12 +10,12 @@
 -- 1. НАЙТИ ПОЛЬЗОВАТЕЛЯ по номеру телефона
 SELECT id, phone_number, email, first_name, last_name, role
 FROM users
-WHERE phone_number = '77471327844';  -- <-- замени на нужный номер
+WHERE phone_number = '77056478662';  -- <-- замени на нужный номер
 
 -- 2. НАЙТИ ПОЛЬЗОВАТЕЛЯ по почте
 SELECT id, phone_number, email, first_name, last_name, role
 FROM users
-WHERE email = 'kcctoo@mail.ru';  -- <-- замени на нужный email
+WHERE email = 'rayoknu@gmail.com';  -- <-- замени на нужный email
 
 -- 3. УДАЛИТЬ по номеру телефона (один пользователь)
 -- DELETE FROM users WHERE phone_number = '+77001234567';
@@ -31,16 +31,15 @@ WHERE email = 'kcctoo@mail.ru';  -- <-- замени на нужный email
 -- связанные данные или раскомментируй блок ниже и выполни по шагам.
 
 -- ========== Опционально: удаление связанных данных перед пользователем ==========
--- Замени 5f253521-e10e-41ad-b4eb-42124592629d на id пользователя из шага 1 или 2.
+-- Замени 42537b53-e6e5-424f-b7a0-f5bb79d0d0f3 на id пользователя из шага 1 или 2.
 
-DELETE FROM token_records WHERE user_id = '5f253521-e10e-41ad-b4eb-42124592629d';
-DELETE FROM user_devices WHERE user_id = '5f253521-e10e-41ad-b4eb-42124592629d';
-DELETE FROM notifications WHERE user_id = '5f253521-e10e-41ad-b4eb-42124592629d';
-DELETE FROM wallet_transactions WHERE user_id = '5f253521-e10e-41ad-b4eb-42124592629d';
-DELETE FROM rental_actions WHERE user_id = '5f253521-e10e-41ad-b4eb-42124592629d';
-DELETE FROM rental_history WHERE user_id = '5f253521-e10e-41ad-b4eb-42124592629d';  -- осторожно: история аренд
-DELETE FROM applications WHERE user_id = '5f253521-e10e-41ad-b4eb-42124592629d';
-DELETE FROM user_contract_signatures WHERE user_id = '5f253521-e10e-41ad-b4eb-42124592629d';
-DELETE FROM action_logs WHERE actor_id = '5f253521-e10e-41ad-b4eb-42124592629d';
-... и другие таблицы по необходимости
-DELETE FROM users WHERE id = '5f253521-e10e-41ad-b4eb-42124592629d';
+DELETE FROM token_records WHERE user_id = '42537b53-e6e5-424f-b7a0-f5bb79d0d0f3';
+DELETE FROM user_devices WHERE user_id = '42537b53-e6e5-424f-b7a0-f5bb79d0d0f3';
+DELETE FROM notifications WHERE user_id = '42537b53-e6e5-424f-b7a0-f5bb79d0d0f3';
+DELETE FROM wallet_transactions WHERE user_id = '42537b53-e6e5-424f-b7a0-f5bb79d0d0f3';
+DELETE FROM rental_actions WHERE user_id = '42537b53-e6e5-424f-b7a0-f5bb79d0d0f3';
+DELETE FROM rental_history WHERE user_id = '42537b53-e6e5-424f-b7a0-f5bb79d0d0f3';  -- осторожно: история аренд
+DELETE FROM applications WHERE user_id = '42537b53-e6e5-424f-b7a0-f5bb79d0d0f3';
+DELETE FROM user_contract_signatures WHERE user_id = '42537b53-e6e5-424f-b7a0-f5bb79d0d0f3';
+DELETE FROM action_logs WHERE actor_id = '42537b53-e6e5-424f-b7a0-f5bb79d0d0f3';
+DELETE FROM users WHERE id = '42537b53-e6e5-424f-b7a0-f5bb79d0d0f3';
