@@ -4,6 +4,9 @@ from fastapi import HTTPException
 
 from app.models.car_model import Car, CarBodyType
 from app.models.history_model import RentalType
+from app.core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 FUEL_PRICE_PER_LITER = 400
 ELECTRIC_FUEL_PRICE_PER_LITER = 100
@@ -93,9 +96,9 @@ def calc_required_balance(
     - DAYS: price_per_day * duration (со скидкой) + топливо (без доп. 60 мин)
     """
     if is_owner:
-        # Для владельца минимальный баланс = 0
+        logger.debug("calc_required_balance: is_owner=True, car_id=%s -> 0", getattr(car, "id", None))
         return 0
-    
+
     # open_fee (открытие дверей) - для всех типов аренды
     open_fee = get_open_price(car)
     delivery_fee = DELIVERY_EXTRA_FEE if include_delivery else 0
@@ -105,8 +108,12 @@ def calc_required_balance(
         # Минутный: открытие дверей + price_per_minute * 60 (минимум 60 минут)
         driver_fee = DRIVER_FEE_PER_HOUR * 2 if with_driver else 0  # 2 часа резерв
         required = open_fee + (car.price_per_minute * MINUTE_TARIFF_MIN_MINUTES) + delivery_fee + driver_fee
+        logger.info(
+            "calc_required_balance: rental_type=MINUTES car_id=%s required=%s (open_fee=%s, minute_reserve=%s)",
+            getattr(car, "id", None), int(required), open_fee, car.price_per_minute * MINUTE_TARIFF_MIN_MINUTES,
+        )
         return int(required)
-    
+
     elif rental_type == RentalType.HOURS:
         if duration is None:
             raise HTTPException(status_code=400,
@@ -124,8 +131,12 @@ def calc_required_balance(
 
         driver_fee = DRIVER_FEE_PER_HOUR * duration if with_driver else 0
         required = open_fee + base_price + full_tank_cost + delivery_fee + driver_fee
+        logger.info(
+            "calc_required_balance: rental_type=HOURS car_id=%s duration=%s required=%s (base=%s, fuel=%s)",
+            getattr(car, "id", None), duration, int(required), base_price, full_tank_cost,
+        )
         return int(required)
-    
+
     else:  # RentalType.DAYS
         if duration is None:
             raise HTTPException(status_code=400,
@@ -144,6 +155,10 @@ def calc_required_balance(
 
         driver_fee = DRIVER_FEE_PER_DAY * duration if with_driver else 0
         required = base_price + full_tank_cost + delivery_fee + driver_fee
+        logger.info(
+            "calc_required_balance: rental_type=DAYS car_id=%s duration=%s required=%s (base=%s, fuel=%s)",
+            getattr(car, "id", None), duration, int(required), base_price, full_tank_cost,
+        )
     return int(required)
 
 
@@ -227,7 +242,15 @@ def calculate_rental_cost_breakdown(
         total_minimum_balance = int(base_price + fuel_cost + delivery_fee + driver_fee)
     
     breakdown_open_fee = int(open_fee) if rental_type != RentalType.DAYS else 0
-    
+
+    logger.info(
+        "calculate_rental_cost_breakdown: rental_type=%s car_id=%s duration=%s total_minimum_balance=%s",
+        rental_type.value if hasattr(rental_type, "value") else rental_type,
+        getattr(car, "id", None),
+        duration,
+        total_minimum_balance,
+    )
+
     return {
         "base_price": int(base_price),
         "open_fee": int(open_fee), 

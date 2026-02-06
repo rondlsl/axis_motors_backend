@@ -11,7 +11,9 @@ from app.models.user_model import User, UserRole
 from app.models.car_model import Car
 from app.utils.short_id import safe_sid_to_uuid
 from app.rent.utils.tariff_settings import get_tariff_settings_for_car
+from app.core.logging_config import get_logger
 
+logger = get_logger(__name__)
 tariff_settings_router = APIRouter(tags=["Admin Tariff Settings"])
 
 
@@ -47,6 +49,11 @@ async def get_tariff_settings_for_car_admin(
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
     settings = get_tariff_settings_for_car(car)
+    logger.info(
+        "admin tariff_settings GET: car_id=%s minutes=%s hourly=%s min_hours=%s user_id=%s",
+        car_id, settings["minutes_tariff_enabled"], settings["hourly_tariff_enabled"],
+        settings["hourly_min_hours"], current_user.id,
+    )
     return TariffSettingsResponse(
         car_id=_car_id_to_sid(car),
         minutes_tariff_enabled=settings["minutes_tariff_enabled"],
@@ -78,6 +85,14 @@ async def update_tariff_settings_for_car(
     db.commit()
     db.refresh(car)
     settings = get_tariff_settings_for_car(car)
+    logger.info(
+        "admin tariff_settings PATCH: car_id=%s minutes=%s hourly=%s min_hours=%s user_id=%s",
+        car_id,
+        settings["minutes_tariff_enabled"],
+        settings["hourly_tariff_enabled"],
+        settings["hourly_min_hours"],
+        current_user.id,
+    )
     return TariffSettingsResponse(
         car_id=_car_id_to_sid(car),
         minutes_tariff_enabled=settings["minutes_tariff_enabled"],

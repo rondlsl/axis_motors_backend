@@ -980,7 +980,12 @@ async def get_tariff_availability(
     car = db.query(Car).filter(Car.id == car_uuid).first()
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
-    return get_tariff_settings_for_car(car)
+    settings = get_tariff_settings_for_car(car)
+    logger.debug(
+        "tariff_availability: car_id=%s minutes=%s hourly=%s min_hours=%s",
+        car_id, settings["minutes_tariff_enabled"], settings["hourly_tariff_enabled"], settings["hourly_min_hours"],
+    )
+    return settings
 
 
 @RentRouter.post("/calculator", response_model=RentalCalculatorResponse)
@@ -1026,9 +1031,15 @@ async def calculate_rental_cost(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Ошибка расчета стоимости аренды: {e}")
+        logger.error("Ошибка расчета стоимости аренды: %s", e)
         raise HTTPException(status_code=500, detail=f"Ошибка расчета стоимости: {str(e)}")
-    
+
+    logger.info(
+        "calculator: расчёт выполнен car_id=%s rental_type=%s total_minimum_balance=%s",
+        request.car_id,
+        request.rental_type.value if hasattr(request.rental_type, "value") else request.rental_type,
+        cost_breakdown["total_minimum_balance"],
+    )
     return {
         "car_id": request.car_id,
         "car_name": car.name,
@@ -1200,6 +1211,10 @@ async def reserve_car(
 
     # Доступность тарифа и минимум часов для часового (только для не-владельцев)
     validate_tariff_for_booking(rental_type, duration, car)
+    logger.info(
+        "reserve_car: тариф проверен car_id=%s rental_type=%s duration=%s user_id=%s",
+        car_id, rental_type.value if hasattr(rental_type, "value") else rental_type, duration, current_user.id,
+    )
 
     # Проверяем, был ли у пользователя ранее отмененная бронь для этого же car_id
     # Отмена бронирования: CANCELLED или COMPLETED без start_time (отменено до начала использования)
@@ -1226,10 +1241,13 @@ async def reserve_car(
         include_delivery=False,
         is_owner=False
     )
-    
+    logger.info(
+        "reserve_car: требуемый баланс car_id=%s required=%s balance=%s user_id=%s",
+        car_id, required_balance, int(current_user.wallet_balance or 0), current_user.id,
+    )
     # Добавляем комиссию за повторное бронирование к требуемому балансу
     total_required_balance = required_balance + rebooking_fee
-    
+
     if current_user.wallet_balance < total_required_balance:
         raise InsufficientBalanceException(required_amount=total_required_balance)
 
@@ -1267,6 +1285,11 @@ async def reserve_car(
     db.add(rental)
     db.commit()
     db.refresh(rental)
+    logger.info(
+        "reserve_car: бронь создана rental_id=%s car_id=%s user_id=%s rental_type=%s duration=%s",
+        uuid_to_sid(rental.id), car_id, current_user.id,
+        rental_type.value if hasattr(rental_type, "value") else rental_type, duration,
+    )
 
     # Списываем комиссию за повторное бронирование, если применимо
     if rebooking_fee > 0:
@@ -4293,6 +4316,13 @@ async def create_advance_booking(
 
     # Доступность тарифа и минимум часов для часового (настройки привязаны к машине)
     validate_tariff_for_booking(booking_request.rental_type, booking_request.duration, car)
+    logger.info(
+        "advance_booking: тариф проверен car_id=%s rental_type=%s duration=%s user_id=%s",
+        booking_request.car_id,
+        booking_request.rental_type.value if hasattr(booking_request.rental_type, "value") else booking_request.rental_type,
+        booking_request.duration,
+        current_user.id,
+    )
 
     # 4) Проверяем, что автомобиль не забронирован на это время
     conflicting_booking = db.query(RentalHistory).filter(
@@ -4376,16 +4406,24 @@ async def create_advance_booking(
     db.add(rental)
     db.commit()
     db.refresh(rental)
+    logger.info(
+        "advance_booking: бронь создана rental_id=%s car_id=%s user_id=%s rental_type=%s scheduled=%s",
+        uuid_to_sid(rental.id),
+        booking_request.car_id,
+        current_user.id,
+        booking_request.rental_type.value if hasattr(booking_request.rental_type, "value") else booking_request.rental_type,
+        booking_request.scheduled_start_time,
+    )
 
     # 8) Обновляем машину: устанавливаем текущего арендатора и меняем статус
     car.current_renter_id = current_user.id
     car.status = CarStatus.SCHEDULED  # Для запланированных аренд машина получает статус SCHEDULED
-    
+
     # Обновляем время последней активности пользователя
     current_user.last_activity_at = get_local_time()
-    
+
     db.commit()
-    
+
     schedule_notifications(
         user_ids=[current_user.id, car.owner_id],
         refresh_vehicles=True
