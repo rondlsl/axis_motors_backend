@@ -89,8 +89,8 @@ def calc_required_balance(
     """
     Рассчитывает минимальный баланс для аренды:
     - MINUTES: открытие дверей + price_per_minute * 60 (без дополнительного часа)
-    - HOURS: открытие дверей + price_per_hour * duration + price_per_minute * 60 + топливо
-    - DAYS: price_per_day * duration + price_per_minute * 60 + топливо
+    - HOURS: открытие дверей + price_per_hour * duration + топливо (без доп. 60 мин)
+    - DAYS: price_per_day * duration (со скидкой) + топливо (без доп. 60 мин)
     """
     if is_owner:
         # Для владельца минимальный баланс = 0
@@ -111,11 +111,9 @@ def calc_required_balance(
         if duration is None:
             raise HTTPException(status_code=400,
                                 detail="duration обязателен для почасовой аренды.")
-        # Часовой: открытие дверей + price_per_hour * duration + price_per_minute * 60 + топливо
+        # Часовой: открытие дверей + price_per_hour * duration + топливо (без доп. 60 мин)
         base_price = car.price_per_hour * duration
-        one_hour_minute_cost = car.price_per_minute * 60
-        
-        # Топливо: электрички 50л, бензиновые 20л
+        # Топливо: ДВС 20*400=8000₸, электромобили 50*100=5000₸
         if car.body_type == CarBodyType.ELECTRIC:
             price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
             tank_liters = 50
@@ -123,22 +121,19 @@ def calc_required_balance(
             price_per_liter = FUEL_PRICE_PER_LITER
             tank_liters = 20
         full_tank_cost = tank_liters * price_per_liter
-        
+
         driver_fee = DRIVER_FEE_PER_HOUR * duration if with_driver else 0
-        required = open_fee + base_price + one_hour_minute_cost + full_tank_cost + delivery_fee + driver_fee
+        required = open_fee + base_price + full_tank_cost + delivery_fee + driver_fee
         return int(required)
     
     else:  # RentalType.DAYS
         if duration is None:
             raise HTTPException(status_code=400,
                                 detail="duration обязателен для посуточной аренды.")
-        # Дневной: (price_per_day * duration) с учётом скидки + price_per_minute * 60 + топливо
+        # Суточный: (price_per_day * duration) со скидкой + топливо (без доп. 60 мин)
         base = car.price_per_day * duration
         base_price = int(base * get_days_discount_multiplier(duration))
-        
-        one_hour_minute_cost = car.price_per_minute * 60
-        
-        # Топливо: электрички 50л, бензиновые 20л
+        # Топливо: ДВС 20*400=8000₸, электромобили 50*100=5000₸
         if car.body_type == CarBodyType.ELECTRIC:
             price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
             tank_liters = 50
@@ -146,9 +141,9 @@ def calc_required_balance(
             price_per_liter = FUEL_PRICE_PER_LITER
             tank_liters = 20
         full_tank_cost = tank_liters * price_per_liter
-        
+
         driver_fee = DRIVER_FEE_PER_DAY * duration if with_driver else 0
-        required = base_price + one_hour_minute_cost + full_tank_cost + delivery_fee + driver_fee
+        required = base_price + full_tank_cost + delivery_fee + driver_fee
     return int(required)
 
 
@@ -200,9 +195,8 @@ def calculate_rental_cost_breakdown(
             raise HTTPException(status_code=400,
                                 detail="duration обязателен для почасовой аренды.")
         base_price = car.price_per_hour * duration
-        minute_cost_reserve = car.price_per_minute * 60 
-        
-        # Топливо: электрички 50л, бензиновые 20л (синхронизировано с calc_required_balance)
+        minute_cost_reserve = 0  # Часовой тариф без доп. 60 минут
+        # Топливо: ДВС 8000₸, электромобили 5000₸
         if car.body_type == CarBodyType.ELECTRIC:
             price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
             tank_liters = 50
@@ -210,18 +204,17 @@ def calculate_rental_cost_breakdown(
             price_per_liter = FUEL_PRICE_PER_LITER
             tank_liters = 20
         fuel_cost = tank_liters * price_per_liter
-        
+
         driver_fee = DRIVER_FEE_PER_HOUR * duration if with_driver else 0
-        total_minimum_balance = int(open_fee + base_price + minute_cost_reserve + fuel_cost + delivery_fee + driver_fee)
+        total_minimum_balance = int(open_fee + base_price + fuel_cost + delivery_fee + driver_fee)
     else:  # RentalType.DAYS
         if duration is None:
             raise HTTPException(status_code=400,
                                 detail="duration обязателен для посуточной аренды.")
         base = car.price_per_day * duration
         base_price = int(base * get_days_discount_multiplier(duration))
-        minute_cost_reserve = car.price_per_minute * 60
-        
-        # Топливо: электрички 50л, бензиновые 20л (синхронизировано с calc_required_balance)
+        minute_cost_reserve = 0  # Суточный тариф без доп. 60 минут
+        # Топливо: ДВС 8000₸, электромобили 5000₸
         if car.body_type == CarBodyType.ELECTRIC:
             price_per_liter = ELECTRIC_FUEL_PRICE_PER_LITER
             tank_liters = 50
@@ -229,9 +222,9 @@ def calculate_rental_cost_breakdown(
             price_per_liter = FUEL_PRICE_PER_LITER
             tank_liters = 20
         fuel_cost = tank_liters * price_per_liter
-        
+
         driver_fee = DRIVER_FEE_PER_DAY * duration if with_driver else 0
-        total_minimum_balance = int(base_price + minute_cost_reserve + fuel_cost + delivery_fee + driver_fee)
+        total_minimum_balance = int(base_price + fuel_cost + delivery_fee + driver_fee)
     
     breakdown_open_fee = int(open_fee) if rental_type != RentalType.DAYS else 0
     

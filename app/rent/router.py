@@ -46,6 +46,7 @@ from app.rent.utils.calculate_price import (
     calculate_rental_cost_breakdown,
     MINUTE_TARIFF_MIN_MINUTES,
 )
+from app.rent.utils.tariff_settings import validate_tariff_for_booking, get_tariff_settings_for_car
 from app.gps_api.utils.route_data import get_gps_route_data
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.car_data import auto_lock_vehicle_after_rental, execute_gps_sequence, send_open, send_unlock_engine
@@ -966,6 +967,22 @@ def apply_promo(body: ApplyPromoRequest,
     }
 
 
+@RentRouter.get("/tariff-availability")
+async def get_tariff_availability(
+    car_id: str = Query(..., description="ID автомобиля"),
+    db: Session = Depends(get_db),
+):
+    """
+    Публичный эндпоинт: доступность тарифов для бронирования по конкретной машине.
+    Недоступные тарифы не должны показываться в выборе и не принимаются в API бронирования.
+    """
+    car_uuid = safe_sid_to_uuid(car_id)
+    car = db.query(Car).filter(Car.id == car_uuid).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
+    return get_tariff_settings_for_car(car)
+
+
 @RentRouter.post("/calculator", response_model=RentalCalculatorResponse)
 async def calculate_rental_cost(
         request: RentalCalculatorRequest,
@@ -979,9 +996,10 @@ async def calculate_rental_cost(
     """
     car_uuid = safe_sid_to_uuid(request.car_id)
     car = db.query(Car).filter(Car.id == car_uuid).first()
-    
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
+
+    validate_tariff_for_booking(request.rental_type, request.duration, car)
     
     # Для калькулятора всегда считаем как для обычного пользователя
     # (владельцы получат минимальный баланс = 0 при реальном резервировании)
@@ -1179,6 +1197,9 @@ async def reserve_car(
             "rental_id": uuid_to_sid(rental.id),
             "reservation_time": rental.reservation_time.isoformat()
         }
+
+    # Доступность тарифа и минимум часов для часового (только для не-владельцев)
+    validate_tariff_for_booking(rental_type, duration, car)
 
     # Проверяем, был ли у пользователя ранее отмененная бронь для этого же car_id
     # Отмена бронирования: CANCELLED или COMPLETED без start_time (отменено до начала использования)
@@ -4270,6 +4291,9 @@ async def create_advance_booking(
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден или не доступен")
 
+    # Доступность тарифа и минимум часов для часового (настройки привязаны к машине)
+    validate_tariff_for_booking(booking_request.rental_type, booking_request.duration, car)
+
     # 4) Проверяем, что автомобиль не забронирован на это время
     conflicting_booking = db.query(RentalHistory).filter(
         RentalHistory.car_id == booking_request.car_id,
@@ -4603,6 +4627,9 @@ async def get_available_cars_for_booking(
             "price_per_minute": car.price_per_minute,
             "price_per_hour": car.price_per_hour,
             "price_per_day": car.price_per_day,
+            "minutes_tariff_enabled": getattr(car, "minutes_tariff_enabled", True),
+            "hourly_tariff_enabled": getattr(car, "hourly_tariff_enabled", True),
+            "hourly_min_hours": max(1, getattr(car, "hourly_min_hours", 1) or 1),
             "auto_class": car.auto_class,
             "body_type": car.body_type,
             "transmission_type": car.transmission_type,

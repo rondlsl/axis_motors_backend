@@ -70,6 +70,7 @@ import httpx
 from app.wallet.utils import record_wallet_transaction
 from app.rent.utils.calculate_price import get_open_price, calc_required_balance, calculate_total_price
 from app.rent.utils.balance_utils import verify_and_fix_rental_balance
+from app.rent.utils.tariff_settings import validate_tariff_for_booking
 from app.core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2, SMS_TOKEN
 from app.guarantor.sms_utils import send_sms_mobizon
 from email.mime.text import MIMEText
@@ -1347,6 +1348,9 @@ async def get_user_transactions_grouped(
                     "price_per_minute": car.price_per_minute,
                     "price_per_hour": car.price_per_hour,
                     "price_per_day": car.price_per_day,
+                    "minutes_tariff_enabled": getattr(car, "minutes_tariff_enabled", True),
+                    "hourly_tariff_enabled": getattr(car, "hourly_tariff_enabled", True),
+                    "hourly_min_hours": max(1, getattr(car, "hourly_min_hours", 1) or 1),
                     "latitude": car.latitude,
                     "longitude": car.longitude,
                     "fuel_level": car.fuel_level,
@@ -2157,6 +2161,8 @@ async def admin_reserve_car(
     car = db.query(Car).filter(Car.id == car_uuid).first()
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
+
+    validate_tariff_for_booking(rental_type_enum, parsed_duration, car)
     
     if car.status not in [CarStatus.FREE, CarStatus.PENDING]:
         raise HTTPException(status_code=400, detail=f"Машина недоступна для бронирования. Текущий статус: {car.status.value}")
@@ -2304,6 +2310,8 @@ async def admin_start_rental(
     car = db.query(Car).filter(Car.id == car_uuid).first()
     if not car:
         raise HTTPException(status_code=404, detail="Автомобиль не найден")
+
+    validate_tariff_for_booking(rental_type_enum, parsed_duration, car)
     
     if car.status not in [CarStatus.FREE, CarStatus.RESERVED, CarStatus.PENDING]:
         raise HTTPException(status_code=400, detail=f"Машина недоступна для аренды. Текущий статус: {car.status.value}")

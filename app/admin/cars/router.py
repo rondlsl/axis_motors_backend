@@ -4057,6 +4057,9 @@ async def get_free_cars(
             "price_per_hour": car.price_per_hour,
             "price_per_day": car.price_per_day,
             "open_fee": car.open_fee,
+            "minutes_tariff_enabled": getattr(car, "minutes_tariff_enabled", True),
+            "hourly_tariff_enabled": getattr(car, "hourly_tariff_enabled", True),
+            "hourly_min_hours": max(1, getattr(car, "hourly_min_hours", 1) or 1),
             # Характеристики
             "auto_class": car.auto_class.value if car.auto_class else None,
             "body_type": car.body_type.value if car.body_type else None,

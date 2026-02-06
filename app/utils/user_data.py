@@ -172,6 +172,9 @@ async def get_user_me_data(db: Session, current_user: User) -> Dict[str, Any]:
             "price_per_hour": car.price_per_hour,
             "price_per_day": car.price_per_day,
             "open_price": get_open_price(car),
+            "minutes_tariff_enabled": getattr(car, "minutes_tariff_enabled", True),
+            "hourly_tariff_enabled": getattr(car, "hourly_tariff_enabled", True),
+            "hourly_min_hours": max(1, getattr(car, "hourly_min_hours", 1) or 1),
             "owned_car": car.owner_id == current_user.id,
             "description": car.description,
             "current_renter_id": uuid_to_sid(car.current_renter_id) if car.current_renter_id else None,
@@ -411,7 +414,10 @@ async def get_user_me_data(db: Session, current_user: User) -> Dict[str, Any]:
             "price_per_hour": car.price_per_hour,
             "price_per_day": car.price_per_day,
             "open_price": get_open_price(car),
-            "available_minutes": available_minutes
+            "available_minutes": available_minutes,
+            "minutes_tariff_enabled": getattr(car, "minutes_tariff_enabled", True),
+            "hourly_tariff_enabled": getattr(car, "hourly_tariff_enabled", True),
+            "hourly_min_hours": max(1, getattr(car, "hourly_min_hours", 1) or 1),
         })
 
     # Подсчитываем количество непрочитанных уведомлений

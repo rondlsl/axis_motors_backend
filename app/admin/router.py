@@ -8,6 +8,7 @@ from app.admin.auth.router import admin_auth_router
 from app.admin.app_versions.router import router as app_versions_admin_router
 from app.admin.analytics.router import analytics_router, transactions_router
 from app.admin.rentals.router import rentals_router
+from app.admin.tariff_settings.router import tariff_settings_router
 
 admin_router = APIRouter(prefix="/admin")
 
@@ -21,6 +22,7 @@ admin_router.include_router(app_versions_admin_router, prefix="/app-versions")
 admin_router.include_router(analytics_router)
 admin_router.include_router(transactions_router)
 admin_router.include_router(rentals_router, prefix="/rentals")
+admin_router.include_router(tariff_settings_router, prefix="/tariff-settings")
 
 router = admin_router
 

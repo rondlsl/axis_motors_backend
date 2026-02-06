@@ -102,6 +102,11 @@ class Car(Base):
     notifications_disabled = Column(Boolean, default=False, nullable=False)
     can_exit_zone = Column(Boolean, default=False, nullable=False, server_default="false")  # Разрешение на выезд за зону карты
 
+    # Тарифы привязаны к машине: доступность и минимум часов для часового
+    minutes_tariff_enabled = Column(Boolean, default=True, nullable=False)
+    hourly_tariff_enabled = Column(Boolean, default=True, nullable=False)
+    hourly_min_hours = Column(Integer, default=1, nullable=False)
+
     owner = relationship("User", foreign_keys=[owner_id], back_populates="owned_cars")
     current_renter = relationship("User", foreign_keys=[current_renter_id], back_populates="active_rental")
     rental_history = relationship("RentalHistory", back_populates="car")

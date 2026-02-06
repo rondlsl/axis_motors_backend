@@ -161,6 +161,9 @@ def car_to_detail_schema(car: Car, db: Optional[Session] = None) -> CarDetailSch
         reservationtime=reservation_time_str,
         can_exit_zone=car.can_exit_zone or False,
         notifications_disabled=car.notifications_disabled or False,
+        minutes_tariff_enabled=getattr(car, "minutes_tariff_enabled", True),
+        hourly_tariff_enabled=getattr(car, "hourly_tariff_enabled", True),
+        hourly_min_hours=max(1, getattr(car, "hourly_min_hours", 1) or 1),
     )
 
 
