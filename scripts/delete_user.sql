@@ -10,7 +10,7 @@
 -- 1. НАЙТИ ПОЛЬЗОВАТЕЛЯ по номеру телефона
 SELECT id, phone_number, email, first_name, last_name, role
 FROM users
-WHERE phone_number = '77056478662';  -- <-- замени на нужный номер
+WHERE phone_number = '77471327844';  -- <-- замени на нужный номер
 
 -- 2. НАЙТИ ПОЛЬЗОВАТЕЛЯ по почте
 SELECT id, phone_number, email, first_name, last_name, role
@@ -31,15 +31,16 @@ WHERE email = 'rayoknu@gmail.com';  -- <-- замени на нужный email
 -- связанные данные или раскомментируй блок ниже и выполни по шагам.
 
 -- ========== Опционально: удаление связанных данных перед пользователем ==========
--- Замени 42537b53-e6e5-424f-b7a0-f5bb79d0d0f3 на id пользователя из шага 1 или 2.
+-- Замени c92c506e-8c6a-459f-a5ec-b7a842b6d33a на id пользователя из шага 1 или 2.
 
-DELETE FROM token_records WHERE user_id = '42537b53-e6e5-424f-b7a0-f5bb79d0d0f3';
-DELETE FROM user_devices WHERE user_id = '42537b53-e6e5-424f-b7a0-f5bb79d0d0f3';
-DELETE FROM notifications WHERE user_id = '42537b53-e6e5-424f-b7a0-f5bb79d0d0f3';
-DELETE FROM wallet_transactions WHERE user_id = '42537b53-e6e5-424f-b7a0-f5bb79d0d0f3';
-DELETE FROM rental_actions WHERE user_id = '42537b53-e6e5-424f-b7a0-f5bb79d0d0f3';
-DELETE FROM rental_history WHERE user_id = '42537b53-e6e5-424f-b7a0-f5bb79d0d0f3';  -- осторожно: история аренд
-DELETE FROM applications WHERE user_id = '42537b53-e6e5-424f-b7a0-f5bb79d0d0f3';
-DELETE FROM user_contract_signatures WHERE user_id = '42537b53-e6e5-424f-b7a0-f5bb79d0d0f3';
-DELETE FROM action_logs WHERE actor_id = '42537b53-e6e5-424f-b7a0-f5bb79d0d0f3';
-DELETE FROM users WHERE id = '42537b53-e6e5-424f-b7a0-f5bb79d0d0f3';
+DELETE FROM token_records WHERE user_id = 'c92c506e-8c6a-459f-a5ec-b7a842b6d33a';
+DELETE FROM user_devices WHERE user_id = 'c92c506e-8c6a-459f-a5ec-b7a842b6d33a';
+DELETE FROM notifications WHERE user_id = 'c92c506e-8c6a-459f-a5ec-b7a842b6d33a';
+DELETE FROM wallet_transactions WHERE user_id = 'c92c506e-8c6a-459f-a5ec-b7a842b6d33a';
+DELETE FROM rental_actions WHERE user_id = 'c92c506e-8c6a-459f-a5ec-b7a842b6d33a';
+DELETE FROM rental_history WHERE user_id = 'c92c506e-8c6a-459f-a5ec-b7a842b6d33a';  -- осторожно: история аренд
+DELETE FROM applications WHERE user_id = 'c92c506e-8c6a-459f-a5ec-b7a842b6d33a';
+DELETE FROM user_contract_signatures WHERE user_id = 'c92c506e-8c6a-459f-a5ec-b7a842b6d33a';
+DELETE FROM action_logs WHERE actor_id = 'c92c506e-8c6a-459f-a5ec-b7a842b6d33a';
+DELETE FROM users WHERE id = 'c92c506e-8c6a-459f-a5ec-b7a842b6d33a';
+

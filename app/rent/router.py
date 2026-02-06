@@ -39,7 +39,13 @@ from app.rent.exceptions import InsufficientBalanceException
 from app.wallet.utils import record_wallet_transaction
 from app.models.wallet_transaction_model import WalletTransactionType, WalletTransaction
 from app.push.enums import NotificationStatus
-from app.rent.utils.calculate_price import calculate_total_price, get_open_price, calc_required_balance, calculate_rental_cost_breakdown
+from app.rent.utils.calculate_price import (
+    calculate_total_price,
+    get_open_price,
+    calc_required_balance,
+    calculate_rental_cost_breakdown,
+    MINUTE_TARIFF_MIN_MINUTES,
+)
 from app.gps_api.utils.route_data import get_gps_route_data
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.car_data import auto_lock_vehicle_after_rental, execute_gps_sequence, send_open, send_unlock_engine
@@ -4285,8 +4291,8 @@ async def create_advance_booking(
     # 5) Рассчитываем запланированное время окончания
     if booking_request.scheduled_end_time is None:
         if booking_request.rental_type == RentalType.MINUTES:
-            # Для поминутной аренды используем 2 часа по умолчанию
-            booking_request.scheduled_end_time = booking_request.scheduled_start_time + timedelta(hours=2)
+            # Для поминутной аренды по умолчанию 60 минут (без дополнительного часа)
+            booking_request.scheduled_end_time = booking_request.scheduled_start_time + timedelta(minutes=MINUTE_TARIFF_MIN_MINUTES)
         elif booking_request.rental_type == RentalType.HOURS:
             if booking_request.duration is None:
                 raise HTTPException(status_code=400, detail="Duration обязателен для аренды по часам")
@@ -4295,6 +4301,15 @@ async def create_advance_booking(
             if booking_request.duration is None:
                 raise HTTPException(status_code=400, detail="Duration обязателен для посуточной аренды")
             booking_request.scheduled_end_time = booking_request.scheduled_start_time + timedelta(days=booking_request.duration)
+
+    # Минутный тариф: минимум 60 минут
+    if booking_request.rental_type == RentalType.MINUTES:
+        span_minutes = (booking_request.scheduled_end_time - booking_request.scheduled_start_time).total_seconds() / 60
+        if span_minutes < MINUTE_TARIFF_MIN_MINUTES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Для минутного тарифа минимальное время бронирования — {MINUTE_TARIFF_MIN_MINUTES} минут. Указано: {int(span_minutes)} мин."
+            )
 
     # 6) Рассчитываем стоимость
     orig_open_fee = get_open_price(car)
