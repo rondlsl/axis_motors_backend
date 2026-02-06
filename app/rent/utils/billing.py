@@ -26,7 +26,7 @@ from app.push.utils import (
     user_has_push_tokens,
     get_global_push_notification_semaphore
 )
-from app.core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
+from app.core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2, TELEGRAM_BILLING_CHAT_IDS, GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD
 from app.gps_api.utils.auth_api import get_auth_token
 from app.gps_api.utils.car_data import send_lock_engine
 from app.utils.telegram_logger import telegram_error_logger
@@ -142,12 +142,12 @@ async def _billing_job_impl():
 
     # Отправка в первый бот
     for text in telegram_alerts:
-        for chat_id in (965048905, 5941825713, 860991388, 1594112444, 808277096, 7656716395, 964255811, 8522837235, 797693964):
+        for chat_id in TELEGRAM_BILLING_CHAT_IDS:
             asyncio.create_task(_send_telegram(text, chat_id, TELEGRAM_BOT_TOKEN))
     
     # Отправка во второй бот
     for text in telegram_alerts:
-        for chat_id in (965048905, 5941825713, 860991388, 1594112444, 808277096, 7656716395, 964255811, 8522837235, 797693964):
+        for chat_id in TELEGRAM_BILLING_CHAT_IDS:
             asyncio.create_task(_send_telegram(text, chat_id, TELEGRAM_BOT_TOKEN_2))
 
     # 5) Выполняем блокировки двигателя для просроченных (10+ минут) нулевых балансов
@@ -179,19 +179,19 @@ async def _billing_job_impl():
                         user_info += f", user_id={user_id}"
                     note = f"🛑 Двигатель заблокирован из-за нулевого баланса. Авто: {car_name} (IMEI {imei}), {user_info}"
                     # Отправка в первый бот
-                    for chat_id in (965048905, 5941825713, 860991388, 1594112444, 808277096, 7656716395, 964255811, 8522837235, 797693964):
+                    for chat_id in TELEGRAM_BILLING_CHAT_IDS:
                         asyncio.create_task(_send_telegram(note, chat_id, TELEGRAM_BOT_TOKEN))
                     # Отправка во второй бот
-                    for chat_id in (965048905, 5941825713, 860991388, 1594112444, 808277096, 7656716395, 964255811, 8522837235, 797693964):
+                    for chat_id in TELEGRAM_BILLING_CHAT_IDS:
                         asyncio.create_task(_send_telegram(note, chat_id, TELEGRAM_BOT_TOKEN_2))
                 except Exception as e:
                     logger.error("Billing job: ошибка блокировки двигателя imei=%s car=%s: %s", imei, car_name, e)
                     err = f"⚠️ Ошибка блокировки двигателя (IMEI {imei}): {e}"
                     # Отправка в первый бот
-                    for chat_id in (965048905, 5941825713, 860991388, 1594112444, 808277096, 7656716395, 964255811, 8522837235, 797693964):
+                    for chat_id in TELEGRAM_BILLING_CHAT_IDS:
                         asyncio.create_task(_send_telegram(err, chat_id, TELEGRAM_BOT_TOKEN))
                     # Отправка во второй бот
-                    for chat_id in (965048905, 5941825713, 860991388, 1594112444, 808277096, 7656716395, 964255811, 8522837235, 797693964):
+                    for chat_id in TELEGRAM_BILLING_CHAT_IDS:
                         asyncio.create_task(_send_telegram(err, chat_id, TELEGRAM_BOT_TOKEN_2))
                     
                     # Логируем критическую ошибку в Telegram Monitor
@@ -217,10 +217,10 @@ async def _billing_job_impl():
         error_msg = f"⚠️ Ошибка при обработке блокировок двигателя: {e}"
         
         # Отправка в первый бот
-        for chat_id in (965048905, 5941825713, 860991388, 1594112444, 808277096, 7656716395, 964255811, 8522837235, 797693964):
+        for chat_id in TELEGRAM_BILLING_CHAT_IDS:
             asyncio.create_task(_send_telegram(error_msg, chat_id, TELEGRAM_BOT_TOKEN))
         # Отправка во второй бот
-        for chat_id in (965048905, 5941825713, 860991388, 1594112444, 808277096, 7656716395, 964255811, 8522837235, 797693964):
+        for chat_id in TELEGRAM_BILLING_CHAT_IDS:
             asyncio.create_task(_send_telegram(error_msg, chat_id, TELEGRAM_BOT_TOKEN_2))
         
         # Логируем критическую ошибку в Telegram Monitor

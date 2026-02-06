@@ -32,6 +32,12 @@ TELEGRAM_BOT_MONITOR = getenv('TELEGRAM_BOT_MONITOR')
 SUPPORT_GROUP_ID = getenv('SUPPORT_GROUP_ID', '-1001234567890')
 MONITOR_GROUP_ID = getenv('MONITOR_GROUP_ID')
 
+# Чаты для биллинг-уведомлений (баланс, блокировка и т.д.). Через запятую в .env или дефолт ниже.
+_DEFAULT_BILLING_CHAT_IDS = "965048905,5941825713,860991388,1594112444,808277096,7656716395,964255811,8522837235,797693964,1097298813,1524196361"
+TELEGRAM_BILLING_CHAT_IDS: list[int] = [
+    int(x.strip()) for x in getenv('TELEGRAM_BILLING_CHAT_IDS', _DEFAULT_BILLING_CHAT_IDS).split(',') if x.strip()
+]
+
 SMS_TOKEN = getenv('SMS_TOKEN')
 
 # === SMTP (несколько аккаунтов для ротации при лимитах) ===
