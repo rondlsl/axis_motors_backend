@@ -11,3 +11,4 @@ from app.models.support_chat_model import SupportChat, SupportChatStatus
 from app.models.support_message_model import SupportMessage, SupportMessageSenderType
 from app.models.token_model import TokenRecord
 from app.models.tariff_settings_model import TariffSettings
+from app.models.bonus_promo_model import BonusPromoCode, BonusPromoUsage
