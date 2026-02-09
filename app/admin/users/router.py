@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Form, File, UploadFile, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, joinedload, aliased
-from sqlalchemy import and_, or_, func, case, desc, distinct, select, String
+from sqlalchemy import and_, or_, func, case, desc, distinct, select, String, exists
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -586,6 +586,9 @@ def get_users_list_impl(
     documents_verified: Optional[bool] = None,
     is_active: Optional[bool] = None,
     is_verified_email: Optional[bool] = None,
+    has_guarantor: Optional[bool] = None,
+    is_guarantor_for: Optional[bool] = None,
+    sort_by: Optional[str] = None,
     page: int = 1,
     limit: int = 50,
 ) -> dict:
@@ -681,6 +684,26 @@ def get_users_list_impl(
     if is_verified_email is not None:
         query = query.filter(User.is_verified_email == is_verified_email)
     
+    # Фильтр «гарант»: пользователи, у которых есть гарант (client_id в Guarantor)
+    if has_guarantor is not None:
+        has_guarantor_subq = exists().where(
+            and_(Guarantor.client_id == User.id, Guarantor.is_active == True)
+        )
+        if has_guarantor:
+            query = query.filter(has_guarantor_subq)
+        else:
+            query = query.filter(~has_guarantor_subq)
+    
+    # Фильтр «с гарантом»: пользователи, которые являются гарантом для кого-то (guarantor_id в Guarantor)
+    if is_guarantor_for is not None:
+        is_guarantor_for_subq = exists().where(
+            and_(Guarantor.guarantor_id == User.id, Guarantor.is_active == True)
+        )
+        if is_guarantor_for:
+            query = query.filter(is_guarantor_for_subq)
+        else:
+            query = query.filter(~is_guarantor_for_subq)
+    
     # Фильтр по МВД одобрению
     if mvd_approved is not None:
         if mvd_approved:
@@ -763,6 +786,26 @@ def get_users_list_impl(
     if is_verified_email is not None:
         count_query = count_query.filter(User.is_verified_email == is_verified_email)
     
+    # Фильтр «гарант» для count_query
+    if has_guarantor is not None:
+        has_guarantor_subq = exists().where(
+            and_(Guarantor.client_id == User.id, Guarantor.is_active == True)
+        )
+        if has_guarantor:
+            count_query = count_query.filter(has_guarantor_subq)
+        else:
+            count_query = count_query.filter(~has_guarantor_subq)
+    
+    # Фильтр «с гарантом» для count_query
+    if is_guarantor_for is not None:
+        is_guarantor_for_subq = exists().where(
+            and_(Guarantor.guarantor_id == User.id, Guarantor.is_active == True)
+        )
+        if is_guarantor_for:
+            count_query = count_query.filter(is_guarantor_for_subq)
+        else:
+            count_query = count_query.filter(~is_guarantor_for_subq)
+    
     # Фильтр по МВД одобрению для count_query
     if mvd_approved is not None:
         if mvd_approved:
@@ -793,13 +836,25 @@ def get_users_list_impl(
     
     total_count = count_query.scalar() or 0
     
-    query = query.order_by(
-        case(
-            (active_rental_subq.c.user_id.isnot(None), 0),
-            else_=1
-        ),
-        User.id
-    )
+    # Сортировка: по балансу wallet или по умолчанию (активная аренда, затем id)
+    if sort_by == "wallet_asc":
+        query = query.order_by(
+            User.wallet_balance.asc().nullslast(),
+            User.id
+        )
+    elif sort_by == "wallet_desc":
+        query = query.order_by(
+            User.wallet_balance.desc().nullsfirst(),
+            User.id
+        )
+    else:
+        query = query.order_by(
+            case(
+                (active_rental_subq.c.user_id.isnot(None), 0),
+                else_=1
+            ),
+            User.id
+        )
     
     query = query.offset((page - 1) * limit).limit(limit)
     
@@ -913,6 +968,9 @@ async def get_users_list(
     documents_verified: Optional[bool] = Query(None, description="Фильтр по проверке документов"),
     is_active: Optional[bool] = Query(None, description="Фильтр по активности пользователя"),
     is_verified_email: Optional[bool] = Query(None, description="Фильтр по подтверждению email"),
+    has_guarantor: Optional[bool] = Query(None, description="Фильтр «гарант»: пользователи, у которых есть гарант"),
+    is_guarantor_for: Optional[bool] = Query(None, description="Фильтр «с гарантом»: пользователи, которые являются гарантом для кого-то"),
+    sort_by: Optional[str] = Query(None, description="Сортировка по балансу: wallet_asc, wallet_desc"),
     page: int = Query(1, ge=1, description="Номер страницы"),
     limit: int = Query(50, ge=1, le=200, description="Количество элементов на странице"),
     current_user: User = Depends(get_current_user),
@@ -934,6 +992,9 @@ async def get_users_list(
         documents_verified=documents_verified,
         is_active=is_active,
         is_verified_email=is_verified_email,
+        has_guarantor=has_guarantor,
+        is_guarantor_for=is_guarantor_for,
+        sort_by=sort_by,
         page=page,
         limit=limit,
     )
