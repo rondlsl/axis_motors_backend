@@ -132,6 +132,7 @@ def admin_get_promo_detail(
             user_id=uuid_to_sid(u.user_id),
             user_phone=user.phone_number if user else None,
             user_name=f"{user.first_name or ''} {user.last_name or ''}".strip() if user else None,
+            selfie_url=user.selfie_url if user else None,
             used_at=u.used_at,
         ))
 

@@ -80,6 +80,7 @@ class PromoUsageOut(BaseModel):
     user_id: str
     user_phone: Optional[str] = None
     user_name: Optional[str] = None
+    selfie_url: Optional[str] = None
     used_at: datetime
 
 
