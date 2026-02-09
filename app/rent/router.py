@@ -928,42 +928,58 @@ class ApplyPromoRequest(BaseModel):
 
 
 @RentRouter.post("/promo_codes/apply")
-def apply_promo(body: ApplyPromoRequest,
+async def apply_promo(body: ApplyPromoRequest,
                 db: Session = Depends(get_db),
                 current_user: User = Depends(get_current_user)):
-    # 1) Проверяем, нет ли уже активного у юзера
-    exist = db.query(UserPromoCode) \
-        .filter_by(user_id=current_user.id, status=UserPromoStatus.ACTIVATED) \
-        .first()
-    if exist:
-        raise HTTPException(400, "У вас уже есть неиспользованный промокод")
-
-    # 2) Находим активный промокод
+    # 1) Пробуем найти скидочный промокод
     promo = db.query(PromoCode) \
         .filter_by(code=body.code, is_active=True) \
         .first()
-    if not promo:
-        raise HTTPException(404, "Промокод не найден или неактивен")
 
-    # 3) Создаём связь
-    up = UserPromoCode(user_id=current_user.id, promo_code_id=promo.id)
-    db.add(up)
-    db.commit()
-    
-    # Отправляем уведомление о доступном промокоде
-    if user_has_push_tokens(db, current_user.id):
-        asyncio.create_task(
-            send_localized_notification_to_user_async(
-                current_user.id,
-                "promo_code_available",
-                "promo_code_available"
+    if promo:
+        # --- Скидочный промокод ---
+        exist = db.query(UserPromoCode) \
+            .filter_by(user_id=current_user.id, status=UserPromoStatus.ACTIVATED) \
+            .first()
+        if exist:
+            raise HTTPException(400, "У вас уже есть неиспользованный промокод")
+
+        up = UserPromoCode(user_id=current_user.id, promo_code_id=promo.id)
+        db.add(up)
+        db.commit()
+
+        # Отправляем уведомление о доступном промокоде
+        if user_has_push_tokens(db, current_user.id):
+            asyncio.create_task(
+                send_localized_notification_to_user_async(
+                    current_user.id,
+                    "promo_code_available",
+                    "promo_code_available"
+                )
             )
-        )
-    
+
+        return {
+            "message": "Промокод активирован",
+            "code": promo.code,
+            "discount_percent": float(promo.discount_percent)
+        }
+
+    # 2) Не найден как скидочный — пробуем как бонусный
+    from app.promo.service import apply_promo_code
+
+    success, message, bonus_amount, new_balance = await apply_promo_code(
+        db, current_user, body.code,
+    )
+
+    if not success:
+        if "уже использовали" in message:
+            raise HTTPException(409, message)
+        raise HTTPException(400, message)
+
     return {
-        "message": "Промокод активирован",
-        "code": promo.code,
-        "discount_percent": float(promo.discount_percent)
+        "message": message,
+        "bonus_amount": bonus_amount,
+        "new_balance": new_balance,
     }
 
 

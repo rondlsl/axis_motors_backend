@@ -494,6 +494,17 @@ def init_app(app: FastAPI):
                 minute=0,
                 id="check_new_cars"
             )
+            
+            # Ежедневный бэкап базы данных - в 2:00 ночи по Алматы (GMT+5)
+            from app.services.backup_service import create_scheduled_backup
+            scheduler.add_job(
+                create_scheduled_backup,
+                trigger="cron",
+                hour=2,
+                minute=0,
+                id="daily_backup"
+            )
+            
             scheduler.start()
             logger.info("Планировщик задач запущен")
         except Exception as e:
