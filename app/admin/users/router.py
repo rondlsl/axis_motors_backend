@@ -1151,6 +1151,8 @@ async def get_user_transactions_summary(
         "total_deposits": 0.0,
         "total_expenses": 0.0,
     })
+    total_deposits_all_time = 0.0
+    total_expenses_all_time = 0.0
 
     for tx in all_tx:
         dt = tx.created_at
@@ -1161,8 +1163,10 @@ async def get_user_transactions_summary(
         amt = float(tx.amount)
         if tx.transaction_type in DEPOSIT_TX_TYPES:
             monthly[key]["total_deposits"] += amt
+            total_deposits_all_time += amt
         else:
             monthly[key]["total_expenses"] += amt
+            total_expenses_all_time += amt
 
     now = get_local_time()
     sorted_months = sorted(monthly.keys(), reverse=True)
@@ -1186,6 +1190,8 @@ async def get_user_transactions_summary(
         "user_id": uuid_to_sid(user.id),
         "user_name": f"{user.first_name or ''} {user.last_name or ''}".strip() or None,
         "wallet_balance": float(user.wallet_balance) if user.wallet_balance else 0.0,
+        "total_deposits_all_time": round(total_deposits_all_time, 2),
+        "total_expenses_all_time": round(total_expenses_all_time, 2),
         "current_month": {
             "year": now.year,
             "month": now.month,
