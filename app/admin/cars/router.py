@@ -258,6 +258,10 @@ async def edit_car(
             # Если новый IMEI пустой, сбрасываем gps_id
             update_fields["gps_id"] = None
     
+    # Нормализация hourly_min_hours (не менее 1)
+    if "hourly_min_hours" in update_fields and update_fields["hourly_min_hours"] is not None:
+        update_fields["hourly_min_hours"] = max(1, update_fields["hourly_min_hours"])
+
     # Обновляем поля машины
     for field, value in update_fields.items():
         if field == "status" and value is not None:
@@ -454,6 +458,9 @@ async def get_car_details_response(car_id: str, db: Session) -> CarDetailSchema:
         is_light_auto_mode_on=vehicle_status.get("is_light_auto_mode_on"),
         can_exit_zone=car.can_exit_zone or False,
         notifications_disabled=car.notifications_disabled or False,
+        minutes_tariff_enabled=getattr(car, "minutes_tariff_enabled", True),
+        hourly_tariff_enabled=getattr(car, "hourly_tariff_enabled", True),
+        hourly_min_hours=max(1, getattr(car, "hourly_min_hours", 1) or 1),
     )
 
 
@@ -3484,6 +3491,9 @@ async def create_car(
         description=car_data.description,
         owner_id=owner_uuid,
         status=CarStatus.FREE,
+        minutes_tariff_enabled=car_data.minutes_tariff_enabled,
+        hourly_tariff_enabled=car_data.hourly_tariff_enabled,
+        hourly_min_hours=max(1, car_data.hourly_min_hours),
         created_at=get_local_time(),
         updated_at=get_local_time()
     )
@@ -3570,6 +3580,9 @@ async def create_car(
         price_per_hour=new_car.price_per_hour,
         price_per_day=new_car.price_per_day,
         open_fee=new_car.open_fee,
+        minutes_tariff_enabled=new_car.minutes_tariff_enabled,
+        hourly_tariff_enabled=new_car.hourly_tariff_enabled,
+        hourly_min_hours=new_car.hourly_min_hours,
         vehicle_added_to_cars_v2=vehicle_added_to_cars_v2,
         glonass_data_received=glonass_data_received
     )
@@ -3594,6 +3607,9 @@ async def create_car_with_photos(
     color: Optional[str] = Query(None, description="Цвет"),
     description: Optional[str] = Query(None, description="Описание"),
     owner_id: Optional[str] = Query(None, description="ID владельца (SID)"),
+    minutes_tariff_enabled: bool = Query(default=True, description="Включён ли минутный тариф"),
+    hourly_tariff_enabled: bool = Query(default=True, description="Включён ли почасовой тариф"),
+    hourly_min_hours: int = Query(default=1, ge=1, description="Мин. часов для почасового тарифа"),
     photos: List[UploadFile] = File(default=[]),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -3637,7 +3653,10 @@ async def create_car_with_photos(
         vin=vin,
         color=color,
         description=description,
-        owner_id=owner_id
+        owner_id=owner_id,
+        minutes_tariff_enabled=minutes_tariff_enabled,
+        hourly_tariff_enabled=hourly_tariff_enabled,
+        hourly_min_hours=max(1, hourly_min_hours),
     )
     
     return await create_car(car_data=car_data, photos=photos, current_user=current_user, db=db)

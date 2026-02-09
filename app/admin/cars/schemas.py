@@ -25,6 +25,9 @@ class CarCreateSchema(BaseModel):
     color: Optional[str] = Field(None, description="Цвет")
     description: Optional[str] = Field(None, description="Описание")
     owner_id: Optional[str] = Field(None, description="ID владельца (SID)")
+    minutes_tariff_enabled: bool = Field(default=True, description="Включён ли минутный тариф")
+    hourly_tariff_enabled: bool = Field(default=True, description="Включён ли почасовой тариф")
+    hourly_min_hours: int = Field(default=1, ge=1, description="Мин. часов для почасового тарифа")
 
 
 class CarCreateResponseSchema(BaseModel):
@@ -45,6 +48,9 @@ class CarCreateResponseSchema(BaseModel):
     price_per_hour: int
     price_per_day: int
     open_fee: int
+    minutes_tariff_enabled: bool = True
+    hourly_tariff_enabled: bool = True
+    hourly_min_hours: int = 1
     vehicle_added_to_cars_v2: bool = False
     glonass_data_received: bool = False
 
@@ -246,6 +252,9 @@ class CarDetailSchema(BaseModel):
     is_light_auto_mode_on: Optional[bool] = None
     can_exit_zone: bool = False  # Разрешение на выезд за зону карты
     notifications_disabled: bool = False  # Уведомления по машине отключены
+    minutes_tariff_enabled: bool = True
+    hourly_tariff_enabled: bool = True
+    hourly_min_hours: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -271,6 +280,9 @@ class CarEditSchema(BaseModel):
     owner_id: Optional[str] = None  # ID владельца (short id)
     photos: Optional[List[str]] = None  # Массив URL фотографий (для изменения порядка/удаления)
     can_exit_zone: Optional[bool] = None  # Разрешение на выезд за зону карты
+    minutes_tariff_enabled: Optional[bool] = None
+    hourly_tariff_enabled: Optional[bool] = None
+    hourly_min_hours: Optional[int] = Field(None, ge=1, description="Мин. часов для почасового тарифа")
 
 
 class DescriptionUpdateSchema(BaseModel):
