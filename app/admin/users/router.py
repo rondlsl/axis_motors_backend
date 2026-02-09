@@ -1111,15 +1111,106 @@ async def get_user_card(
     return UserCardSchema(**converted_data)
 
 
+@users_router.get("/{user_id}/transactions/summary")
+async def get_user_transactions_summary(
+    user_id: str,
+    page: int = Query(1, ge=1, description="Номер страницы"),
+    limit: int = Query(12, ge=1, le=60, description="Количество месяцев на странице"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Агрегированные данные по транзакциям пользователя, сгруппированные по месяцам.
+    Аналогично /admin/cars/{car_id}/history/summary.
+    """
+    from collections import defaultdict
+    from app.utils.time_utils import get_local_time
+
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.FINANCIER]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    # Все транзакции пользователя
+    all_tx = db.query(WalletTransaction).filter(
+        WalletTransaction.user_id == user.id
+    ).all()
+
+    DEPOSIT_TX_TYPES = {
+        WalletTransactionType.DEPOSIT,
+        WalletTransactionType.PROMO_BONUS,
+        WalletTransactionType.COMPANY_BONUS,
+        WalletTransactionType.REFUND,
+    }
+
+    monthly = defaultdict(lambda: {
+        "transactions_count": 0,
+        "total_deposits": 0.0,
+        "total_expenses": 0.0,
+    })
+
+    for tx in all_tx:
+        dt = tx.created_at
+        if not dt:
+            continue
+        key = (dt.year, dt.month)
+        monthly[key]["transactions_count"] += 1
+        amt = float(tx.amount)
+        if tx.transaction_type in DEPOSIT_TX_TYPES:
+            monthly[key]["total_deposits"] += amt
+        else:
+            monthly[key]["total_expenses"] += amt
+
+    now = get_local_time()
+    sorted_months = sorted(monthly.keys(), reverse=True)
+    total_months = len(sorted_months)
+    paginated = sorted_months[(page - 1) * limit : page * limit]
+
+    months_result = []
+    for year, month in paginated:
+        d = monthly[(year, month)]
+        months_result.append({
+            "year": year,
+            "month": month,
+            "transactions_count": d["transactions_count"],
+            "total_deposits": round(d["total_deposits"], 2),
+            "total_expenses": round(d["total_expenses"], 2),
+            "net_change": round(d["total_deposits"] + d["total_expenses"], 2),
+            "is_current_month": (year == now.year and month == now.month),
+        })
+
+    return {
+        "user_id": uuid_to_sid(user.id),
+        "user_name": f"{user.first_name or ''} {user.last_name or ''}".strip() or None,
+        "wallet_balance": float(user.wallet_balance) if user.wallet_balance else 0.0,
+        "current_month": {
+            "year": now.year,
+            "month": now.month,
+        },
+        "months": months_result,
+        "total": total_months,
+        "page": page,
+        "limit": limit,
+        "pages": ceil(total_months / limit) if limit > 0 else 0,
+    }
+
+
 @users_router.get("/{user_id}/transactions", response_model=WalletTransactionPaginationSchema)
 async def get_user_transactions(
     user_id: str,
+    month: Optional[int] = Query(None, ge=1, le=12, description="Месяц (1-12). Если не указан — все транзакции"),
+    year: Optional[int] = Query(None, description="Год. Если не указан — все транзакции"),
     page: int = Query(1, ge=1, description="Номер страницы"),
     limit: int = Query(20, ge=1, le=100, description="Количество элементов на странице"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Получение истории транзакций пользователя"""
+    """Получение истории транзакций пользователя. Опционально фильтрация по месяцу/году."""
+    from calendar import monthrange
+
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.FINANCIER]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
@@ -1129,6 +1220,15 @@ async def get_user_transactions(
         raise HTTPException(status_code=404, detail="Пользователь не найден")
         
     query = db.query(WalletTransaction).filter(WalletTransaction.user_id == user.id)
+
+    # Фильтрация по месяцу/году, если оба указаны
+    if month is not None and year is not None:
+        start_dt = datetime(year, month, 1)
+        end_dt = datetime(year, month, monthrange(year, month)[1], 23, 59, 59)
+        query = query.filter(
+            WalletTransaction.created_at >= start_dt,
+            WalletTransaction.created_at <= end_dt,
+        )
     
     query = query.order_by(desc(WalletTransaction.created_at))
     
@@ -1155,7 +1255,7 @@ async def get_user_transactions(
         "total": total_count,
         "page": page,
         "limit": limit,
-        "pages": ceil(total_count / limit),
+        "pages": ceil(total_count / limit) if total_count > 0 else 0,
         "wallet_balance": float(user.wallet_balance) if user.wallet_balance else 0.0
     }
 
