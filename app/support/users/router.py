@@ -35,6 +35,10 @@ from app.admin.users.schemas import (
     MechanicPhotoUploadResponse,
     MechanicCompleteInspectionResponse,
     AdminMechanicCompleteRequest,
+    WalletTransactionSchema,
+    WalletTransactionPaginationSchema,
+    GroupedTransactionItemSchema,
+    GroupedTransactionsPaginationSchema,
 )
 from app.support.deps import require_support_role
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
@@ -1208,3 +1212,549 @@ async def support_mechanic_complete_inspection(
         car_status="FREE",
         rating=request.rating,
     )
+
+
+# ---------------------------------------------------------------------------
+# Transactions endpoints (support)
+# ---------------------------------------------------------------------------
+
+@users_router.get("/{user_id}/transactions/summary")
+async def support_get_user_transactions_summary(
+    user_id: str,
+    page: int = Query(1, ge=1, description="Номер страницы"),
+    limit: int = Query(12, ge=1, le=60, description="Количество месяцев на странице"),
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+):
+    """Агрегированные данные по транзакциям пользователя, сгруппированные по месяцам (support)."""
+    from collections import defaultdict
+    from math import ceil
+    from app.utils.time_utils import get_local_time
+    from app.models.wallet_transaction_model import WalletTransaction, WalletTransactionType
+
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    all_tx = db.query(WalletTransaction).filter(WalletTransaction.user_id == user.id).all()
+
+    DEPOSIT_TX_TYPES = {
+        WalletTransactionType.DEPOSIT,
+        WalletTransactionType.PROMO_BONUS,
+        WalletTransactionType.COMPANY_BONUS,
+        WalletTransactionType.REFUND,
+    }
+
+    monthly = defaultdict(lambda: {"transactions_count": 0, "total_deposits": 0.0, "total_expenses": 0.0})
+    total_deposits_all_time = 0.0
+    total_expenses_all_time = 0.0
+
+    for tx in all_tx:
+        dt = tx.created_at
+        if not dt:
+            continue
+        key = (dt.year, dt.month)
+        monthly[key]["transactions_count"] += 1
+        amt = float(tx.amount)
+        if tx.transaction_type in DEPOSIT_TX_TYPES:
+            monthly[key]["total_deposits"] += amt
+            total_deposits_all_time += amt
+        else:
+            monthly[key]["total_expenses"] += amt
+            total_expenses_all_time += amt
+
+    now = get_local_time()
+    sorted_months = sorted(monthly.keys(), reverse=True)
+    total_months = len(sorted_months)
+    paginated = sorted_months[(page - 1) * limit : page * limit]
+
+    months_result = []
+    for year, month in paginated:
+        d = monthly[(year, month)]
+        months_result.append({
+            "year": year,
+            "month": month,
+            "transactions_count": d["transactions_count"],
+            "total_deposits": round(d["total_deposits"], 2),
+            "total_expenses": round(d["total_expenses"], 2),
+            "net_change": round(d["total_deposits"] + d["total_expenses"], 2),
+            "is_current_month": (year == now.year and month == now.month),
+        })
+
+    return {
+        "user_id": uuid_to_sid(user.id),
+        "user_name": f"{user.first_name or ''} {user.last_name or ''}".strip() or None,
+        "wallet_balance": float(user.wallet_balance) if user.wallet_balance else 0.0,
+        "total_deposits_all_time": round(total_deposits_all_time, 2),
+        "total_expenses_all_time": round(total_expenses_all_time, 2),
+        "current_month": {"year": now.year, "month": now.month},
+        "months": months_result,
+        "total": total_months,
+        "page": page,
+        "limit": limit,
+        "pages": ceil(total_months / limit) if limit > 0 else 0,
+    }
+
+
+@users_router.get("/{user_id}/transactions", response_model=WalletTransactionPaginationSchema)
+async def support_get_user_transactions(
+    user_id: str,
+    month: Optional[int] = Query(None, ge=1, le=12, description="Месяц (1-12)"),
+    year: Optional[int] = Query(None, description="Год"),
+    page: int = Query(1, ge=1, description="Номер страницы"),
+    limit: int = Query(20, ge=1, le=100, description="Количество элементов на странице"),
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+):
+    """Получение истории транзакций пользователя (support)."""
+    from calendar import monthrange
+    from math import ceil
+    from sqlalchemy import desc
+    from app.models.wallet_transaction_model import WalletTransaction
+
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    query = db.query(WalletTransaction).filter(WalletTransaction.user_id == user.id)
+
+    if month is not None and year is not None:
+        start_dt = datetime(year, month, 1)
+        end_dt = datetime(year, month, monthrange(year, month)[1], 23, 59, 59)
+        query = query.filter(
+            WalletTransaction.created_at >= start_dt,
+            WalletTransaction.created_at <= end_dt,
+        )
+
+    query = query.order_by(desc(WalletTransaction.created_at))
+
+    total_count = query.count()
+    transactions = query.offset((page - 1) * limit).limit(limit).all()
+
+    items = []
+    for tx in transactions:
+        tx_data = {
+            "id": uuid_to_sid(tx.id),
+            "amount": float(tx.amount),
+            "transaction_type": tx.transaction_type.value if hasattr(tx.transaction_type, "value") else str(tx.transaction_type),
+            "description": tx.description,
+            "balance_before": float(tx.balance_before),
+            "balance_after": float(tx.balance_after),
+            "tracking_id": tx.tracking_id,
+            "created_at": tx.created_at,
+            "related_rental_id": uuid_to_sid(tx.related_rental_id) if tx.related_rental_id else None,
+        }
+        items.append(WalletTransactionSchema(**tx_data))
+
+    return {
+        "items": items,
+        "total": total_count,
+        "page": page,
+        "limit": limit,
+        "pages": ceil(total_count / limit) if total_count > 0 else 0,
+        "wallet_balance": float(user.wallet_balance) if user.wallet_balance else 0.0,
+    }
+
+
+@users_router.get("/{user_id}/transactions-grouped", response_model=GroupedTransactionsPaginationSchema)
+async def support_get_user_transactions_grouped(
+    user_id: str,
+    page: int = Query(1, ge=1, description="Номер страницы"),
+    limit: int = Query(50, ge=1, le=200, description="Количество элементов на странице"),
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+):
+    """Получение истории транзакций пользователя с группировкой по аренде (support)."""
+    from collections import defaultdict
+    from math import ceil, floor
+    from sqlalchemy.orm import joinedload
+    from sqlalchemy import desc
+    from app.models.wallet_transaction_model import WalletTransaction
+    from app.models.history_model import RentalHistory, RentalStatus
+    from app.models.car_model import Car, CarBodyType
+    from app.admin.cars.utils import sort_car_photos
+    from app.rent.utils.calculate_price import FUEL_PRICE_PER_LITER, ELECTRIC_FUEL_PRICE_PER_LITER
+
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    # Все транзакции
+    all_transactions = (
+        db.query(WalletTransaction)
+        .filter(WalletTransaction.user_id == user.id)
+        .order_by(desc(WalletTransaction.created_at), desc(WalletTransaction.id))
+        .all()
+    )
+
+    # Все аренды
+    all_user_rentals = (
+        db.query(RentalHistory)
+        .options(joinedload(RentalHistory.car), joinedload(RentalHistory.user))
+        .filter(RentalHistory.user_id == user.id)
+        .all()
+    )
+
+    # Группируем транзакции по rental_id
+    rental_transactions = defaultdict(list)
+    standalone_transactions = []
+
+    for tx in all_transactions:
+        if tx.related_rental_id:
+            rental_transactions[tx.related_rental_id].append(tx)
+        else:
+            standalone_transactions.append(tx)
+
+    # Для каждой аренды добавляем транзакции по временному диапазону с проверкой цепочки балансов
+    for rental in all_user_rentals:
+        if rental.id not in rental_transactions:
+            rental_transactions[rental.id] = []
+
+        start_bound = rental.reservation_time if rental.reservation_time else rental.start_time
+        end_bound = rental.end_time
+
+        if start_bound and end_bound:
+            transactions_in_range = []
+            for tx in standalone_transactions:
+                if tx.created_at and start_bound <= tx.created_at <= end_bound:
+                    transactions_in_range.append(tx)
+
+            if transactions_in_range:
+                if rental_transactions[rental.id]:
+                    all_rental_txs = list(rental_transactions[rental.id])
+
+                    for tx in transactions_in_range:
+                        can_add = False
+
+                        if tx.balance_before is None or tx.balance_after is None:
+                            continue
+
+                        for i, existing_tx in enumerate(all_rental_txs):
+                            if existing_tx.balance_before is None or existing_tx.balance_after is None:
+                                continue
+
+                            if tx.created_at and existing_tx.created_at and tx.created_at <= existing_tx.created_at:
+                                if i == 0:
+                                    if abs(float(tx.balance_after) - float(existing_tx.balance_before)) < 0.01:
+                                        can_add = True
+                                        break
+                                else:
+                                    prev_tx = all_rental_txs[i - 1]
+                                    if prev_tx.balance_after is not None and prev_tx.balance_before is not None:
+                                        if (
+                                            abs(float(prev_tx.balance_after) - float(tx.balance_before)) < 0.01
+                                            and abs(float(tx.balance_after) - float(existing_tx.balance_before)) < 0.01
+                                        ):
+                                            can_add = True
+                                            break
+
+                        if not can_add and all_rental_txs:
+                            last_tx = all_rental_txs[-1]
+                            if (
+                                last_tx.balance_after is not None
+                                and tx.created_at
+                                and last_tx.created_at
+                                and tx.created_at >= last_tx.created_at
+                            ):
+                                if abs(float(last_tx.balance_after) - float(tx.balance_before)) < 0.01:
+                                    can_add = True
+
+                        if can_add:
+                            rental_transactions[rental.id].append(tx)
+                            all_rental_txs = list(rental_transactions[rental.id])
+
+    # Убираем из standalone те, что были добавлены к арендам
+    used_tx_ids = set()
+    for transactions in rental_transactions.values():
+        for tx in transactions:
+            used_tx_ids.add(tx.id)
+
+    standalone_transactions = [tx for tx in standalone_transactions if tx.id not in used_tx_ids]
+
+    # Собираем все элементы
+    all_items = []
+
+    for rental_id, transactions in rental_transactions.items():
+        rental = None
+        for r in all_user_rentals:
+            if r.id == rental_id:
+                rental = r
+                break
+
+        if not rental:
+            rental = (
+                db.query(RentalHistory)
+                .options(joinedload(RentalHistory.car), joinedload(RentalHistory.user))
+                .filter(RentalHistory.id == rental_id)
+                .first()
+            )
+
+        if rental and transactions:
+            car = rental.car
+            renter = rental.user
+
+            # fuel_fee
+            fuel_fee = 0
+            if rental.fuel_before is not None and rental.fuel_after is not None:
+                if rental.fuel_after < rental.fuel_before:
+                    fuel_consumed = ceil(rental.fuel_before) - floor(rental.fuel_after)
+                    if fuel_consumed > 0 and car:
+                        fuel_price = ELECTRIC_FUEL_PRICE_PER_LITER if car.body_type == CarBodyType.ELECTRIC else FUEL_PRICE_PER_LITER
+                        fuel_fee = int(fuel_consumed * fuel_price)
+
+            total_price_without_fuel = (
+                (rental.base_price or 0)
+                + (rental.open_fee or 0)
+                + (rental.delivery_fee or 0)
+                + (rental.waiting_fee or 0)
+                + (rental.overtime_fee or 0)
+                + (rental.distance_fee or 0)
+                + (rental.driver_fee or 0)
+            )
+
+            car_info = {}
+            if car:
+                car_info = {
+                    "id": uuid_to_sid(car.id),
+                    "name": car.name,
+                    "plate_number": car.plate_number,
+                    "engine_volume": car.engine_volume,
+                    "year": car.year,
+                    "drive_type": car.drive_type,
+                    "transmission_type": car.transmission_type.value if car.transmission_type else None,
+                    "body_type": car.body_type.value if car.body_type else None,
+                    "auto_class": car.auto_class.value if car.auto_class else None,
+                    "price_per_minute": car.price_per_minute,
+                    "price_per_hour": car.price_per_hour,
+                    "price_per_day": car.price_per_day,
+                    "minutes_tariff_enabled": getattr(car, "minutes_tariff_enabled", True),
+                    "hourly_tariff_enabled": getattr(car, "hourly_tariff_enabled", True),
+                    "hourly_min_hours": max(1, getattr(car, "hourly_min_hours", 1) or 1),
+                    "latitude": car.latitude,
+                    "longitude": car.longitude,
+                    "fuel_level": car.fuel_level,
+                    "mileage": car.mileage,
+                    "course": car.course,
+                    "photos": sort_car_photos(car.photos or []),
+                    "description": car.description,
+                    "vin": car.vin,
+                    "color": car.color,
+                    "gps_id": car.gps_id,
+                    "gps_imei": car.gps_imei,
+                    "status": car.status.value if car.status else None,
+                }
+
+            renter_info = {}
+            if renter:
+                is_owner = False
+                if car and car.owner_id:
+                    is_owner = renter.id == car.owner_id
+                renter_info = {
+                    "id": uuid_to_sid(renter.id),
+                    "first_name": renter.first_name,
+                    "last_name": renter.last_name,
+                    "phone_number": renter.phone_number,
+                    "selfie": renter.selfie_url,
+                    "is_owner": is_owner,
+                }
+
+            tariff_value = rental.rental_type.value if hasattr(rental.rental_type, "value") else str(rental.rental_type)
+            tariff_map = {"minutes": "Минутный", "hours": "Часовой", "days": "Суточный"}
+            tariff_display = tariff_map.get(tariff_value, tariff_value)
+
+            base_price_owner = int((rental.base_price or 0) * 0.5 * 0.97)
+            waiting_fee_owner = int((rental.waiting_fee or 0) * 0.5 * 0.97)
+            overtime_fee_owner = int((rental.overtime_fee or 0) * 0.5 * 0.97)
+            total_owner_earnings = int(
+                ((rental.base_price or 0) + (rental.waiting_fee or 0) + (rental.overtime_fee or 0)) * 0.5 * 0.97
+            )
+
+            transactions_list = []
+            sorted_transactions = sorted(transactions, key=lambda x: (x.created_at or datetime.min, x.id or ""))
+            for tx in sorted_transactions:
+                transactions_list.append({
+                    "id": uuid_to_sid(tx.id),
+                    "amount": float(tx.amount),
+                    "transaction_type": tx.transaction_type.value if hasattr(tx.transaction_type, "value") else str(tx.transaction_type),
+                    "description": tx.description,
+                    "balance_before": float(tx.balance_before),
+                    "balance_after": float(tx.balance_after),
+                    "tracking_id": tx.tracking_id,
+                    "created_at": tx.created_at.isoformat() if tx.created_at else None,
+                    "related_rental_id": uuid_to_sid(tx.related_rental_id) if tx.related_rental_id else None,
+                })
+
+            first_tx = sorted_transactions[0] if sorted_transactions else None
+            last_tx = sorted_transactions[-1] if sorted_transactions else None
+            rental_balance_before = float(first_tx.balance_before) if first_tx and first_tx.balance_before is not None else 0.0
+            rental_balance_after = float(last_tx.balance_after) if last_tx and last_tx.balance_after is not None else 0.0
+
+            rental_data = {
+                "rental_id": uuid_to_sid(rental.id),
+                "car": car_info,
+                "reservation_time": rental.reservation_time.isoformat() if rental.reservation_time else None,
+                "start_time": rental.start_time.isoformat() if rental.start_time else None,
+                "end_time": rental.end_time.isoformat() if rental.end_time else None,
+                "duration": rental.duration,
+                "already_payed": rental.already_payed or 0,
+                "total_price": rental.total_price or 0,
+                "total_price_without_fuel": total_price_without_fuel,
+                "tariff": tariff_value,
+                "tariff_display": tariff_display,
+                "base_price": rental.base_price or 0,
+                "open_fee": rental.open_fee or 0,
+                "delivery_fee": rental.delivery_fee or 0,
+                "fuel_fee": fuel_fee,
+                "waiting_fee": rental.waiting_fee or 0,
+                "overtime_fee": rental.overtime_fee or 0,
+                "distance_fee": rental.distance_fee or 0,
+                "with_driver": rental.with_driver or False,
+                "driver_fee": rental.driver_fee or 0,
+                "rebooking_fee": rental.rebooking_fee or 0,
+                "base_price_owner": base_price_owner,
+                "waiting_fee_owner": waiting_fee_owner,
+                "overtime_fee_owner": overtime_fee_owner,
+                "total_owner_earnings": total_owner_earnings,
+                "fuel_before": float(rental.fuel_before) if rental.fuel_before is not None else None,
+                "fuel_after": float(rental.fuel_after) if rental.fuel_after is not None else None,
+                "renter": renter_info,
+                "transactions": transactions_list,
+                "balance_before": rental_balance_before,
+                "balance_after": rental_balance_after,
+            }
+
+            if transactions:
+                earliest_tx = min(transactions, key=lambda x: (x.created_at or datetime.max, x.id or ""))
+                sort_date = earliest_tx.created_at
+            else:
+                sort_date = rental.reservation_time if rental.reservation_time else rental.start_time
+
+            all_items.append({
+                "type": "rental",
+                "created_at": sort_date,
+                "rental": rental_data,
+                "transaction": None,
+                "sort_id": rental.id,
+            })
+
+    # Отдельные транзакции
+    for tx in standalone_transactions:
+        tx_data = {
+            "id": uuid_to_sid(tx.id),
+            "amount": float(tx.amount),
+            "transaction_type": tx.transaction_type.value if hasattr(tx.transaction_type, "value") else str(tx.transaction_type),
+            "description": tx.description,
+            "balance_before": float(tx.balance_before),
+            "balance_after": float(tx.balance_after),
+            "tracking_id": tx.tracking_id,
+            "created_at": tx.created_at,
+            "related_rental_id": uuid_to_sid(tx.related_rental_id) if tx.related_rental_id else None,
+        }
+        all_items.append({
+            "type": "transaction",
+            "created_at": tx.created_at,
+            "transaction": WalletTransactionSchema(**tx_data),
+            "rental": None,
+            "sort_id": tx.id,
+        })
+
+    # Сортировка
+    all_items.sort(
+        key=lambda x: (x["created_at"] if x["created_at"] else datetime.min, x.get("sort_id", "")),
+        reverse=True,
+    )
+
+    total_count = len(all_items)
+    start_idx = (page - 1) * limit
+    end_idx = start_idx + limit
+    paginated_items = all_items[start_idx:end_idx]
+
+    result_items = []
+    for item in paginated_items:
+        item_copy = {k: v for k, v in item.items() if k != "sort_id"}
+        result_items.append(GroupedTransactionItemSchema(**item_copy))
+
+    return {
+        "items": result_items,
+        "total": total_count,
+        "page": page,
+        "limit": limit,
+        "pages": ceil(total_count / limit) if limit > 0 else 0,
+        "wallet_balance": float(user.wallet_balance) if user.wallet_balance else 0.0,
+    }
+
+
+@users_router.post("/{user_id}/balance/recalculate")
+async def support_recalculate_user_balance(
+    user_id: str,
+    initial_balance: Optional[float] = Form(0.0, description="Начальный баланс перед первой транзакцией (по умолчанию 0)"),
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+):
+    """
+    Пересчёт балансов всех транзакций пользователя (support).
+    Действие логируется с actor_role=support.
+    """
+    from math import ceil
+    from app.models.wallet_transaction_model import WalletTransaction
+
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    all_transactions = (
+        db.query(WalletTransaction)
+        .filter(WalletTransaction.user_id == user_uuid)
+        .order_by(WalletTransaction.created_at.asc())
+        .all()
+    )
+
+    if not all_transactions:
+        raise HTTPException(status_code=400, detail="У пользователя нет транзакций для пересчёта")
+
+    old_balance = float(user.wallet_balance or 0)
+    running_balance = float(initial_balance or 0)
+    updated_count = 0
+
+    for tx in all_transactions:
+        tx.balance_before = running_balance
+        tx.balance_after = running_balance + float(tx.amount)
+        running_balance = tx.balance_after
+        updated_count += 1
+
+    new_balance = running_balance
+    user.wallet_balance = new_balance
+
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="balance_recalculate",
+        entity_type="user",
+        entity_id=user.id,
+        details={
+            "user_id": user_id,
+            "initial_balance": initial_balance,
+            "old_balance": old_balance,
+            "new_balance": new_balance,
+            "transactions_count": updated_count,
+            "balance_difference": new_balance - old_balance,
+            "actor_role": "support",
+        },
+    )
+
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "Балансы транзакций успешно пересчитаны",
+        "user_id": uuid_to_sid(user_uuid),
+        "initial_balance": initial_balance,
+        "old_balance": old_balance,
+        "new_balance": new_balance,
+        "balance_difference": new_balance - old_balance,
+        "transactions_updated": updated_count,
+    }
