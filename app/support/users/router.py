@@ -7,6 +7,12 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Form, File, UploadFile
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
+from app.models.notification_model import Notification
+from app.models.application_model import Application, ApplicationStatus
+from app.models.wallet_transaction_model import WalletTransaction
+from app.models.guarantor_model import Guarantor, GuarantorRequest
+from app.models.user_device_model import UserDevice
+from app.models.contract_model import UserContractSignature
 
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.save_documents import save_file, validate_photos
@@ -48,6 +54,11 @@ from app.admin.users.schemas import (
     UserFineTripInfoSchema,
     TripListItemSchema,
     SanctionPenaltySchema,
+    UserRoleUpdateSchema,
+    UserBlockSchema,
+    AutoClassUpdateSchema,
+    AdminDeleteUserRequest,
+    AdminDeleteUserResponse,
 )
 from app.support.deps import require_support_role
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
@@ -127,6 +138,425 @@ async def get_support_user_card(
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     converted_data = convert_uuid_response_to_sid(user_data, ["id"])
     return UserCardSchema(**converted_data)
+
+
+@users_router.patch("/{user_id}/auto_class")
+async def support_update_user_auto_class(
+    user_id: str,
+    payload: AutoClassUpdateSchema,
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+):
+    """Изменение класса допуска к авто (support)."""
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    old_classes = set(user.auto_class or [])
+    user.auto_class = payload.auto_class
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="update_user_auto_class",
+        entity_type="user",
+        entity_id=user.id,
+        details={"old_classes": list(old_classes), "new_classes": payload.auto_class, "actor_role": "support"},
+    )
+    db.commit()
+    class_names = {"A": "A", "B": "B", "C": "C"}
+    new_classes = set(payload.auto_class)
+    new_text = ", ".join([class_names.get(c, c) for c in sorted(new_classes)]) if new_classes else "—"
+    notification_message = f"Ваш уровень доступа к автомобилям изменён. Доступные классы: {new_text}"
+    try:
+        await send_push_to_user_by_id(
+            db_session=db,
+            user_id=user_uuid,
+            title="Изменение уровня доступа",
+            body=notification_message,
+        )
+    except Exception:
+        pass
+    notification = Notification(
+        user_id=user_uuid,
+        title="Изменение уровня доступа",
+        body=notification_message,
+    )
+    db.add(notification)
+    db.commit()
+    return {"success": True, "user_id": uuid_to_sid(user_uuid), "auto_class": payload.auto_class}
+
+
+@users_router.patch("/{user_id}/role")
+async def support_update_user_role(
+    user_id: str,
+    role_data: UserRoleUpdateSchema,
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+):
+    """Обновление роли пользователя (support)."""
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    old_role = user.role
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="update_user_role",
+        entity_type="user",
+        entity_id=user.id,
+        details={"old_role": old_role.value if old_role else None, "new_role": role_data.role.value, "actor_role": "support"},
+    )
+    user.role = role_data.role
+    if role_data.role == UserRole.USER and old_role != role_data.role:
+        application = db.query(Application).filter(Application.user_id == user.id).first()
+        if application:
+            application.financier_status = ApplicationStatus.APPROVED
+            application.mvd_status = ApplicationStatus.APPROVED
+    db.commit()
+    return {"message": f"Роль пользователя изменена на {role_data.role.value}"}
+
+
+@users_router.patch("/{user_id}/block")
+async def support_block_user(
+    user_id: str,
+    block_data: UserBlockSchema,
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+):
+    """Блокировка/разблокировка пользователя (support)."""
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    if block_data.is_blocked and not block_data.block_reason:
+        raise HTTPException(status_code=400, detail="При блокировке обязательно указать причину")
+    user.is_blocked = block_data.is_blocked
+    if block_data.is_blocked:
+        block_reason = f"Блокировка: {block_data.block_reason}"
+        if user.admin_comment:
+            user.admin_comment = f"{user.admin_comment}\n{block_reason}"
+        else:
+            user.admin_comment = block_reason
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="block_user",
+        entity_type="user",
+        entity_id=user.id,
+        details={"is_blocked": block_data.is_blocked, "reason": block_data.block_reason, "actor_role": "support"},
+    )
+    db.commit()
+    asyncio.create_task(notify_user_status_update(str(user.id)))
+    action = "заблокирован" if block_data.is_blocked else "разблокирован"
+    return {"message": f"Пользователь {action}"}
+
+
+@users_router.delete("/{user_id}", response_model=AdminDeleteUserResponse)
+async def support_delete_user(
+    user_id: str,
+    delete_data: AdminDeleteUserRequest,
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+):
+    """Удаление пользователя — мягкое или физическое (support)."""
+    if delete_data.delete_type not in ["soft", "hard"]:
+        raise HTTPException(status_code=400, detail="delete_type должен быть 'soft' или 'hard'")
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    if user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="Нельзя удалить свой собственный аккаунт")
+    deleted_at_str = None
+    if delete_data.delete_type == "soft":
+        user.is_deleted = True
+        user.deleted_at = get_local_time()
+        deleted_at_str = user.deleted_at.isoformat()
+        if delete_data.reason:
+            delete_reason = f"Удалён: {delete_data.reason}"
+            if user.admin_comment:
+                user.admin_comment = f"{user.admin_comment}\n{delete_reason}"
+            else:
+                user.admin_comment = delete_reason
+        owned_cars = db.query(Car).filter(Car.owner_id == user.id).all()
+        for car in owned_cars:
+            car.owner_id = None
+            if car.status == CarStatus.OWNER:
+                car.status = CarStatus.FREE
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="delete_user_soft",
+            entity_type="user",
+            entity_id=user.id,
+            details={"reason": delete_data.reason, "actor_role": "support"},
+        )
+        db.commit()
+        message = "Пользователь мягко удалён"
+    else:
+        owned_cars = db.query(Car).filter(Car.owner_id == user.id).all()
+        for car in owned_cars:
+            car.owner_id = None
+            if car.status == CarStatus.OWNER:
+                car.status = CarStatus.FREE
+        rented_cars = db.query(Car).filter(Car.current_renter_id == user.id).all()
+        for car in rented_cars:
+            car.current_renter_id = None
+        db.query(Application).filter(Application.user_id == user.id).delete(synchronize_session=False)
+        db.query(RentalHistory).filter(RentalHistory.user_id == user.id).delete(synchronize_session=False)
+        db.query(WalletTransaction).filter(WalletTransaction.user_id == user.id).delete(synchronize_session=False)
+        db.query(Guarantor).filter(Guarantor.client_id == user.id).delete(synchronize_session=False)
+        db.query(Guarantor).filter(Guarantor.guarantor_id == user.id).delete(synchronize_session=False)
+        db.query(GuarantorRequest).filter(GuarantorRequest.requestor_id == user.id).delete(synchronize_session=False)
+        db.query(GuarantorRequest).filter(GuarantorRequest.guarantor_id == user.id).delete(synchronize_session=False)
+        db.query(UserDevice).filter(UserDevice.user_id == user.id).delete(synchronize_session=False)
+        db.query(UserContractSignature).filter(UserContractSignature.user_id == user.id).delete(synchronize_session=False)
+        db.delete(user)
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="delete_user_hard",
+            entity_type="user",
+            entity_id=user_uuid,
+            details={"reason": delete_data.reason, "actor_role": "support"},
+        )
+        db.commit()
+        message = "Пользователь физически удалён из базы данных"
+    if delete_data.delete_type == "soft":
+        try:
+            await notify_user_status_update(str(user.id))
+        except Exception as e:
+            logger.error("Error sending WebSocket notification: %s", e)
+    return AdminDeleteUserResponse(
+        message=message,
+        user_id=user_id,
+        delete_type=delete_data.delete_type,
+        deleted_at=deleted_at_str,
+    )
+
+
+@users_router.patch("/{user_id}/zone-exit-permission")
+async def support_update_user_zone_exit_permission(
+    user_id: str,
+    can_exit_zone: bool = Query(..., description="Разрешить выезд за зону"),
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+):
+    """Изменение разрешения на выезд за зону (support)."""
+    user_uuid = safe_sid_to_uuid(user_id)
+    if not user_uuid:
+        raise HTTPException(status_code=400, detail="Неверный ID пользователя")
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    user.can_exit_zone = can_exit_zone
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="update_zone_permission",
+        entity_type="user",
+        entity_id=user.id,
+        details={"can_exit_zone": can_exit_zone, "actor_role": "support"},
+    )
+    db.commit()
+    return {"success": True, "user_id": uuid_to_sid(user_uuid), "can_exit_zone": can_exit_zone}
+
+
+@users_router.patch("/{user_id}/edit-full", summary="Полное редактирование пользователя (Support)")
+async def support_edit_user_full(
+    user_id: str,
+    first_name: Optional[str] = Form(None),
+    last_name: Optional[str] = Form(None),
+    middle_name: Optional[str] = Form(None),
+    phone_number: Optional[str] = Form(None),
+    email: Optional[str] = Form(None),
+    iin: Optional[str] = Form(None),
+    passport_number: Optional[str] = Form(None),
+    birth_date: Optional[str] = Form(None),
+    drivers_license_expiry: Optional[str] = Form(None),
+    id_card_expiry: Optional[str] = Form(None),
+    locale: Optional[str] = Form(None),
+    admin_comment: Optional[str] = Form(None),
+    role: Optional[str] = Form(None),
+    auto_class: Optional[str] = Form(None),
+    is_active: Optional[bool] = Form(None),
+    is_blocked: Optional[bool] = Form(None),
+    is_verified_email: Optional[bool] = Form(None),
+    is_citizen_kz: Optional[bool] = Form(None),
+    documents_verified: Optional[bool] = Form(None),
+    is_consent_to_data_processing: Optional[bool] = Form(None),
+    is_contract_read: Optional[bool] = Form(None),
+    is_user_agreement: Optional[bool] = Form(None),
+    can_exit_zone: Optional[bool] = Form(None),
+    wallet_balance: Optional[float] = Form(None),
+    rating: Optional[float] = Form(None),
+    selfie: Optional[UploadFile] = File(None),
+    selfie_with_license: Optional[UploadFile] = File(None),
+    drivers_license: Optional[UploadFile] = File(None),
+    id_card_front: Optional[UploadFile] = File(None),
+    id_card_back: Optional[UploadFile] = File(None),
+    psych_neurology_certificate: Optional[UploadFile] = File(None),
+    pension_contributions_certificate: Optional[UploadFile] = File(None),
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+):
+    """Полное редактирование данных пользователя (support)."""
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    changes = {}
+    if first_name is not None:
+        user.first_name = first_name
+        changes["first_name"] = first_name
+    if last_name is not None:
+        user.last_name = last_name
+        changes["last_name"] = last_name
+    if middle_name is not None:
+        user.middle_name = middle_name
+        changes["middle_name"] = middle_name
+    if phone_number is not None:
+        user.phone_number = phone_number
+        changes["phone_number"] = phone_number
+    if email is not None:
+        user.email = email.lower().strip() if email else None
+        changes["email"] = email
+    if iin is not None:
+        user.iin = iin
+        changes["iin"] = iin
+    if passport_number is not None:
+        user.passport_number = passport_number
+        changes["passport_number"] = passport_number
+    if locale is not None:
+        user.locale = locale
+        changes["locale"] = locale
+    if admin_comment is not None:
+        user.admin_comment = admin_comment
+        changes["admin_comment"] = admin_comment
+    if birth_date is not None:
+        try:
+            user.birth_date = datetime.strptime(birth_date, "%Y-%m-%d")
+            changes["birth_date"] = birth_date
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Неверный формат даты рождения (YYYY-MM-DD)")
+    if drivers_license_expiry is not None:
+        try:
+            user.drivers_license_expiry = datetime.strptime(drivers_license_expiry, "%Y-%m-%d")
+            changes["drivers_license_expiry"] = drivers_license_expiry
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Неверный формат даты прав (YYYY-MM-DD)")
+    if id_card_expiry is not None:
+        try:
+            user.id_card_expiry = datetime.strptime(id_card_expiry, "%Y-%m-%d")
+            changes["id_card_expiry"] = id_card_expiry
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Неверный формат даты ID карты (YYYY-MM-DD)")
+    if role is not None:
+        try:
+            old_role = user.role
+            new_role = UserRole(role)
+            user.role = new_role
+            changes["role"] = role
+            if new_role == UserRole.USER and old_role != new_role:
+                application = db.query(Application).filter(Application.user_id == user.id).first()
+                if application:
+                    application.financier_status = ApplicationStatus.APPROVED
+                    application.mvd_status = ApplicationStatus.APPROVED
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Неверная роль: {role}")
+    if auto_class is not None:
+        user.auto_class = [c.strip().upper() for c in auto_class.split(",") if c.strip()]
+        changes["auto_class"] = user.auto_class
+    if is_active is not None:
+        user.is_active = is_active
+        changes["is_active"] = is_active
+    if is_blocked is not None:
+        user.is_blocked = is_blocked
+        changes["is_blocked"] = is_blocked
+    if is_verified_email is not None:
+        user.is_verified_email = is_verified_email
+        changes["is_verified_email"] = is_verified_email
+    if is_citizen_kz is not None:
+        user.is_citizen_kz = is_citizen_kz
+        changes["is_citizen_kz"] = is_citizen_kz
+    if documents_verified is not None:
+        user.documents_verified = documents_verified
+        changes["documents_verified"] = documents_verified
+    if is_consent_to_data_processing is not None:
+        user.is_consent_to_data_processing = is_consent_to_data_processing
+        changes["is_consent_to_data_processing"] = is_consent_to_data_processing
+    if is_contract_read is not None:
+        user.is_contract_read = is_contract_read
+        changes["is_contract_read"] = is_contract_read
+    if is_user_agreement is not None:
+        user.is_user_agreement = is_user_agreement
+        changes["is_user_agreement"] = is_user_agreement
+    if can_exit_zone is not None:
+        user.can_exit_zone = can_exit_zone
+        changes["can_exit_zone"] = can_exit_zone
+    if wallet_balance is not None:
+        user.wallet_balance = wallet_balance
+        changes["wallet_balance"] = wallet_balance
+    if rating is not None:
+        user.rating = rating
+        changes["rating"] = rating
+    ALLOWED_FILE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/jpg", "application/pdf"]
+
+    async def save_if_provided(file: Optional[UploadFile], field_name: str) -> Optional[str]:
+        if file is None or file.filename is None or file.filename == "":
+            return None
+        if file.content_type not in ALLOWED_FILE_TYPES:
+            raise HTTPException(status_code=400, detail=f"Файл {field_name} должен быть JPEG, PNG или PDF")
+        path = await save_file(file, user.id, "uploads/documents")
+        changes[field_name] = path
+        return path
+
+    if selfie:
+        path = await save_if_provided(selfie, "selfie_url")
+        if path:
+            user.selfie_url = path
+    if selfie_with_license:
+        path = await save_if_provided(selfie_with_license, "selfie_with_license_url")
+        if path:
+            user.selfie_with_license_url = path
+    if drivers_license:
+        path = await save_if_provided(drivers_license, "drivers_license_url")
+        if path:
+            user.drivers_license_url = path
+    if id_card_front:
+        path = await save_if_provided(id_card_front, "id_card_front_url")
+        if path:
+            user.id_card_front_url = path
+    if id_card_back:
+        path = await save_if_provided(id_card_back, "id_card_back_url")
+        if path:
+            user.id_card_back_url = path
+    if psych_neurology_certificate:
+        path = await save_if_provided(psych_neurology_certificate, "psych_neurology_certificate_url")
+        if path:
+            user.psych_neurology_certificate_url = path
+    if pension_contributions_certificate:
+        path = await save_if_provided(pension_contributions_certificate, "pension_contributions_certificate_url")
+        if path:
+            user.pension_contributions_certificate_url = path
+    db.commit()
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="support_edit_user_full",
+        entity_type="user",
+        entity_id=user.id,
+        details={"changes": changes},
+    )
+    db.commit()
+    asyncio.create_task(notify_user_status_update(str(user.id)))
+    return {
+        "message": "Пользователь обновлен",
+        "user_id": uuid_to_sid(user.id),
+        "changes_count": len(changes),
+        "changed_fields": list(changes.keys()),
+    }
 
 
 @users_router.patch("/{user_id}/comment")
