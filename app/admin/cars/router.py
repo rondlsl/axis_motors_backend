@@ -56,7 +56,25 @@ VEHICLE_STATUS_FIELDS = [
     "central_locks_locked",
     "front_left_window_closed", "front_right_window_closed", "rear_left_window_closed", "rear_right_window_closed",
     "is_trunk_open", "is_handbrake_on", "are_lights_on", "is_light_auto_mode_on",
+    "param64_raw",
 ]
+
+
+def _decode_param64_flags(raw_value: int | None) -> dict | None:
+    """Decode param64 byte into human-readable flags (same logic as cars_v2)."""
+    if raw_value is None:
+        return None
+    byte_val = int(raw_value)
+    return {
+        "ignition": bool((byte_val >> 7) & 1),
+        "doors": bool((byte_val >> 6) & 1),
+        "glass": bool((byte_val >> 5) & 1),
+        "hood": bool((byte_val >> 4) & 1),
+        "lights": bool((byte_val >> 3) & 1),
+        "brake": bool((byte_val >> 2) & 1),
+        "trunk": bool((byte_val >> 1) & 1),
+        "engine_lock": bool(byte_val & 1),
+    }
 
 from app.core.config import VEHICLES_API_URL
 CARS_V2_API_URL = f"{VEHICLES_API_URL}/vehicles"
@@ -456,6 +474,8 @@ async def get_car_details_response(car_id: str, db: Session) -> CarDetailSchema:
         is_handbrake_on=vehicle_status.get("is_handbrake_on"),
         are_lights_on=vehicle_status.get("are_lights_on"),
         is_light_auto_mode_on=vehicle_status.get("is_light_auto_mode_on"),
+        param64_raw=vehicle_status.get("param64_raw"),
+        param64_flags=_decode_param64_flags(vehicle_status.get("param64_raw")),
         can_exit_zone=car.can_exit_zone or False,
         notifications_disabled=car.notifications_disabled or False,
         minutes_tariff_enabled=getattr(car, "minutes_tariff_enabled", True),

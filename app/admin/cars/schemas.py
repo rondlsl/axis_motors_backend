@@ -255,6 +255,9 @@ class CarDetailSchema(BaseModel):
     minutes_tariff_enabled: bool = True
     hourly_tariff_enabled: bool = True
     hourly_min_hours: Optional[int] = None
+    # param64 data from GLONASS
+    param64_raw: Optional[int] = None
+    param64_flags: Optional[dict] = None
 
     class Config:
         from_attributes = True
