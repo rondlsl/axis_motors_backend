@@ -27,39 +27,35 @@ async def create_backup(
 ):
     """
     Создать бэкап базы данных.
-    Если backup_name не указан, генерируется автоматически.
+    Все бэкапы создаются асинхронно в фоновом режиме.
     """
     _ensure_admin(current_user)
     
-    service = get_backup_service()
-    
-    # Для больших бэкапов выполняем в фоновом режиме
-    if backup_name:
-        # Синхронное создание для кастомного имени
-        result = service.create_backup(backup_name)
-        if not result:
-            raise HTTPException(status_code=500, detail="Ошибка создания бэкапа")
+    # Асинхронное создание для всех бэкапов
+    async def create_backup_task():
+        import asyncio
+        loop = asyncio.get_event_loop()
         
-        return {
-            "message": "Бэкап успешно создан",
-            "backup_name": result,
-            "status": "completed"
-        }
-    else:
-        # Асинхронное создание для автоматического имени
-        def create_backup_task():
-            result = service.create_backup()
+        def run_backup():
+            service = get_backup_service()
+            result = service.create_backup(backup_name)
             if result:
                 logger.info(f"Background backup created: {result}")
             else:
                 logger.error("Background backup failed")
+            return result
         
-        background_tasks.add_task(create_backup_task)
-        
-        return {
-            "message": "Бэкап создаётся в фоновом режиме",
-            "status": "in_progress"
-        }
+        # Выполняем в отдельном потоке, чтобы не блокировать API
+        result = await loop.run_in_executor(None, run_backup)
+        return result
+    
+    # Добавляем в фоновые задачи
+    background_tasks.add_task(create_backup_task)
+    
+    return {
+        "message": "Бэкап создаётся в фоновом режиме",
+        "status": "in_progress"
+    }
 
 
 @backup_admin_router.get("/backups")
@@ -93,14 +89,23 @@ async def restore_backup(
     """
     _ensure_admin(current_user)
     
-    # Восстановление выполняем в фоновом режиме (длительная операция)
-    def restore_task():
-        service = get_backup_service()
-        success = service.restore_backup(backup_name)
-        if success:
-            logger.info(f"Database restored from backup: {backup_name}")
-        else:
-            logger.error(f"Failed to restore database from backup: {backup_name}")
+    # Асинхронное восстановление в фоновом режиме
+    async def restore_task():
+        import asyncio
+        loop = asyncio.get_event_loop()
+        
+        def run_restore():
+            service = get_backup_service()
+            success = service.restore_backup(backup_name)
+            if success:
+                logger.info(f"Database restored from backup: {backup_name}")
+            else:
+                logger.error(f"Failed to restore database from backup: {backup_name}")
+            return success
+        
+        # Выполняем в отдельном потоке, чтобы не блокировать API
+        result = await loop.run_in_executor(None, run_restore)
+        return result
     
     background_tasks.add_task(restore_task)
     

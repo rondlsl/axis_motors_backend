@@ -497,9 +497,19 @@ def init_app(app: FastAPI):
             )
             
             # Ежедневный бэкап базы данных - в 2:00 ночи по Алматы (GMT+5)
-            from app.services.backup_service import create_scheduled_backup
+            # Используем обертку для вызова асинхронной функции
+            def async_backup_wrapper():
+                import asyncio
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    from app.services.backup_service import create_scheduled_backup
+                    loop.run_until_complete(create_scheduled_backup())
+                finally:
+                    loop.close()
+            
             scheduler.add_job(
-                create_scheduled_backup,
+                async_backup_wrapper,
                 trigger="cron",
                 hour=2,
                 minute=0,

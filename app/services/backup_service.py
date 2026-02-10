@@ -32,18 +32,19 @@ class BackupService:
         """Парсит DATABASE_URL в компоненты для pg_dump."""
         try:
             # DATABASE_URL формат: postgresql://user:password@host:port/dbname
+            # или postgresql+psycopg2://user:password@host:port/dbname
             import re
-            pattern = r'postgresql://([^:]+):([^@]+)@([^:]+):(\d+)/(.+)'
+            pattern = r'postgresql(\+psycopg2)?://([^:]+):([^@]+)@([^:]+):(\d+)/(.+)'
             match = re.match(pattern, DATABASE_URL)
             if not match:
                 raise ValueError("Invalid DATABASE_URL format")
             
             return {
-                'user': match.group(1),
-                'password': match.group(2),
-                'host': match.group(3),
-                'port': match.group(4),
-                'dbname': match.group(5),
+                'user': match.group(2),
+                'password': match.group(3),
+                'host': match.group(4),
+                'port': match.group(5),
+                'dbname': match.group(6),
             }
         except Exception as e:
             logger.error(f"Failed to parse DATABASE_URL: {e}")
@@ -67,7 +68,7 @@ class BackupService:
             # Парсим DATABASE_URL
             db_config = self._parse_database_url()
             
-            # Формируем команду pg_dump
+            # Формируем команду pg_dump (оптимизированная версия)
             pg_dump_cmd = [
                 'pg_dump',
                 f'--host={db_config["host"]}',
@@ -75,11 +76,13 @@ class BackupService:
                 f'--username={db_config["user"]}',
                 f'--dbname={db_config["dbname"]}',
                 '--no-password',
-                '--verbose',
+                '--quiet',  # Уменьшаем логирование для производительности
                 '--clean',
                 '--if-exists',
                 '--create',
                 '--format=custom',
+                '--compress=9',  # Максимальная компрессия
+                '--jobs=2',  # Используем 2 потока для параллельной работы
                 f'--file=/tmp/{backup_name}'
             ]
             
@@ -112,11 +115,11 @@ class BackupService:
                     logger.info(f"Uploading backup to MinIO: {object_name} ({file_size} bytes)")
                     
                     self.minio.client.put_object(
-                        bucket_name=MINIO_BUCKET_BACKUPS,
-                        object_name=object_name,
-                        data=f,
-                        length=file_size,
-                        content_type='application/octet-stream'
+                        Bucket=MINIO_BUCKET_BACKUPS,
+                        Key=object_name,
+                        Body=f,
+                        ContentLength=file_size,
+                        ContentType='application/octet-stream'
                     )
                 
                 logger.info(f"Backup successfully uploaded: {object_name}")
@@ -139,30 +142,21 @@ class BackupService:
             return None
 
     def list_backups(self, limit: int = 50) -> list:
-        """
-        Получить список бэкапов в MinIO.
-        
-        Args:
-            limit: Максимальное количество бэкапов в списке
-            
-        Returns:
-            Список объектов бэкапов с метаданными
-        """
         try:
-            objects = self.minio.client.list_objects(
-                bucket_name=MINIO_BUCKET_BACKUPS,
-                prefix='database/',
-                recursive=False
+            objects = self.minio.client.list_objects_v2(
+                Bucket=MINIO_BUCKET_BACKUPS,
+                Prefix='database/',
+                MaxKeys=1000
             )
             
             backups = []
-            for obj in objects:
-                if obj.object_name.endswith('.sql'):
+            for obj in objects.get('Contents', []):
+                if obj['Key'].endswith('.sql'):
                     backups.append({
-                        'name': obj.object_name,
-                        'size': obj.size,
-                        'last_modified': obj.last_modified,
-                        'etag': obj.etag
+                        'name': obj['Key'],
+                        'size': obj['Size'],
+                        'last_modified': obj['LastModified'],
+                        'etag': obj.get('ETag', '')
                     })
             
             # Сортируем по дате модификации (новые первые)
@@ -190,10 +184,10 @@ class BackupService:
             
             # Скачиваем бэкап из MinIO
             logger.info(f"Downloading backup from MinIO: {object_name}")
-            self.minio.client.fget_object(
-                bucket_name=MINIO_BUCKET_BACKUPS,
-                object_name=object_name,
-                file_path=local_path
+            self.minio.client.download_file(
+                Bucket=MINIO_BUCKET_BACKUPS,
+                Key=object_name,
+                Filename=local_path
             )
             
             # Парсим DATABASE_URL
@@ -258,9 +252,9 @@ class BackupService:
         """
         try:
             object_name = f"database/{backup_name}"
-            self.minio.client.remove_object(
-                bucket_name=MINIO_BUCKET_BACKUPS,
-                object_name=object_name
+            self.minio.client.delete_object(
+                Bucket=MINIO_BUCKET_BACKUPS,
+                Key=object_name
             )
             logger.info(f"Backup deleted: {object_name}")
             return True
@@ -313,13 +307,24 @@ def get_backup_service() -> BackupService:
     return _backup_service
 
 
-def create_scheduled_backup():
-    """Функция для вызова из APScheduler."""
-    service = get_backup_service()
-    backup_name = service.create_backup()
-    if backup_name:
-        logger.info(f"Scheduled backup created: {backup_name}")
-        # Очистка старых бэкапов (оставляем последние 30)
-        service.cleanup_old_backups(keep_count=30)
-    else:
-        logger.error("Scheduled backup failed")
+async def create_scheduled_backup():
+    """Асинхронная функция для вызова из APScheduler."""
+    import asyncio
+    
+    def run_backup_task():
+        """Выполняет бэкап в отдельном потоке."""
+        try:
+            service = get_backup_service()
+            backup_name = service.create_backup()
+            if backup_name:
+                logger.info(f"Scheduled backup created: {backup_name}")
+                # Очистка старых бэкапов (оставляем последние 30)
+                service.cleanup_old_backups(keep_count=30)
+            else:
+                logger.error("Scheduled backup failed")
+        except Exception as e:
+            logger.error(f"Scheduled backup error: {e}")
+    
+    # Запускаем бэкап в отдельном потоке, чтобы не блокировать event loop
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, run_backup_task)
