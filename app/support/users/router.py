@@ -44,6 +44,10 @@ from app.admin.users.schemas import (
     GroupedTransactionsPaginationSchema,
     GuarantorInfoSchema,
     OwnerCarListItemSchema,
+    UserFineSchema,
+    UserFineTripInfoSchema,
+    TripListItemSchema,
+    SanctionPenaltySchema,
 )
 from app.support.deps import require_support_role
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
@@ -431,6 +435,238 @@ async def support_get_his_guarantors(
             result.append(GuarantorInfoSchema(**converted_data))
 
     return result
+
+
+@users_router.get("/{user_id}/fines", response_model=List[UserFineSchema])
+async def support_get_user_fines(
+    user_id: str,
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+):
+    """Получение списка штрафов (санкций) пользователя (support)."""
+    from sqlalchemy import desc
+    from app.models.wallet_transaction_model import WalletTransaction, WalletTransactionType
+
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    fines = db.query(WalletTransaction).filter(
+        and_(
+            WalletTransaction.user_id == user_uuid,
+            WalletTransaction.transaction_type == WalletTransactionType.SANCTION_PENALTY,
+        )
+    ).order_by(desc(WalletTransaction.created_at)).all()
+
+    result = []
+    for fine in fines:
+        trip_info = None
+        trip_id = None
+        if fine.related_rental_id:
+            trip_id = uuid_to_sid(fine.related_rental_id)
+            rental = db.query(RentalHistory).filter(RentalHistory.id == fine.related_rental_id).first()
+            if rental:
+                car = db.query(Car).filter(Car.id == rental.car_id).first()
+                if car:
+                    trip_info = UserFineTripInfoSchema(
+                        car_name=car.name or "Неизвестно",
+                        car_plate_number=car.plate_number or "Неизвестно",
+                    )
+        result.append(
+            UserFineSchema(
+                id=uuid_to_sid(fine.id),
+                name=fine.description or "Штраф",
+                amount=abs(float(fine.amount)),
+                created_at=fine.created_at,
+                trip_id=trip_id,
+                trip_info=trip_info,
+            )
+        )
+    return result
+
+
+@users_router.get("/{user_id}/trips", response_model=List[TripListItemSchema])
+async def support_get_user_trips(
+    user_id: str,
+    month: Optional[int] = Query(None, description="Месяц (1-12)"),
+    year: Optional[int] = Query(None, description="Год"),
+    all: Optional[bool] = Query(False, description="Если true — вернуть все поездки за всё время"),
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+):
+    """Получение списка поездок пользователя (support). ?all=true — все поездки за всё время."""
+    from app.admin.cars.utils import sort_car_photos
+
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    if all:
+        trips = (
+            db.query(RentalHistory)
+            .filter(RentalHistory.user_id == user_uuid)
+            .order_by(RentalHistory.start_time.desc())
+            .all()
+        )
+    else:
+        now = datetime.now()
+        target_month = month or now.month
+        target_year = year or now.year
+        month_start = datetime(target_year, target_month, 1)
+        month_end = datetime(target_year, target_month + 1, 1) if target_month < 12 else datetime(target_year + 1, 1, 1)
+        trips = (
+            db.query(RentalHistory)
+            .filter(
+                and_(
+                    RentalHistory.user_id == user_uuid,
+                    RentalHistory.rental_status == RentalStatus.COMPLETED,
+                    RentalHistory.end_time >= month_start,
+                    RentalHistory.end_time < month_end,
+                )
+            )
+            .order_by(RentalHistory.end_time.desc())
+            .all()
+        )
+
+    result = []
+    for trip in trips:
+        duration_minutes = 0
+        if trip.start_time and trip.end_time:
+            duration_minutes = int((trip.end_time - trip.start_time).total_seconds() / 60)
+        car = db.query(Car).filter(Car.id == trip.car_id).first()
+        car_photos = sort_car_photos(car.photos or []) if car and car.photos else []
+        result.append(
+            TripListItemSchema(
+                id=uuid_to_sid(trip.id),
+                rental_type=trip.rental_type.value,
+                start_date=trip.start_time,
+                end_date=trip.end_time,
+                duration_minutes=duration_minutes,
+                total_price=float(trip.total_price or 0),
+                car_id=uuid_to_sid(car.id) if car else None,
+                car_name=car.name if car else None,
+                car_plate_number=car.plate_number if car else None,
+                car_photo=car_photos[0] if car_photos else None,
+            )
+        )
+    return result
+
+
+@users_router.post("/{user_id}/fines", summary="Назначить штраф пользователю (support)")
+async def support_add_user_fine(
+    user_id: str,
+    penalty_data: SanctionPenaltySchema,
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+):
+    """Назначает штраф (санкцию) пользователю. Действие логируется с actor_role=support."""
+    from decimal import Decimal
+    from app.models.wallet_transaction_model import WalletTransaction, WalletTransactionType
+
+    try:
+        user_uuid = safe_sid_to_uuid(user_id)
+        user = db.query(User).filter(User.id == user_uuid).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+        rental_uuid = None
+        if penalty_data.rental_id:
+            try:
+                rental_uuid = safe_sid_to_uuid(penalty_data.rental_id)
+            except Exception:
+                raise HTTPException(status_code=400, detail="Некорректный rental_id")
+            rental = db.query(RentalHistory).filter(RentalHistory.id == rental_uuid).first()
+            if not rental:
+                raise HTTPException(status_code=404, detail="Аренда не найдена")
+            if rental.user_id != user.id:
+                raise HTTPException(status_code=400, detail="Указанная аренда не принадлежит пользователю")
+
+        penalty_amount = Decimal(str(penalty_data.amount))
+        balance_before = float(user.wallet_balance or 0)
+        current_balance = Decimal(user.wallet_balance or 0)
+        new_balance = current_balance - penalty_amount
+        user.wallet_balance = new_balance
+        balance_after = float(new_balance)
+
+        transaction = WalletTransaction(
+            user_id=user.id,
+            amount=float(-penalty_amount),
+            transaction_type=WalletTransactionType.SANCTION_PENALTY,
+            description=penalty_data.description,
+            balance_before=balance_before,
+            balance_after=balance_after,
+            related_rental_id=rental_uuid,
+            created_at=get_local_time(),
+        )
+        db.add(transaction)
+        db.flush()
+
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="add_user_fine",
+            entity_type="user",
+            entity_id=user.id,
+            details={
+                "amount": penalty_data.amount,
+                "description": penalty_data.description,
+                "rental_id": penalty_data.rental_id,
+                "transaction_id": str(transaction.id),
+                "actor_role": "support",
+            },
+        )
+        db.commit()
+        db.refresh(user)
+
+        asyncio.create_task(notify_user_status_update(str(user.id)))
+        try:
+            if user_has_push_tokens(db, user.id):
+                asyncio.create_task(
+                    send_localized_notification_to_user_async(
+                        user.id,
+                        "fine_issued",
+                        "fine_issued",
+                    )
+                )
+        except Exception as push_error:
+            await log_error_to_telegram(
+                error=push_error,
+                user=user,
+                additional_context={
+                    "action": "send_sanction_notification",
+                    "penalty_amount": penalty_data.amount,
+                    "user_id": user_id,
+                    "actor_role": "support",
+                },
+            )
+
+        return {
+            "message": "Штраф успешно начислен",
+            "user_id": uuid_to_sid(user.id),
+            "phone_number": user.phone_number,
+            "amount": penalty_data.amount,
+            "new_balance": float(user.wallet_balance),
+            "transaction_id": uuid_to_sid(transaction.id),
+            "rental_id": penalty_data.rental_id,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        await log_error_to_telegram(
+            error=e,
+            user=current_user,
+            additional_context={
+                "action": "support_add_user_fine",
+                "user_id": user_id,
+                "penalty_amount": getattr(penalty_data, "amount", None),
+                "description": getattr(penalty_data, "description", None),
+                "rental_id": getattr(penalty_data, "rental_id", None),
+            },
+        )
+        raise HTTPException(status_code=500, detail="Ошибка при начислении штрафа")
 
 
 @users_router.get("/{user_id}/owned-cars", response_model=List[OwnerCarListItemSchema])
