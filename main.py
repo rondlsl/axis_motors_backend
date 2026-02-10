@@ -79,6 +79,7 @@ from app.app_versions.router import router as AppVersionsRouter
 from app.admin.error_logs.router import router as ErrorLogsRouter
 from app.device_location.router import router as DeviceLocationRouter
 from app.promo.router import PromoRouter
+from app.partnership.router import partnership_router
 
 # === APP ===
 app = FastAPI(
@@ -721,6 +722,7 @@ app.include_router(AppVersionsRouter)
 app.include_router(ErrorLogsRouter, prefix="/admin")
 app.include_router(DeviceLocationRouter)
 app.include_router(PromoRouter)
+app.include_router(partnership_router)
 
 @app.get("/")
 async def root(db: Session = Depends(get_db)):
