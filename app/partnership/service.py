@@ -1,7 +1,7 @@
 import httpx
 from typing import Optional
 
-from app.core.config import TELEGRAM_BOT_TOKEN, SUPPORT_GROUP_ID
+from app.core.config import TELEGRAM_BOT_TOKEN_2, SUPPORT_GROUP_ID
 from app.core.logging_config import get_logger
 from app.partnership.schemas import PartnershipRequest
 
@@ -78,12 +78,12 @@ async def send_to_telegram(message: str, chat_id: str) -> bool:
     Returns:
         True если отправка успешна, иначе False
     """
-    if not TELEGRAM_BOT_TOKEN or not chat_id:
+    if not TELEGRAM_BOT_TOKEN_2 or not chat_id:
         logger.warning("Telegram bot token or chat ID not configured")
         return False
     
     try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN_2}/sendMessage"
         
         payload = {
             "chat_id": chat_id,
