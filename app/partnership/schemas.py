@@ -8,12 +8,17 @@ class PartnershipRequest(BaseModel):
     phone: str = Field(..., min_length=10, max_length=20, description="Телефон")
     email: Optional[str] = Field(None, min_length=5, max_length=100, description="Email")
     company_name: Optional[str] = Field(None, min_length=2, max_length=200, description="Название компании")
-    message: str = Field(..., min_length=10, max_length=1000, description="Сообщение о сотрудничестве")
+    message: Optional[str] = Field(None, min_length=10, max_length=1000, description="Сообщение о сотрудничестве")
 
-    @field_validator("name", "message")
+    @field_validator("name")
     @classmethod
     def normalize_text(cls, v: str) -> str:
         return v.strip()
+
+    @field_validator("message")
+    @classmethod
+    def normalize_message(cls, v: Optional[str]) -> Optional[str]:
+        return v.strip() if v else None
 
     @field_validator("company_name")
     @classmethod

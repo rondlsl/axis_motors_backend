@@ -1,5 +1,5 @@
 import httpx
-from typing import Optional
+from datetime import datetime
 
 from app.core.config import TELEGRAM_BOT_TOKEN_2, SUPPORT_GROUP_ID
 from app.core.logging_config import get_logger
@@ -56,28 +56,21 @@ def format_partnership_message(request: PartnershipRequest) -> str:
     if request.company_name:
         message += f"\n🏢 **Компания:** {request.company_name}"
     
-    message += f"""
+    if request.message:
+        message += f"""
 
 📄 **Сообщение:**
-{request.message}
+{request.message}"""
+    
+    message += f"""
 
-⏰ **Время:** Только что
+⏰ **Время:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 """
     
     return message
 
 
 async def send_to_telegram(message: str, chat_id: str) -> bool:
-    """
-    Отправить сообщение в Telegram.
-    
-    Args:
-        message: Текст сообщения
-        chat_id: ID чата
-        
-    Returns:
-        True если отправка успешна, иначе False
-    """
     if not TELEGRAM_BOT_TOKEN_2 or not chat_id:
         logger.warning("Telegram bot token or chat ID not configured")
         return False
