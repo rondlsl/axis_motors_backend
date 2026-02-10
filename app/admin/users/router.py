@@ -4311,16 +4311,11 @@ async def get_user_trips(
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
-    base_filter = and_(
-        RentalHistory.user_id == user_uuid,
-        RentalHistory.rental_status == RentalStatus.COMPLETED,
-    )
-
     if all:
-        # Все поездки за всё время
+        # Все аренды за всё время (любой статус)
         trips = db.query(RentalHistory).filter(
-            base_filter
-        ).order_by(RentalHistory.end_time.desc()).all()
+            RentalHistory.user_id == user_uuid
+        ).order_by(RentalHistory.start_time.desc()).all()
     else:
         # Определяем период
         now = datetime.now()
@@ -4335,7 +4330,8 @@ async def get_user_trips(
         
         trips = db.query(RentalHistory).filter(
             and_(
-                base_filter,
+                RentalHistory.user_id == user_uuid,
+                RentalHistory.rental_status == RentalStatus.COMPLETED,
                 RentalHistory.end_time >= month_start,
                 RentalHistory.end_time < month_end
             )
