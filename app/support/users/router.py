@@ -6,6 +6,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Form, File, UploadFile
 from sqlalchemy.orm import Session
+from sqlalchemy import and_
 
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.save_documents import save_file, validate_photos
@@ -39,6 +40,7 @@ from app.admin.users.schemas import (
     WalletTransactionPaginationSchema,
     GroupedTransactionItemSchema,
     GroupedTransactionsPaginationSchema,
+    GuarantorInfoSchema,
 )
 from app.support.deps import require_support_role
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
@@ -346,6 +348,86 @@ async def support_send_notification_to_user(
             push_sent=False,
             error=str(e),
         )
+
+
+@users_router.get("/{user_id}/guarantors/he-is-guarantor", response_model=List[GuarantorInfoSchema])
+async def support_get_users_he_is_guarantor_for(
+    user_id: str,
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+):
+    """Получение списка пользователей, для которых данный пользователь является гарантом (support)."""
+    from app.models.guarantor_model import Guarantor
+
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    guarantor_relations = db.query(Guarantor).filter(
+        and_(
+            Guarantor.guarantor_id == user_uuid,
+            Guarantor.is_active == True,
+        )
+    ).all()
+
+    result = []
+    for relation in guarantor_relations:
+        client = db.query(User).filter(User.id == relation.client_id).first()
+        if client:
+            client_data = {
+                "id": uuid_to_sid(client.id),
+                "first_name": client.first_name,
+                "last_name": client.last_name,
+                "phone_number": client.phone_number,
+                "iin": client.iin,
+                "passport_number": client.passport_number,
+                "selfie_url": client.selfie_url,
+            }
+            converted_data = convert_uuid_response_to_sid(client_data, ["id"])
+            result.append(GuarantorInfoSchema(**converted_data))
+
+    return result
+
+
+@users_router.get("/{user_id}/guarantors/his-guarantors", response_model=List[GuarantorInfoSchema])
+async def support_get_his_guarantors(
+    user_id: str,
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+):
+    """Получение списка гарантов данного пользователя (support)."""
+    from app.models.guarantor_model import Guarantor
+
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    guarantor_relations = db.query(Guarantor).filter(
+        and_(
+            Guarantor.client_id == user_uuid,
+            Guarantor.is_active == True,
+        )
+    ).all()
+
+    result = []
+    for relation in guarantor_relations:
+        guarantor = db.query(User).filter(User.id == relation.guarantor_id).first()
+        if guarantor:
+            guarantor_data = {
+                "id": uuid_to_sid(guarantor.id),
+                "first_name": guarantor.first_name,
+                "last_name": guarantor.last_name,
+                "phone_number": guarantor.phone_number,
+                "iin": guarantor.iin,
+                "passport_number": guarantor.passport_number,
+                "selfie_url": guarantor.selfie_url,
+            }
+            converted_data = convert_uuid_response_to_sid(guarantor_data, ["id"])
+            result.append(GuarantorInfoSchema(**converted_data))
+
+    return result
 
 
 @users_router.post("/trips/reserve", summary="Забронировать машину за клиента (Support)")
