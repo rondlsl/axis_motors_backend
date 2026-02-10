@@ -292,6 +292,7 @@ class WalletTransactionSchema(SidMixin):
     tracking_id: Optional[str] = None
     created_at: datetime
     related_rental_id: Optional[str] = None
+    car_id: Optional[str] = None
 
 
 class WalletTransactionPaginationSchema(BaseModel):

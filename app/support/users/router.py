@@ -1312,6 +1312,7 @@ async def support_get_user_transactions(
     from math import ceil
     from sqlalchemy import desc
     from app.models.wallet_transaction_model import WalletTransaction
+    from app.models.history_model import RentalHistory
 
     user_uuid = safe_sid_to_uuid(user_id)
     user = db.query(User).filter(User.id == user_uuid).first()
@@ -1333,8 +1334,20 @@ async def support_get_user_transactions(
     total_count = query.count()
     transactions = query.offset((page - 1) * limit).limit(limit).all()
 
+    # Маппинг rental_id -> car_id для добавления car_id к транзакциям
+    rental_ids = [tx.related_rental_id for tx in transactions if tx.related_rental_id]
+    rental_id_to_car_id = {}
+    if rental_ids:
+        rentals = db.query(RentalHistory.id, RentalHistory.car_id).filter(
+            RentalHistory.id.in_(rental_ids)
+        ).all()
+        rental_id_to_car_id = {r.id: r.car_id for r in rentals if r.car_id}
+
     items = []
     for tx in transactions:
+        car_id_sid = None
+        if tx.related_rental_id and tx.related_rental_id in rental_id_to_car_id:
+            car_id_sid = uuid_to_sid(rental_id_to_car_id[tx.related_rental_id])
         tx_data = {
             "id": uuid_to_sid(tx.id),
             "amount": float(tx.amount),
@@ -1345,6 +1358,7 @@ async def support_get_user_transactions(
             "tracking_id": tx.tracking_id,
             "created_at": tx.created_at,
             "related_rental_id": uuid_to_sid(tx.related_rental_id) if tx.related_rental_id else None,
+            "car_id": car_id_sid,
         }
         items.append(WalletTransactionSchema(**tx_data))
 
