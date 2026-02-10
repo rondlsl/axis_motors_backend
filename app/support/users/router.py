@@ -1,6 +1,7 @@
 """Support users — список, бронирование, отмена аренды, загрузка фото (тот же контракт, что /admin/users)."""
 import asyncio
 import logging
+import re
 from datetime import datetime
 from typing import List, Optional
 
@@ -556,6 +557,185 @@ async def support_edit_user_full(
         "user_id": uuid_to_sid(user.id),
         "changes_count": len(changes),
         "changed_fields": list(changes.keys()),
+    }
+
+
+@users_router.post("/{user_id}/upload-documents", summary="Загрузка документов пользователю (Support)")
+async def support_upload_user_documents(
+    user_id: str,
+    selfie: Optional[UploadFile] = File(None),
+    selfie_with_license: Optional[UploadFile] = File(None),
+    drivers_license: Optional[UploadFile] = File(None),
+    id_card_front: Optional[UploadFile] = File(None),
+    id_card_back: Optional[UploadFile] = File(None),
+    psych_neurology_certificate: Optional[UploadFile] = File(None),
+    pension_contributions_certificate: Optional[UploadFile] = File(None),
+    first_name: Optional[str] = Form(None),
+    middle_name: Optional[str] = Form(None),
+    last_name: Optional[str] = Form(None),
+    birth_date: Optional[str] = Form(None),
+    iin: Optional[str] = Form(None),
+    passport_number: Optional[str] = Form(None),
+    id_card_expiry: Optional[str] = Form(None),
+    drivers_license_expiry: Optional[str] = Form(None),
+    email: Optional[str] = Form(None),
+    is_citizen_kz: Optional[bool] = Form(None),
+    notify_user: bool = Form(False),
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+):
+    """Загрузка документов и опциональное обновление персональных данных пользователя (support)."""
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    updated_fields = {}
+    if first_name is not None:
+        user.first_name = first_name.strip()
+        updated_fields["first_name"] = first_name.strip()
+    if last_name is not None:
+        user.last_name = last_name.strip()
+        updated_fields["last_name"] = last_name.strip()
+    if middle_name is not None:
+        user.middle_name = middle_name.strip()
+        updated_fields["middle_name"] = middle_name.strip()
+    if birth_date is not None:
+        try:
+            parsed_birth_date = datetime.strptime(birth_date, "%Y-%m-%d").date()
+            user.birth_date = parsed_birth_date
+            updated_fields["birth_date"] = birth_date
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Неверный формат даты рождения. Используйте YYYY-MM-DD")
+    if iin is not None:
+        iin_clean = iin.strip().replace(" ", "")
+        if not iin_clean.isdigit() or len(iin_clean) != 12:
+            raise HTTPException(status_code=400, detail="ИИН должен состоять из 12 цифр")
+        existing_user = db.query(User).filter(User.iin == iin_clean, User.id != user.id).first()
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Пользователь с таким ИИН уже существует")
+        user.iin = iin_clean
+        updated_fields["iin"] = iin_clean
+    if passport_number is not None:
+        passport_clean = passport_number.strip()
+        if passport_clean:
+            existing_user = db.query(User).filter(User.passport_number == passport_clean, User.id != user.id).first()
+            if existing_user:
+                raise HTTPException(status_code=400, detail="Пользователь с таким номером паспорта уже существует")
+            user.passport_number = passport_clean
+            updated_fields["passport_number"] = passport_clean
+    if id_card_expiry is not None:
+        try:
+            parsed_id_card_expiry = datetime.strptime(id_card_expiry, "%Y-%m-%d").date()
+            if parsed_id_card_expiry <= datetime.now().date():
+                raise HTTPException(status_code=400, detail="Дата истечения ID карты должна быть в будущем")
+            user.id_card_expiry = parsed_id_card_expiry
+            updated_fields["id_card_expiry"] = id_card_expiry
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Неверный формат даты истечения ID карты. Используйте YYYY-MM-DD")
+    if drivers_license_expiry is not None:
+        try:
+            parsed_dl_expiry = datetime.strptime(drivers_license_expiry, "%Y-%m-%d").date()
+            if parsed_dl_expiry <= datetime.now().date():
+                raise HTTPException(status_code=400, detail="Дата истечения прав должна быть в будущем")
+            user.drivers_license_expiry = parsed_dl_expiry
+            updated_fields["drivers_license_expiry"] = drivers_license_expiry
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Неверный формат даты истечения прав. Используйте YYYY-MM-DD")
+    if email is not None:
+        email_clean = email.strip().lower()
+        if email_clean:
+            if not re.match(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", email_clean):
+                raise HTTPException(status_code=400, detail="Неверный формат email")
+            existing_user = db.query(User).filter(User.email == email_clean, User.id != user.id).first()
+            if existing_user:
+                raise HTTPException(status_code=400, detail="Пользователь с таким email уже существует")
+            user.email = email_clean
+            updated_fields["email"] = email_clean
+    if is_citizen_kz is not None:
+        user.is_citizen_kz = is_citizen_kz
+        updated_fields["is_citizen_kz"] = is_citizen_kz
+
+    ALLOWED_FILE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/jpg", "application/pdf"]
+    files_mapping = {
+        "selfie_url": selfie,
+        "selfie_with_license_url": selfie_with_license,
+        "drivers_license_url": drivers_license,
+        "id_card_front_url": id_card_front,
+        "id_card_back_url": id_card_back,
+        "psych_neurology_certificate_url": psych_neurology_certificate,
+        "pension_contributions_certificate_url": pension_contributions_certificate,
+    }
+    uploaded_documents = {}
+    for field_name, file in files_mapping.items():
+        if file is None or file.filename is None or file.filename == "":
+            continue
+        if file.content_type not in ALLOWED_FILE_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Файл {file.filename} имеет недопустимый тип. Допустимые: JPEG, PNG, WebP, PDF",
+            )
+        try:
+            url = await save_file(file, user.id, "documents")
+            setattr(user, field_name, url)
+            uploaded_documents[field_name] = url
+        except Exception as e:
+            logger.error("Ошибка загрузки файла %s: %s", field_name, e)
+            raise HTTPException(status_code=500, detail=f"Ошибка загрузки файла: {str(e)}")
+
+    if not uploaded_documents and not updated_fields:
+        raise HTTPException(status_code=400, detail="Не предоставлено ни одного файла или данных для обновления")
+
+    user.upload_document_at = get_local_time()
+    user.documents_verified = True
+    existing_application = db.query(Application).filter(Application.user_id == user.id).first()
+    if not existing_application:
+        application = Application(
+            user_id=user.id,
+            created_at=get_local_time(),
+            updated_at=get_local_time(),
+        )
+        db.add(application)
+    else:
+        existing_application.updated_at = get_local_time()
+    if user.role not in [UserRole.PENDINGTOFIRST, UserRole.PENDINGTOSECOND]:
+        user.role = UserRole.PENDINGTOFIRST
+    db.commit()
+
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="support_upload_user_documents",
+        entity_type="user",
+        entity_id=user.id,
+        details={
+            "documents_uploaded": len(uploaded_documents),
+            "document_fields": list(uploaded_documents.keys()),
+            "data_fields_updated": list(updated_fields.keys()),
+            "user_role_changed_to": user.role.value,
+        },
+    )
+    db.commit()
+
+    if notify_user:
+        try:
+            await send_push_to_user_by_id(
+                db_session=db,
+                user_id=user.id,
+                title="Документы загружены",
+                body="Поддержка загрузила ваши документы",
+            )
+        except Exception as e:
+            logger.error("Ошибка отправки push уведомления: %s", e)
+        asyncio.create_task(notify_user_status_update(str(user.id)))
+
+    return {
+        "message": "Данные успешно обновлены",
+        "user_id": uuid_to_sid(user.id),
+        "documents_uploaded": len(uploaded_documents),
+        "uploaded_documents": uploaded_documents,
+        "fields_updated": len(updated_fields),
+        "updated_fields": updated_fields,
     }
 
 
