@@ -4297,10 +4297,12 @@ async def get_user_trips(
     user_id: str,
     month: Optional[int] = Query(None, description="Месяц (1-12). Если не указан, возвращается текущий месяц"),
     year: Optional[int] = Query(None, description="Год. Если не указан, возвращается текущий год"),
+    all: Optional[bool] = Query(False, description="Если true — вернуть все поездки за всё время (игнорирует month/year)"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Получение списка поездок пользователя с фильтром по месяцам"""
+    """Получение списка поездок пользователя с фильтром по месяцам.
+    Передайте ?all=true для получения всех поездок за всё время."""
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
     
@@ -4309,26 +4311,35 @@ async def get_user_trips(
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
-    # Определяем период
-    now = datetime.now()
-    target_month = month or now.month
-    target_year = year or now.year
-    
-    month_start = datetime(target_year, target_month, 1)
-    if target_month == 12:
-        month_end = datetime(target_year + 1, 1, 1)
+    base_filter = and_(
+        RentalHistory.user_id == user_uuid,
+        RentalHistory.rental_status == RentalStatus.COMPLETED,
+    )
+
+    if all:
+        # Все поездки за всё время
+        trips = db.query(RentalHistory).filter(
+            base_filter
+        ).order_by(RentalHistory.end_time.desc()).all()
     else:
-        month_end = datetime(target_year, target_month + 1, 1)
-    
-    # Получаем поездки за указанный месяц
-    trips = db.query(RentalHistory).filter(
-        and_(
-            RentalHistory.user_id == user_uuid,
-            RentalHistory.rental_status == RentalStatus.COMPLETED,
-            RentalHistory.end_time >= month_start,
-            RentalHistory.end_time < month_end
-        )
-    ).order_by(RentalHistory.end_time.desc()).all()
+        # Определяем период
+        now = datetime.now()
+        target_month = month or now.month
+        target_year = year or now.year
+        
+        month_start = datetime(target_year, target_month, 1)
+        if target_month == 12:
+            month_end = datetime(target_year + 1, 1, 1)
+        else:
+            month_end = datetime(target_year, target_month + 1, 1)
+        
+        trips = db.query(RentalHistory).filter(
+            and_(
+                base_filter,
+                RentalHistory.end_time >= month_start,
+                RentalHistory.end_time < month_end
+            )
+        ).order_by(RentalHistory.end_time.desc()).all()
     
     result = []
     for trip in trips:
@@ -4339,6 +4350,9 @@ async def get_user_trips(
         
         # Получаем информацию об автомобиле
         car = db.query(Car).filter(Car.id == trip.car_id).first()
+
+        # Первое фото машины (отсортированные)
+        car_photos = sort_car_photos(car.photos or []) if car and car.photos else []
         
         result.append(TripListItemSchema(
             id=uuid_to_sid(trip.id),
@@ -4347,8 +4361,10 @@ async def get_user_trips(
             end_date=trip.end_time,
             duration_minutes=duration_minutes,
             total_price=float(trip.total_price or 0),
+            car_id=uuid_to_sid(car.id) if car else None,
             car_name=car.name if car else None,
-            car_plate_number=car.plate_number if car else None
+            car_plate_number=car.plate_number if car else None,
+            car_photo=car_photos[0] if car_photos else None
         ))
     
     return result

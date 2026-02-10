@@ -193,8 +193,10 @@ class TripListItemSchema(SidMixin):
     end_date: Optional[datetime] = None
     duration_minutes: int = 0
     total_price: float = 0.0
+    car_id: Optional[str] = None
     car_name: Optional[str] = None
     car_plate_number: Optional[str] = None
+    car_photo: Optional[str] = None
 
 
 class TripDetailSchema(SidMixin):
