@@ -15,6 +15,8 @@ from app.admin.users.router import (
     get_users_list_impl,
     submit_rental_review_impl,
     get_user_card_data,
+    _calculate_month_availability_minutes,
+    _calculate_car_earnings,
 )
 from app.admin.users.schemas import (
     UserPaginatedResponse,
@@ -41,6 +43,7 @@ from app.admin.users.schemas import (
     GroupedTransactionItemSchema,
     GroupedTransactionsPaginationSchema,
     GuarantorInfoSchema,
+    OwnerCarListItemSchema,
 )
 from app.support.deps import require_support_role
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
@@ -426,6 +429,51 @@ async def support_get_his_guarantors(
             }
             converted_data = convert_uuid_response_to_sid(guarantor_data, ["id"])
             result.append(GuarantorInfoSchema(**converted_data))
+
+    return result
+
+
+@users_router.get("/{user_id}/owned-cars", response_model=List[OwnerCarListItemSchema])
+async def support_get_user_owned_cars(
+    user_id: str,
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+):
+    """Получение списка автомобилей, где пользователь является владельцем (support)."""
+    from app.admin.cars.utils import sort_car_photos
+
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    cars = db.query(Car).filter(Car.owner_id == user_uuid).all()
+    result = []
+    now = datetime.now()
+    current_month_start = datetime(now.year, now.month, 1)
+
+    for car in cars:
+        available_minutes = _calculate_month_availability_minutes(
+            car_id=car.id,
+            year=now.year,
+            month=now.month,
+            owner_id=user_uuid,
+            db=db,
+        )
+        earnings_data = _calculate_car_earnings(car.id, user_uuid, db, current_month_start)
+        result.append(
+            OwnerCarListItemSchema(
+                id=uuid_to_sid(car.id),
+                name=car.name,
+                plate_number=car.plate_number,
+                available_minutes=available_minutes,
+                earnings_current_month=earnings_data["current_month"],
+                earnings_total=earnings_data["total"],
+                photos=sort_car_photos(car.photos or []),
+                vin=car.vin,
+                color=car.color,
+            )
+        )
 
     return result
 
