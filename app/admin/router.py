@@ -11,6 +11,7 @@ from app.admin.rentals.router import rentals_router
 from app.admin.tariff_settings.router import tariff_settings_router
 from app.admin.promo.router import promo_admin_router
 from app.admin.backup.router import backup_admin_router
+from app.admin.mechanics.router import mechanics_router
 
 admin_router = APIRouter(prefix="/admin")
 
@@ -27,6 +28,7 @@ admin_router.include_router(rentals_router, prefix="/rentals")
 admin_router.include_router(tariff_settings_router, prefix="/tariff-settings")
 admin_router.include_router(promo_admin_router, prefix="/promo")
 admin_router.include_router(backup_admin_router, prefix="/backup")
+admin_router.include_router(mechanics_router, prefix="/mechanics")
 
 router = admin_router
 
