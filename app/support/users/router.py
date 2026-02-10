@@ -10,9 +10,21 @@ from sqlalchemy.orm import Session
 from app.dependencies.database.database import get_db
 from app.auth.dependencies.save_documents import save_file, validate_photos
 from app.utils.atomic_operations import delete_uploaded_files
-from app.admin.users.router import get_users_list_impl, submit_rental_review_impl
+from app.admin.users.router import (
+    get_users_list_impl,
+    submit_rental_review_impl,
+    get_user_card_data,
+)
 from app.admin.users.schemas import (
     UserPaginatedResponse,
+    UserCardSchema,
+    UserCommentUpdateSchema,
+    SendUserSmsRequest,
+    SendUserSmsResponse,
+    SendUserEmailRequest,
+    SendUserEmailResponse,
+    SendUserNotificationRequest,
+    SendUserNotificationResponse,
     AdminCancelReservationRequest,
     AdminCancelReservationResponse,
     AdminRentalReviewRequest,
@@ -26,7 +38,14 @@ from app.admin.users.schemas import (
 )
 from app.support.deps import require_support_role
 from app.utils.short_id import safe_sid_to_uuid, uuid_to_sid
+from app.utils.sid_converter import convert_uuid_response_to_sid
 from app.utils.action_logger import log_action
+from app.utils.telegram_logger import log_error_to_telegram
+from app.core.config import SMS_TOKEN
+from app.guarantor.sms_utils import send_sms_mobizon
+from email.mime.text import MIMEText
+from app.core.smtp import send_email_with_fallback
+from app.push.utils import send_push_to_user_by_id
 from app.models.user_model import User, UserRole
 from app.push.utils import user_has_push_tokens, send_localized_notification_to_user_async
 from app.models.history_model import RentalHistory, RentalStatus, RentalType, RentalReview
@@ -80,6 +99,249 @@ async def get_support_users_list(
         page=page,
         limit=limit,
     )
+
+
+@users_router.get("/{user_id}/card", response_model=UserCardSchema)
+async def get_support_user_card(
+    user_id: str,
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+):
+    """Получение полной карточки пользователя (support)."""
+    user_uuid = safe_sid_to_uuid(user_id)
+    user_data = get_user_card_data(db, user_uuid)
+    if not user_data:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    converted_data = convert_uuid_response_to_sid(user_data, ["id"])
+    return UserCardSchema(**converted_data)
+
+
+@users_router.patch("/{user_id}/comment")
+async def support_update_user_comment(
+    user_id: str,
+    comment_data: UserCommentUpdateSchema,
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+):
+    """Обновление комментария пользователя (support). Действие логируется."""
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    user.admin_comment = comment_data.admin_comment
+    log_action(
+        db,
+        actor_id=current_user.id,
+        action="update_user_comment",
+        entity_type="user",
+        entity_id=user.id,
+        details={"comment": comment_data.admin_comment, "actor_role": "support"},
+    )
+    db.commit()
+    return {"message": "Комментарий обновлен", "admin_comment": comment_data.admin_comment}
+
+
+@users_router.post("/{user_id}/send-sms", response_model=SendUserSmsResponse)
+async def support_send_sms_to_user(
+    user_id: str,
+    request: SendUserSmsRequest,
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+):
+    """Отправка SMS пользователю (support). Действие логируется."""
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    if not user.phone_number:
+        raise HTTPException(status_code=400, detail="У пользователя не указан номер телефона")
+    phone_number = user.phone_number.strip()
+    message_text = request.message.strip()
+    if SMS_TOKEN == "1010":
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="send_sms_to_user",
+            entity_type="user",
+            entity_id=user.id,
+            details={"phone_number": phone_number, "message": message_text, "test_mode": True, "actor_role": "support"},
+        )
+        db.commit()
+        return SendUserSmsResponse(
+            success=True,
+            message="SMS отправлено (тестовый режим)",
+            user_id=user_id,
+            phone_number=phone_number,
+            result="Test mode - SMS not actually sent",
+        )
+    try:
+        result = await send_sms_mobizon(phone_number, message_text, SMS_TOKEN)
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="send_sms_to_user",
+            entity_type="user",
+            entity_id=user.id,
+            details={"phone_number": phone_number, "message": message_text, "result": result, "actor_role": "support"},
+        )
+        db.commit()
+        return SendUserSmsResponse(
+            success=True,
+            message="SMS успешно отправлено",
+            user_id=user_id,
+            phone_number=phone_number,
+            result=result,
+        )
+    except Exception as e:
+        logger.error("Support SMS error: user_id=%s, phone=%s, error=%s", user_id, phone_number, e, exc_info=True)
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "support_send_sms_to_user",
+                    "user_id": user_id,
+                    "phone_number": phone_number,
+                },
+            )
+        except Exception:
+            pass
+        return SendUserSmsResponse(
+            success=False,
+            message="Ошибка при отправке SMS",
+            user_id=user_id,
+            phone_number=phone_number,
+            error=str(e),
+        )
+
+
+@users_router.post("/{user_id}/send-email", response_model=SendUserEmailResponse)
+async def support_send_email_to_user(
+    user_id: str,
+    request: SendUserEmailRequest,
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+):
+    """Отправка email пользователю (support). Действие логируется."""
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    if not user.email:
+        raise HTTPException(status_code=400, detail="У пользователя не указан email")
+    email = user.email.strip().lower()
+    subject = request.subject.strip()
+    body = request.body.strip()
+    try:
+        msg = MIMEText(body, "plain", "utf-8")
+        msg["Subject"] = subject
+        msg["To"] = email
+        if send_email_with_fallback(msg, email):
+            log_action(
+                db,
+                actor_id=current_user.id,
+                action="send_email_to_user",
+                entity_type="user",
+                entity_id=user.id,
+                details={"email": email, "subject": subject, "actor_role": "support"},
+            )
+            db.commit()
+            return SendUserEmailResponse(
+                success=True,
+                message="Email успешно отправлен",
+                user_id=user_id,
+                email=email,
+            )
+        return SendUserEmailResponse(
+            success=False,
+            message="SMTP не настроен",
+            user_id=user_id,
+            email=email,
+            error="SMTP configuration missing",
+        )
+    except Exception as e:
+        logger.error("Support send email error: %s", e)
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "support_send_email_to_user",
+                    "user_id": user_id,
+                    "email": email,
+                },
+            )
+        except Exception:
+            pass
+        return SendUserEmailResponse(
+            success=False,
+            message="Ошибка при отправке email",
+            user_id=user_id,
+            email=email,
+            error=str(e),
+        )
+
+
+@users_router.post("/{user_id}/send-notification", response_model=SendUserNotificationResponse)
+async def support_send_notification_to_user(
+    user_id: str,
+    request: SendUserNotificationRequest,
+    current_user: User = Depends(require_support_role),
+    db: Session = Depends(get_db),
+):
+    """Отправка push-уведомления пользователю (support). Действие логируется."""
+    user_uuid = safe_sid_to_uuid(user_id)
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    title = request.title.strip()
+    body = request.body.strip()
+    try:
+        push_sent = await send_push_to_user_by_id(
+            db_session=db,
+            user_id=user.id,
+            title=title,
+            body=body,
+        )
+        log_action(
+            db,
+            actor_id=current_user.id,
+            action="send_notification_to_user",
+            entity_type="user",
+            entity_id=user.id,
+            details={"title": title, "body": body, "push_sent": push_sent, "actor_role": "support"},
+        )
+        db.commit()
+        return SendUserNotificationResponse(
+            success=True,
+            message="Уведомление успешно отправлено",
+            user_id=user_id,
+            push_sent=push_sent,
+        )
+    except Exception as e:
+        db.rollback()
+        logger.error("Support send notification error: %s", e)
+        try:
+            await log_error_to_telegram(
+                error=e,
+                request=None,
+                user=current_user,
+                additional_context={
+                    "action": "support_send_notification_to_user",
+                    "user_id": user_id,
+                },
+            )
+        except Exception:
+            pass
+        return SendUserNotificationResponse(
+            success=False,
+            message="Ошибка при отправке уведомления",
+            user_id=user_id,
+            push_sent=False,
+            error=str(e),
+        )
 
 
 @users_router.post("/trips/reserve", summary="Забронировать машину за клиента (Support)")

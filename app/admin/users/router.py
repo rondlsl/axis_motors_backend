@@ -572,6 +572,91 @@ def _calculate_owner_earnings(user: User, db: Session) -> Dict[str, float]:
     return {"current_month": current_month_earnings, "total": total_earnings}
 
 
+def get_user_card_data(db: Session, user_uuid) -> dict:
+    """Собирает данные карточки пользователя. Используется в admin и support."""
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        return None
+    mvd_approved = _get_mvd_approved_status(user, db)
+    current_car = _get_current_rental_car(user, db)
+    owner_earnings = None
+    if user.role == UserRole.USER:
+        earnings_data = _calculate_owner_earnings(user, db)
+        owner_earnings = {
+            "current_month": earnings_data["current_month"],
+            "total": earnings_data["total"]
+        }
+    auto_class_list = []
+    if user.auto_class:
+        if isinstance(user.auto_class, list):
+            auto_class_list = user.auto_class
+        elif isinstance(user.auto_class, str):
+            raw = user.auto_class.strip()
+            if raw.startswith("{") and raw.endswith("}"):
+                raw = raw[1:-1]
+            auto_class_list = [part.strip() for part in raw.split(",") if part.strip()]
+    fines_count = db.query(WalletTransaction).filter(
+        and_(
+            WalletTransaction.user_id == user.id,
+            WalletTransaction.transaction_type == WalletTransactionType.SANCTION_PENALTY
+        )
+    ).count()
+    owned_cars_count = db.query(Car).filter(Car.owner_id == user.id).count()
+    trips_count = db.query(RentalHistory).filter(RentalHistory.user_id == user.id).count()
+    transactions_count = db.query(WalletTransaction).filter(
+        WalletTransaction.user_id == user.id
+    ).count()
+    guarantor_for_count = db.query(Guarantor).filter(
+        Guarantor.guarantor_id == user.id
+    ).count()
+    user_data = {
+        "id": uuid_to_sid(user.id),
+        "user_uuid": str(user.id),
+        "digital_signature": user.digital_signature,
+        "phone_number": user.phone_number,
+        "email": user.email,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "middle_name": user.middle_name,
+        "iin": user.iin,
+        "passport_number": user.passport_number,
+        "birth_date": user.birth_date,
+        "drivers_license_expiry": user.drivers_license_expiry,
+        "id_card_expiry": user.id_card_expiry,
+        "locale": user.locale,
+        "role": user.role.value,
+        "is_active": user.is_active,
+        "is_verified_email": user.is_verified_email,
+        "is_citizen_kz": user.is_citizen_kz,
+        "documents_verified": user.documents_verified,
+        "selfie_url": user.selfie_url,
+        "selfie_with_license_url": user.selfie_with_license_url,
+        "drivers_license_url": user.drivers_license_url,
+        "id_card_front_url": user.id_card_front_url,
+        "id_card_back_url": user.id_card_back_url,
+        "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
+        "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
+        "auto_class": auto_class_list,
+        "wallet_balance": float(user.wallet_balance) if user.wallet_balance else 0.0,
+        "created_at": user.created_at,
+        "last_activity_at": user.last_activity_at,
+        "mvd_approved": mvd_approved,
+        "is_blocked": user.is_blocked,
+        "can_exit_zone": user.can_exit_zone,
+        "admin_comment": user.admin_comment,
+        "current_rental_car": current_car,
+        "owner_earnings_current_month": owner_earnings["current_month"] if owner_earnings else None,
+        "owner_earnings_total": owner_earnings["total"] if owner_earnings else None,
+        "rating": float(user.rating) if user.rating else None,
+        "fines_count": fines_count,
+        "owned_cars_count": owned_cars_count,
+        "trips_count": trips_count,
+        "transactions_count": transactions_count,
+        "guarantor_for_count": guarantor_for_count
+    }
+    return user_data
+
+
 def get_users_list_impl(
     db: Session,
     *,
@@ -1073,101 +1158,10 @@ async def get_user_card(
     """Получение полной карточки пользователя"""
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPPORT, UserRole.MECHANIC]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
-    
     user_uuid = safe_sid_to_uuid(user_id)
-    user = db.query(User).filter(User.id == user_uuid).first()
-    if not user:
+    user_data = get_user_card_data(db, user_uuid)
+    if not user_data:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
-    
-    mvd_approved = _get_mvd_approved_status(user, db)
-    current_car = _get_current_rental_car(user, db)
-    
-    # Заработок владельца (если применимо)
-    owner_earnings = None
-    if user.role == UserRole.USER:  # Только для одобренных пользователей
-        earnings_data = _calculate_owner_earnings(user, db)
-        owner_earnings = {
-            "current_month": earnings_data["current_month"],
-            "total": earnings_data["total"]
-        }
-    
-    # Обработка auto_class
-    auto_class_list = []
-    if user.auto_class:
-        if isinstance(user.auto_class, list):
-            auto_class_list = user.auto_class
-        elif isinstance(user.auto_class, str):
-            raw = user.auto_class.strip()
-            if raw.startswith("{") and raw.endswith("}"):
-                raw = raw[1:-1]
-            auto_class_list = [part.strip() for part in raw.split(",") if part.strip()]
-    
-    # Счётчики
-    fines_count = db.query(WalletTransaction).filter(
-        and_(
-            WalletTransaction.user_id == user.id,
-            WalletTransaction.transaction_type == WalletTransactionType.SANCTION_PENALTY
-        )
-    ).count()
-    
-    owned_cars_count = db.query(Car).filter(Car.owner_id == user.id).count()
-    
-    trips_count = db.query(RentalHistory).filter(RentalHistory.user_id == user.id).count()
-    
-    transactions_count = db.query(WalletTransaction).filter(
-        WalletTransaction.user_id == user.id
-    ).count()
-    
-    guarantor_for_count = db.query(Guarantor).filter(
-        Guarantor.guarantor_id == user.id
-    ).count()
-    
-    user_data = {
-        "id": uuid_to_sid(user.id),
-        "user_uuid": str(user.id),
-        "digital_signature": user.digital_signature,
-        "phone_number": user.phone_number,
-        "email": user.email,
-        "first_name": user.first_name,
-        "last_name": user.last_name,
-        "middle_name": user.middle_name,
-        "iin": user.iin,
-        "passport_number": user.passport_number,
-        "birth_date": user.birth_date,
-        "drivers_license_expiry": user.drivers_license_expiry,
-        "id_card_expiry": user.id_card_expiry,
-        "locale": user.locale,
-        "role": user.role.value,
-        "is_active": user.is_active,
-        "is_verified_email": user.is_verified_email,
-        "is_citizen_kz": user.is_citizen_kz,
-        "documents_verified": user.documents_verified,
-        "selfie_url": user.selfie_url,
-        "selfie_with_license_url": user.selfie_with_license_url,
-        "drivers_license_url": user.drivers_license_url,
-        "id_card_front_url": user.id_card_front_url,
-        "id_card_back_url": user.id_card_back_url,
-        "psych_neurology_certificate_url": user.psych_neurology_certificate_url,
-        "pension_contributions_certificate_url": user.pension_contributions_certificate_url,
-        "auto_class": auto_class_list,
-        "wallet_balance": float(user.wallet_balance) if user.wallet_balance else 0.0,
-        "created_at": user.created_at,
-        "last_activity_at": user.last_activity_at,
-        "mvd_approved": mvd_approved,
-        "is_blocked": user.is_blocked,
-        "can_exit_zone": user.can_exit_zone,
-        "admin_comment": user.admin_comment,
-        "current_rental_car": current_car,
-        "owner_earnings_current_month": owner_earnings["current_month"] if owner_earnings else None,
-        "owner_earnings_total": owner_earnings["total"] if owner_earnings else None,
-        "rating": float(user.rating) if user.rating else None,
-        "fines_count": fines_count,
-        "owned_cars_count": owned_cars_count,
-        "trips_count": trips_count,
-        "transactions_count": transactions_count,
-        "guarantor_for_count": guarantor_for_count
-    }
-    
     converted_data = convert_uuid_response_to_sid(user_data, ["id"])
     return UserCardSchema(**converted_data)
 
