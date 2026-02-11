@@ -1076,55 +1076,43 @@ async def reserve_car(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user),
 ):
-    print(
-        f"[reserve_car] START - car_id={car_id}, rental_type={rental_type}, "
-        f"duration={duration}, with_driver={with_driver}, "
-        f"user_id={current_user.id}, user_phone={current_user.phone_number}, "
-        f"user_role={current_user.role}",
-        flush=True
+    logger.info(
+        "reserve_car: START car_id=%s rental_type=%s duration=%s with_driver=%s user_id=%s user_phone=%s user_role=%s",
+        car_id, rental_type, duration, with_driver, current_user.id, current_user.phone_number, current_user.role,
     )
-    
+
     car_uuid = safe_sid_to_uuid(car_id)
     car_meta = db.query(Car.id, Car.owner_id, Car.status).filter(Car.id == car_uuid).first()
     if not car_meta:
-        print(f"[reserve_car] Car not found - car_id={car_id}", flush=True)
+        logger.warning("reserve_car: car not found car_id=%s", car_id)
         raise HTTPException(status_code=404, detail="Car not found")
-    
-    print(
-        f"[reserve_car] Car found - car_uuid={car_uuid}, owner_id={car_meta.owner_id}, "
-        f"status={car_meta.status}, is_owner={car_meta.owner_id == current_user.id}",
-        flush=True
+
+    logger.info(
+        "reserve_car: car found car_id=%s car_uuid=%s owner_id=%s status=%s is_owner=%s",
+        car_id, car_uuid, car_meta.owner_id, car_meta.status, car_meta.owner_id == current_user.id,
     )
 
     # Запреты по ролям/верификации для НЕ владельцев
     if car_meta.owner_id != current_user.id:
-        print(f"[reserve_car] User is not owner, calling validate_user_can_rent for user_id={current_user.id}", flush=True)
+        logger.info("reserve_car: user is not owner, validating user_id=%s", current_user.id)
         validate_user_can_rent(current_user, db)
-        
+
         # Проверяем подписание договора о присоединении (MAIN_CONTRACT)
         main_contract_signed = db.query(UserContractSignature).join(ContractFile).filter(
             UserContractSignature.user_id == current_user.id,
             ContractFile.contract_type == ContractType.MAIN_CONTRACT
         ).first() is not None
-        
-        print(
-            f"[reserve_car] Contract check - user_id={current_user.id}, "
-            f"main_contract_signed={main_contract_signed}",
-            flush=True
-        )
-        
+
+        logger.info("reserve_car: contract check user_id=%s main_contract_signed=%s", current_user.id, main_contract_signed)
+
         if not main_contract_signed:
-            print(
-                f"[reserve_car] BLOCKED - user_id={current_user.id}, "
-                f"reason=main contract not signed",
-                flush=True
-            )
+            logger.warning("reserve_car: blocked user_id=%s reason=main contract not signed", current_user.id)
             raise HTTPException(
                 status_code=403,
                 detail="Необходимо подписать договор о присоединении перед бронированием автомобиля"
             )
-        
-        print(f"[reserve_car] All validation passed for user_id={current_user.id}", flush=True)
+
+        logger.info("reserve_car: validation passed for user_id=%s", current_user.id)
 
     # 1) Проверяем, нет ли у пользователя уже активной аренды
     active_rental = db.query(RentalHistory).filter(
@@ -1135,6 +1123,10 @@ async def reserve_car(
         ])
     ).first()
     if active_rental:
+        logger.warning(
+            "reserve_car: user has active rental user_id=%s rental_id=%s car_id=%s",
+            current_user.id, uuid_to_sid(active_rental.id), car_id,
+        )
         raise HTTPException(
             status_code=400,
             detail="У вас уже есть активная аренда. Завершите текущую аренду, прежде чем бронировать новую машину."
@@ -1146,6 +1138,7 @@ async def reserve_car(
         Car.status == CarStatus.FREE
     ).first()
     if not car:
+        logger.warning("reserve_car: car not available car_id=%s user_id=%s (not FREE)", car_id, current_user.id)
         raise HTTPException(status_code=404, detail="Car not found or not available")
 
     # 3) Проверка доступа к классу авто по количеству поездок (только для НЕ владельцев)
@@ -1219,6 +1212,10 @@ async def reserve_car(
         
         db.commit()
 
+        logger.info(
+            "reserve_car: owner rental created rental_id=%s car_id=%s user_id=%s",
+            uuid_to_sid(rental.id), car_id, current_user.id,
+        )
         return {
             "message": "Car reserved successfully (owner rental)",
             "rental_id": uuid_to_sid(rental.id),
@@ -1265,6 +1262,10 @@ async def reserve_car(
     total_required_balance = required_balance + rebooking_fee
 
     if current_user.wallet_balance < total_required_balance:
+        logger.warning(
+            "reserve_car: insufficient balance car_id=%s user_id=%s required=%s balance=%s",
+            car_id, current_user.id, total_required_balance, float(current_user.wallet_balance or 0),
+        )
         raise InsufficientBalanceException(required_amount=total_required_balance)
 
     if rental_type == RentalType.MINUTES:
