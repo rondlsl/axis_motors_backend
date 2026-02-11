@@ -318,17 +318,87 @@ def verify_and_fix_rental_balance(
         if changes_made:
             logger.info(f"🔧 Rental {rental.id} fields updated: {', '.join(changes_made)}")
         
-        # ========== 5. ПЕРЕСЧИТЫВАЕМ balance_before/balance_after ДЛЯ ТРАНЗАКЦИЙ АРЕНДЫ ==========
+        # ========== 5. ПЕРЕСЧИТЫВАЕМ balance_before/balance_after ДЛЯ ВСЕХ ТРАНЗАКЦИЙ ПЕРИОДА АРЕНДЫ ==========
+        # BUGFIX: Раньше здесь итерировались только rental_transactions (related_rental_id == rental.id).
+        # Из-за этого пополнения (DEPOSIT) во время аренды не учитывались в running_balance,
+        # что приводило к "аннулированию" пополнений при расчёте expected_balance_after.
+        # Теперь обрабатываем ВСЕ транзакции пользователя за период аренды в хронологическом порядке.
+        # Это безопасно, т.к. мы не меняем amount — только пересчитываем balance_before/balance_after.
+        
+        rental_end_time = rental.end_time or get_local_time()
+        
+        if rental_transactions:
+            # Граница = created_at первой транзакции аренды.
+            # recalculate_user_balance_before_rental уже учёл все не-арендные транзакции
+            # с created_at < first_rental_tx_time, поэтому начинаем ровно с этой точки.
+            first_rental_tx_time = min(tx.created_at for tx in rental_transactions)
+            
+            logger.info(
+                f"📅 Rental {rental.id} period: "
+                f"{first_rental_tx_time.strftime('%Y-%m-%d %H:%M:%S')} -> "
+                f"{rental_end_time.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+            
+            # ВСЕ транзакции пользователя за период аренды:
+            # списания аренды, пополнения, любые другие операции.
+            # Не фильтруем по related_rental_id — именно это исправляет баг.
+            # Сортировка по (created_at, id) для детерминированности при одинаковых timestamps.
+            all_rental_period_transactions = (
+                db.query(WalletTransaction)
+                .filter(
+                    WalletTransaction.user_id == user.id,
+                    WalletTransaction.created_at >= first_rental_tx_time,
+                    WalletTransaction.created_at <= rental_end_time
+                )
+                .order_by(WalletTransaction.created_at.asc(), WalletTransaction.id.asc())
+                .all()
+            )
+            
+            logger.info(
+                f"📋 Found {len(all_rental_period_transactions)} transactions in rental period "
+                f"(including {len(rental_transactions)} rental-specific)"
+            )
+            
+            # Логируем типы транзакций для диагностики
+            tx_types = {}
+            for tx in all_rental_period_transactions:
+                tx_type = tx.transaction_type.value
+                tx_types[tx_type] = tx_types.get(tx_type, 0) + 1
+            
+            if tx_types:
+                types_str = ", ".join([f"{t}:{c}" for t, c in tx_types.items()])
+                logger.debug(f"  Transaction types in period: {types_str}")
+                
+        else:
+            # Нет транзакций аренды — balance_before_rental уже учитывает всё,
+            # нечего пересчитывать в периоде аренды.
+            all_rental_period_transactions = []
+            logger.info(f"📋 No rental transactions found for rental {rental.id}")
+        
         running_balance = balance_before_rental
         tx_corrections = []
         
-        for tx in rental_transactions:
+        logger.debug(f"🔄 Starting rental period balance calculation from {running_balance:.2f}")
+        
+        for i, tx in enumerate(all_rental_period_transactions, 1):
             old_before = tx.balance_before
             old_after = tx.balance_after
             
             tx.balance_before = running_balance
             tx.balance_after = running_balance + to_float(tx.amount)
             running_balance = tx.balance_after
+            
+            # Подробное логирование каждой транзакции
+            is_rental_tx = tx.related_rental_id == rental.id
+            tx_marker = "🔗" if is_rental_tx else "💰"
+            
+            logger.debug(
+                f"  {i:2d}. {tx_marker} TX {tx.id} ({tx.transaction_type.value:20s}) "
+                f"| before={old_before:8.2f} -> {tx.balance_before:8.2f} "
+                f"| amount={to_float(tx.amount):+7.2f} "
+                f"| after={old_after:8.2f} -> {tx.balance_after:8.2f} "
+                f"| running={running_balance:8.2f}"
+            )
             
             if abs(to_float(old_before) - tx.balance_before) > 0.01 or abs(to_float(old_after) - tx.balance_after) > 0.01:
                 tx_corrections.append({
@@ -342,7 +412,7 @@ def verify_and_fix_rental_balance(
                 })
         
         if tx_corrections:
-            logger.info(f"🔧 {len(tx_corrections)} rental transactions corrected for rental {rental.id}")
+            logger.info(f"🔧 {len(tx_corrections)} transactions corrected for rental {rental.id}")
             for corr in tx_corrections:
                 logger.debug(
                     f"  TX {corr['tx_id']} ({corr['type']}): "
@@ -351,21 +421,29 @@ def verify_and_fix_rental_balance(
                 )
         
         # ========== 6. ПЕРЕСЧИТЫВАЕМ ТРАНЗАКЦИИ ПОСЛЕ АРЕНДЫ ==========
-        # Получаем все транзакции после аренды (не связанные с ней)
-        rental_end_time = rental.end_time or get_local_time()
-        
+        # Все транзакции пользователя после окончания аренды (любого типа).
+        # Используем strict > чтобы не было overlap с шагом 5 (который использует <=).
+        # Не фильтруем по related_rental_id — все пост-арендные транзакции должны
+        # быть в единой цепочке running_balance.
         post_rental_transactions = (
             db.query(WalletTransaction)
             .filter(
                 WalletTransaction.user_id == user.id,
-                WalletTransaction.related_rental_id != rental.id,
-                WalletTransaction.created_at >= rental_end_time
+                WalletTransaction.created_at > rental_end_time
             )
-            .order_by(WalletTransaction.created_at.asc())
+            .order_by(WalletTransaction.created_at.asc(), WalletTransaction.id.asc())
             .all()
         )
         
-        for tx in post_rental_transactions:
+        logger.info(
+            f"📋 Found {len(post_rental_transactions)} post-rental transactions "
+            f"after {rental_end_time.strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+        
+        if post_rental_transactions:
+            logger.debug(f"🔄 Continuing balance calculation from {running_balance:.2f}")
+        
+        for i, tx in enumerate(post_rental_transactions, 1):
             old_before = tx.balance_before
             old_after = tx.balance_after
             
@@ -373,9 +451,18 @@ def verify_and_fix_rental_balance(
             tx.balance_after = running_balance + to_float(tx.amount)
             running_balance = tx.balance_after
             
+            # Логируем пост-арендные транзакции
+            logger.debug(
+                f"  POST {i:2d}. TX {tx.id} ({tx.transaction_type.value:20s}) "
+                f"| before={old_before:8.2f} -> {tx.balance_before:8.2f} "
+                f"| amount={to_float(tx.amount):+7.2f} "
+                f"| after={old_after:8.2f} -> {tx.balance_after:8.2f} "
+                f"| running={running_balance:8.2f}"
+            )
+            
             if abs(to_float(old_before) - tx.balance_before) > 0.01 or abs(to_float(old_after) - tx.balance_after) > 0.01:
                 logger.debug(
-                    f"  Post-rental TX {tx.id} ({tx.transaction_type.value}): "
+                    f"    Post-rental TX {tx.id} balance corrected: "
                     f"before {old_before} -> {tx.balance_before}, "
                     f"after {old_after} -> {tx.balance_after}"
                 )
@@ -384,6 +471,15 @@ def verify_and_fix_rental_balance(
         expected_balance_after = running_balance
         current_balance = to_float(user.wallet_balance)
         difference = expected_balance_after - current_balance
+        
+        # Итоговое логирование цепочки балансов
+        logger.info(
+            f"💰 Balance flow for rental {rental.id}: "
+            f"before_rental={balance_before_rental:.2f} -> "
+            f"after_rental_period={running_balance:.2f} -> "
+            f"current={current_balance:.2f} "
+            f"(diff={difference:+.2f})"
+        )
         
         if abs(difference) > 0.01:
             logger.warning(
