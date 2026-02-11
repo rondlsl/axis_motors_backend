@@ -53,8 +53,11 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
     Правила:
     - duration_ms > 1000 → WARN
     - exception → ERROR + traceback
+    - запросы к путям из LOG_SKIP_PATHS не логируются (шум от частых обновлений)
     """
-    
+    # Пути, которые не логируем (method, path без trailing slash)
+    LOG_SKIP_PATHS = {("POST", "/device/location")}
+
     async def dispatch(self, request: Request, call_next):
         # Генерируем trace_id для этого запроса
         trace_id = str(uuid.uuid4())
@@ -109,64 +112,68 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
             # Вычисляем длительность запроса
             duration_ms = (time.time() - start_time) * 1000
             
-            # Формируем данные для логирования
-            log_data = {
-                "method": request.method,
-                "path": request.url.path,
-                "status": status_code,
-                "duration_ms": round(duration_ms, 2),
-                "trace_id": trace_id,
-            }
-            
-            # Добавляем опциональные поля
-            if user_id:
-                log_data["user_id"] = user_id
-            if vehicle_id:
-                log_data["vehicle_id"] = vehicle_id
-            
-            # Определяем уровень логирования (всегда логируем каждый запрос)
-            if exception_occurred:
-                # ERROR для исключений
-                log_message = (
-                    f"ERROR {log_data['method']} {log_data['path']} "
-                    f"status={log_data['status']} duration_ms={log_data['duration_ms']} "
-                    f"trace_id={log_data['trace_id']}"
-                )
-                if user_id:
-                    log_message += f" user_id={user_id}"
-                if vehicle_id:
-                    log_message += f" vehicle_id={vehicle_id}"
+            # Не логируем запросы к шумным эндпоинтам (например частые POST /device/location)
+            skip_log = (request.method, request.url.path.rstrip("/")) in self.LOG_SKIP_PATHS
+
+            if not skip_log:
+                # Формируем данные для логирования
+                log_data = {
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status": status_code,
+                    "duration_ms": round(duration_ms, 2),
+                    "trace_id": trace_id,
+                }
                 
-                logger.error(log_message, extra=log_data)
-                if exception_traceback:
-                    logger.error(f"Exception traceback:\n{exception_traceback}")
+                # Добавляем опциональные поля
+                if user_id:
+                    log_data["user_id"] = user_id
+                if vehicle_id:
+                    log_data["vehicle_id"] = vehicle_id
+                
+                # Определяем уровень логирования (всегда логируем каждый запрос)
+                if exception_occurred:
+                    # ERROR для исключений
+                    log_message = (
+                        f"ERROR {log_data['method']} {log_data['path']} "
+                        f"status={log_data['status']} duration_ms={log_data['duration_ms']} "
+                        f"trace_id={log_data['trace_id']}"
+                    )
+                    if user_id:
+                        log_message += f" user_id={user_id}"
+                    if vehicle_id:
+                        log_message += f" vehicle_id={vehicle_id}"
                     
-            elif duration_ms > 1000:
-                # WARN для медленных запросов (> 1 секунда)
-                log_message = (
-                    f"WARN {log_data['method']} {log_data['path']} "
-                    f"status={log_data['status']} duration_ms={log_data['duration_ms']} "
-                    f"trace_id={log_data['trace_id']}"
-                )
-                if user_id:
-                    log_message += f" user_id={user_id}"
-                if vehicle_id:
-                    log_message += f" vehicle_id={vehicle_id}"
-                
-                logger.warning(log_message, extra=log_data)
-            else:
-                # INFO для обычных запросов
-                log_message = (
-                    f"{log_data['method']} {log_data['path']} "
-                    f"status={log_data['status']} duration_ms={log_data['duration_ms']} "
-                    f"trace_id={log_data['trace_id']}"
-                )
-                if user_id:
-                    log_message += f" user_id={user_id}"
-                if vehicle_id:
-                    log_message += f" vehicle_id={vehicle_id}"
-                
-                logger.info(log_message, extra=log_data)
+                    logger.error(log_message, extra=log_data)
+                    if exception_traceback:
+                        logger.error(f"Exception traceback:\n{exception_traceback}")
+                        
+                elif duration_ms > 1000:
+                    # WARN для медленных запросов (> 1 секунда)
+                    log_message = (
+                        f"WARN {log_data['method']} {log_data['path']} "
+                        f"status={log_data['status']} duration_ms={log_data['duration_ms']} "
+                        f"trace_id={log_data['trace_id']}"
+                    )
+                    if user_id:
+                        log_message += f" user_id={user_id}"
+                    if vehicle_id:
+                        log_message += f" vehicle_id={vehicle_id}"
+                    
+                    logger.warning(log_message, extra=log_data)
+                else:
+                    # INFO для обычных запросов
+                    log_message = (
+                        f"{log_data['method']} {log_data['path']} "
+                        f"status={log_data['status']} duration_ms={log_data['duration_ms']} "
+                        f"trace_id={log_data['trace_id']}"
+                    )
+                    if user_id:
+                        log_message += f" user_id={user_id}"
+                    if vehicle_id:
+                        log_message += f" vehicle_id={vehicle_id}"
+                    
+                    logger.info(log_message, extra=log_data)
 
             # Сброс буфера, чтобы логи сразу попадали в stdout (важно в Docker/K8s)
             _flush_log_handlers()

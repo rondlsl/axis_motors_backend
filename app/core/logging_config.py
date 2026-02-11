@@ -52,6 +52,16 @@ class JSONFormatter(logging.Formatter):
         return json.dumps(log_data, ensure_ascii=False)
 
 
+class SkipPathAccessLogFilter(logging.Filter):
+    SKIP_PATHS = ("/device/location",)
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.name != "uvicorn.access":
+            return True
+        msg = record.getMessage()
+        return not any(path in msg for path in self.SKIP_PATHS)
+
+
 class ColoredFormatter(logging.Formatter):
     """Цветной форматтер для разработки"""
     
@@ -142,6 +152,9 @@ def setup_logging(
         handler.setFormatter(JSONFormatter())
     else:
         handler.setFormatter(ColoredFormatter())
+    
+    # Не логировать в stdout запросы к шумным эндпоинтам (uvicorn.access + наш request_logger)
+    handler.addFilter(SkipPathAccessLogFilter())
     
     # Root logger — один handler в stdout, уровень из LOG_LEVEL. Ничего больше не трогаем.
     root_logger = logging.getLogger()
