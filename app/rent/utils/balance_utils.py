@@ -479,7 +479,7 @@ def verify_and_fix_rental_balance(
             f"after_rental_period={running_balance:.2f} -> "
             f"current={current_balance:.2f} "
             f"(diff={difference:+.2f})"
-        )
+        )   
         
         if abs(difference) > 0.01:
             logger.warning(

@@ -218,7 +218,8 @@ async def assign_chat(
     chat_id: str,
     assign_data: SupportChatAssignRequest,
     current_user: User = Depends(require_support_role),
-    support_service: SupportService = Depends(get_support_service)
+    support_service: SupportService = Depends(get_support_service),
+    db: Session = Depends(get_db)
 ):
     """Назначить чат сотруднику поддержки"""
     
