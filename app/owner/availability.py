@@ -1,4 +1,5 @@
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -9,6 +10,10 @@ from app.models.car_model import Car, CarStatus, CarAvailabilityHistory
 from app.utils.time_utils import get_local_time, ALMATY_OFFSET
 
 logger = logging.getLogger(__name__)
+
+# Повторная попытка при lock timeout: другая транзакция (телеметрия, аренда) могла держать строку в cars
+LOCK_RETRY_SLEEP_SEC = 5
+MAX_LOCK_RETRIES = 1
 
 EXCLUDED_STATUSES = {CarStatus.OWNER, CarStatus.OCCUPIED}
 
@@ -88,23 +93,48 @@ def update_car_availability_snapshot(car: Car, now: Optional[datetime] = None) -
     car.availability_updated_at = next_update if next_update > now_utc else now_utc
 
 
+def _run_availability_update(db: Session) -> None:
+    """Один проход: загрузка машин, пересчёт available_minutes, commit."""
+    now = get_local_time()
+    cars = db.query(Car).all()
+    for car in cars:
+        update_car_availability_snapshot(car, now)
+    db.commit()
+
+
 def update_cars_availability_job() -> None:
     """
     Планировщик: обновляет таймер доступности для всех машин.
     Запускается периодически (см. main.py).
+    При lock timeout (конфликт с телеметрией/арендой) делает одну повторную попытку после паузы.
     """
-    db: Session = SessionLocal()
-    try:
-        now = get_local_time()
-        cars = db.query(Car).all()
-        for car in cars:
-            update_car_availability_snapshot(car, now)
-        db.commit()
-    except Exception as exc:
-        logger.error(f"Ошибка при обновлении доступности автомобилей: {exc}")
-        db.rollback()
-    finally:
-        db.close()
+    for attempt in range(MAX_LOCK_RETRIES + 1):
+        db: Session = SessionLocal()
+        try:
+            _run_availability_update(db)
+            return
+        except Exception as exc:
+            db.rollback()
+            is_lock_timeout = (
+                "lock timeout" in str(exc).lower()
+                or "LockNotAvailable" in type(exc).__name__
+            )
+            if is_lock_timeout and attempt < MAX_LOCK_RETRIES:
+                logger.warning(
+                    "Обновление доступности: lock timeout, повтор через %s сек (попытка %s)",
+                    LOCK_RETRY_SLEEP_SEC,
+                    attempt + 1,
+                )
+                time.sleep(LOCK_RETRY_SLEEP_SEC)
+            else:
+                logger.error(
+                    "Ошибка при обновлении доступности автомобилей: %s",
+                    exc,
+                    exc_info=not is_lock_timeout,
+                )
+                break
+        finally:
+            db.close()
 
 
 CAR_AVAILABILITY_START = {

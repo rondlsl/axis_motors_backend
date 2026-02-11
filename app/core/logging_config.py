@@ -53,13 +53,20 @@ class JSONFormatter(logging.Formatter):
 
 
 class SkipPathAccessLogFilter(logging.Filter):
+    """Скрывает access-логи для заданных путей (uvicorn.access)."""
     SKIP_PATHS = ("/device/location",)
 
     def filter(self, record: logging.LogRecord) -> bool:
         if record.name != "uvicorn.access":
             return True
-        msg = record.getMessage()
-        return not any(path in msg for path in self.SKIP_PATHS)
+        # Uvicorn: logger.info('%s - "%s %s %s" %s', client, method, path, version, status) -> args[2] = path
+        if getattr(record, "args", None) and len(record.args) >= 3:
+            path = record.args[2]
+            if any(skip in (path or "") for skip in self.SKIP_PATHS):
+                return False
+        if any(skip in record.getMessage() for skip in self.SKIP_PATHS):
+            return False
+        return True
 
 
 class ColoredFormatter(logging.Formatter):
@@ -153,7 +160,7 @@ def setup_logging(
     else:
         handler.setFormatter(ColoredFormatter())
     
-    # Не логировать в stdout запросы к шумным эндпоинтам (uvicorn.access + наш request_logger)
+    # Не логировать в stdout запросы к шумным эндпоинтам (наш request_logger фильтрует сам)
     handler.addFilter(SkipPathAccessLogFilter())
     
     # Root logger — один handler в stdout, уровень из LOG_LEVEL. Ничего больше не трогаем.
@@ -161,6 +168,10 @@ def setup_logging(
     root_logger.setLevel(log_level)
     root_logger.handlers = []
     root_logger.addHandler(handler)
+    
+    # Фильтр на uvicorn.access: Uvicorn вешает свой handler на этот логгер, запись идёт мимо root.
+    # Вешаем фильтр на сам логгер — тогда запись отбрасывается до любых handlers.
+    logging.getLogger("uvicorn.access").addFilter(SkipPathAccessLogFilter())
     
     # Приглушаем шумные логгеры: APScheduler, httpx/httpcore, OpenTelemetry exporter.
     # OTLP exporter при недоступности Tempo пишет ERROR (Failed to export traces) — не спамим.
