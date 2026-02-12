@@ -46,6 +46,7 @@ from app.utils.digital_signature import generate_digital_signature
 from app.utils.sid_converter import convert_uuid_response_to_sid
 from app.utils.telegram_logger import log_error_to_telegram
 from app.utils.time_utils import get_local_time
+from app.services.daily_user_stats_service import increment_daily_user_registered
 # Временно закомментировано: генерация FCM токенов
 # from app.utils.fcm_token import ensure_user_has_unique_fcm_token, ensure_unique_fcm_token
 from app.websocket.notifications import notify_user_status_update
@@ -350,13 +351,6 @@ async def send_sms(
             inactive_user.last_sms_code = sms_code
             inactive_user.sms_code_valid_until = current_time + timedelta(hours=1)
             
-            # Временно закомментировано: генерация FCM токенов
-            # # Проверяем и генерируем FCM токен, если необходимо
-            # try:
-            #     ensure_user_has_unique_fcm_token(db, inactive_user)
-            # except Exception as e:
-            #     logger.error(f" при генерации FCM токена при восстановлении: {e}")
-            #     # Продолжаем без токена, он будет сгенерирован при логине
             
             user = inactive_user
         else:
@@ -390,13 +384,9 @@ async def send_sms(
             )
             user.digital_signature = digital_signature
             
-            # Временно закомментировано: генерация FCM токенов
-            # # Генерируем уникальный FCM токен для нового пользователя
-            # try:
-            #     user.fcm_token = ensure_unique_fcm_token(db, user_id=user.id)
-            # except Exception as e:
-            #     logger.error(f" при генерации FCM токена при регистрации: {e}")
-            #     # Продолжаем без токена, он будет сгенерирован при логине
+            # Предагрегация для аналитики: счётчик регистраций по дням (без full scan users)
+            increment_daily_user_registered(db, get_local_time().date())
+            
     else:
         # Существующий активный пользователь - проверяем, что не переданы лишние поля
         if request.first_name or request.last_name or request.middle_name:

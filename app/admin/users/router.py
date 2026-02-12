@@ -5941,7 +5941,7 @@ async def submit_rental_review_impl(db: Session, request: AdminRentalReviewReque
                             db.add(fuel_tx)
             
             # Проверка base_price для часового/суточного тарифа
-            if rental.rental_type in (RentalType.HOURS, RentalType.DAYS) and not (car.owner_id == user.id):
+            if rental.rental_type in (RentalType.HOURS, RentalType.DAYS) and (car.owner_id != user.id):
                 expected_base_price = rental.base_price
                 
                 # Ищем транзакцию base_price

@@ -1,9 +1,11 @@
 """
 Admin Analytics Router - История транзакций для аналитики
 """
-from datetime import datetime, timedelta
+import json
+from datetime import date, datetime, timedelta
 from typing import Optional, List
-from fastapi import APIRouter, Depends, Query
+
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 
@@ -15,11 +17,16 @@ from app.models.user_model import User, UserRole
 from app.models.wallet_transaction_model import WalletTransaction, WalletTransactionType
 from app.models.history_model import RentalHistory
 from app.models.car_model import Car
+from app.models.daily_user_stats_model import DailyUserStats
 from app.auth.dependencies.get_current_user import get_current_user
 from app.utils.short_id import uuid_to_sid
 from app.utils.time_utils import get_local_time
-from fastapi import HTTPException
+from app.services.redis_service import get_redis_service
 from math import ceil
+
+# Кэш аналитики регистраций: TTL в секундах (5 минут)
+USERS_REGISTERED_CACHE_TTL = 300
+USERS_REGISTERED_CACHE_PREFIX = "analytics:users_registered:"
 
 analytics_router = APIRouter(prefix="/analytics", tags=["Admin Analytics"])
 
@@ -87,6 +94,84 @@ def _calculate_summary(db: Session, transaction_types: List[WalletTransactionTyp
         "week": get_sum(week_start),
         "month": get_sum(month_start)
     }
+
+
+def _build_users_registered_response(
+    date_from: date,
+    date_to: date,
+    rows: List[tuple],
+) -> dict:
+    """Строит ответ с series и total из строк DailyUserStats; заполняет пропуски дат нулями."""
+    count_by_date = dict(rows)
+    total = sum(c for _, c in rows)
+    series = []
+    current = date_from
+    while current <= date_to:
+        series.append({
+            "date": current.strftime("%Y-%m-%d"),
+            "count": count_by_date.get(current, 0),
+        })
+        current += timedelta(days=1)
+    return {"series": series, "total": total}
+
+
+@analytics_router.get(
+    "/users-registered",
+    summary="Регистрации по дням за период (предагрегация + кэш)",
+)
+async def get_users_registered_analytics(
+    date_from: str = Query(..., description="Начало периода (YYYY-MM-DD)"),
+    date_to: str = Query(..., description="Конец периода (YYYY-MM-DD)"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Возвращает число зарегистрированных пользователей по дням из таблицы предагрегации
+    (daily_user_stats). Данные кэшируются в Redis на 5 минут (полный JSON ответ).
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только для администраторов")
+
+    try:
+        from_dt = datetime.strptime(date_from, "%Y-%m-%d").date()
+        to_dt = datetime.strptime(date_to, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Неверный формат даты. Используйте YYYY-MM-DD",
+        )
+    if to_dt < from_dt:
+        raise HTTPException(
+            status_code=400,
+            detail="date_to не может быть раньше date_from",
+        )
+
+    cache_key = f"{USERS_REGISTERED_CACHE_PREFIX}{date_from}:{date_to}"
+    redis = get_redis_service()
+    cached = await redis.get(cache_key)
+    if cached is not None:
+        try:
+            data = json.loads(cached)
+            data["from_cache"] = True
+            return data
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    rows = (
+        db.query(DailyUserStats.date, DailyUserStats.registered_count)
+        .filter(
+            DailyUserStats.date >= from_dt,
+            DailyUserStats.date <= to_dt,
+        )
+        .order_by(DailyUserStats.date)
+        .all()
+    )
+    response = _build_users_registered_response(from_dt, to_dt, rows)
+    response["from_cache"] = False
+
+    await redis.set(cache_key, json.dumps(response), ttl=USERS_REGISTERED_CACHE_TTL)
+
+    return response
 
 
 @analytics_router.get("/deposits", summary="История пополнений для аналитики")
