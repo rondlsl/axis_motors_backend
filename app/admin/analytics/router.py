@@ -27,6 +27,7 @@ from math import ceil
 # Кэш аналитики регистраций: TTL в секундах (5 минут)
 USERS_REGISTERED_CACHE_TTL = 300
 USERS_REGISTERED_CACHE_PREFIX = "analytics:users_registered:"
+USERS_REGISTERED_BY_DATE_CACHE_PREFIX = "analytics:users_registered_by_date:"
 
 analytics_router = APIRouter(prefix="/analytics", tags=["Admin Analytics"])
 
@@ -171,6 +172,93 @@ async def get_users_registered_analytics(
 
     await redis.set(cache_key, json.dumps(response), ttl=USERS_REGISTERED_CACHE_TTL)
 
+    return response
+
+
+@analytics_router.get(
+    "/users-registered/by-date",
+    summary="Список user_id зарегистрированных за дату (с пагинацией)",
+)
+async def get_users_registered_by_date(
+    date_param: str = Query(..., alias="date", description="Дата (YYYY-MM-DD)"),
+    page: int = Query(1, ge=1, description="Страница"),
+    limit: int = Query(50, ge=1, le=200, description="Записей на странице"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Возвращает user_id (SID) пользователей, создавших аккаунт в указанную дату.
+    Пагинация: page, limit. Результат кэшируется в Redis на 5 минут.
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Только для администраторов")
+
+    try:
+        day = datetime.strptime(date_param, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Неверный формат даты. Используйте YYYY-MM-DD",
+        )
+
+    cache_key = f"{USERS_REGISTERED_BY_DATE_CACHE_PREFIX}{date_param}:{page}:{limit}"
+    redis = get_redis_service()
+    cached = await redis.get(cache_key)
+    if cached is not None:
+        try:
+            data = json.loads(cached)
+            data["from_cache"] = True
+            return data
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    day_start = datetime(day.year, day.month, day.day, 0, 0, 0, 0)
+    day_end = day_start + timedelta(days=1)
+
+    total = (
+        db.query(func.count(User.id))
+        .filter(
+            User.created_at >= day_start,
+            User.created_at < day_end,
+        )
+        .scalar()
+        or 0
+    )
+    total = int(total)
+
+    offset = (page - 1) * limit
+    rows = (
+        db.query(User.id, User.created_at)
+        .filter(
+            User.created_at >= day_start,
+            User.created_at < day_end,
+        )
+        .order_by(User.created_at.asc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    users = [
+        {
+            "user_id": uuid_to_sid(user_id),
+            "created_at": created_at.isoformat() if created_at else None,
+        }
+        for user_id, created_at in rows
+    ]
+
+    pages = ceil(total / limit) if limit > 0 else 0
+
+    response = {
+        "date": date_param,
+        "users": users,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": pages,
+        "from_cache": False,
+    }
+    await redis.set(cache_key, json.dumps(response), ttl=USERS_REGISTERED_CACHE_TTL)
     return response
 
 
