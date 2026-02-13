@@ -16,6 +16,16 @@ from app.utils.time_utils import get_local_time
 
 logger = logging.getLogger(__name__)
 
+# Ограничение одновременных уведомлений, чтобы не исчерпывать лимит файловых дескрипторов (сессии БД + сокеты)
+_NOTIFICATION_SEMAPHORE: Optional[asyncio.Semaphore] = None
+
+
+def _get_notification_semaphore() -> asyncio.Semaphore:
+    global _NOTIFICATION_SEMAPHORE
+    if _NOTIFICATION_SEMAPHORE is None:
+        _NOTIFICATION_SEMAPHORE = asyncio.Semaphore(15)
+    return _NOTIFICATION_SEMAPHORE
+
 
 def _ensure_uuid(value: Optional[str]) -> Optional[UUID]:
     if value is None:
@@ -31,13 +41,13 @@ def _ensure_uuid(value: Optional[str]) -> Optional[UUID]:
 async def notify_vehicles_list_update(user_id: Optional[str] = None) -> None:
     """
     Отправить обновление списка машин через WebSocket.
-    
-    Args:
-        user_id: ID пользователя (если None, отправляется всем)
+    Ограничено семафором, чтобы не создавать слишком много одновременных сессий БД.
     """
-    try:
-        db = SessionLocal()
+    semaphore = _get_notification_semaphore()
+    async with semaphore:
+        db = None
         try:
+            db = SessionLocal()
             if user_id:
                 user_uuid = _ensure_uuid(user_id)
                 if not user_uuid:
@@ -79,25 +89,29 @@ async def notify_vehicles_list_update(user_id: Optional[str] = None) -> None:
                             "timestamp": get_local_time().isoformat()
                         }
                     )
+        except Exception as e:
+            logger.error("Error notifying vehicles list update: %s", e)
         finally:
-            db.close()
-    except Exception as e:
-        logger.error(f"Error notifying vehicles list update: {e}")
+            if db is not None:
+                try:
+                    db.close()
+                except Exception as close_err:
+                    logger.error("Error closing DB session in notify_vehicles_list_update: %s", close_err)
 
 
 async def notify_user_status_update(user_id: str) -> None:
     """
     Отправить обновление статуса пользователя через WebSocket.
-    
-    Args:
-        user_id: ID пользователя
+    Ограничено семафором, чтобы не создавать слишком много одновременных сессий БД.
     """
-    try:
+    semaphore = _get_notification_semaphore()
+    async with semaphore:
         user_uuid = _ensure_uuid(user_id)
         if not user_uuid:
             return
-        db = SessionLocal()
+        db = None
         try:
+            db = SessionLocal()
             db.expire_all()
             user = db.query(User).filter(User.id == user_uuid).first()
             if user:
@@ -120,10 +134,14 @@ async def notify_user_status_update(user_id: str) -> None:
                         "timestamp": get_local_time().isoformat()
                     }
                 )
+        except Exception as e:
+            logger.error("Error notifying user status update: %s", e)
         finally:
-            db.close()
-    except Exception as e:
-        logger.error(f"Error notifying user status update: {e}")
+            if db is not None:
+                try:
+                    db.close()
+                except Exception as close_err:
+                    logger.error("Error closing DB session in notify_user_status_update: %s", close_err)
 
 
 async def notify_telemetry_update(car_id: str, telemetry_data: Dict[str, Any]) -> None:
