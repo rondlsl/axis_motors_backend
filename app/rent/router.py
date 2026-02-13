@@ -3142,7 +3142,7 @@ async def check_vehicle_status_for_completion(vehicle_imei: str, plate_number: O
     """
     try:
         from app.core.config import VEHICLES_API_URL
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(f"{VEHICLES_API_URL}/vehicles/?skip=0&limit=100")
             response.raise_for_status()
             vehicles = response.json()
@@ -3401,6 +3401,7 @@ async def complete_rental(
         db: Session = Depends(get_db),
         current_user=Depends(get_current_user)
 ):
+    logger.info("[complete_rental] start user_id=%s", current_user.id)
     # 1) Найти активную аренду
     rental = (
         db.query(RentalHistory)
@@ -3431,10 +3432,11 @@ async def complete_rental(
     car = db.query(Car).get(rental.car_id)
     if not car:
         raise HTTPException(status_code=404, detail="Car not found")
+    logger.info("[complete_rental] rental_id=%s car_id=%s car=%s", rental.id, car.id, car.name)
 
     # 3) Проверить состояние автомобиля для завершения аренды
     vehicle_status = await check_vehicle_status_for_completion(car.gps_imei, car.plate_number)
-    
+    logger.info("[complete_rental] vehicle_status check done rental_id=%s", rental.id)
     if "error" in vehicle_status:
         raise HTTPException(status_code=400, detail=vehicle_status["error"])
     
@@ -3483,6 +3485,7 @@ async def complete_rental(
     rental.end_time = now
     rental.end_latitude = car.latitude
     rental.end_longitude = car.longitude
+    logger.info("[complete_rental] end_time set rental_id=%s", rental.id)
 
     # Для часового/суточного тарифа: сохраняем уровень топлива на момент окончания основного тарифа
     # если аренда вышла за пределы основного тарифа
@@ -3544,7 +3547,7 @@ async def complete_rental(
     total_seconds = (now - rental.start_time).total_seconds()
     actual_minutes = total_seconds / 60
     rounded_minutes = ceil(actual_minutes)
-    
+    logger.info("[complete_rental] duration calculated rental_id=%s rounded_minutes=%s", rental.id, rounded_minutes)
     # Сохраняем оригинальное значение duration (часы/дни) до перезаписи
     original_duration = rental.duration
 
@@ -3783,13 +3786,13 @@ async def complete_rental(
 
     # 12) Рассчитываем и сохраняем фактическую продолжительность поездки в минутах для истории
     rental.duration = rounded_minutes
-    
+
     # 13) Окончательная блокировка двигателя при завершении аренды
+    logger.info("[complete_rental] final_lock start rental_id=%s gps_imei=%s", rental.id, car.gps_imei)
     try:
         auth_token = await get_auth_token("https://regions.glonasssoft.ru", GLONASSSOFT_USERNAME, GLONASSSOFT_PASSWORD)
-        
-        # Универсальная последовательность: заблокировать двигатель
         result = await execute_gps_sequence(car.gps_imei, auth_token, "final_lock")
+        logger.info("[complete_rental] final_lock done rental_id=%s success=%s", rental.id, result.get("success"))
         if result["success"]:
             logger.info(f"Двигатель автомобиля {car.name} окончательно заблокирован после завершения аренды")
         else:
@@ -3817,6 +3820,7 @@ async def complete_rental(
             pass
 
     # 14) Получаем рейтинг вождения из Glonasssoft API
+    logger.info("[complete_rental] ecodriving start rental_id=%s", rental.id)
     try:
         if car.gps_id and rental.start_time:
             if rental.end_time is None:
@@ -3839,6 +3843,7 @@ async def complete_rental(
             logger.warning(f"Cannot get EcoDriving rating: gps_id={car.gps_id}, start_time={rental.start_time}")
     except Exception as e:
         logger.error(f"Error getting EcoDriving rating: {e}", exc_info=True)
+    logger.info("[complete_rental] ecodriving done rental_id=%s", rental.id)
 
     # ========== ФИНАЛЬНЫЙ ПЕРЕРАСЧЁТ АРЕНДЫ ==========
     # Выполняем контрольный перерасчёт и сверяем суммы между:
@@ -4120,6 +4125,7 @@ async def complete_rental(
     # ========== КОНЕЦ ПЕРЕРАСЧЁТА ==========
 
     # ========== ВЕРИФИКАЦИЯ И ИСПРАВЛЕНИЕ БАЛАНСА ==========
+    logger.info("[complete_rental] balance verification start rental_id=%s", rental.id)
     # Пересчитываем все транзакции ДО аренды, получаем правильный баланс,
     # собираем суммы из транзакций, синхронизируем поля аренды и исправляем баланс
     if not (car.owner_id == current_user.id):  # Для владельца не нужно
@@ -4155,9 +4161,11 @@ async def complete_rental(
                 )
         except Exception as e:
             logger.error(f"Error during balance verification: {e}", exc_info=True)
+    logger.info("[complete_rental] balance verification done rental_id=%s", rental.id)
     # ========== КОНЕЦ ВЕРИФИКАЦИИ БАЛАНСА ==========
 
     db.commit()
+    logger.info("[complete_rental] db.commit done rental_id=%s", rental.id)
     
     try:
         update_user_rating(current_user.id, db)
@@ -4202,6 +4210,7 @@ async def complete_rental(
     # except Exception as e:
     #     logger.error(f"Ошибка отправки SMS при завершении аренды: {e}")
 
+    logger.info("[complete_rental] scheduling notifications rental_id=%s", rental.id)
     schedule_notifications(
         user_ids=[current_user.id, car.owner_id],
         refresh_vehicles=True
@@ -4216,15 +4225,11 @@ async def complete_rental(
         if owner:
             db.refresh(owner)
 
-    try:
-        await notify_user_status_update(str(current_user.id))
-        if car.owner_id:
-            await notify_user_status_update(str(car.owner_id))
-        await notify_vehicles_list_update()
-        logger.info(f"WebSocket user_status notification sent for user {current_user.id} after completing rental")
-    except Exception as e:
-        logger.error(f"Error sending WebSocket notification: {e}")
-
+    # Уведомления уже запланированы через schedule_notifications() в фоне — не ждём их, чтобы ответ вернулся сразу
+    logger.info(
+        "[complete_rental] success rental_id=%s user_id=%s total_price=%s duration_min=%s",
+        rental.id, current_user.id, rental.total_price, rounded_minutes
+    )
     return {
         "message": "Rental completed successfully",
         "rental_id": uuid_to_sid(rental.id),
