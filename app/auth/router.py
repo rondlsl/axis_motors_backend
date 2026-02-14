@@ -364,7 +364,8 @@ async def send_sms(
         db.commit()
     sms_text = f"""{sms_code}-Ваш код
 Электронная подпись:{user.digital_signature}"""
-    if phone_number not in ("70000000000", "71234567890", "71234567898", "71234567899", "79999999999", "71231111111"):
+    # Номера, для которых не отправляем SMS через Mobizon (тест/некорректный формат и т.д.)
+    if phone_number not in ("70000000000", "71234567890", "71234567898", "71234567899", "79999999999", "71231111111", "71234567876"):
         try:
             if SMS_TOKEN:
                 logger.info("Mobizon: отправка SMS кода на phone=%s (auth)", phone_number)

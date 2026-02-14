@@ -258,26 +258,28 @@ async def sign_contract(
     logger.info(f"🔍 Contract file is_active: {contract_file.is_active}")
     logger.info(f"🔍 Rental ID (from request): {sign_request.rental_id}")
     
-    # Отправляем в Telegram о начале процесса
-    try:
-        await telegram_error_logger.send_info(
-            f"📝 <b>Начало подписания договора</b>\n\n"
-            f"👤 <b>Пользователь:</b>\n"
-            f"  • ID: <code>{current_user.id}</code>\n"
-            f"  • ID (short): <code>{uuid_to_sid(current_user.id)}</code>\n"
-            f"  • Телефон: <code>{current_user.phone_number}</code>\n"
-            f"  • Роль: <code>{current_user.role}</code>\n\n"
-            f"📄 <b>Договор:</b>\n"
-            f"  • Тип: <code>{sign_request.contract_type}</code>\n"
-            f"  • Contract File ID: <code>{contract_file.id}</code>\n"
-            f"  • Contract File ID (short): <code>{uuid_to_sid(contract_file.id)}</code>\n"
-            f"  • Активен: <code>{contract_file.is_active}</code>\n"
-            f"  • Rental ID: <code>{sign_request.rental_id or 'None'}</code>\n"
-            f"  • Guarantor Relationship ID: <code>{sign_request.guarantor_relationship_id or 'None'}</code>",
-            context={"endpoint": "/contracts/sign"}
-        )
-    except Exception as e:
-        logger.error(f"Error sending Telegram notification: {e}")
+    # Уведомление в Telegram — в фоне, чтобы не задерживать ответ клиенту
+    async def _send_sign_start_telegram():
+        try:
+            await telegram_error_logger.send_info(
+                f"📝 <b>Начало подписания договора</b>\n\n"
+                f"👤 <b>Пользователь:</b>\n"
+                f"  • ID: <code>{current_user.id}</code>\n"
+                f"  • ID (short): <code>{uuid_to_sid(current_user.id)}</code>\n"
+                f"  • Телефон: <code>{current_user.phone_number}</code>\n"
+                f"  • Роль: <code>{current_user.role}</code>\n\n"
+                f"📄 <b>Договор:</b>\n"
+                f"  • Тип: <code>{sign_request.contract_type}</code>\n"
+                f"  • Contract File ID: <code>{contract_file.id}</code>\n"
+                f"  • Contract File ID (short): <code>{uuid_to_sid(contract_file.id)}</code>\n"
+                f"  • Активен: <code>{contract_file.is_active}</code>\n"
+                f"  • Rental ID: <code>{sign_request.rental_id or 'None'}</code>\n"
+                f"  • Guarantor Relationship ID: <code>{sign_request.guarantor_relationship_id or 'None'}</code>",
+                context={"endpoint": "/contracts/sign"}
+            )
+        except Exception as e:
+            logger.error(f"Error sending Telegram notification: {e}")
+    _start_telegram_task = asyncio.create_task(_send_sign_start_telegram())
     
     if sign_request.rental_id:
         try:
@@ -626,47 +628,8 @@ async def sign_contract(
     db.expire_all()
     db.refresh(current_user)
     
-    # Отправляем успешное подписание в Telegram
-    try:
-        await telegram_error_logger.send_info(
-            f"✅ <b>Договор успешно подписан</b>\n\n"
-            f"👤 <b>Пользователь:</b>\n"
-            f"  • ID: <code>{current_user.id}</code>\n"
-            f"  • Телефон: <code>{current_user.phone_number}</code>\n"
-            f"  • Роль: <code>{current_user.role}</code>\n\n"
-            f"📄 <b>Договор:</b>\n"
-            f"  • Тип: <code>{sign_request.contract_type}</code>\n"
-            f"  • Contract File ID: <code>{contract_file.id}</code>\n"
-            f"  • Signature ID: <code>{uuid_to_sid(signature.id)}</code>\n"
-            f"  • Rental ID: <code>{signature.rental_id or 'None'}</code>\n"
-            f"  • Guarantor Relationship ID: <code>{signature.guarantor_relationship_id or 'None'}</code>\n"
-            f"  • Дата подписания: <code>{signature.signed_at}</code>",
-            context={
-                "endpoint": "/contracts/sign",
-                "signature_id": str(signature.id),
-                "contract_type": str(sign_request.contract_type)
-            }
-        )
-    except Exception as e:
-        logger.error(f"Error sending Telegram notification: {e}")
-    
-    try:
-        await notify_user_status_update(str(current_user.id))
-        logger.info(f"WebSocket user_status notification sent for user {current_user.id} after contract signing")
-    except Exception as e:
-        logger.error(f"Error sending WebSocket notification: {e}")
-    
-    # Если это договор гаранта, также обновляем клиента
-    if sign_request.contract_type in [ContractType.GUARANTOR_CONTRACT, ContractType.GUARANTOR_MAIN_CONTRACT] and guarantor_rel_uuid:
-        guarantor_rel = db.query(Guarantor).filter(Guarantor.id == guarantor_rel_uuid).first()
-        if guarantor_rel:
-            try:
-                await notify_user_status_update(str(guarantor_rel.client_id))
-                logger.info(f"WebSocket user_status notification sent for client {guarantor_rel.client_id} after guarantor contract signing")
-            except Exception as e:
-                logger.error(f"Error sending WebSocket notification to client: {e}")
-    
-    return UserSignatureResponse(
+    # Ответ клиенту возвращаем сразу; Telegram и WebSocket — в фоне
+    response = UserSignatureResponse(
         id=uuid_to_sid(signature.id),
         user_id=uuid_to_sid(signature.user_id),
         contract_file_id=uuid_to_sid(signature.contract_file_id),
@@ -676,6 +639,51 @@ async def sign_contract(
         rental_id=str(signature.rental_id) if signature.rental_id else None,
         guarantor_relationship_id=str(signature.guarantor_relationship_id) if signature.guarantor_relationship_id else None
     )
+
+    # ID клиента для уведомления по гаранту (получаем до закрытия сессии)
+    guarantor_client_id = None
+    if sign_request.contract_type in [ContractType.GUARANTOR_CONTRACT, ContractType.GUARANTOR_MAIN_CONTRACT] and guarantor_rel_uuid:
+        guarantor_rel = db.query(Guarantor).filter(Guarantor.id == guarantor_rel_uuid).first()
+        if guarantor_rel:
+            guarantor_client_id = str(guarantor_rel.client_id)
+
+    async def _send_sign_success_and_notify():
+        try:
+            await telegram_error_logger.send_info(
+                f"✅ <b>Договор успешно подписан</b>\n\n"
+                f"👤 <b>Пользователь:</b>\n"
+                f"  • ID: <code>{current_user.id}</code>\n"
+                f"  • Телефон: <code>{current_user.phone_number}</code>\n"
+                f"  • Роль: <code>{current_user.role}</code>\n\n"
+                f"📄 <b>Договор:</b>\n"
+                f"  • Тип: <code>{sign_request.contract_type}</code>\n"
+                f"  • Contract File ID: <code>{contract_file.id}</code>\n"
+                f"  • Signature ID: <code>{uuid_to_sid(signature.id)}</code>\n"
+                f"  • Rental ID: <code>{signature.rental_id or 'None'}</code>\n"
+                f"  • Guarantor Relationship ID: <code>{signature.guarantor_relationship_id or 'None'}</code>\n"
+                f"  • Дата подписания: <code>{signature.signed_at}</code>",
+                context={
+                    "endpoint": "/contracts/sign",
+                    "signature_id": str(signature.id),
+                    "contract_type": str(sign_request.contract_type)
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error sending Telegram notification: {e}")
+        try:
+            await notify_user_status_update(str(current_user.id))
+            logger.info(f"WebSocket user_status notification sent for user {current_user.id} after contract signing")
+        except Exception as e:
+            logger.error(f"Error sending WebSocket notification: {e}")
+        if guarantor_client_id:
+            try:
+                await notify_user_status_update(guarantor_client_id)
+                logger.info(f"WebSocket user_status notification sent for client {guarantor_client_id} after guarantor contract signing")
+            except Exception as e:
+                logger.error(f"Error sending WebSocket notification to client: {e}")
+    _notify_task = asyncio.create_task(_send_sign_success_and_notify())
+
+    return response
 
 @ContractsRouter.get("/my-contracts", response_model=UserContractsResponse)
 async def get_my_contracts(
