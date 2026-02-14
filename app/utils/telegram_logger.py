@@ -1,8 +1,10 @@
 """
-Telegram Logger для отправки ошибок и критических событий в Telegram группу мониторинга
+Telegram Logger для отправки ошибок и критических событий в Telegram группу мониторинга.
+Учитывает лимиты Telegram: не более ~1 сообщения в секунду в один чат, при 429 — ожидание retry_after и повтор.
 """
 import asyncio
 import logging
+import time
 import traceback
 from typing import Optional, Dict, Any
 import httpx
@@ -13,12 +15,17 @@ from app.utils.time_utils import get_local_time
 
 logger = logging.getLogger(__name__)
 
+# Минимальный интервал между отправками в один чат (секунды), чтобы не получать 429
+TELEGRAM_MIN_INTERVAL = 1.2
+
 
 class TelegramErrorLogger:
     def __init__(self):
         self.bot_token = TELEGRAM_BOT_MONITOR
         self.chat_id = MONITOR_GROUP_ID
         self.base_url = f"https://api.telegram.org/bot{self.bot_token}"
+        self._last_send_time = 0.0
+        self._send_lock = asyncio.Lock()
         
     async def send_error(
         self,
@@ -183,9 +190,18 @@ class TelegramErrorLogger:
                 await asyncio.sleep(0.5)
     
     async def _send_single_message(self, text: str):
-        """Отправить одно сообщение в Telegram"""
+        """Отправить одно сообщение в Telegram с учётом лимитов и повтором при 429."""
+        async with self._send_lock:
+            now = time.monotonic()
+            wait = self._last_send_time + TELEGRAM_MIN_INTERVAL - now
+            if wait > 0:
+                await asyncio.sleep(wait)
+            await self._do_send_with_retry(text)
+
+    async def _do_send_with_retry(self, text: str):
+        """Выполнить отправку; при 429 подождать retry_after и повторить один раз."""
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=15.0) as client:
                 response = await client.post(
                     f"{self.base_url}/sendMessage",
                     json={
@@ -194,11 +210,50 @@ class TelegramErrorLogger:
                         "parse_mode": "HTML"
                     }
                 )
-                
-                if response.status_code != 200:
-                    logger.error(f"Telegram API error: {response.status_code} - {response.text}")
+                if response.status_code == 200:
+                    self._last_send_time = time.monotonic()
+                    return
+                if response.status_code == 429:
+                    retry_after = self._parse_retry_after(response)
+                    logger.warning(
+                        "Telegram API 429, waiting %s s before retry (monitor chat)",
+                        retry_after
+                    )
+                    await asyncio.sleep(retry_after)
+                    retry_response = await client.post(
+                        f"{self.base_url}/sendMessage",
+                        json={
+                            "chat_id": self.chat_id,
+                            "text": text,
+                            "parse_mode": "HTML"
+                        }
+                    )
+                    if retry_response.status_code == 200:
+                        self._last_send_time = time.monotonic()
+                        return
+                    logger.error(
+                        "Telegram API error after retry: %s - %s",
+                        retry_response.status_code,
+                        retry_response.text[:500],
+                    )
+                else:
+                    logger.error(
+                        "Telegram API error: %s - %s",
+                        response.status_code,
+                        response.text[:500],
+                    )
         except Exception as e:
-            logger.error(f"Ошибка HTTP-запроса в Telegram: {e}")
+            logger.error("Ошибка HTTP-запроса в Telegram: %s", e)
+
+    @staticmethod
+    def _parse_retry_after(response: httpx.Response) -> int:
+        """Достать retry_after из ответа 429 (по умолчанию 60 сек)."""
+        try:
+            data = response.json()
+            params = data.get("parameters") or {}
+            return int(params.get("retry_after", 60))
+        except Exception:
+            return 60
     
     async def send_info(self, message: str, context: Optional[Dict[str, Any]] = None):
         """Отправить информационное сообщение"""
