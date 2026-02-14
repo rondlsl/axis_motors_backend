@@ -173,8 +173,8 @@ def setup_logging(
     # Вешаем фильтр на сам логгер — тогда запись отбрасывается до любых handlers.
     logging.getLogger("uvicorn.access").addFilter(SkipPathAccessLogFilter())
     
-    # Приглушаем шумные логгеры: APScheduler, httpx/httpcore, OpenTelemetry, multipart (парсинг form-data).
-    # multipart при загрузке файлов пишет DEBUG на каждый chunk — отключаем.
+    # Приглушаем шумные логгеры: APScheduler, httpx, OpenTelemetry, multipart, PIL.
+    # multipart — DEBUG на каждый chunk; PIL (TiffImagePlugin) — DEBUG при EXIF/JPEG.
     for name in (
         "apscheduler",
         "apscheduler.executors.default",
@@ -183,6 +183,8 @@ def setup_logging(
         "opentelemetry.exporter.otlp",
         "opentelemetry.exporter.otlp.proto.grpc",
         "multipart",
+        "PIL",
+        "PIL.TiffImagePlugin",
     ):
         logging.getLogger(name).setLevel(logging.WARNING)
 

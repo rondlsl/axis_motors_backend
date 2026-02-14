@@ -1,6 +1,7 @@
 """
 MinIO Service для работы с объектным хранилищем S3-совместимым.
 """
+import asyncio
 import os
 import uuid
 import time
@@ -185,9 +186,11 @@ class MinIOService:
             content_type = file.content_type or 'application/octet-stream'
             file_extension = os.path.splitext(file.filename or "file")[1]
             
-            # Конвертируем в WebP если это изображение
+            # Конвертируем в WebP в потоке, чтобы не блокировать event loop (PIL — CPU-bound)
             convert_start = time.time()
-            converted_content, converted_type, new_extension = convert_to_webp(content, content_type)
+            converted_content, converted_type, new_extension = await asyncio.to_thread(
+                convert_to_webp, content, content_type
+            )
             if new_extension:
                 file_extension = new_extension
                 content_type = converted_type
