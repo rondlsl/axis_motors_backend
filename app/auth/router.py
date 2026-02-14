@@ -187,6 +187,294 @@ class UpdateNameResponse(BaseModel):
         }
 
 
+def _send_sms_registration_sync(
+    phone_number: str,
+    first_name: Optional[str],
+    last_name: Optional[str],
+    middle_name: Optional[str],
+    email: Optional[str],
+    sms_code: str,
+) -> dict:
+    """
+    Синхронная работа с БД для шага регистрации/отправки SMS.
+    Вызывается через asyncio.to_thread, чтобы не блокировать event loop.
+    Возвращает {"ok": True, **data} или {"ok": False, "detail": str, "status_code": int}.
+    """
+    from app.dependencies.database.database import SessionLocal
+    db = None
+    try:
+        db = SessionLocal()
+        current_time = get_local_time()
+        blocked_by_phone = db.query(User).filter(
+            User.phone_number == phone_number,
+            User.role == UserRole.REJECTSECOND
+        ).first()
+        if blocked_by_phone:
+            return {
+                "ok": False,
+                "detail": (
+                    "Вынуждены отказать в регистрации. По результатам проверки ваших данных были выявлены несоответствия требованиям доступа к сервису. "
+                    "Обращаем внимание, что на основании п. 4.4 Договора, Арендодатель вправе по своему усмотрению отказаться от заключения Договора с Клиентом. "
+                    "С уважением, Команда «AZV Motors»."
+                ),
+                "status_code": 403,
+            }
+        user = db.query(User).filter(User.phone_number == phone_number, User.is_active == True).first()
+        if not user:
+            inactive_user = db.query(User).filter(
+                User.phone_number == phone_number,
+                User.is_active == False
+            ).first()
+            if inactive_user:
+                if inactive_user.role == UserRole.REJECTSECOND:
+                    return {
+                        "ok": False,
+                        "detail": (
+                            "Вынуждены отказать в регистрации. По результатам проверки ваших данных были выявлены несоответствия требованиям доступа к сервису. "
+                            "Обращаем внимание, что на основании п. 4.4 Договора, Арендодатель вправе по своему усмотрению отказаться от заключения Договора с Клиентом. "
+                            "С уважением, Команда «AZV Motors»."
+                        ),
+                        "status_code": 403,
+                    }
+                if inactive_user.is_blocked:
+                    return {"ok": False, "detail": "Ваш аккаунт заблокирован. Обратитесь в техподдержку.", "status_code": 403}
+                if inactive_user.is_deleted:
+                    return {"ok": False, "detail": "Ваш аккаунт удалён. Обратитесь в техподдержку для восстановления.", "status_code": 403}
+                if first_name or last_name or middle_name:
+                    return {"ok": False, "detail": "Пользователь с таким номером телефона уже существует. Укажите только номер телефона.", "status_code": 400}
+                inactive_user.is_active = True
+                inactive_user.last_sms_code = sms_code
+                inactive_user.sms_code_valid_until = current_time + timedelta(hours=1)
+                user = inactive_user
+            else:
+                if not first_name or not last_name:
+                    return {"ok": False, "detail": "Для новых пользователей обязательно указать имя и фамилию", "status_code": 400}
+                user = User(
+                    phone_number=phone_number,
+                    first_name=first_name,
+                    last_name=last_name,
+                    middle_name=middle_name,
+                    role=UserRole.CLIENT,
+                    last_sms_code=sms_code,
+                    sms_code_valid_until=current_time + timedelta(hours=1),
+                    is_active=True,
+                )
+                db.add(user)
+                db.flush()
+                user.digital_signature = generate_digital_signature(
+                    user_id=str(user.id),
+                    phone_number=phone_number,
+                    first_name=first_name,
+                    last_name=last_name,
+                    middle_name=middle_name or "",
+                )
+                increment_daily_user_registered(db, get_local_time().date())
+        else:
+            if first_name or last_name or middle_name:
+                return {"ok": False, "detail": "Пользователь с таким номером телефона уже существует.", "status_code": 400}
+            user.last_sms_code = sms_code
+            user.sms_code_valid_until = current_time + timedelta(hours=1)
+        db.commit()
+        if not user.digital_signature:
+            user.digital_signature = generate_digital_signature(
+                user_id=str(user.id),
+                phone_number=phone_number,
+                first_name=user.first_name or "",
+                last_name=user.last_name or "",
+                middle_name=user.middle_name or "",
+            )
+            db.commit()
+        full_name = f"{user.first_name or ''} {user.last_name or ''} {user.middle_name or ''}".strip() or "Не указано"
+        email_code = None
+        if email:
+            email = email.strip().lower()
+            existing = db.query(User).filter(User.email == email, User.id != user.id, User.is_active == True).first()
+            if existing:
+                return {"ok": False, "detail": "Этот email уже используется другим пользователем", "status_code": 400}
+            TEST_EMAIL_CODES = {
+                "test1@example.com": "111111", "test2@example.com": "222222", "test3@example.com": "333333",
+                "test4@example.com": "444444", "test5@example.com": "555555", "test6@example.com": "666666",
+                "test7@example.com": "777777", "test8@example.com": "888888", "test9@example.com": "999999",
+                "test10@example.com": "000000",
+            }
+            email_code = TEST_EMAIL_CODES.get(email, generate_email_verification_code())
+            email_verification_record = VerificationCode(
+                phone_number=None,
+                email=email,
+                code=email_code,
+                purpose="email_verification",
+                is_used=False,
+                expires_at=get_local_time() + timedelta(minutes=15),
+            )
+            db.add(email_verification_record)
+            if not user.email or (user.email or "").lower() != email:
+                user.email = email
+                user.is_verified_email = False
+            db.commit()
+        return {
+            "ok": True,
+            "user_id": str(user.id),
+            "digital_signature": user.digital_signature,
+            "full_name": full_name,
+            "fcm_token": user.fcm_token if user.fcm_token else None,
+            "skip_sms": phone_number in (
+                "70000000000", "71234567890", "71234567898", "71234567899", "79999999999", "71231111111"
+            ),
+            "email": email,
+            "email_code": email_code,
+        }
+    except Exception as e:
+        if db:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        return {"ok": False, "detail": str(e), "status_code": 500}
+    finally:
+        if db:
+            try:
+                db.close()
+            except Exception:
+                pass
+
+
+def _send_email_verification_sync(
+    email: str,
+    email_code: str,
+    phone_number: str,
+    user_id: Optional[str],
+) -> None:
+    """Синхронная отправка кода на email. Вызывается через asyncio.to_thread."""
+    msg = MIMEText(f"Ваш код подтверждения: {email_code}")
+    msg["Subject"] = "AZV Motors"
+    msg["To"] = email
+    send_email_with_fallback(msg, email)
+
+
+def _verify_sms_sync(
+    phone_number: str,
+    sms_code: str,
+    latitude: Optional[float],
+    longitude: Optional[float],
+) -> dict:
+    """
+    Синхронная верификация SMS и выдача токенов. Вызывается через asyncio.to_thread.
+    Возвращает {"ok": True, **data} для VerifySmsResponse или {"ok": False, "detail": str, "status_code": int}.
+    """
+    from app.dependencies.database.database import SessionLocal
+    db = None
+    linked_count = 0
+    try:
+        db = SessionLocal()
+        SYSTEM_PHONE_NUMBERS = (
+            "70000000000", "71234567890", "71234567898", "71234567899", "79999999999", "71231111111"
+        )
+        if sms_code == "1010":
+            user = db.query(User).filter(User.phone_number == phone_number, User.is_active == True).first()
+        elif phone_number in SYSTEM_PHONE_NUMBERS:
+            user = db.query(User).filter(
+                User.phone_number == phone_number,
+                User.last_sms_code == sms_code,
+                User.is_active == True
+            ).first()
+        else:
+            user = db.query(User).filter(
+                User.phone_number == phone_number,
+                User.last_sms_code == sms_code,
+                User.sms_code_valid_until > get_local_time(),
+                User.is_active == True
+            ).first()
+        if not user:
+            return {"ok": False, "detail": "Invalid SMS code or code expired", "status_code": 401}
+        if user.role == UserRole.REJECTSECOND:
+            return {
+                "ok": False,
+                "detail": (
+                    "Вынуждены отказать в регистрации. По результатам проверки ваших данных были выявлены несоответствия требованиям доступа к сервису. "
+                    "Обращаем внимание, что на основании п. 4.4 Договора, Арендодатель вправе по своему усмотрению отказаться от заключения Договора с Клиентом. "
+                    "С уважением, Команда «AZV Motors»."
+                ),
+                "status_code": 403,
+            }
+        if user.is_blocked:
+            return {"ok": False, "detail": "Ваш аккаунт заблокирован. Обратитесь в техподдержку.", "status_code": 403}
+        if user.is_deleted:
+            return {"ok": False, "detail": "Ваш аккаунт удалён. Обратитесь в техподдержку для восстановления.", "status_code": 403}
+        user.last_activity_at = get_local_time()
+        db.commit()
+        access_token = create_access_token(data={"sub": user.phone_number})
+        refresh_token = create_refresh_token(data={"sub": user.phone_number})
+        now = get_local_time()
+        try:
+            db.add(TokenRecord(user_id=user.id, token_type="access", token=access_token, expires_at=None, created_at=now, updated_at=now, last_used_at=now))
+            db.add(TokenRecord(user_id=user.id, token_type="refresh", token=refresh_token, expires_at=None, created_at=now, updated_at=now))
+            db.commit()
+        except Exception:
+            db.rollback()
+        try:
+            from app.models.guarantor_model import GuarantorRequest, GuarantorRequestStatus
+            pending = db.query(GuarantorRequest).filter(
+                GuarantorRequest.guarantor_phone == user.phone_number,
+                GuarantorRequest.guarantor_id.is_(None),
+                GuarantorRequest.status == GuarantorRequestStatus.PENDING
+            ).all()
+            for req in pending:
+                req.guarantor_id = user.id
+                if user.phone_number:
+                    req.guarantor_phone = user.phone_number
+                linked_count += 1
+            if linked_count > 0:
+                db.commit()
+        except Exception as e:
+            logger.error(" при связывании заявок гарантов: %s", e)
+        if latitude is not None and longitude is not None:
+            try:
+                device = db.query(UserDevice).filter(
+                    UserDevice.user_id == user.id,
+                    UserDevice.is_active == True,
+                    UserDevice.revoked_at.is_(None)
+                ).order_by(UserDevice.last_active_at.desc()).first()
+                if device is None:
+                    device = UserDevice(user_id=user.id, is_active=True)
+                    db.add(device)
+                device.last_lat = latitude
+                device.last_lng = longitude
+                device.last_active_at = get_local_time()
+                device.update_timestamp()
+                db.commit()
+            except Exception as e:
+                logger.error("Ошибка при сохранении координат в user_devices: %s", e)
+        full_name = f"{user.first_name or ''} {user.last_name or ''} {user.middle_name or ''}".strip() or "Не указано"
+        return {
+            "ok": True,
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "linked_guarantor_requests": linked_count,
+            "digital_signature": user.digital_signature,
+            "client_info": {
+                "full_name": full_name,
+                "phone_number": user.phone_number,
+                "user_id": uuid_to_sid(user.id),
+                "digital_signature": user.digital_signature,
+            },
+            "fcm_token": user.fcm_token if user.fcm_token else None,
+            "role": user.role.value,
+        }
+    except Exception as e:
+        if db:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        return {"ok": False, "detail": str(e), "status_code": 500}
+    finally:
+        if db:
+            try:
+                db.close()
+            except Exception:
+                pass
+
+
 def _get_client_ip(http_request) -> str:
     """Извлечь реальный IP клиента (с учётом прокси)."""
     # X-Forwarded-For может содержать несколько IP через запятую
@@ -247,8 +535,6 @@ async def send_sms(
     )
 
     phone_number = request.phone_number
-    current_time = get_local_time()
-
     if not phone_number.isdigit():
         raise HTTPException(status_code=400, detail="Phone number must contain only digits.")
 
@@ -301,140 +587,23 @@ async def send_sms(
         "70123456798": "0000",  # тест10
     }
     sms_code = TEST_PHONE_CODES.get(phone_number, totp.now())
-    # Проверяем блокировку по номеру телефона (REJECTSECOND - независимо от is_active)
-    blocked_by_phone = db.query(User).filter(
-        User.phone_number == phone_number,
-        User.role == UserRole.REJECTSECOND
-    ).first()
-    if blocked_by_phone:
-        raise HTTPException(status_code=403, detail=(
-            "Вынуждены отказать в регистрации. По результатам проверки ваших данных были выявлены несоответствия требованиям доступа к сервису. "
-            "Обращаем внимание, что на основании п. 4.4 Договора, Арендодатель вправе по своему усмотрению отказаться от заключения Договора с Клиентом. "
-            "С уважением, Команда ≪AZV Motors≫."
-        ))
-
-    # Ищем активного пользователя с заданным номером
-    user = db.query(User).filter(User.phone_number == phone_number, User.is_active == True).first()
-
-    if not user:
-        # Нет активного — проверяем, есть ли неактивный (удаленный) пользователь
-        inactive_user = db.query(User).filter(
-            User.phone_number == phone_number, 
-            User.is_active == False
-        ).first()
-        
-        if inactive_user:
-            # Проверяем, не заблокирован ли пользователь (REJECTSECOND)
-            if inactive_user.role == UserRole.REJECTSECOND:
-                raise HTTPException(status_code=403, detail=(
-                    "Вынуждены отказать в регистрации. По результатам проверки ваших данных были выявлены несоответствия требованиям доступа к сервису. "
-                    "Обращаем внимание, что на основании п. 4.4 Договора, Арендодатель вправе по своему усмотрению отказаться от заключения Договора с Клиентом. "
-                    "С уважением, Команда ≪AZV Motors≫."
-                ))
-            
-            # Проверяем, не заблокирован ли пользователь администратором
-            if inactive_user.is_blocked:
-                raise HTTPException(status_code=403, detail="Ваш аккаунт заблокирован. Обратитесь в техподдержку.")
-            
-            # Проверяем, не удалён ли пользователь администратором
-            if inactive_user.is_deleted:
-                raise HTTPException(status_code=403, detail="Ваш аккаунт удалён. Обратитесь в техподдержку для восстановления.")
-            
-            # Восстанавливаем удаленный аккаунт
-            # Проверяем, что не переданы лишние поля (имя/фамилия уже есть в профиле)
-            if request.first_name or request.last_name or request.middle_name:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Пользователь с таким номером телефона уже существует. Укажите только номер телефона."
-                )
-            inactive_user.is_active = True
-            inactive_user.last_sms_code = sms_code
-            inactive_user.sms_code_valid_until = current_time + timedelta(hours=1)
-            
-            
-            user = inactive_user
-        else:
-            # Вообще нет пользователя — создаём новый аккаунт
-            if not request.first_name or not request.last_name:
-                raise HTTPException(
-                    status_code=400, 
-                    detail="Для новых пользователей обязательно указать имя и фамилию"
-                )
-            
-            user = User(
-                phone_number=phone_number,
-                first_name=request.first_name,
-                last_name=request.last_name,
-                middle_name=request.middle_name,
-                role=UserRole.CLIENT,  # Новым пользователям даём роль CLIENT
-                last_sms_code=sms_code,
-                sms_code_valid_until=current_time + timedelta(hours=1),
-                is_active=True  # Новый аккаунт активен
-            )
-            db.add(user)
-            db.flush()  # Получаем ID пользователя
-            
-            # Генерируем цифровую подпись для нового пользователя
-            digital_signature = generate_digital_signature(
-                user_id=str(user.id),
-                phone_number=phone_number,
-                first_name=request.first_name,
-                last_name=request.last_name,
-                middle_name=request.middle_name
-            )
-            user.digital_signature = digital_signature
-            
-            # Предагрегация для аналитики: счётчик регистраций по дням (без full scan users)
-            increment_daily_user_registered(db, get_local_time().date())
-            
-    else:
-        # Существующий активный пользователь - проверяем, что не переданы лишние поля
-        if request.first_name or request.last_name or request.middle_name:
-            raise HTTPException(
-                status_code=400,
-                detail="Пользователь с таким номером телефона уже существует."
-            )
-        
-        # Обновляем смс-код активного аккаунта
-        user.last_sms_code = sms_code
-        user.sms_code_valid_until = current_time + timedelta(hours=1)
-
-    db.commit()
-    
-    # Формируем SMS с информацией о клиенте
-    if not user.digital_signature:
-        # Если у пользователя еще нет цифровой подписи, генерируем её
-        user.digital_signature = generate_digital_signature(
-            user_id=str(user.id),
-            phone_number=phone_number,
-            first_name=user.first_name or "",
-            last_name=user.last_name or "",
-            middle_name=user.middle_name or ""
+    result = await asyncio.to_thread(
+        _send_sms_registration_sync,
+        phone_number,
+        request.first_name,
+        request.last_name,
+        request.middle_name,
+        request.email,
+        sms_code,
+    )
+    if not result.get("ok"):
+        raise HTTPException(
+            status_code=result.get("status_code", 500),
+            detail=result.get("detail", "Internal error"),
         )
-        db.commit()
-    
-    # Получаем ФИО пользователя
-    full_name = f"{user.first_name or ''} {user.last_name or ''} {user.middle_name or ''}".strip()
-    if not full_name:
-        full_name = "Не указано"
-    
     sms_text = f"""{sms_code}-Ваш код
-Электронная подпись:{user.digital_signature}"""
-    
-    # Системные номера телефонов, для которых не отправляем SMS (они используют фиксированные коды)
-    SYSTEM_PHONE_NUMBERS = [
-        "70000000000",   # админ
-        "71234567890",   # механик
-        "71234567898",   # МВД
-        "71234567899",   # финансист
-        "79999999999",   # бухгалтер
-        "71231111111",   # владелец автомобилей
-    ]
-    
-    # Для системных пользователей пропускаем отправку SMS
-    if phone_number in SYSTEM_PHONE_NUMBERS:
-        logger.info(f"Системный пользователь {phone_number}, SMS не отправляется. Код: {sms_code}")
-    else:
+Электронная подпись:{result["digital_signature"]}"""
+    if not result.get("skip_sms"):
         try:
             if SMS_TOKEN:
                 logger.info("Mobizon: отправка SMS кода на phone=%s (auth)", phone_number)
@@ -452,89 +621,41 @@ async def send_sms(
                     additional_context={
                         "action": "send_sms_mobizon",
                         "phone_number": phone_number,
-                        "user_id": str(user.id) if user else None
+                        "user_id": result.get("user_id"),
                     }
                 )
-            except:
+            except Exception:
                 pass
-
-    if request.email:
-        email = request.email.strip().lower()
-
-        existing_user_with_email = db.query(User).filter(
-            User.email == email,
-            User.id != user.id,
-            User.is_active == True
-        ).first()
-
-        if existing_user_with_email:
-            raise HTTPException(
-                status_code=400,
-                detail="Этот email уже используется другим пользователем"
-            )
-
-        # Используем фиксированный код для тестовых почт, иначе генерируем случайный
-        TEST_EMAIL_CODES = {
-            "test1@example.com": "111111",  # тест1
-            "test2@example.com": "222222",  # тест2
-            "test3@example.com": "333333",  # тест3
-            "test4@example.com": "444444",  # тест4
-            "test5@example.com": "555555",  # тест5
-            "test6@example.com": "666666",  # тест6
-            "test7@example.com": "777777",  # тест7
-            "test8@example.com": "888888",  # тест8
-            "test9@example.com": "999999",  # тест9
-            "test10@example.com": "000000",  # тест10
-        }
-        email_code = TEST_EMAIL_CODES.get(email, generate_email_verification_code())
-        
-        email_verification_record = VerificationCode(
-            phone_number=None,
-            email=email,
-            code=email_code,
-            purpose="email_verification",
-            is_used=False,
-            expires_at=get_local_time() + timedelta(minutes=15),
-        )
-        db.add(email_verification_record)
-        
-        if not user.email or user.email.lower() != email:
-            user.email = email
-            user.is_verified_email = False  
-        
+    if result.get("email") and result.get("email_code"):
+        email = result["email"]
+        email_code = result["email_code"]
         try:
-            msg = MIMEText(f"Ваш код подтверждения: {email_code}")
-            msg["Subject"] = "AZV Motors"
-            msg["To"] = email
-            if not send_email_with_fallback(msg, email):
-                try:
-                    logger.warning(f"SMTP not configured or all accounts failed; verification code for {email}: {email_code}")
-                except Exception:
-                    pass
+            await asyncio.to_thread(
+                _send_email_verification_sync,
+                email,
+                email_code,
+                phone_number,
+                result.get("user_id"),
+            )
         except Exception as e:
             try:
                 await log_error_to_telegram(
                     error=e,
                     request=None,
-                    user=user,
+                    user=None,
                     additional_context={
                         "action": "send_email_code_in_send_sms",
                         "email": email,
-                        "user_id": str(user.id),
-                        "phone_number": phone_number
+                        "user_id": result.get("user_id"),
+                        "phone_number": phone_number,
                     }
                 )
-            except:
+            except Exception:
                 pass
-        logger.warning(f"Email verification code for {email}: {email_code}")
-
-        db.commit()
-
-    # Возвращаем fcm_token из базы данных
-    fcm_token = user.fcm_token if user.fcm_token else None
+        logger.warning("Email verification code for %s: %s", email, email_code)
     return SendSmsResponse(
         message="SMS code sent successfully",
-        fcm_token=fcm_token
+        fcm_token=result.get("fcm_token"),
     )
 
 
@@ -621,196 +742,36 @@ async def update_user_name(
 
 
 @Auth_router.post("/verify_sms/", response_model=VerifySmsResponse)
-async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
+async def verify_sms(request: VerifySmsRequest):
     """
     Верификация смс-кода. Учтите, что ищем активного пользователя.
     Если sms_code == "1010", то тестовая проверка, иначе проверяем по коду и времени.
-    Для системных пользователей (ADMIN, MECHANIC, FINANCIER, MVD, ACCOUNTANT) время кода не проверяется.
+    Для системных пользователей время кода не проверяется.
+    Работа с БД выполняется в потоке (asyncio.to_thread), чтобы не блокировать event loop.
     """
-    phone_number = request.phone_number
-    sms_code = request.sms_code
-
-    if not phone_number.isdigit():
+    if not request.phone_number.isdigit():
         raise HTTPException(status_code=400, detail="Phone number must contain only digits.")
-
-    # Системные номера телефонов, для которых не проверяется время истечения кода
-    SYSTEM_PHONE_NUMBERS = [
-        "70000000000",   # админ
-        "71234567890",   # механик
-        "71234567898",   # МВД
-        "71234567899",   # финансист
-        "79999999999",   # бухгалтер
-        "71231111111",   # владелец автомобилей
-    ]
-
-    # При проверке пользуемся активными пользователями
-    if sms_code == "1010":
-        user = db.query(User).filter(User.phone_number == phone_number, User.is_active == True).first()
-    elif phone_number in SYSTEM_PHONE_NUMBERS:
-        # Для системных пользователей не проверяем время истечения кода
-        user = db.query(User).filter(
-            User.phone_number == phone_number,
-            User.last_sms_code == sms_code,
-            User.is_active == True
-        ).first()
-    else:
-        # Для обычных пользователей проверяем время
-        user = db.query(User).filter(
-            User.phone_number == phone_number,
-            User.last_sms_code == sms_code,
-            User.sms_code_valid_until > get_local_time(),
-            User.is_active == True
-        ).first()
-
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid SMS code or code expired")
-
-    # Блокируем вход для пользователей, отклонённых МВД
-    if user.role == UserRole.REJECTSECOND:
-        raise HTTPException(status_code=403, detail=(
-            "Вынуждены отказать в регистрации. По результатам проверки ваших данных были выявлены несоответствия требованиям доступа к сервису. "
-            "Обращаем внимание, что на основании п. 4.4 Договора, Арендодатель вправе по своему усмотрению отказаться от заключения Договора с Клиентом. "
-            "С уважением, Команда ≪AZV Motors≫."
-        ))
-    
-    # Проверяем, не заблокирован ли пользователь администратором
-    if user.is_blocked:
-        raise HTTPException(status_code=403, detail="Ваш аккаунт заблокирован. Обратитесь в техподдержку.")
-    
-    # Проверяем, не удалён ли пользователь администратором
-    if user.is_deleted:
-        raise HTTPException(status_code=403, detail="Ваш аккаунт удалён. Обратитесь в техподдержку для восстановления.")
-
-    # Обновляем время последней активности
-    user.last_activity_at = get_local_time()
-    db.commit()
-    
-    access_token = create_access_token(data={"sub": user.phone_number})
-    refresh_token = create_refresh_token(data={"sub": user.phone_number})
-
-    # Create new tokens (always create new records to support multiple devices)
-    try:
-        now = get_local_time()
-        
-        # Create new access token
-        access_token_record = TokenRecord(
-            user_id=user.id, 
-            token_type="access", 
-            token=access_token, 
-            expires_at=None, 
-            created_at=now, 
-            updated_at=now, 
-            last_used_at=now
+    result = await asyncio.to_thread(
+        _verify_sms_sync,
+        request.phone_number,
+        request.sms_code,
+        request.latitude,
+        request.longitude,
+    )
+    if not result.get("ok"):
+        raise HTTPException(
+            status_code=result.get("status_code", 500),
+            detail=result.get("detail", "Internal error"),
         )
-        db.add(access_token_record)
-        
-        # Create new refresh token
-        refresh_token_record = TokenRecord(
-            user_id=user.id, 
-            token_type="refresh", 
-            token=refresh_token, 
-            expires_at=None, 
-            created_at=now, 
-            updated_at=now
-        )
-        db.add(refresh_token_record)
-        
-        db.commit()
-    except Exception:
-        db.rollback()
-
-    try:
-        from app.models.guarantor_model import GuarantorRequest, GuarantorRequestStatus
-        
-        # Ищем заявки с этим номером телефона где guarantor_id = NULL
-        pending_requests = db.query(GuarantorRequest).filter(
-            GuarantorRequest.guarantor_phone == user.phone_number,
-            GuarantorRequest.guarantor_id.is_(None),
-            GuarantorRequest.status == GuarantorRequestStatus.PENDING
-        ).all()
-        
-        linked_count = 0
-        for request in pending_requests:
-            # Связываем заявку с пользователем
-            request.guarantor_id = user.id
-            
-            # Обновляем телефон в заявке из профиля пользователя
-            if user.phone_number:
-                request.guarantor_phone = user.phone_number
-            
-            linked_count += 1
-        
-        # Сохраняем изменения
-        if linked_count > 0:
-            db.commit()
-            
-    except Exception as e:
-        logger.error(f" при связывании заявок гарантов: {e}")
-        # Продолжаем выполнение без обработки гарантов
-        linked_count = 0
-
-    # Временно закомментировано: генерация FCM токенов
-    # # Проверяем и генерируем FCM токен, если необходимо
-    # try:
-    #     token_updated = ensure_user_has_unique_fcm_token(db, user)
-    #     if token_updated:
-    #         db.commit()
-    #         db.refresh(user)
-    # except Exception as e:
-    #     logger.error(f" при генерации FCM токена: {e}")
-    #     # Продолжаем выполнение даже если не удалось сгенерировать токен
-    #     db.rollback()
-
-    if request.latitude is not None and request.longitude is not None:
-        try:            
-            device = (
-                db.query(UserDevice)
-                .filter(
-                    UserDevice.user_id == user.id,
-                    UserDevice.is_active == True,
-                    UserDevice.revoked_at.is_(None)
-                )
-                .order_by(UserDevice.last_active_at.desc())
-                .first()
-            )
-            
-            if device is None:
-                device = UserDevice(
-                    user_id=user.id,
-                    is_active=True
-                )
-                db.add(device)
-            
-            device.last_lat = request.latitude
-            device.last_lng = request.longitude
-            device.last_active_at = get_local_time()
-            device.update_timestamp()
-            
-            db.commit()
-        except Exception as e:
-            logger.error(f"Ошибка при сохранении координат в user_devices: {e}")
-
-    # Получаем ФИО пользователя
-    full_name = f"{user.first_name or ''} {user.last_name or ''} {user.middle_name or ''}".strip()
-    if not full_name:
-        full_name = "Не указано"
-    
-    # Возвращаем fcm_token из базы данных
-    fcm_token = user.fcm_token if user.fcm_token else None
     return VerifySmsResponse(
-        access_token=access_token,
-        refresh_token=refresh_token,
+        access_token=result["access_token"],
+        refresh_token=result["refresh_token"],
         token_type="bearer",
-        linked_guarantor_requests=linked_count,
-        digital_signature=user.digital_signature,
-        client_info={
-            "full_name": full_name,
-            "phone_number": user.phone_number,
-            "user_id": uuid_to_sid(user.id),
-            "digital_signature": user.digital_signature
-        },
-        fcm_token=fcm_token,
-        role=user.role.value
+        linked_guarantor_requests=result["linked_guarantor_requests"],
+        digital_signature=result["digital_signature"],
+        client_info=result["client_info"],
+        fcm_token=result.get("fcm_token"),
+        role=result["role"],
     )
 
 
