@@ -23,7 +23,7 @@ _NOTIFICATION_SEMAPHORE: Optional[asyncio.Semaphore] = None
 def _get_notification_semaphore() -> asyncio.Semaphore:
     global _NOTIFICATION_SEMAPHORE
     if _NOTIFICATION_SEMAPHORE is None:
-        _NOTIFICATION_SEMAPHORE = asyncio.Semaphore(15)
+        _NOTIFICATION_SEMAPHORE = asyncio.Semaphore(8)
     return _NOTIFICATION_SEMAPHORE
 
 

@@ -23,6 +23,16 @@ INTERNAL_VEHICLES_API = f"{VEHICLES_API_URL}/vehicles"
 
 logger = logging.getLogger(__name__)
 
+# Ограничение одновременных запросов к БД в циклах WebSocket (сессия на итерацию, не на всё соединение)
+_ws_fetch_semaphore = None
+
+
+def _get_ws_fetch_semaphore():
+    global _ws_fetch_semaphore
+    if _ws_fetch_semaphore is None:
+        _ws_fetch_semaphore = asyncio.Semaphore(20)
+    return _ws_fetch_semaphore
+
 
 async def get_telemetry_from_internal_api(vehicle_imei: str) -> Optional[Dict[str, Any]]:
     """Получить телеметрию автомобиля из внутреннего API кеша"""
@@ -296,18 +306,16 @@ async def websocket_vehicles_list(
     websocket: WebSocket,
     token: Optional[str] = Query(None)
 ):
-    """WebSocket эндпоинт для real-time обновлений списка машин."""
+    """WebSocket эндпоинт для real-time обновлений списка машин. Сессия БД только на время запроса данных."""
     user = None
+    user_id_str = None
     db = SessionLocal()
-    
     try:
         user = await authenticate_websocket(websocket, token, db)
         if not user:
             return
-        
         user_id_str = str(user.id)
         subscription_key = "all"
-        
         await connection_manager.connect(
             websocket=websocket,
             connection_type="vehicles_list",
@@ -315,83 +323,92 @@ async def websocket_vehicles_list(
             user_id=user_id_str,
             user_metadata={"phone": user.phone_number, "role": user.role.value}
         )
-        
         initial_data = await get_vehicles_data_for_user(user, db)
         await websocket.send_json({
             "type": "vehicles_list",
             "data": initial_data,
             "timestamp": get_local_time().isoformat()
         })
-        
-        async def receive_messages():
-            while True:
-                try:
-                    data = await websocket.receive_json()
-                    if data.get("type") == "ping" and websocket.client_state == WebSocketState.CONNECTED:
+    except WebSocketDisconnect:
+        if user:
+            logger.info("WebSocket disconnected: user=%s", user.id)
+        if user_id_str:
+            await connection_manager.disconnect(
+                connection_type="vehicles_list", subscription_key="all", user_id=user_id_str
+            )
+        return
+    except Exception as e:
+        logger.error("WebSocket error: %s", e)
+        if user_id_str:
+            await connection_manager.disconnect(
+                connection_type="vehicles_list", subscription_key="all", user_id=user_id_str
+            )
+        return
+    finally:
+        db.close()
+        db = None
+
+    sem = _get_ws_fetch_semaphore()
+    async def receive_messages():
+        while True:
+            try:
+                data = await websocket.receive_json()
+                if data.get("type") == "ping" and websocket.client_state == WebSocketState.CONNECTED:
+                    await websocket.send_json({"type": "pong", "timestamp": get_local_time().isoformat()})
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                logger.error("Error receiving message: %s", e)
+                break
+    receive_task = asyncio.create_task(receive_messages())
+    try:
+        while True:
+            try:
+                if websocket.client_state != WebSocketState.CONNECTED:
+                    break
+                async with sem:
+                    db_loop = SessionLocal()
+                    try:
+                        user_loop = db_loop.query(User).filter(User.id == user.id).first()
+                        if not user_loop:
+                            break
+                        vehicles_data = await get_vehicles_data_for_user(user_loop, db_loop)
+                        if websocket.client_state != WebSocketState.CONNECTED:
+                            break
                         await websocket.send_json({
-                            "type": "pong",
+                            "type": "vehicles_list",
+                            "data": vehicles_data,
                             "timestamp": get_local_time().isoformat()
                         })
-                except WebSocketDisconnect:
-                    break
-                except Exception as e:
-                    logger.error(f"Error receiving message: {e}")
-                    break
-        
-        receive_task = asyncio.create_task(receive_messages())
-        
-        try:
-            while True:
-                try:
-                    if websocket.client_state != WebSocketState.CONNECTED:
-                        break
-                    db.expire_all()
-                    db.refresh(user)
-                    
-                    vehicles_data = await get_vehicles_data_for_user(user, db)
-                    if websocket.client_state != WebSocketState.CONNECTED:
-                        break
-                    await websocket.send_json({
-                        "type": "vehicles_list",
-                        "data": vehicles_data,
-                        "timestamp": get_local_time().isoformat()
-                    })
-                    
-                    await asyncio.sleep(1)
-                    
-                except WebSocketDisconnect:
-                    break
-                except Exception as e:
-                    logger.error(f"Error in vehicles list loop: {e}")
-                    if websocket.client_state == WebSocketState.CONNECTED:
-                        try:
-                            await websocket.send_json({
-                                "type": "error",
-                                "message": "Error fetching vehicles data",
-                                "timestamp": get_local_time().isoformat()
-                            })
-                        except Exception:
-                            pass
-                    await asyncio.sleep(1)
-        finally:
-            receive_task.cancel()
-            try:
-                await receive_task
-            except asyncio.CancelledError:
-                pass
-    
-    except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected: user={user.id if user else 'unknown'}")
-    except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+                    finally:
+                        db_loop.close()
+                await asyncio.sleep(1)
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                logger.error("Error in vehicles list loop: %s", e)
+                if websocket.client_state == WebSocketState.CONNECTED:
+                    try:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": "Error fetching vehicles data",
+                            "timestamp": get_local_time().isoformat()
+                        })
+                    except Exception:
+                        pass
+                await asyncio.sleep(1)
     finally:
-        if user:
+        receive_task.cancel()
+        try:
+            await receive_task
+        except asyncio.CancelledError:
+            pass
+        if user_id_str:
             await connection_manager.disconnect(
                 connection_type="vehicles_list",
                 subscription_key="all",
-                user_id=str(user.id)
+                user_id=user_id_str
             )
-        db.close()
 
 
 @websocket_router.websocket("/ws/auth/user/status")
@@ -399,103 +416,109 @@ async def websocket_user_status(
     websocket: WebSocket,
     token: Optional[str] = Query(None)
 ):
-    """WebSocket эндпоинт для real-time обновлений статуса аренды пользователя."""
-    logger.info(f"WebSocket connection attempt to /ws/auth/user/status, token present: {token is not None}")
+    """WebSocket эндпоинт для real-time обновлений статуса аренды. Сессия БД только на время запроса."""
+    logger.info("WebSocket connection attempt to /ws/auth/user/status, token present: %s", token is not None)
     user = None
+    user_id_str = None
     db = SessionLocal()
-    
     try:
         user = await authenticate_websocket(websocket, token, db)
         if not user:
             return
-        
         user_id_str = str(user.id)
-        subscription_key = user_id_str
-        
         await connection_manager.connect(
             websocket=websocket,
             connection_type="user_status",
-            subscription_key=subscription_key,
+            subscription_key=user_id_str,
             user_id=user_id_str,
             user_metadata={"phone": user.phone_number, "role": user.role.value}
         )
-        
         initial_data = await get_user_status_data(user, db)
         await websocket.send_json({
             "type": "user_status",
             "data": initial_data,
             "timestamp": get_local_time().isoformat()
         })
-        
-        async def receive_messages():
-            while True:
-                try:
-                    data = await websocket.receive_json()
-                    if data.get("type") == "ping" and websocket.client_state == WebSocketState.CONNECTED:
+    except WebSocketDisconnect:
+        if user:
+            logger.info("WebSocket disconnected: user=%s", user.id)
+        if user_id_str:
+            await connection_manager.disconnect(
+                connection_type="user_status", subscription_key=user_id_str, user_id=user_id_str
+            )
+        return
+    except Exception as e:
+        logger.error("WebSocket error: %s", e)
+        if user_id_str:
+            await connection_manager.disconnect(
+                connection_type="user_status", subscription_key=user_id_str, user_id=user_id_str
+            )
+        return
+    finally:
+        db.close()
+        db = None
+
+    sem = _get_ws_fetch_semaphore()
+    async def receive_messages():
+        while True:
+            try:
+                data = await websocket.receive_json()
+                if data.get("type") == "ping" and websocket.client_state == WebSocketState.CONNECTED:
+                    await websocket.send_json({"type": "pong", "timestamp": get_local_time().isoformat()})
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                logger.error("Error receiving message: %s", e)
+                break
+    receive_task = asyncio.create_task(receive_messages())
+    try:
+        while True:
+            try:
+                if websocket.client_state != WebSocketState.CONNECTED:
+                    break
+                async with sem:
+                    db_loop = SessionLocal()
+                    try:
+                        user_loop = db_loop.query(User).filter(User.id == user.id).first()
+                        if not user_loop:
+                            break
+                        user_data = await get_user_status_data(user_loop, db_loop)
+                        if websocket.client_state != WebSocketState.CONNECTED:
+                            break
                         await websocket.send_json({
-                            "type": "pong",
+                            "type": "user_status",
+                            "data": user_data,
                             "timestamp": get_local_time().isoformat()
                         })
-                except WebSocketDisconnect:
-                    break
-                except Exception as e:
-                    logger.error(f"Error receiving message: {e}")
-                    break
-        
-        receive_task = asyncio.create_task(receive_messages())
-        
-        try:
-            while True:
-                try:
-                    if websocket.client_state != WebSocketState.CONNECTED:
-                        break
-                    db.expire_all()
-                    db.refresh(user)
-                    
-                    user_data = await get_user_status_data(user, db)
-                    if websocket.client_state != WebSocketState.CONNECTED:
-                        break
-                    await websocket.send_json({
-                        "type": "user_status",
-                        "data": user_data,
-                        "timestamp": get_local_time().isoformat()
-                    })
-                    
-                    await asyncio.sleep(2)
-                    
-                except WebSocketDisconnect:
-                    break
-                except Exception as e:
-                    logger.error(f"Error in user status loop: {e}")
-                    if websocket.client_state == WebSocketState.CONNECTED:
-                        try:
-                            await websocket.send_json({
-                                "type": "error",
-                                "message": "Error fetching user status data",
-                                "timestamp": get_local_time().isoformat()
-                            })
-                        except Exception:
-                            pass
-                    await asyncio.sleep(2)
-        finally:
-            receive_task.cancel()
-            try:
-                await receive_task
-            except asyncio.CancelledError:
-                pass
-    
-    except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected: user={user.id if user else 'unknown'}")
-    except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+                    finally:
+                        db_loop.close()
+                await asyncio.sleep(2)
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                logger.error("Error in user status loop: %s", e)
+                if websocket.client_state == WebSocketState.CONNECTED:
+                    try:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": "Error fetching user status data",
+                            "timestamp": get_local_time().isoformat()
+                        })
+                    except Exception:
+                        pass
+                await asyncio.sleep(2)
     finally:
-        if user:
+        receive_task.cancel()
+        try:
+            await receive_task
+        except asyncio.CancelledError:
+            pass
+        if user_id_str:
             await connection_manager.disconnect(
                 connection_type="user_status",
-                subscription_key=str(user.id),
-                user_id=str(user.id)
+                subscription_key=user_id_str,
+                user_id=user_id_str
             )
-        db.close()
 
 @websocket_router.websocket("/ws/admin/cars/list")
 async def websocket_admin_cars_list(
@@ -504,21 +527,18 @@ async def websocket_admin_cars_list(
     status: Optional[str] = Query(None),
     search_query: Optional[str] = Query(None)
 ):
-    """WebSocket эндпоинт для списка машин админа (копия логики http)."""
+    """WebSocket эндпоинт для списка машин админа. Сессия БД только на время запроса."""
     user = None
+    user_id_str = None
     db = SessionLocal()
-    
     try:
         user = await authenticate_websocket(websocket, token, db)
         if not user:
             return
-            
         if user.role != UserRole.ADMIN:
             await websocket.close(code=1008, reason="Not authorized")
             return
-        
         user_id_str = str(user.id)
-        
         await connection_manager.connect(
             websocket=websocket,
             connection_type="admin_cars_list",
@@ -526,77 +546,83 @@ async def websocket_admin_cars_list(
             user_id=user_id_str,
             user_metadata={"phone": user.phone_number, "role": user.role.value}
         )
-        
-        async def receive_messages():
-            while True:
-                try:
-                    data = await websocket.receive_json()
-                    if data.get("type") == "ping" and websocket.client_state == WebSocketState.CONNECTED:
+    except WebSocketDisconnect:
+        if user:
+            logger.info("WebSocket disconnected: user=%s", user.id)
+        if user_id_str:
+            await connection_manager.disconnect(
+                connection_type="admin_cars_list", subscription_key="all", user_id=user_id_str
+            )
+        return
+    except Exception as e:
+        logger.error("WebSocket error: %s", e)
+        if user_id_str:
+            await connection_manager.disconnect(
+                connection_type="admin_cars_list", subscription_key="all", user_id=user_id_str
+            )
+        return
+    finally:
+        db.close()
+        db = None
+
+    sem = _get_ws_fetch_semaphore()
+    async def receive_messages():
+        while True:
+            try:
+                data = await websocket.receive_json()
+                if data.get("type") == "ping" and websocket.client_state == WebSocketState.CONNECTED:
+                    await websocket.send_json({"type": "pong", "timestamp": get_local_time().isoformat()})
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                logger.error("Error receiving message: %s", e)
+                break
+    receive_task = asyncio.create_task(receive_messages())
+    try:
+        while True:
+            try:
+                if websocket.client_state != WebSocketState.CONNECTED:
+                    break
+                async with sem:
+                    db_loop = SessionLocal()
+                    try:
+                        cars_data = await get_admin_cars_list_data(db_loop, status, search_query)
+                        if websocket.client_state != WebSocketState.CONNECTED:
+                            break
                         await websocket.send_json({
-                            "type": "pong",
+                            "type": "admin_cars_list",
+                            "data": cars_data,
                             "timestamp": get_local_time().isoformat()
                         })
-                except WebSocketDisconnect:
-                    break
-                except Exception as e:
-                    logger.error(f"Error receiving message: {e}")
-                    break
-        
-        receive_task = asyncio.create_task(receive_messages())
-        
-        try:
-            while True:
-                try:
-                    if websocket.client_state != WebSocketState.CONNECTED:
-                        break
-                    db.expire_all()
-                    
-                    # Получаем данные (аналогично HTTP эндпоинту)
-                    cars_data = await get_admin_cars_list_data(db, status, search_query)
-                    
-                    if websocket.client_state != WebSocketState.CONNECTED:
-                        break
-                    await websocket.send_json({
-                        "type": "admin_cars_list",
-                        "data": cars_data,
-                        "timestamp": get_local_time().isoformat()
-                    })
-                    
-                    await asyncio.sleep(2) # Обновление каждые 2 секунды
-                    
-                except WebSocketDisconnect:
-                    break
-                except Exception as e:
-                    logger.error(f"Error in admin cars list loop: {e}")
-                    if websocket.client_state == WebSocketState.CONNECTED:
-                        try:
-                            await websocket.send_json({
-                                "type": "error",
-                                "message": "Error fetching admin cars data",
-                                "timestamp": get_local_time().isoformat()
-                            })
-                        except Exception:
-                            pass
-                    await asyncio.sleep(2)
-        finally:
-            receive_task.cancel()
-            try:
-                await receive_task
-            except asyncio.CancelledError:
-                pass
-    
-    except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected: user={user.id if user else 'unknown'}")
-    except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+                    finally:
+                        db_loop.close()
+                await asyncio.sleep(2)
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                logger.error("Error in admin cars list loop: %s", e)
+                if websocket.client_state == WebSocketState.CONNECTED:
+                    try:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": "Error fetching admin cars data",
+                            "timestamp": get_local_time().isoformat()
+                        })
+                    except Exception:
+                        pass
+                await asyncio.sleep(2)
     finally:
-        if user:
+        receive_task.cancel()
+        try:
+            await receive_task
+        except asyncio.CancelledError:
+            pass
+        if user_id_str:
             await connection_manager.disconnect(
                 connection_type="admin_cars_list",
                 subscription_key="all",
-                user_id=str(user.id)
+                user_id=user_id_str
             )
-        db.close()
 
 
 @websocket_router.websocket("/ws/support/cars/list")
@@ -606,21 +632,18 @@ async def websocket_support_cars_list(
     status: Optional[str] = Query(None),
     search_query: Optional[str] = Query(None)
 ):
-    """WebSocket эндпоинт для списка машин поддержки (та же логика, что у админа)."""
+    """WebSocket эндпоинт для списка машин поддержки. Сессия БД только на время запроса."""
     user = None
+    user_id_str = None
     db = SessionLocal()
-
     try:
         user = await authenticate_websocket(websocket, token, db)
         if not user:
             return
-
         if user.role != UserRole.SUPPORT:
             await websocket.close(code=1008, reason="Not authorized")
             return
-
         user_id_str = str(user.id)
-
         await connection_manager.connect(
             websocket=websocket,
             connection_type="support_cars_list",
@@ -628,76 +651,83 @@ async def websocket_support_cars_list(
             user_id=user_id_str,
             user_metadata={"phone": user.phone_number, "role": user.role.value}
         )
+    except WebSocketDisconnect:
+        if user:
+            logger.info("WebSocket disconnected: user=%s", user.id)
+        if user_id_str:
+            await connection_manager.disconnect(
+                connection_type="support_cars_list", subscription_key="all", user_id=user_id_str
+            )
+        return
+    except Exception as e:
+        logger.error("WebSocket error: %s", e)
+        if user_id_str:
+            await connection_manager.disconnect(
+                connection_type="support_cars_list", subscription_key="all", user_id=user_id_str
+            )
+        return
+    finally:
+        db.close()
+        db = None
 
-        async def receive_messages():
-            while True:
-                try:
-                    data = await websocket.receive_json()
-                    if data.get("type") == "ping" and websocket.client_state == WebSocketState.CONNECTED:
+    sem = _get_ws_fetch_semaphore()
+    async def receive_messages():
+        while True:
+            try:
+                data = await websocket.receive_json()
+                if data.get("type") == "ping" and websocket.client_state == WebSocketState.CONNECTED:
+                    await websocket.send_json({"type": "pong", "timestamp": get_local_time().isoformat()})
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                logger.error("Error receiving message: %s", e)
+                break
+    receive_task = asyncio.create_task(receive_messages())
+    try:
+        while True:
+            try:
+                if websocket.client_state != WebSocketState.CONNECTED:
+                    break
+                async with sem:
+                    db_loop = SessionLocal()
+                    try:
+                        cars_data = await get_admin_cars_list_data(db_loop, status, search_query)
+                        if websocket.client_state != WebSocketState.CONNECTED:
+                            break
                         await websocket.send_json({
-                            "type": "pong",
+                            "type": "support_cars_list",
+                            "data": cars_data,
                             "timestamp": get_local_time().isoformat()
                         })
-                except WebSocketDisconnect:
-                    break
-                except Exception as e:
-                    logger.error(f"Error receiving message: {e}")
-                    break
-
-        receive_task = asyncio.create_task(receive_messages())
-
-        try:
-            while True:
-                try:
-                    if websocket.client_state != WebSocketState.CONNECTED:
-                        break
-                    db.expire_all()
-
-                    cars_data = await get_admin_cars_list_data(db, status, search_query)
-
-                    if websocket.client_state != WebSocketState.CONNECTED:
-                        break
-                    await websocket.send_json({
-                        "type": "support_cars_list",
-                        "data": cars_data,
-                        "timestamp": get_local_time().isoformat()
-                    })
-
-                    await asyncio.sleep(2)
-
-                except WebSocketDisconnect:
-                    break
-                except Exception as e:
-                    logger.error(f"Error in support cars list loop: {e}")
-                    if websocket.client_state == WebSocketState.CONNECTED:
-                        try:
-                            await websocket.send_json({
-                                "type": "error",
-                                "message": "Error fetching support cars data",
-                                "timestamp": get_local_time().isoformat()
-                            })
-                        except Exception:
-                            pass
-                    await asyncio.sleep(2)
-        finally:
-            receive_task.cancel()
-            try:
-                await receive_task
-            except asyncio.CancelledError:
-                pass
-
-    except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected: user={user.id if user else 'unknown'}")
-    except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+                    finally:
+                        db_loop.close()
+                await asyncio.sleep(2)
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                logger.error("Error in support cars list loop: %s", e)
+                if websocket.client_state == WebSocketState.CONNECTED:
+                    try:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": "Error fetching support cars data",
+                            "timestamp": get_local_time().isoformat()
+                        })
+                    except Exception:
+                        pass
+                await asyncio.sleep(2)
     finally:
-        if user:
+        receive_task.cancel()
+        try:
+            await receive_task
+        except asyncio.CancelledError:
+            pass
+        if user_id_str:
             await connection_manager.disconnect(
                 connection_type="support_cars_list",
                 subscription_key="all",
-                user_id=str(user.id)
+                user_id=user_id_str
             )
-        db.close()
 
 
 @websocket_router.websocket("/ws/admin/users/list")
@@ -710,21 +740,18 @@ async def websocket_admin_users_list(
     is_blocked: Optional[bool] = Query(None),
     car_status: Optional[str] = Query(None)
 ):
-    """WebSocket эндпоинт для real-time списка пользователей с координатами (для админки)."""
+    """WebSocket эндпоинт для real-time списка пользователей. Сессия БД только на время запроса."""
     user = None
+    user_id_str = None
     db = SessionLocal()
-    
     try:
         user = await authenticate_websocket(websocket, token, db)
         if not user:
             return
-        
         if user.role != UserRole.ADMIN:
             await websocket.close(code=1008, reason="Admin access required")
             return
-        
         user_id_str = str(user.id)
-        
         await connection_manager.connect(
             websocket=websocket,
             connection_type="admin_users_list",
@@ -732,80 +759,90 @@ async def websocket_admin_users_list(
             user_id=user_id_str,
             user_metadata={"phone": user.phone_number, "role": user.role.value}
         )
-        
-        async def receive_messages():
-            while True:
-                try:
-                    message = await websocket.receive_text()
-                    data = json.loads(message)
-                    if data.get("type") == "ping" and websocket.client_state == WebSocketState.CONNECTED:
-                        await websocket.send_json({"type": "pong"})
-                except WebSocketDisconnect:
-                    break
-                except Exception:
-                    pass
-        
-        receive_task = asyncio.create_task(receive_messages())
-        
-        try:
-            while True:
-                try:
-                    if websocket.client_state != WebSocketState.CONNECTED:
-                        break
-                    db.expire_all()
-                    
-                    users_data = await get_admin_users_list_data(
-                        db=db,
-                        role=role,
-                        search_query=search_query,
-                        has_active_rental=has_active_rental,
-                        is_blocked=is_blocked,
-                        car_status_filter=car_status
-                    )
-                    
-                    if websocket.client_state != WebSocketState.CONNECTED:
-                        break
-                    await websocket.send_json({
-                        "type": "users_list",
-                        "data": users_data,
-                        "timestamp": get_local_time().isoformat()
-                    })
-                    
-                    await asyncio.sleep(2)
-                    
-                except WebSocketDisconnect:
-                    break
-                except Exception as e:
-                    logger.error(f"Error in admin users list loop: {e}")
-                    if websocket.client_state == WebSocketState.CONNECTED:
-                        try:
-                            await websocket.send_json({
-                                "type": "error",
-                                "message": "Error fetching users data",
-                                "timestamp": get_local_time().isoformat()
-                            })
-                        except Exception:
-                            pass
-                    await asyncio.sleep(2)
-        finally:
-            receive_task.cancel()
-            try:
-                await receive_task
-            except asyncio.CancelledError:
-                pass
-    
     except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected: user={user.id if user else 'unknown'}")
-    except Exception as e:
-        logger.error(f"WebSocket error: {e}")
-    finally:
         if user:
+            logger.info("WebSocket disconnected: user=%s", user.id)
+        if user_id_str:
+            await connection_manager.disconnect(
+                connection_type="admin_users_list", subscription_key="all", user_id=user_id_str
+            )
+        return
+    except Exception as e:
+        logger.error("WebSocket error: %s", e)
+        if user_id_str:
+            await connection_manager.disconnect(
+                connection_type="admin_users_list", subscription_key="all", user_id=user_id_str
+            )
+        return
+    finally:
+        db.close()
+        db = None
+
+    sem = _get_ws_fetch_semaphore()
+    async def receive_messages():
+        while True:
+            try:
+                message = await websocket.receive_text()
+                data = json.loads(message)
+                if data.get("type") == "ping" and websocket.client_state == WebSocketState.CONNECTED:
+                    await websocket.send_json({"type": "pong"})
+            except WebSocketDisconnect:
+                break
+            except Exception:
+                pass
+    receive_task = asyncio.create_task(receive_messages())
+    try:
+        while True:
+            try:
+                if websocket.client_state != WebSocketState.CONNECTED:
+                    break
+                async with sem:
+                    db_loop = SessionLocal()
+                    try:
+                        users_data = await get_admin_users_list_data(
+                            db=db_loop,
+                            role=role,
+                            search_query=search_query,
+                            has_active_rental=has_active_rental,
+                            is_blocked=is_blocked,
+                            car_status_filter=car_status
+                        )
+                        if websocket.client_state != WebSocketState.CONNECTED:
+                            break
+                        await websocket.send_json({
+                            "type": "users_list",
+                            "data": users_data,
+                            "timestamp": get_local_time().isoformat()
+                        })
+                    finally:
+                        db_loop.close()
+                await asyncio.sleep(2)
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                logger.error("Error in admin users list loop: %s", e)
+                if websocket.client_state == WebSocketState.CONNECTED:
+                    try:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": "Error fetching users data",
+                            "timestamp": get_local_time().isoformat()
+                        })
+                    except Exception:
+                        pass
+                await asyncio.sleep(2)
+    finally:
+        receive_task.cancel()
+        try:
+            await receive_task
+        except asyncio.CancelledError:
+            pass
+        if user_id_str:
             await connection_manager.disconnect(
                 connection_type="admin_users_list",
                 subscription_key="all",
-                user_id=str(user.id)
+                user_id=user_id_str
             )
-        db.close()
 
 
 @websocket_router.websocket("/ws/support/users/list")
@@ -818,97 +855,106 @@ async def websocket_support_users_list(
     is_blocked: Optional[bool] = Query(None),
     car_status: Optional[str] = Query(None)
 ):
-    """WebSocket эндпоинт для real-time списка пользователей с координатами (для support)."""
+    """WebSocket эндпоинт для real-time списка пользователей (support). Сессия БД только на время запроса."""
     user = None
+    user_id_str = None
     db = SessionLocal()
-
     try:
         user = await authenticate_websocket(websocket, token, db)
         if not user:
             return
-
         if user.role != UserRole.SUPPORT:
             await websocket.close(code=1008, reason="Support access required")
             return
-
+        user_id_str = str(user.id)
         await connection_manager.connect(
             websocket=websocket,
             connection_type="support_users_list",
             subscription_key="all",
-            user_id=str(user.id),
+            user_id=user_id_str,
             user_metadata={"phone": user.phone_number, "role": user.role.value}
         )
-
-        async def receive_messages():
-            while True:
-                try:
-                    message = await websocket.receive_text()
-                    data = json.loads(message)
-                    if data.get("type") == "ping" and websocket.client_state == WebSocketState.CONNECTED:
-                        await websocket.send_json({"type": "pong"})
-                except WebSocketDisconnect:
-                    break
-                except Exception:
-                    pass
-
-        receive_task = asyncio.create_task(receive_messages())
-
-        try:
-            while True:
-                try:
-                    if websocket.client_state != WebSocketState.CONNECTED:
-                        break
-                    db.expire_all()
-
-                    users_data = await get_admin_users_list_data(
-                        db=db,
-                        role=role,
-                        search_query=search_query,
-                        has_active_rental=has_active_rental,
-                        is_blocked=is_blocked,
-                        car_status_filter=car_status
-                    )
-
-                    if websocket.client_state != WebSocketState.CONNECTED:
-                        break
-                    await websocket.send_json({
-                        "type": "users_list",
-                        "data": users_data,
-                        "timestamp": get_local_time().isoformat()
-                    })
-
-                    await asyncio.sleep(2)
-
-                except WebSocketDisconnect:
-                    break
-                except Exception as e:
-                    logger.error(f"Error in support users list loop: {e}")
-                    if websocket.client_state == WebSocketState.CONNECTED:
-                        try:
-                            await websocket.send_json({
-                                "type": "error",
-                                "message": "Error fetching users data",
-                                "timestamp": get_local_time().isoformat()
-                            })
-                        except Exception:
-                            pass
-                    await asyncio.sleep(2)
-        finally:
-            receive_task.cancel()
-            try:
-                await receive_task
-            except asyncio.CancelledError:
-                pass
-
     except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected: user={user.id if user else 'unknown'}")
-    except Exception as e:
-        logger.error(f"WebSocket error: {e}")
-    finally:
         if user:
+            logger.info("WebSocket disconnected: user=%s", user.id)
+        if user_id_str:
+            await connection_manager.disconnect(
+                connection_type="support_users_list", subscription_key="all", user_id=user_id_str
+            )
+        return
+    except Exception as e:
+        logger.error("WebSocket error: %s", e)
+        if user_id_str:
+            await connection_manager.disconnect(
+                connection_type="support_users_list", subscription_key="all", user_id=user_id_str
+            )
+        return
+    finally:
+        db.close()
+        db = None
+
+    sem = _get_ws_fetch_semaphore()
+    async def receive_messages():
+        while True:
+            try:
+                message = await websocket.receive_text()
+                data = json.loads(message)
+                if data.get("type") == "ping" and websocket.client_state == WebSocketState.CONNECTED:
+                    await websocket.send_json({"type": "pong"})
+            except WebSocketDisconnect:
+                break
+            except Exception:
+                pass
+    receive_task = asyncio.create_task(receive_messages())
+    try:
+        while True:
+            try:
+                if websocket.client_state != WebSocketState.CONNECTED:
+                    break
+                async with sem:
+                    db_loop = SessionLocal()
+                    try:
+                        users_data = await get_admin_users_list_data(
+                            db=db_loop,
+                            role=role,
+                            search_query=search_query,
+                            has_active_rental=has_active_rental,
+                            is_blocked=is_blocked,
+                            car_status_filter=car_status
+                        )
+                        if websocket.client_state != WebSocketState.CONNECTED:
+                            break
+                        await websocket.send_json({
+                            "type": "users_list",
+                            "data": users_data,
+                            "timestamp": get_local_time().isoformat()
+                        })
+                    finally:
+                        db_loop.close()
+                await asyncio.sleep(2)
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                logger.error("Error in support users list loop: %s", e)
+                if websocket.client_state == WebSocketState.CONNECTED:
+                    try:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": "Error fetching users data",
+                            "timestamp": get_local_time().isoformat()
+                        })
+                    except Exception:
+                        pass
+                await asyncio.sleep(2)
+    finally:
+        receive_task.cancel()
+        try:
+            await receive_task
+        except asyncio.CancelledError:
+            pass
+        if user_id_str:
             await connection_manager.disconnect(
                 connection_type="support_users_list",
                 subscription_key="all",
-                user_id=str(user.id)
+                user_id=user_id_str
             )
-        db.close()
