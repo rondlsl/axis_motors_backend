@@ -2345,15 +2345,14 @@ async def upload_photos_before(
         uploaded_files.append(selfie_url)
         logger.info(f"[UPLOAD_PHOTOS_BEFORE] Selfie save TOTAL took {time.time() - save_start:.3f}s")
         
-        # save exterior
-        logger.info(f"[UPLOAD_PHOTOS_BEFORE] Saving {len(car_photos)} car photos...")
-        for idx, p in enumerate(car_photos):
-            photo_start = time.time()
-            logger.info(f"[UPLOAD_PHOTOS_BEFORE] Saving car photo {idx+1}/{len(car_photos)}: {p.filename}")
-            car_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/car/")
-            urls.append(car_url)
-            uploaded_files.append(car_url)
-            logger.info(f"[UPLOAD_PHOTOS_BEFORE] Car photo {idx+1} save TOTAL took {time.time() - photo_start:.3f}s")
+        # save exterior — параллельно
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] Saving {len(car_photos)} car photos in parallel...")
+        save_start = time.time()
+        car_tasks = [save_file(p, rental.id, f"uploads/rents/{rental.id}/before/car/") for p in car_photos]
+        car_urls = await asyncio.gather(*car_tasks)
+        urls.extend(car_urls)
+        uploaded_files.extend(car_urls)
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE] All car photos saved in {time.time() - save_start:.3f}s")
 
         rental.photos_before = urls
         logger.info(f"[UPLOAD_PHOTOS_BEFORE] Total photos_before after save: {len(urls)}")
@@ -2509,15 +2508,12 @@ async def upload_photos_before_interior(
         urls = list(rental.photos_before or [])
         logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Current photos_before count: {len(urls)}")
         
-        # Сохранение interior фото
-        logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Saving {len(interior_photos)} interior photos...")
-        for idx, p in enumerate(interior_photos):
-            photo_start = time.time()
-            logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Saving interior photo {idx+1}/{len(interior_photos)}: {p.filename}")
-            interior_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/interior/")
-            urls.append(interior_url)
-            uploaded_files.append(interior_url)
-            logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Interior photo {idx+1} save TOTAL took {time.time() - photo_start:.3f}s")
+        # Сохранение interior фото — параллельно
+        logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Saving {len(interior_photos)} interior photos in parallel...")
+        interior_tasks = [save_file(p, rental.id, f"uploads/rents/{rental.id}/before/interior/") for p in interior_photos]
+        interior_urls = await asyncio.gather(*interior_tasks)
+        urls.extend(interior_urls)
+        uploaded_files.extend(interior_urls)
         
         rental.photos_before = urls
         logger.info(f"[UPLOAD_PHOTOS_BEFORE_INTERIOR] Total photos_before after save: {len(urls)}")
@@ -2644,16 +2640,16 @@ async def upload_photos_after(
     uploaded_files = []
     
     try:
-        # Сохраняем фотографии
+        # Сохраняем фотографии (селфи — сначала, салон — параллельно)
         urls = list(rental.photos_after or [])
         selfie_url = await save_file(selfie, rental.id, f"uploads/rents/{rental.id}/after/selfie/")
         urls.append(selfie_url)
         uploaded_files.append(selfie_url)
         
-        for p in interior_photos:
-            interior_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/interior/")
-            urls.append(interior_url)
-            uploaded_files.append(interior_url)
+        interior_tasks = [save_file(p, rental.id, f"uploads/rents/{rental.id}/after/interior/") for p in interior_photos]
+        interior_urls = await asyncio.gather(*interior_tasks)
+        urls.extend(interior_urls)
+        uploaded_files.extend(interior_urls)
 
         rental.photos_after = urls
         db.commit()
@@ -2787,10 +2783,10 @@ async def upload_photos_after_car(
     
     try:
         urls = list(rental.photos_after or [])
-        for p in car_photos:
-            car_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/car/")
-            urls.append(car_url)
-            uploaded_files.append(car_url)
+        car_tasks = [save_file(p, rental.id, f"uploads/rents/{rental.id}/after/car/") for p in car_photos]
+        car_urls = await asyncio.gather(*car_tasks)
+        urls.extend(car_urls)
+        uploaded_files.extend(car_urls)
         
         rental.photos_after = urls
         db.commit()
@@ -2875,10 +2871,10 @@ async def upload_photos_before_owner(
     
     try:
         urls = list(rental.photos_before or [])
-        for p in car_photos:
-            car_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/car/")
-            urls.append(car_url)
-            uploaded_files.append(car_url)
+        car_tasks = [save_file(p, rental.id, f"uploads/rents/{rental.id}/before/car/") for p in car_photos]
+        car_urls = await asyncio.gather(*car_tasks)
+        urls.extend(car_urls)
+        uploaded_files.extend(car_urls)
 
         rental.photos_before = urls
         db.commit()
@@ -2963,10 +2959,10 @@ async def upload_photos_before_owner_interior(
     
     try:
         urls = list(rental.photos_before or [])
-        for p in interior_photos:
-            interior_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/before/interior/")
-            urls.append(interior_url)
-            uploaded_files.append(interior_url)
+        interior_tasks = [save_file(p, rental.id, f"uploads/rents/{rental.id}/before/interior/") for p in interior_photos]
+        interior_urls = await asyncio.gather(*interior_tasks)
+        urls.extend(interior_urls)
+        uploaded_files.extend(interior_urls)
 
         rental.photos_before = urls
         db.commit()
@@ -3031,12 +3027,12 @@ async def upload_photos_after_owner(
     uploaded_files = []
     
     try:
-        # Сохраняем фотографии
+        # Сохраняем фотографии — параллельно
         urls = list(rental.photos_after or [])
-        for p in interior_photos:
-            interior_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/interior/")
-            urls.append(interior_url)
-            uploaded_files.append(interior_url)
+        interior_tasks = [save_file(p, rental.id, f"uploads/rents/{rental.id}/after/interior/") for p in interior_photos]
+        interior_urls = await asyncio.gather(*interior_tasks)
+        urls.extend(interior_urls)
+        uploaded_files.extend(interior_urls)
         
         rental.photos_after = urls
         db.commit()
@@ -3102,10 +3098,10 @@ async def upload_photos_after_owner_car(
     
     try:
         urls = list(rental.photos_after or [])
-        for p in car_photos:
-            car_url = await save_file(p, rental.id, f"uploads/rents/{rental.id}/after/car/")
-            urls.append(car_url)
-            uploaded_files.append(car_url)
+        car_tasks = [save_file(p, rental.id, f"uploads/rents/{rental.id}/after/car/") for p in car_photos]
+        car_urls = await asyncio.gather(*car_tasks)
+        urls.extend(car_urls)
+        uploaded_files.extend(car_urls)
         
         rental.photos_after = urls
         db.commit()

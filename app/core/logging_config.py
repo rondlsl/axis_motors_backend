@@ -173,8 +173,8 @@ def setup_logging(
     # Вешаем фильтр на сам логгер — тогда запись отбрасывается до любых handlers.
     logging.getLogger("uvicorn.access").addFilter(SkipPathAccessLogFilter())
     
-    # Приглушаем шумные логгеры: APScheduler, httpx/httpcore, OpenTelemetry exporter.
-    # OTLP exporter при недоступности Tempo пишет ERROR (Failed to export traces) — не спамим.
+    # Приглушаем шумные логгеры: APScheduler, httpx/httpcore, OpenTelemetry, multipart (парсинг form-data).
+    # multipart при загрузке файлов пишет DEBUG на каждый chunk — отключаем.
     for name in (
         "apscheduler",
         "apscheduler.executors.default",
@@ -182,6 +182,7 @@ def setup_logging(
         "httpcore",
         "opentelemetry.exporter.otlp",
         "opentelemetry.exporter.otlp.proto.grpc",
+        "multipart",
     ):
         logging.getLogger(name).setLevel(logging.WARNING)
 
