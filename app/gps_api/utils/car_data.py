@@ -45,35 +45,60 @@ async def send_command_to_terminal(
     """
     import time
     cmd_start = time.time()
-    logger.info(f"[GPS CMD] Sending '{command}' to vehicle {vehicle_id}")
-    
+    logger.info(
+        "[GPS CMD] send_command_to_terminal: vehicle_id=%s, command=%s, retries=%s, id_template=%s, token_set=%s",
+        vehicle_id, command, retries, id_template, token is not None and len(str(token)) > 0
+    )
+    if not token:
+        logger.error(
+            "[GPS CMD] No auth token for vehicle_id=%s, command='%s' — Glonass auth failed or not requested",
+            vehicle_id, command
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Токен авторизации Glonass недоступен. Повторите попытку позже."
+        )
     url = "https://regions.glonasssoft.ru/api/v3/Vehicles/cmd/create"
     headers = {
         "X-Auth": token,
         "Content-Type": "application/json"
     }
-
     payload = {
         "id": vehicle_id,
         "command": command,
         "retries": retries,
         "idTemplate": id_template
     }
-
+    logger.debug("[GPS CMD] POST %s payload=%s", url, payload)
     client = RateLimitedHTTPClient.get_instance()
 
     try:
         response: Response = await client.send_request("POST", url, headers=headers, json=payload)
+        cmd_after_request = time.time() - cmd_start
+        logger.info(
+            "[GPS CMD] Response received in %.2fs: status=%s, body_len=%s",
+            cmd_after_request, response.status_code, len(response.text) if response.text else 0
+        )
         response.raise_for_status()
         command_id = response.text.strip('"')
         cmd_duration = time.time() - cmd_start
-        logger.info(f"[GPS CMD] Command '{command}' completed in {cmd_duration:.2f}s")
+        logger.info(
+            "[GPS CMD] Command '%s' to vehicle_id=%s completed in %.2fs, command_id=%s",
+            command, vehicle_id, cmd_duration, command_id
+        )
         return {"command_id": command_id}
 
     except Exception as e:
         cmd_duration = time.time() - cmd_start
-        logger.info(f"[GPS CMD] Command '{command}' FAILED after {cmd_duration:.2f}s: {e}")
-        logger.error(f"Ошибка отправки команды для {vehicle_id}, {command}, {e}")
+        logger.warning(
+            "[GPS CMD] Command '%s' to vehicle_id=%s FAILED after %.2fs: type=%s, error=%s",
+            command, vehicle_id, cmd_duration, type(e).__name__, e
+        )
+        logger.error(
+            "Ошибка отправки команды: vehicle_id=%s, command=%s, retries=%s — %s",
+            vehicle_id, command, retries, e,
+            exc_info=True
+        )
         try:
             await log_error_to_telegram(
                 error=e,

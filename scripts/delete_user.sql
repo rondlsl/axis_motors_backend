@@ -10,7 +10,7 @@
 -- 1. НАЙТИ ПОЛЬЗОВАТЕЛЯ по номеру телефона
 SELECT id, phone_number, email, first_name, last_name, role
 FROM users
-WHERE phone_number = '77056478662';  -- <-- замени на нужный номер
+WHERE phone_number = '77075636242';  -- <-- замени на нужный номер
 
 -- 2. НАЙТИ ПОЛЬЗОВАТЕЛЯ по почте
 SELECT id, phone_number, email, first_name, last_name, role
