@@ -626,6 +626,14 @@ async def test_push_by_phone(
     logger.debug(f"🚀 Начинаем отправку push-уведомления...")
     logger.info("-" * 80)
     sys.stdout.flush()
+
+    # Сохраняем уведомление в БД (история для пользователя)
+    notif = Notification(
+        user_id=target_user.id,
+        title=payload.title,
+        body=payload.body,
+    )
+    db.add(notif)
     
     success = False
     for token in tokens:
@@ -639,7 +647,6 @@ async def test_push_by_phone(
     logger.info("-" * 80)
     if success:
         logger.debug(f"✅ [TEST_PUSH_BY_PHONE] Push отправлен успешно!")
-        
         log_action(
             db,
             actor_id=current_user.id,
@@ -648,8 +655,8 @@ async def test_push_by_phone(
             entity_id=target_user.id,
             details={"phone": payload.phone, "title": payload.title, "body": payload.body}
         )
-        db.commit()
-    else:
+    db.commit()  # сохраняем уведомление в БД (и при успехе — action log)
+    if not success:
         logger.debug(f"❌ [TEST_PUSH_BY_PHONE] Ошибка отправки push")
     logger.info("=" * 80)
     logger.info("")
