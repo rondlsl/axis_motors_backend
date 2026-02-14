@@ -68,8 +68,7 @@ from app.utils.action_logger import log_action
 from app.utils.telegram_logger import log_error_to_telegram
 from app.core.config import SMS_TOKEN
 from app.guarantor.sms_utils import send_sms_mobizon
-from email.mime.text import MIMEText
-from app.core.smtp import send_email_with_fallback
+from app.services.email_service import get_email_service
 from app.push.utils import send_push_to_user_by_id
 from app.models.user_model import User, UserRole
 from app.push.utils import user_has_push_tokens, send_localized_notification_to_user_async
@@ -856,11 +855,9 @@ async def support_send_email_to_user(
     email = user.email.strip().lower()
     subject = request.subject.strip()
     body = request.body.strip()
+    email_svc = get_email_service()
     try:
-        msg = MIMEText(body, "plain", "utf-8")
-        msg["Subject"] = subject
-        msg["To"] = email
-        if send_email_with_fallback(msg, email):
+        if await email_svc.send_plain_email(email, subject, body):
             log_action(
                 db,
                 actor_id=current_user.id,
@@ -878,10 +875,10 @@ async def support_send_email_to_user(
             )
         return SendUserEmailResponse(
             success=False,
-            message="SMTP не настроен",
+            message="Email не настроен (RESEND_API_KEY)",
             user_id=user_id,
             email=email,
-            error="SMTP configuration missing",
+            error="Email configuration missing",
         )
     except Exception as e:
         logger.error("Support send email error: %s", e)

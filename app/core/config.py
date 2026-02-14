@@ -12,6 +12,9 @@ POSTGRES_DB = getenv('POSTGRES_DB')
 POSTGRES_HOST = getenv('POSTGRES_HOST')
 POSTGRES_PORT = getenv('POSTGRES_PORT')
 
+RESEND_API_KEY = getenv('RESEND_API_KEY')
+EMAIL_FROM = getenv('EMAIL_FROM', 'Azv Motors <noreply@azvmotors.kz>')
+
 DATABASE_URL = (
     f"{DB_ENGINE}://{POSTGRES_USER}:"
     f"{POSTGRES_PASSWORD}@{POSTGRES_HOST}:"
@@ -40,28 +43,7 @@ TELEGRAM_BILLING_CHAT_IDS: list[int] = [
 
 SMS_TOKEN = getenv('SMS_TOKEN')
 
-# === SMTP (вариант A: обычный Gmail SMTP, не Relay) ===
-# Сервер: smtp.gmail.com:587 (TLS) или 465 (SSL). Для каждого аккаунта — App Password.
-# Лимит: ~500 писем/день на аккаунт; несколько аккаунтов (SMTP_USER, SMTP_USER_2, …) для ротации.
-SMTP_HOST = getenv('SMTP_HOST', 'smtp.gmail.com')
-SMTP_PORT = int(getenv('SMTP_PORT', '587'))
-SMTP_FROM = getenv('SMTP_FROM')
-
-def _smtp_accounts():
-    """Список (user, password) для SMTP. Порядок: основной, затем _2, _3, …"""
-    accounts = []
-    user = getenv('SMTP_USER')
-    password = getenv('SMTP_PASSWORD')
-    if user and password:
-        accounts.append((user.strip(), password))
-    for i in range(2, 10):
-        u, p = getenv(f'SMTP_USER_{i}'), getenv(f'SMTP_PASSWORD_{i}')
-        if u and p:
-            accounts.append((u.strip(), p))
-    return accounts
-
-SMTP_ACCOUNTS = _smtp_accounts()
-
+# === EMAIL (Resend) ===
 # === VEHICLES API ===
 VEHICLES_API_URL = getenv('VEHICLES_API_URL', 'http://195.93.152.69:8667')
 

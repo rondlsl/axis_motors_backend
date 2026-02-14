@@ -73,8 +73,7 @@ from app.rent.utils.balance_utils import verify_and_fix_rental_balance
 from app.rent.utils.tariff_settings import validate_tariff_for_booking
 from app.core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2, SMS_TOKEN
 from app.guarantor.sms_utils import send_sms_mobizon
-from email.mime.text import MIMEText
-from app.core.smtp import send_email_with_fallback
+from app.services.email_service import get_email_service
 from app.models.application_model import Application
 from app.models.history_model import RentalHistory
 from app.models.wallet_transaction_model import WalletTransaction
@@ -7234,12 +7233,10 @@ async def send_email_to_user(
     email = user.email.strip().lower()
     subject = request.subject.strip()
     body = request.body.strip()
-    
+    email_svc = get_email_service()
+
     try:
-        msg = MIMEText(body, "plain", "utf-8")
-        msg["Subject"] = subject
-        msg["To"] = email
-        if send_email_with_fallback(msg, email):
+        if await email_svc.send_plain_email(email, subject, body):
             log_action(
                 db,
                 actor_id=current_user.id,
@@ -7255,13 +7252,13 @@ async def send_email_to_user(
                 user_id=user_id,
                 email=email
             )
-        logger.warning(f"SMTP not configured or all accounts failed; email to {email} with subject '{subject}' not sent")
+        logger.warning("Email not sent (Resend not configured); to=%s subject=%s", email, subject)
         return SendUserEmailResponse(
             success=False,
-            message="SMTP не настроен",
+            message="Email не настроен (RESEND_API_KEY)",
             user_id=user_id,
             email=email,
-            error="SMTP configuration missing"
+            error="Email configuration missing"
         )
     except Exception as e:
         logger.error(f"Email sending error: {e}")

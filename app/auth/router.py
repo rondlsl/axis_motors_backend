@@ -7,10 +7,9 @@ from datetime import datetime, timedelta
 import httpx
 from pydantic import BaseModel, Field
 from typing import Optional
-from email.mime.text import MIMEText
 import os
-from app.core.smtp import send_email_with_fallback
 import random
+from app.services.email_service import get_email_service
 from app.utils.short_id import uuid_to_sid, safe_sid_to_uuid
 from app.models.contract_model import UserContractSignature, ContractFile, ContractType
 from app.models.history_model import RentalHistory, RentalStatus
@@ -129,28 +128,26 @@ async def resend_email_code(current_user: User = Depends(get_current_user), db: 
     )
     db.add(record)
 
-    # Пытаемся отправить письмо (с перебором SMTP-аккаунтов при лимитах)
+    email_service = get_email_service()
     try:
-        msg = MIMEText(f"Ваш код подтверждения: {code}")
-        msg["Subject"] = "AZV Motors"
-        msg["To"] = current_user.email
-        if not send_email_with_fallback(msg, current_user.email):
-            logger.warning(f"SMTP not configured or all accounts failed; verification code for {current_user.email}: {code}")
+        if not await email_service.send_registration_code(current_user.email, code):
+            logger.warning("Email not sent; verification code for %s: %s", current_user.email, code)
     except Exception as e:
+        logger.exception("Resend email failed for resend_email_code")
         try:
             await log_error_to_telegram(
                 error=e,
                 request=None,
                 user=current_user,
                 additional_context={
-                    "action": "resend_email_code_smtp",
+                    "action": "resend_email_code",
                     "email": current_user.email,
                     "user_id": str(current_user.id)
                 }
             )
-        except:
+        except Exception:
             pass
-    logger.warning(f"Email verification code for {current_user.email}: {code}")
+    logger.warning("Email verification code for %s: %s", current_user.email, code)
 
     db.commit()
     return {"message": "Код подтверждения повторно отправлен."}
@@ -415,13 +412,12 @@ async def send_sms(
         if not user.email or (user.email or "").lower() != email:
             user.email = email
             user.is_verified_email = False
+        email_svc = get_email_service()
         try:
-            msg = MIMEText(f"Ваш код подтверждения: {email_code}")
-            msg["Subject"] = "AZV Motors"
-            msg["To"] = email
-            # Отправка письма в потоке, чтобы не блокировать event loop (SMTP — синхронный и может зависать)
-            await asyncio.to_thread(send_email_with_fallback, msg, email)
+            if not await email_svc.send_registration_code(email, email_code):
+                logger.warning("Email not sent; verification code for %s: %s", email, email_code)
         except Exception as e:
+            logger.exception("Resend email failed in send_sms")
             try:
                 await log_error_to_telegram(
                     error=e,
@@ -1268,17 +1264,14 @@ async def request_change_email(
     )
     db.add(record)
     
-    # Отправляем письмо с кодом (с перебором SMTP-аккаунтов при лимитах)
+    email_svc = get_email_service()
     try:
-        msg = MIMEText(f"Ваш код для подтверждения изменения email: {code}")
-        msg["Subject"] = "AZV Motors - Изменение email"
-        msg["To"] = new_email
-        if not send_email_with_fallback(msg, new_email):
-            logger.warning(f"SMTP not configured or all accounts failed; verification code for {new_email}: {code}")
+        if not await email_svc.send_email_change_code(new_email, code):
+            logger.warning("Email not sent; change-email code for %s: %s", new_email, code)
     except Exception as e:
-        logger.error(f"Failed to send email: {e}")
+        logger.exception("Resend email failed for change_email/request")
 
-    logger.warning(f"Email change verification code for {new_email}: {code}")
+    logger.warning("Email change verification code for %s: %s", new_email, code)
 
     db.commit()
     
