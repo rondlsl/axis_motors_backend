@@ -40,8 +40,10 @@ TELEGRAM_BILLING_CHAT_IDS: list[int] = [
 
 SMS_TOKEN = getenv('SMS_TOKEN')
 
-# === SMTP (несколько аккаунтов для ротации при лимитах) ===
-SMTP_HOST = getenv('SMTP_HOST')
+# === SMTP (вариант A: обычный Gmail SMTP, не Relay) ===
+# Сервер: smtp.gmail.com:587 (TLS) или 465 (SSL). Для каждого аккаунта — App Password.
+# Лимит: ~500 писем/день на аккаунт; несколько аккаунтов (SMTP_USER, SMTP_USER_2, …) для ротации.
+SMTP_HOST = getenv('SMTP_HOST', 'smtp.gmail.com')
 SMTP_PORT = int(getenv('SMTP_PORT', '587'))
 SMTP_FROM = getenv('SMTP_FROM')
 
