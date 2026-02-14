@@ -57,26 +57,23 @@ def _get_websocket_semaphore() -> asyncio.Semaphore:
 async def billing_job():
     """
     Periodic billing job with distributed lock.
-    Гарантирует, что только один инстанс выполняет биллинг.
-      1) Acquire distributed lock (skip if another instance is running)
-      2) Process rentals sync to get push and telegram alerts.
-      3) Send push notifications by user_id (fire-and-forget).
-      4) Send telegram alerts.
-      5) Yield control to event loop.
+    Лок держим только на время process_rentals_sync; push/telegram/WebSocket — без лока,
+    чтобы следующий запуск не пропускался и другие джобы не блокировались.
     """
     async with BillingLock.acquire() as acquired:
         if not acquired:
             logger.info("Billing job: пропуск — лок занят другим инстансом")
             return
-
         logger.info("Billing job: старт (лок получен)")
-        await _billing_job_impl()
-        logger.info("Billing job: завершён")
+        data = await asyncio.to_thread(process_rentals_sync)
+    # Лок уже освобождён — push/telegram/ws не блокируют следующий billing run
+    await _billing_job_after_sync(data)
+    logger.info("Billing job: завершён")
 
 
-async def _billing_job_impl():
-    """Реализация billing job (вызывается только если лок получен)."""
-    push_notifications, telegram_alerts, lock_requests = await asyncio.to_thread(process_rentals_sync)
+async def _billing_job_after_sync(data: tuple):
+    """Отправка push, telegram, блокировки двигателя, WebSocket после process_rentals_sync (без лока)."""
+    push_notifications, telegram_alerts, lock_requests = data
 
     logger.info(
         "Billing job: process_rentals_sync вернул push=%s, telegram=%s, lock_requests=%s",
@@ -297,14 +294,7 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
     telegram_alerts: list[str] = []
     lock_requests: list[tuple[str, str, uuid.UUID]] = []  # (imei, car_name, user_id)
 
-    rental_count = db.query(RentalHistory).count()
-    if rental_count == 0:
-        logger.info("Billing process_rentals_sync: аренд нет, выход")
-        db.close()
-        return [], [], []
-
-    logger.info("Billing process_rentals_sync: старт, всего аренд в БД=%s", rental_count)
-    
+    # Не делаем полный count() по таблице — только активные аренды (меньше нагрузка, быстрее старт)
     rentals = (
         db.query(RentalHistory)
         .options(joinedload(RentalHistory.user), joinedload(RentalHistory.car))
@@ -326,8 +316,12 @@ def process_rentals_sync() -> tuple[list[tuple[int, str, str]], list[str], list[
         )
         .all()
     )
+    if not rentals:
+        logger.info("Billing process_rentals_sync: активных аренд нет, выход")
+        db.close()
+        return [], [], []
     active_ids = {r.id for r in rentals}
-    logger.info("Billing process_rentals_sync: активных аренд к обработке=%s (RESERVED/IN_USE/DELIVERING...)", len(rentals))
+    logger.info("Billing process_rentals_sync: старт, активных аренд к обработке=%s (RESERVED/IN_USE/DELIVERING...)", len(rentals))
 
     for rental in rentals:
         try:

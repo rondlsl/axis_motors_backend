@@ -6,13 +6,15 @@ from app.core.config import DATABASE_URL
 from app.core.logging_config import get_logger
 logger = get_logger(__name__)
 
+# pool_recycle меньше типичного idle timeout на стороне PostgreSQL/прокси,
+# чтобы не использовать соединения, уже закрытые сервером («server closed the connection unexpectedly»).
 engine = create_engine(
     DATABASE_URL,
-    pool_size=50,  # одновременно до 50 «живых» соединений 
-    max_overflow=50,  # ещё до 50 «переполнений» за пределы pool_size 
-    pool_timeout=10,  # ждать соединение не более 10 секунд 
-    pool_pre_ping=True,  # проверять «живость» соединения перед выдачей
-    pool_recycle=1800,  # перезапускать соединение через 30 минут
+    pool_size=50,
+    max_overflow=50,
+    pool_timeout=10,
+    pool_pre_ping=True,
+    pool_recycle=600,  # перезапускать соединение через 10 мин (раньше 30 — меньше шанс stale connection)
     connect_args={
         "options": "-c statement_timeout=180000 -c lock_timeout=60000 -c idle_in_transaction_session_timeout=180000"
     }

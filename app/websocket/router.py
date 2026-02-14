@@ -589,17 +589,25 @@ async def websocket_admin_cars_list(
                         cars_data = await get_admin_cars_list_data(db_loop, status, search_query)
                         if websocket.client_state != WebSocketState.CONNECTED:
                             break
-                        await websocket.send_json({
-                            "type": "admin_cars_list",
-                            "data": cars_data,
-                            "timestamp": get_local_time().isoformat()
-                        })
+                        try:
+                            await websocket.send_json({
+                                "type": "admin_cars_list",
+                                "data": cars_data,
+                                "timestamp": get_local_time().isoformat()
+                            })
+                        except Exception as send_err:
+                            if "close message" in str(send_err).lower() or "already closed" in str(send_err).lower():
+                                break
+                            raise
                     finally:
                         db_loop.close()
                 await asyncio.sleep(2)
             except WebSocketDisconnect:
                 break
             except Exception as e:
+                err_str = str(e).lower()
+                if "close message" in err_str or "already closed" in err_str:
+                    break
                 logger.error("Error in admin cars list loop: %s", e)
                 if websocket.client_state == WebSocketState.CONNECTED:
                     try:
