@@ -31,18 +31,18 @@ WHERE email = 'rayoknu@gmail.com';  -- <-- замени на нужный email
 -- связанные данные или раскомментируй блок ниже и выполни по шагам.
 
 -- ========== Опционально: удаление связанных данных перед пользователем ==========
--- Замени 6480065f-a942-4bf0-8918-dd9ab2e555b4 на id пользователя из шага 1 или 2.
+-- Замени ca7e6fe2-063b-4515-b8e6-a5ad2c4b3178 на id пользователя из шага 1 или 2.
 
-DELETE FROM token_records WHERE user_id = '6480065f-a942-4bf0-8918-dd9ab2e555b4';
-DELETE FROM auth_tokens WHERE user_id = '6480065f-a942-4bf0-8918-dd9ab2e555b4';
-DELETE FROM user_devices WHERE user_id = '6480065f-a942-4bf0-8918-dd9ab2e555b4';
-DELETE FROM notifications WHERE user_id = '6480065f-a942-4bf0-8918-dd9ab2e555b4';
-DELETE FROM wallet_transactions WHERE user_id = '6480065f-a942-4bf0-8918-dd9ab2e555b4';
-DELETE FROM rental_actions WHERE user_id = '6480065f-a942-4bf0-8918-dd9ab2e555b4';
-DELETE FROM rental_history WHERE user_id = '6480065f-a942-4bf0-8918-dd9ab2e555b4';  -- осторожно: история аренд
-DELETE FROM applications WHERE user_id = '6480065f-a942-4bf0-8918-dd9ab2e555b4';
-DELETE FROM user_contract_signatures WHERE user_id = '6480065f-a942-4bf0-8918-dd9ab2e555b4';
-DELETE FROM action_logs WHERE actor_id = '6480065f-a942-4bf0-8918-dd9ab2e555b4';
-DELETE FROM bonus_promo_usages WHERE user_id = '6480065f-a942-4bf0-8918-dd9ab2e555b4';
-DELETE FROM users WHERE id = '6480065f-a942-4bf0-8918-dd9ab2e555b4';
+DELETE FROM token_records WHERE user_id = 'ca7e6fe2-063b-4515-b8e6-a5ad2c4b3178';
+DELETE FROM auth_tokens WHERE user_id = 'ca7e6fe2-063b-4515-b8e6-a5ad2c4b3178';
+DELETE FROM user_devices WHERE user_id = 'ca7e6fe2-063b-4515-b8e6-a5ad2c4b3178';
+DELETE FROM notifications WHERE user_id = 'ca7e6fe2-063b-4515-b8e6-a5ad2c4b3178';
+DELETE FROM wallet_transactions WHERE user_id = 'ca7e6fe2-063b-4515-b8e6-a5ad2c4b3178';
+DELETE FROM rental_actions WHERE user_id = 'ca7e6fe2-063b-4515-b8e6-a5ad2c4b3178';
+DELETE FROM rental_history WHERE user_id = 'ca7e6fe2-063b-4515-b8e6-a5ad2c4b3178';  -- осторожно: история аренд
+DELETE FROM applications WHERE user_id = 'ca7e6fe2-063b-4515-b8e6-a5ad2c4b3178';
+DELETE FROM user_contract_signatures WHERE user_id = 'ca7e6fe2-063b-4515-b8e6-a5ad2c4b3178';
+DELETE FROM action_logs WHERE actor_id = 'ca7e6fe2-063b-4515-b8e6-a5ad2c4b3178';
+DELETE FROM bonus_promo_usages WHERE user_id = 'ca7e6fe2-063b-4515-b8e6-a5ad2c4b3178';
+DELETE FROM users WHERE id = 'ca7e6fe2-063b-4515-b8e6-a5ad2c4b3178';
 

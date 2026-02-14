@@ -418,7 +418,8 @@ async def send_sms(
             msg = MIMEText(f"Ваш код подтверждения: {email_code}")
             msg["Subject"] = "AZV Motors"
             msg["To"] = email
-            send_email_with_fallback(msg, email)
+            # Отправка письма в потоке, чтобы не блокировать event loop (SMTP — синхронный и может зависать)
+            await asyncio.to_thread(send_email_with_fallback, msg, email)
         except Exception as e:
             try:
                 await log_error_to_telegram(
