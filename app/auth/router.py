@@ -412,27 +412,7 @@ async def send_sms(
         if not user.email or (user.email or "").lower() != email:
             user.email = email
             user.is_verified_email = False
-        email_svc = get_email_service()
-        try:
-            if not await email_svc.send_registration_code(email, email_code):
-                logger.warning("Email not sent; verification code for %s: %s", email, email_code)
-        except Exception as e:
-            logger.exception("Resend email failed in send_sms")
-            try:
-                await log_error_to_telegram(
-                    error=e,
-                    request=None,
-                    user=user,
-                    additional_context={
-                        "action": "send_email_code_in_send_sms",
-                        "email": email,
-                        "user_id": str(user.id),
-                        "phone_number": phone_number
-                    }
-                )
-            except Exception:
-                pass
-        logger.warning("Email verification code for %s: %s", email, email_code)
+        # Код на почту при создании аккаунта не отправляем; пользователь может запросить его через resend_email_code
         db.commit()
     return SendSmsResponse(
         message="SMS code sent successfully",
