@@ -173,8 +173,8 @@ def setup_logging(
     # Вешаем фильтр на сам логгер — тогда запись отбрасывается до любых handlers.
     logging.getLogger("uvicorn.access").addFilter(SkipPathAccessLogFilter())
     
-    # Приглушаем шумные логгеры: APScheduler, httpx, OpenTelemetry, multipart, PIL.
-    # multipart — DEBUG на каждый chunk; PIL (TiffImagePlugin) — DEBUG при EXIF/JPEG.
+    # Приглушаем шумные логгеры: APScheduler, httpx, OpenTelemetry, multipart, PIL, boto/botocore/urllib3.
+    # botocore/urllib3 — DEBUG на каждый HTTP-запрос к S3/MinIO (awsrequest, connectionpool, parsers).
     for name in (
         "apscheduler",
         "apscheduler.executors.default",
@@ -185,6 +185,9 @@ def setup_logging(
         "multipart",
         "PIL",
         "PIL.TiffImagePlugin",
+        "botocore",
+        "boto3",
+        "urllib3",
     ):
         logging.getLogger(name).setLevel(logging.WARNING)
 

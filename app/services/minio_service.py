@@ -203,14 +203,15 @@ class MinIOService:
             # Полный путь объекта (ключ)
             object_key = f"{folder.strip('/')}/{unique_filename}"
             
-            # Загружаем в MinIO
+            # Загружаем в MinIO в потоке — boto3 put_object блокирует event loop
             upload_start = time.time()
-            self.client.put_object(
+            await asyncio.to_thread(
+                self.client.put_object,
                 Bucket=bucket,
                 Key=object_key,
                 Body=BytesIO(content),
                 ContentType=content_type,
-                ContentLength=len(content)
+                ContentLength=len(content),
             )
             logger.info(f"[MINIO_UPLOAD] Upload took {time.time() - upload_start:.3f}s")
             

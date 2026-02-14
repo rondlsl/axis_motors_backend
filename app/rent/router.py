@@ -389,8 +389,11 @@ async def get_ecodriving_rating(vehicle_id: str, start_time: datetime, end_time:
             "from": from_utc,
             "to": to_utc
         }
-        
-        response = await client.send_request("POST", url, headers=headers, json=payload)
+        # Увеличенный таймаут: API Glonass может отвечать медленно (connect 15s, total 30s)
+        response = await client.send_request(
+            "POST", url, headers=headers, json=payload,
+            timeout=httpx.Timeout(30.0, connect=15.0)
+        )
         
         if response.status_code == 200:
             data = response.json()
