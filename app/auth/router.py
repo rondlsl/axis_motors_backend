@@ -268,6 +268,7 @@ async def send_sms(
         "70123456796",   # тест8
         "70123456797",   # тест9
         "70123456798",   # тест10
+        "71011111111"
     ]
 
     if phone_number in SYSTEM_PHONE_NUMBERS:
@@ -514,8 +515,8 @@ async def verify_sms(request: VerifySmsRequest, db: Session = Depends(get_db)):
     if not phone_number.isdigit():
         raise HTTPException(status_code=400, detail="Phone number must contain only digits.")
     SYSTEM_PHONE_NUMBERS = [
-        "70000000000", "71234567890", "71234567898", "71234567899", "79999999999", "71231111111"
-    ]
+        "70000000000", "71234567890", "71234567898", "71234567899", "79999999999", "71231111111", "71011111111"
+    ]   
     if sms_code == "1010":
         user = db.query(User).filter(User.phone_number == phone_number, User.is_active == True).first()
     elif phone_number in SYSTEM_PHONE_NUMBERS:
