@@ -497,16 +497,6 @@ def init_app(app: FastAPI):
                 id="check_new_cars"
             )
             
-            # Одноразовая рассылка: 11.02.2026 в 13:00 — уведомление в приложение «баг с email исправлен» (11–14 фев, без документов)
-            from app.scheduler.notify_bug_fixed_feb11_14 import notify_bug_fixed_feb11_14_job
-            scheduler.add_job(
-                notify_bug_fixed_feb11_14_job,
-                trigger="cron",
-                hour=13,
-                minute=0,
-                id="notify_bug_fixed_feb11_14",
-            )
-
             # Ежедневный бэкап базы данных - в 2:00 ночи по Алматы (GMT+5)
             # Используем обертку для вызова асинхронной функции
             def async_backup_wrapper():

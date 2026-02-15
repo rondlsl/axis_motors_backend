@@ -3,11 +3,11 @@
 Одноразовая рассылка: пользователям «зарегистрировались 11–14 фев, без документов»
 отправляется уведомление в приложение (push + запись в БД) о том, что баг с регистрацией по почте исправлен.
 
-Срабатывает ТОЛЬКО 11 февраля 2026 года по времени Алматы (UTC+5).
-В любую другую дату скрипт завершается без отправки.
-
-Запуск в 13:00 по Алматы (cron или вручную):
+Запуск сегодня в 13:00 по Алматы (cron или вручную):
   cd /path/to/azv_motors_backend_v2 && python scripts/notify_bug_fixed_no_docs_feb11_14.py
+
+Тест на одном номере:
+  python scripts/notify_bug_fixed_no_docs_feb11_14.py 77056478662
 """
 import os
 import sys
@@ -20,9 +20,6 @@ os.chdir(ROOT)
 from dotenv import load_dotenv
 load_dotenv()
 
-# Единственная дата, когда скрипт что-то делает (Алматы)
-RUN_DATE_ALMATY = (2026, 2, 11)
-
 TITLE = "Исправлена проблема с регистрацией"
 BODY = (
     "Ранее при регистрации возникала проблема с отправкой кода на email. "
@@ -30,45 +27,48 @@ BODY = (
 )
 
 
-def get_almaty_date():
-    """Текущая дата в Алматы (UTC+5)."""
-    from datetime import datetime
-    try:
-        from zoneinfo import ZoneInfo
-        tz = ZoneInfo("Asia/Almaty")
-    except ImportError:
-        import pytz
-        tz = pytz.timezone("Asia/Almaty")
-    return datetime.now(tz).date()
-
-
 def main():
-    today = get_almaty_date()
-    if (today.year, today.month, today.day) != RUN_DATE_ALMATY:
-        print(f"Дата запуска (Алматы): {today}. Скрипт разрешён только на {RUN_DATE_ALMATY[0]}-{RUN_DATE_ALMATY[1]:02d}-{RUN_DATE_ALMATY[2]:02d}. Выход без отправки.")
-        sys.exit(0)
+    from sqlalchemy import create_engine, text
+    from app.core.config import DATABASE_URL
+    import uuid
 
-    from app.dependencies.database.database import SessionLocal
-    from app.models.user_model import User
+    # Загружаем все ORM-модели до вызова push (иначе Car→RentalHistory, User→UserDevice не находятся)
+    import app.models.init  # noqa: F401
+    import app.models.user_device_model  # noqa: F401
+
     from app.push.utils import send_push_to_user_by_id_async
 
-    db = SessionLocal()
-    try:
-        # Те же пользователи, что в экспорте: 11–14 фев, без документов
-        users = db.query(User).filter(
-            User.upload_document_at.is_(None),
-            User.is_deleted == False,
-            User.created_at >= "2026-02-11",
-            User.created_at < "2026-02-15",
-        ).order_by(User.created_at).all()
-    finally:
-        db.close()
+    # Тест на одном номере: python scripts/notify_bug_fixed_no_docs_feb11_14.py 77056478662
+    test_phone = (sys.argv[1] or os.environ.get("PHONE_TEST", "")).strip() if len(sys.argv) > 1 else os.environ.get("PHONE_TEST", "")
 
-    if not users:
+    engine = create_engine(DATABASE_URL.replace("postgresql+psycopg2", "postgresql+psycopg2"))
+    with engine.connect() as conn:
+        if test_phone:
+            rows = conn.execute(
+                text("SELECT id, phone_number FROM users WHERE phone_number = :phone AND is_deleted = false"),
+                {"phone": test_phone},
+            ).fetchall()
+            if not rows:
+                print(f"Пользователь с номером {test_phone} не найден или удалён.")
+                sys.exit(1)
+            print(f"Режим теста: только {test_phone}")
+        else:
+            rows = conn.execute(text("""
+                SELECT id, phone_number
+                FROM users
+                WHERE upload_document_at IS NULL
+                  AND is_deleted = false
+                  AND created_at >= '2026-02-11'
+                  AND created_at < '2026-02-15'
+                ORDER BY created_at
+            """)).fetchall()
+
+    if not rows:
         print("Нет пользователей по критерию (11–14 фев, без документов). Выход.")
         sys.exit(0)
 
-    print(f"Дата (Алматы): {today}. Отправка уведомлений в приложение для {len(users)} пользователей...")
+    users = [{"id": uuid.UUID(str(r[0])), "phone_number": r[1]} for r in rows]
+    print(f"Отправка уведомлений в приложение для {len(users)} пользователей...")
 
     import asyncio
 
@@ -79,20 +79,19 @@ def main():
         for i, user in enumerate(users, 1):
             try:
                 sent = await send_push_to_user_by_id_async(
-                    user.id,
+                    user["id"],
                     TITLE,
                     BODY,
                 )
                 if sent:
                     ok += 1
-                    print(f"  [{i}/{len(users)}] OK push: {user.phone_number}")
+                    print(f"  [{i}/{len(users)}] OK push: {user['phone_number']}")
                 else:
                     no_tokens += 1
-                    # Запись в БД всё равно создаётся в send_push_to_user_by_id — уведомление будет в приложении
-                    print(f"  [{i}/{len(users)}] В приложении (нет FCM): {user.phone_number}")
+                    print(f"  [{i}/{len(users)}] В приложении (нет FCM): {user['phone_number']}")
             except Exception as e:
                 fail += 1
-                print(f"  [{i}/{len(users)}] FAIL {user.phone_number}: {e}")
+                print(f"  [{i}/{len(users)}] FAIL {user['phone_number']}: {e}")
         print(f"Готово. Push отправлен: {ok}, только в приложении (без push): {no_tokens}, ошибок: {fail}.")
 
     asyncio.run(send_all())
