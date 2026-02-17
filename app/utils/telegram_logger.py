@@ -1,8 +1,10 @@
 """
 Telegram Logger для отправки ошибок и критических событий в Telegram группу мониторинга.
 Учитывает лимиты Telegram: не более ~1 сообщения в секунду в один чат, при 429 — ожидание retry_after и повтор.
+В parse_mode=HTML весь динамический текст экранируется, иначе Telegram возвращает 400 (can't parse entities).
 """
 import asyncio
+import html
 import logging
 import time
 import traceback
@@ -51,61 +53,62 @@ class TelegramErrorLogger:
             # Время
             message_parts.append(f"\n⏰ <b>Время (GMT+5):</b> {get_local_time().strftime('%Y-%m-%d %H:%M:%S')}")
             
+            def _esc(s: str) -> str:
+                return html.escape(str(s), quote=True)
+
             # Информация о пользователе
             if user_info:
                 message_parts.append("\n👤 <b>ПОЛЬЗОВАТЕЛЬ:</b>")
                 if user_info.get("id"):
-                    message_parts.append(f"  • ID: <code>{user_info['id']}</code>")
+                    message_parts.append(f"  • ID: <code>{_esc(user_info['id'])}</code>")
                 if user_info.get("name"):
-                    message_parts.append(f"  • Имя: {user_info['name']}")
+                    message_parts.append(f"  • Имя: {_esc(user_info['name'])}")
                 if user_info.get("phone"):
-                    message_parts.append(f"  • Телефон: {user_info['phone']}")
+                    message_parts.append(f"  • Телефон: {_esc(user_info['phone'])}")
                 if user_info.get("role"):
-                    message_parts.append(f"  • Роль: {user_info['role']}")
+                    message_parts.append(f"  • Роль: {_esc(user_info['role'])}")
                 if user_info.get("email"):
-                    message_parts.append(f"  • Email: {user_info['email']}")
+                    message_parts.append(f"  • Email: {_esc(user_info['email'])}")
             
             # Информация о запросе
             if request_info:
                 message_parts.append("\n🌐 <b>ЗАПРОС:</b>")
                 if request_info.get("method"):
-                    message_parts.append(f"  • Метод: <code>{request_info['method']}</code>")
+                    message_parts.append(f"  • Метод: <code>{_esc(request_info['method'])}</code>")
                 if request_info.get("url"):
-                    message_parts.append(f"  • URL: <code>{request_info['url']}</code>")
+                    message_parts.append(f"  • URL: <code>{_esc(request_info['url'])}</code>")
                 if request_info.get("endpoint"):
-                    message_parts.append(f"  • Endpoint: <code>{request_info['endpoint']}</code>")
+                    message_parts.append(f"  • Endpoint: <code>{_esc(request_info['endpoint'])}</code>")
                 if request_info.get("client_ip"):
-                    message_parts.append(f"  • IP: <code>{request_info['client_ip']}</code>")
+                    message_parts.append(f"  • IP: <code>{_esc(request_info['client_ip'])}</code>")
             
-            # Информация об ошибке
+            # Информация об ошибке (экранируем — в тексте могут быть <, >, &)
             message_parts.append("\n❌ <b>ОШИБКА:</b>")
-            message_parts.append(f"  • Тип: <code>{type(error).__name__}</code>")
-            message_parts.append(f"  • Сообщение: <code>{str(error)}</code>")
-            
-            # Traceback
-            tb_lines = traceback.format_exception(type(error), error, error.__traceback__)
-            tb_text = "".join(tb_lines)
-            
-            # Ограничиваем traceback, чтобы не превысить лимит Telegram (4096 символов)
-            if len(tb_text) > 2000:
-                tb_text = tb_text[:1000] + "\n...\n" + tb_text[-1000:]
-            
-            message_parts.append(f"\n📋 <b>TRACEBACK:</b>\n<pre>{tb_text}</pre>")
+            message_parts.append(f"  • Тип: <code>{_esc(type(error).__name__)}</code>")
+            message_parts.append(f"  • Сообщение: <code>{_esc(str(error))}</code>")
             
             # Дополнительный контекст
             if additional_context:
                 message_parts.append("\n📝 <b>ДОПОЛНИТЕЛЬНО:</b>")
                 for key, value in additional_context.items():
-                    # Ограничиваем длину значения
                     str_value = str(value)
                     if len(str_value) > 200:
                         str_value = str_value[:200] + "..."
-                    message_parts.append(f"  • {key}: <code>{str_value}</code>")
+                    message_parts.append(f"  • {_esc(key)}: <code>{_esc(str_value)}</code>")
             
             full_message = "\n".join(message_parts)
-            
-            # Разбиваем на части, если превышает лимит Telegram
-            await self._send_message_parts(full_message)
+            if len(full_message) > 4090:
+                full_message = full_message[:4080] + "\n… (обрезано)"
+            # Основное сообщение — всегда одним куском HTML, без traceback (чтобы не разрывать <pre> при разбиении)
+            await self._send_single_message(full_message)
+
+            # Traceback — отдельным сообщением без parse_mode (plain text), иначе при длине >4096 ломаются теги
+            tb_lines = traceback.format_exception(type(error), error, error.__traceback__)
+            tb_text = "".join(tb_lines)
+            if len(tb_text) > 3900:
+                tb_text = tb_text[:1950] + "\n...\n" + tb_text[-1950:]
+            if tb_text.strip():
+                await self._send_single_message("📋 TRACEBACK:\n\n" + tb_text, parse_mode=None)
             
             await self._save_error_to_db(
                 error=error,
@@ -189,26 +192,25 @@ class TelegramErrorLogger:
             if i < len(parts):
                 await asyncio.sleep(0.5)
     
-    async def _send_single_message(self, text: str):
+    async def _send_single_message(self, text: str, parse_mode: str | None = "HTML"):
         """Отправить одно сообщение в Telegram с учётом лимитов и повтором при 429."""
         async with self._send_lock:
             now = time.monotonic()
             wait = self._last_send_time + TELEGRAM_MIN_INTERVAL - now
             if wait > 0:
                 await asyncio.sleep(wait)
-            await self._do_send_with_retry(text)
+            await self._do_send_with_retry(text, parse_mode=parse_mode)
 
-    async def _do_send_with_retry(self, text: str):
+    async def _do_send_with_retry(self, text: str, parse_mode: str | None = "HTML"):
         """Выполнить отправку; при 429 подождать retry_after и повторить один раз."""
+        payload = {"chat_id": self.chat_id, "text": text}
+        if parse_mode is not None:
+            payload["parse_mode"] = parse_mode
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 response = await client.post(
                     f"{self.base_url}/sendMessage",
-                    json={
-                        "chat_id": self.chat_id,
-                        "text": text,
-                        "parse_mode": "HTML"
-                    }
+                    json=payload
                 )
                 if response.status_code == 200:
                     self._last_send_time = time.monotonic()
@@ -222,11 +224,7 @@ class TelegramErrorLogger:
                     await asyncio.sleep(retry_after)
                     retry_response = await client.post(
                         f"{self.base_url}/sendMessage",
-                        json={
-                            "chat_id": self.chat_id,
-                            "text": text,
-                            "parse_mode": "HTML"
-                        }
+                        json=payload
                     )
                     if retry_response.status_code == 200:
                         self._last_send_time = time.monotonic()
@@ -260,13 +258,11 @@ class TelegramErrorLogger:
         try:
             message_parts = [f"ℹ️ <b>ИНФОРМАЦИЯ</b>\n"]
             message_parts.append(f"⏰ {get_local_time().strftime('%Y-%m-%d %H:%M:%S')} (GMT+5)\n")
-            message_parts.append(message)
-            
+            message_parts.append(html.escape(message, quote=True))
             if context:
                 message_parts.append("\n\n📝 <b>Контекст:</b>")
                 for key, value in context.items():
-                    message_parts.append(f"  • {key}: <code>{value}</code>")
-            
+                    message_parts.append(f"  • {html.escape(str(key), quote=True)}: <code>{html.escape(str(value), quote=True)}</code>")
             await self._send_single_message("\n".join(message_parts))
         except Exception as e:
             logger.error(f"Ошибка отправки info в Telegram: {e}")
@@ -276,13 +272,11 @@ class TelegramErrorLogger:
         try:
             message_parts = [f"⚠️ <b>ПРЕДУПРЕЖДЕНИЕ</b>\n"]
             message_parts.append(f"⏰ {get_local_time().strftime('%Y-%m-%d %H:%M:%S')} (GMT+5)\n")
-            message_parts.append(message)
-            
+            message_parts.append(html.escape(message, quote=True))
             if context:
                 message_parts.append("\n\n📝 <b>Контекст:</b>")
                 for key, value in context.items():
-                    message_parts.append(f"  • {key}: <code>{value}</code>")
-            
+                    message_parts.append(f"  • {html.escape(str(key), quote=True)}: <code>{html.escape(str(value), quote=True)}</code>")
             await self._send_single_message("\n".join(message_parts))
         except Exception as e:
             logger.error(f"Ошибка отправки warning в Telegram: {e}")
