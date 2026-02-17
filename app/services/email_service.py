@@ -6,9 +6,14 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Optional, Tuple, TYPE_CHECKING
 
 from app.core.config import RESEND_API_KEY, EMAIL_FROM
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+from app.services.email_reputation import validate_email as validate_email_reputation, should_send_to_email
 
 logger = logging.getLogger(__name__)
 
@@ -81,18 +86,32 @@ class EmailService:
         html: str,
         *,
         text: Optional[str] = None,
-    ) -> bool:
+        db: Optional["Session"] = None,
+        skip_reputation_check: bool = False,
+    ) -> Tuple[bool, Optional[str]]:
         """
         Отправить письмо на один адрес.
         :param to: email получателя
         :param subject: тема
         :param html: HTML-тело письма
-        :param text: опционально plain-text версия (для клиентов без HTML)
-        :return: True если отправлено, False при ошибке или отсутствии конфигурации
+        :param text: опционально plain-text версия
+        :param db: если передан, перед отправкой проверяются validation и suppression (reputation)
+        :param skip_reputation_check: не проверять reputation (для системных писем, если нужно)
+        :return: (успех, message_id от Resend или None)
         """
         if not self.is_configured():
             logger.warning("Email not sent: RESEND_API_KEY not configured")
-            return False
+            return False, None
+
+        to_normalized = to.strip().lower()
+        if db and not skip_reputation_check:
+            ok, err = validate_email_reputation(to_normalized)
+            if not ok:
+                logger.warning("Email not sent (validation): to=%s reason=%s", to, err)
+                raise EmailServiceError(err)
+            if not should_send_to_email(db, to_normalized):
+                logger.warning("Email not sent (suppression/bounce): to=%s", to)
+                raise EmailServiceError("Email disabled due to reputation issues (bounce/complaint/suppressed)")
 
         try:
             import resend
@@ -100,24 +119,34 @@ class EmailService:
 
             payload = {
                 "from": self._from,
-                "to": [to.strip().lower()],
+                "to": [to_normalized],
                 "subject": subject,
                 "html": html,
             }
             if text:
                 payload["text"] = text
 
-            resend.Emails.send(payload)
-            logger.info("Email sent to %s, subject=%s", to, subject)
-            return True
+            result = resend.Emails.send(payload)
+            message_id = None
+            if result is not None:
+                if isinstance(result, dict) and result.get("id"):
+                    message_id = str(result["id"])
+                elif hasattr(result, "get") and result.get("id"):
+                    message_id = str(result.get("id"))
+                elif hasattr(result, "id"):
+                    message_id = str(result.id)
+            logger.info("Email sent to %s, subject=%s, message_id=%s", to, subject, message_id)
+            return True, message_id
         except Exception as e:
             logger.error("Resend send_email failed to=%s subject=%s: %s", to, subject, e, exc_info=True)
-            return False
+            return False, None
 
-    async def send_registration_code(self, to: str, code: str) -> bool:
+    async def send_registration_code(
+        self, to: str, code: str, *, db: Optional["Session"] = None
+    ) -> bool:
         """
         Отправить код подтверждения регистрации / верификации email.
-        Использует HTML-шаблон с крупным кодом и футером.
+        Если передан db, применяется проверка reputation перед отправкой.
         """
         html = _registration_code_html(
             code=code,
@@ -125,14 +154,18 @@ class EmailService:
             intro_text="Используйте код ниже для завершения регистрации.",
             footer_text="Если вы не регистрировались — проигнорируйте это письмо.",
         )
-        return await self.send_email(
+        success, _ = await self.send_email(
             to=to,
             subject="Подтверждение регистрации — AZV Motors",
             html=html,
             text=f"Ваш код подтверждения: {code}",
+            db=db,
         )
+        return success
 
-    async def send_email_change_code(self, to: str, code: str) -> bool:
+    async def send_email_change_code(
+        self, to: str, code: str, *, db: Optional["Session"] = None
+    ) -> bool:
         """Отправить код для подтверждения смены email."""
         html = _registration_code_html(
             code=code,
@@ -140,22 +173,40 @@ class EmailService:
             intro_text="Используйте код ниже для подтверждения нового email.",
             footer_text="Если вы не запрашивали смену email — проигнорируйте письмо.",
         )
-        return await self.send_email(
+        success, _ = await self.send_email(
             to=to,
             subject="Изменение email — AZV Motors",
             html=html,
             text=f"Ваш код для подтверждения изменения email: {code}",
+            db=db,
         )
+        return success
 
-    async def send_plain_email(self, to: str, subject: str, body: str) -> bool:
+    async def send_plain_email(
+        self,
+        to: str,
+        subject: str,
+        body: str,
+        *,
+        db: Optional["Session"] = None,
+        skip_reputation_check: bool = False,
+    ) -> bool:
         """
         Отправить простое текстовое письмо (для админки/саппорта).
-        body передаётся как HTML (экранируем переносы для отображения).
+        Если передан db, перед отправкой проверяются validation и suppression.
         """
         import html as html_module
         escaped = html_module.escape(body).replace("\n", "<br>\n")
         html = f"<div style='font-family: sans-serif; font-size: 14px; line-height: 1.5;'>{escaped}</div>"
-        return await self.send_email(to=to, subject=subject, html=html, text=body)
+        success, _ = await self.send_email(
+            to=to,
+            subject=subject,
+            html=html,
+            text=body,
+            db=db,
+            skip_reputation_check=skip_reputation_check,
+        )
+        return success
 
 
 # Синглтон для использования в роутерах

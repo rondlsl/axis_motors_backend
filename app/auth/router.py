@@ -10,6 +10,7 @@ from typing import Optional
 import os
 import random
 from app.services.email_service import get_email_service
+from app.services.email_reputation import EMAIL_STATUS_VERIFIED
 from app.utils.short_id import uuid_to_sid, safe_sid_to_uuid
 from app.models.contract_model import UserContractSignature, ContractFile, ContractType
 from app.models.history_model import RentalHistory, RentalStatus
@@ -99,6 +100,7 @@ async def verify_email(request: VerifyEmailRequest, current_user: User = Depends
     if request.email and email_to_verify != (current_user.email or "").strip().lower():
         current_user.email = email_to_verify
     current_user.is_verified_email = True
+    current_user.email_status = EMAIL_STATUS_VERIFIED
     db.commit()
     db.refresh(current_user)
     
@@ -130,7 +132,7 @@ async def resend_email_code(current_user: User = Depends(get_current_user), db: 
 
     email_service = get_email_service()
     try:
-        if not await email_service.send_registration_code(current_user.email, code):
+        if not await email_service.send_registration_code(current_user.email, code, db=db):
             logger.warning("Email not sent; verification code for %s: %s", current_user.email, code)
     except Exception as e:
         logger.exception("Resend email failed for resend_email_code")
@@ -1247,7 +1249,7 @@ async def request_change_email(
     
     email_svc = get_email_service()
     try:
-        if not await email_svc.send_email_change_code(new_email, code):
+        if not await email_svc.send_email_change_code(new_email, code, db=db):
             logger.warning("Email not sent; change-email code for %s: %s", new_email, code)
     except Exception as e:
         logger.exception("Resend email failed for change_email/request")
@@ -1308,7 +1310,8 @@ async def verify_change_email(
     # Обновляем email пользователя
     current_user.email = new_email
     current_user.is_verified_email = True
-    
+    current_user.email_status = EMAIL_STATUS_VERIFIED
+
     db.commit()
     
     asyncio.create_task(notify_user_status_update(str(current_user.id)))

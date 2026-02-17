@@ -2205,14 +2205,13 @@ async def start_rental(
         
         # Список чатов для уведомлений
         chat_ids = [965048905, 5941825713, 860991388, 1594112444, 808277096, 7656716395, 964255811, 8522837235, 797693964]
-        
+        _tg_tasks = []
         if TELEGRAM_BOT_TOKEN:
             for chat_id in chat_ids:
-                asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN))
-        
+                _tg_tasks.append(asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN)))
         if TELEGRAM_BOT_TOKEN_2:
             for chat_id in chat_ids:
-                asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN_2))
+                _tg_tasks.append(asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN_2)))
                 
     except Exception as e:
         logger.error(f"Ошибка отправки уведомления о начале аренды в Telegram: {e}")
@@ -2226,9 +2225,9 @@ async def start_rental(
     #     if current_user.last_name:
     #         name_parts.append(current_user.last_name)
     #     full_name = " ".join(name_parts) if name_parts else "Не указано"
-    #     
+        
     #     login = current_user.phone_number or "Не указан"
-    #     
+        
     #     await send_rental_start_sms(
     #         client_phone=current_user.phone_number,
     #         rent_id=str(rental.id),

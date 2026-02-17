@@ -73,7 +73,7 @@ from app.rent.utils.balance_utils import verify_and_fix_rental_balance
 from app.rent.utils.tariff_settings import validate_tariff_for_booking
 from app.core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2, TELEGRAM_BILLING_CHAT_IDS, SMS_TOKEN
 from app.guarantor.sms_utils import send_sms_mobizon
-from app.services.email_service import get_email_service
+from app.services.email_service import get_email_service, EmailServiceError
 from app.models.application_model import Application
 from app.models.history_model import RentalHistory
 from app.models.wallet_transaction_model import WalletTransaction
@@ -7230,7 +7230,7 @@ async def send_email_to_user(
     email_svc = get_email_service()
 
     try:
-        if await email_svc.send_plain_email(email, subject, body):
+        if await email_svc.send_plain_email(email, subject, body, db=db):
             log_action(
                 db,
                 actor_id=current_user.id,
@@ -7253,6 +7253,14 @@ async def send_email_to_user(
             user_id=user_id,
             email=email,
             error="Email configuration missing"
+        )
+    except EmailServiceError as e:
+        return SendUserEmailResponse(
+            success=False,
+            message="Отправка запрещена (репутация/валидация)",
+            user_id=user_id,
+            email=email,
+            error=str(e)
         )
     except Exception as e:
         logger.error(f"Email sending error: {e}")
