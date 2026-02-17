@@ -71,7 +71,7 @@ from app.wallet.utils import record_wallet_transaction
 from app.rent.utils.calculate_price import get_open_price, calc_required_balance, calculate_total_price
 from app.rent.utils.balance_utils import verify_and_fix_rental_balance
 from app.rent.utils.tariff_settings import validate_tariff_for_booking
-from app.core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2, SMS_TOKEN
+from app.core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_TOKEN_2, TELEGRAM_BILLING_CHAT_IDS, SMS_TOKEN
 from app.guarantor.sms_utils import send_sms_mobizon
 from app.services.email_service import get_email_service
 from app.models.application_model import Application
@@ -2660,22 +2660,19 @@ async def admin_start_rental(
                     except Exception as e:
                         logger.error(f"Ошибка отправки Telegram уведомления в {chat_id}: {e}")
                 
-                # Список чатов для уведомлений
-                chat_ids = [965048905, 5941825713, 860991388, 1594112444, 808277096, 7656716395, 964255811, 8522837235, 797693964]
-                
+                # Список чатов для уведомлений — из конфига (TELEGRAM_BILLING_CHAT_IDS)
+                _tg_tasks = []
                 if TELEGRAM_BOT_TOKEN:
-                    for chat_id in chat_ids:
-                        asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN))
-                
+                    for chat_id in TELEGRAM_BILLING_CHAT_IDS:
+                        _tg_tasks.append(asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN)))
                 if TELEGRAM_BOT_TOKEN_2:
-                    for chat_id in chat_ids:
-                        asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN_2))
-                        
+                    for chat_id in TELEGRAM_BILLING_CHAT_IDS:
+                        _tg_tasks.append(asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN_2)))
             except Exception as e:
                 logger.error(f"Не удалось отправить Telegram уведомление о начале аренды: {e}")
             
-            asyncio.create_task(notify_user_status_update(str(target_user.id)))
-            
+            _status_task = asyncio.create_task(notify_user_status_update(str(target_user.id)))
+
             return {
                 "success": True,
                 "message": "Бронь переведена в активную аренду",
@@ -2890,22 +2887,19 @@ async def admin_start_rental(
             except Exception as e:
                 logger.error(f"Ошибка отправки Telegram уведомления в {chat_id}: {e}")
         
-        # Список чатов для уведомлений
-        chat_ids = [965048905, 5941825713, 860991388, 1594112444, 808277096, 7656716395, 964255811, 8522837235, 797693964]
-        
+        # Список чатов для уведомлений — из конфига (TELEGRAM_BILLING_CHAT_IDS)
+        _tg_tasks = []
         if TELEGRAM_BOT_TOKEN:
-            for chat_id in chat_ids:
-                asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN))
-        
+            for chat_id in TELEGRAM_BILLING_CHAT_IDS:
+                _tg_tasks.append(asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN)))
         if TELEGRAM_BOT_TOKEN_2:
-            for chat_id in chat_ids:
-                asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN_2))
-                
+            for chat_id in TELEGRAM_BILLING_CHAT_IDS:
+                _tg_tasks.append(asyncio.create_task(_send_telegram_notification(notification_text, chat_id, TELEGRAM_BOT_TOKEN_2)))
     except Exception as e:
         logger.error(f"Не удалось отправить Telegram уведомление о начале аренды: {e}")
     
-    asyncio.create_task(notify_user_status_update(str(target_user.id)))
-    
+    _status_task = asyncio.create_task(notify_user_status_update(str(target_user.id)))
+
     return {
         "success": True,
         "rental_id": uuid_to_sid(new_rental.id),

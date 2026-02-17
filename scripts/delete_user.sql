@@ -10,7 +10,7 @@
 -- 1. НАЙТИ ПОЛЬЗОВАТЕЛЯ по номеру телефона
 SELECT id, phone_number, email, first_name, last_name, role
 FROM users
-WHERE phone_number = '77088190662';  -- <-- замени на нужный номер
+WHERE phone_number = '77056478662';  -- <-- замени на нужный номер
 
 -- 2. НАЙТИ ПОЛЬЗОВАТЕЛЯ по почте
 SELECT id, phone_number, email, first_name, last_name, role
@@ -31,18 +31,18 @@ WHERE email = 'azvmotors.team@gmail.com';  -- <-- замени на нужный
 -- связанные данные или раскомментируй блок ниже и выполни по шагам.
 
 -- ========== Опционально: удаление связанных данных перед пользователем ==========
--- Замени 50a09bc4-4da2-48b2-9258-3f6dd6728bd7 на id пользователя из шага 1 или 2.
+-- Замени 859c0ccc-f9ab-45de-b883-833afbd87717 на id пользователя из шага 1 или 2.
 
-DELETE FROM token_records WHERE user_id = '50a09bc4-4da2-48b2-9258-3f6dd6728bd7';
-DELETE FROM auth_tokens WHERE user_id = '50a09bc4-4da2-48b2-9258-3f6dd6728bd7';
-DELETE FROM user_devices WHERE user_id = '50a09bc4-4da2-48b2-9258-3f6dd6728bd7';
-DELETE FROM notifications WHERE user_id = '50a09bc4-4da2-48b2-9258-3f6dd6728bd7';
-DELETE FROM wallet_transactions WHERE user_id = '50a09bc4-4da2-48b2-9258-3f6dd6728bd7';
-DELETE FROM rental_actions WHERE user_id = '50a09bc4-4da2-48b2-9258-3f6dd6728bd7';
-DELETE FROM rental_history WHERE user_id = '50a09bc4-4da2-48b2-9258-3f6dd6728bd7';  -- осторожно: история аренд
-DELETE FROM applications WHERE user_id = '50a09bc4-4da2-48b2-9258-3f6dd6728bd7';
-DELETE FROM user_contract_signatures WHERE user_id = '50a09bc4-4da2-48b2-9258-3f6dd6728bd7';
-DELETE FROM action_logs WHERE actor_id = '50a09bc4-4da2-48b2-9258-3f6dd6728bd7';
-DELETE FROM bonus_promo_usages WHERE user_id = '50a09bc4-4da2-48b2-9258-3f6dd6728bd7';
-DELETE FROM users WHERE id = '50a09bc4-4da2-48b2-9258-3f6dd6728bd7';
+DELETE FROM token_records WHERE user_id = '859c0ccc-f9ab-45de-b883-833afbd87717';
+DELETE FROM auth_tokens WHERE user_id = '859c0ccc-f9ab-45de-b883-833afbd87717';
+DELETE FROM user_devices WHERE user_id = '859c0ccc-f9ab-45de-b883-833afbd87717';
+DELETE FROM notifications WHERE user_id = '859c0ccc-f9ab-45de-b883-833afbd87717';
+DELETE FROM wallet_transactions WHERE user_id = '859c0ccc-f9ab-45de-b883-833afbd87717';
+DELETE FROM rental_actions WHERE user_id = '859c0ccc-f9ab-45de-b883-833afbd87717';
+DELETE FROM rental_history WHERE user_id = '859c0ccc-f9ab-45de-b883-833afbd87717';  -- осторожно: история аренд
+DELETE FROM applications WHERE user_id = '859c0ccc-f9ab-45de-b883-833afbd87717';
+DELETE FROM user_contract_signatures WHERE user_id = '859c0ccc-f9ab-45de-b883-833afbd87717';
+DELETE FROM action_logs WHERE actor_id = '859c0ccc-f9ab-45de-b883-833afbd87717';
+DELETE FROM bonus_promo_usages WHERE user_id = '859c0ccc-f9ab-45de-b883-833afbd87717';
+DELETE FROM users WHERE id = '859c0ccc-f9ab-45de-b883-833afbd87717';
 
