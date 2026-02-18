@@ -131,8 +131,7 @@ def get_vehicle_id_by_imei(imei: str) -> int:
         "860803068133152": 800412252,  # Mercedes W222 (323BME02)
         "860803068155965": 800413326,  # Lexus GX460
         "860803068133343": 800415861,  # BMW G30
-        "860803068156161": 800415862,  # 058BFF02 (AZV-MOTORS) — при необходимости уточните vehicle_id в системе
-        "860803068156162": 800415863,  # Zeekr 001 — уточните IMEI и vehicle_id в админке GlonassSoft
+        "860803068156161": 800423306,  # Zeekr 001 — уточните IMEI и vehicle_id в админке GlonassSoft
     }
     vehicle_id = imei_to_vehicle_id.get(imei)
     if vehicle_id is None:
@@ -243,14 +242,6 @@ def get_commands_by_imei(imei: str) -> dict:
             "unlock_engine": "OUTPUT0 0"
         },
         "860803068156161": {  # 058BFF02 (AZV-MOTORS)
-            "open": "OUTPUT3 1|OUTPUT2 0|OUTPUT3 0",
-            "close": "OUTPUT2 1|OUTPUT3 0|OUTPUT2 0",
-            "give_key": "OUTPUT1 1",
-            "take_key": "OUTPUT1 0",
-            "lock_engine": "OUTPUT0 1",
-            "unlock_engine": "OUTPUT0 0"
-        },
-        "860803068156162": {  # Zeekr 001 — при необходимости скорректируйте команды под устройство
             "open": "OUTPUT3 1|OUTPUT2 0|OUTPUT3 0",
             "close": "OUTPUT2 1|OUTPUT3 0|OUTPUT2 0",
             "give_key": "OUTPUT1 1",
