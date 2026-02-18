@@ -67,7 +67,7 @@ SELECT COUNT(*) as remaining FROM cars WHERE id = 'ec2c5ece-297f-4af4-af00-63516
 -- Найти ID по номеру
 SELECT id, name, plate_number 
 FROM cars 
-WHERE plate_number = '096ADC10';  -- <-- ЗАМЕНИ НА НОМЕР
+WHERE plate_number = '058BFF02';  -- <-- ЗАМЕНИ НА НОМЕР
 
 -- Затем используй найденный ID в запросах выше
 

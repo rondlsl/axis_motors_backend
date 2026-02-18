@@ -5,10 +5,8 @@
 ## Цепочка
 
 ```
-User → EmailService (validation + should_send) → Resend
+User → EmailService (validation + should_send) → Resend → Webhook POST /webhooks/email → process_webhook → User.email_status
 ```
-
-Webhook от Resend не используется; статусы `bounced`/`complaint` при необходимости выставляются вручную (админка/скрипты).
 
 ## 1. Поля пользователя (User)
 
@@ -36,19 +34,30 @@ Webhook от Resend не используется; статусы `bounced`/`com
 
 Роуты админки/саппорта передают `db=db` в `send_plain_email(..., db=db)`.
 
-## 4. Конфиг (.env)
+## 4. Webhook Resend
+
+- **URL:** `POST https://api.azvmotors.kz/webhooks/email`
+- В Resend: **Settings → Webhooks** → добавить endpoint, события: `email.sent`, `email.delivered`, `email.bounced`, `email.complained`.
+- Подпись: Svix (`RESEND_WEBHOOK_SECRET`). Без секрета в dev payload принимается без проверки.
+
+Обработка:
+- **email.bounced** — `bounce.type === "Permanent"` → сразу `email_status = "bounced"`; Temporary → `bounce_count += 1`, при >3 → `bounced`.
+- **email.complained** → `email_status = "complaint"`.
+
+## 5. Конфиг (.env)
 
 ```env
 RESEND_API_KEY=re_...
 EMAIL_FROM=Azv Motors <noreply@azvmotors.kz>
+RESEND_WEBHOOK_SECRET=whsec_...   # из Resend → Webhooks → Signing secret
 ```
 
-## 5. Double opt-in
+## 6. Double opt-in
 
 - До подтверждения кода: `email_status` остаётся `pending` (или `verified` после подтверждения).
 - Массовые рассылки только на `verified`; перед отправкой проверка `should_send_to_user(user)`.
 
-## 6. Метрики (рекомендации)
+## 7. Метрики (рекомендации)
 
 - Bounce rate < 2%
 - Complaint rate < 0.1%
@@ -63,4 +72,5 @@ EMAIL_FROM=Azv Motors <noreply@azvmotors.kz>
 | Модель User           | `app/models/user_model.py` (email_status, bounce_count, last_bounce_at) |
 | Репутация/валидация    | `app/services/email_reputation.py` |
 | Отправка + проверки   | `app/services/email_service.py` |
+| Webhook Resend        | `app/webhooks/router.py` |
 | Миграция               | `migrations/versions/011_add_email_reputation_fields.py` |

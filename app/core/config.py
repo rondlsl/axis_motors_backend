@@ -14,6 +14,7 @@ POSTGRES_PORT = getenv('POSTGRES_PORT')
 
 RESEND_API_KEY = getenv('RESEND_API_KEY')
 EMAIL_FROM = getenv('EMAIL_FROM', 'Azv Motors <noreply@azvmotors.kz>')
+RESEND_WEBHOOK_SECRET = (getenv('RESEND_WEBHOOK_SECRET') or '').strip() or None
 
 DATABASE_URL = (
     f"{DB_ENGINE}://{POSTGRES_USER}:"

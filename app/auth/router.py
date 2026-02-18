@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 import os
 import random
-from app.services.email_service import get_email_service
+from app.services.email_service import get_email_service, EmailServiceError
 from app.services.email_reputation import EMAIL_STATUS_VERIFIED
 from app.utils.short_id import uuid_to_sid, safe_sid_to_uuid
 from app.models.contract_model import UserContractSignature, ContractFile, ContractType
@@ -114,11 +114,34 @@ async def verify_email(request: VerifyEmailRequest, current_user: User = Depends
     return {"message": "Email успешно подтверждён."}
 
 
+# Минимальный интервал между отправками кода на один email (секунды)
+RESEND_EMAIL_CODE_COOLDOWN_SEC = 120
+
+
 @Auth_router.post("/resend_email_code/")
 async def resend_email_code(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Повторная отправка кода подтверждения на email."""
     if not current_user.email:
         raise HTTPException(status_code=400, detail="У пользователя не указан email")
+    email = (current_user.email or "").strip().lower()
+    # Ограничение частоты: не чаще чем раз в RESEND_EMAIL_CODE_COOLDOWN_SEC
+    last_code = (
+        db.query(VerificationCode)
+        .filter(
+            VerificationCode.email == email,
+            VerificationCode.purpose == "email_verification",
+        )
+        .order_by(VerificationCode.expires_at.desc())
+        .first()
+    )
+    if last_code and last_code.expires_at:
+        # expires_at = created + 15 min, значит created = expires_at - 15 min
+        created_approx = last_code.expires_at - timedelta(minutes=15)
+        if get_local_time() - created_approx < timedelta(seconds=RESEND_EMAIL_CODE_COOLDOWN_SEC):
+            raise HTTPException(
+                status_code=429,
+                detail=f"Подождите {RESEND_EMAIL_CODE_COOLDOWN_SEC // 60} мин. перед повторной отправкой кода.",
+            )
     code = generate_email_verification_code()
     record = VerificationCode(
         phone_number=None,
@@ -134,21 +157,8 @@ async def resend_email_code(current_user: User = Depends(get_current_user), db: 
     try:
         if not await email_service.send_registration_code(current_user.email, code, db=db):
             logger.warning("Email not sent; verification code for %s: %s", current_user.email, code)
-    except Exception as e:
-        logger.exception("Resend email failed for resend_email_code")
-        try:
-            await log_error_to_telegram(
-                error=e,
-                request=None,
-                user=current_user,
-                additional_context={
-                    "action": "resend_email_code",
-                    "email": current_user.email,
-                    "user_id": str(current_user.id)
-                }
-            )
-        except Exception:
-            pass
+    except EmailServiceError:
+        raise HTTPException(status_code=400, detail="На этот email отправка недоступна. Укажите другой адрес или обратитесь в поддержку.")
     logger.warning("Email verification code for %s: %s", current_user.email, code)
 
     db.commit()
