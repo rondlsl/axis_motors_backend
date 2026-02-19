@@ -11,7 +11,7 @@ from app.utils.telegram_logger import log_error_to_telegram
 logger = get_logger(__name__)
 import asyncio
 
-LOCK_ENGINE_DISABLED_IMEIS = {"860803068143045", "860803068139548", "860803068133152"}  # CLA45s, Hongqi, Mercedes W222
+LOCK_ENGINE_DISABLED_IMEIS = {"860803068143045", "860803068139548"}  # CLA45s, Hongqi, Mercedes W222
 LOCK_ENGINE_DISABLED_VEHICLE_IDS = {800212421, 800283232, 800412252}  # CLA45s, Hongqi, Mercedes W222
 
 
@@ -128,8 +128,8 @@ def get_vehicle_id_by_imei(imei: str) -> int:
         "860803068151071": 800408106,  # Toyota Camry
         "860803068151105": 800409927,  # Range Rover Sport Supercharged
         "860803068133657": 800410477,  # Li L7 Ultra
-        "860803068133152": 800412252,  # Mercedes W222 (323BME02)
         "860803068155965": 800413326,  # Lexus GX460
+        "860803068133152": 800412252,  # BYD Han EV (323BME02)
         "860803068133343": 800415861,  # BMW G30
         "860803068156161": 800423306,  # Zeekr 001 — уточните IMEI и vehicle_id в админке GlonassSoft
     }
@@ -217,17 +217,17 @@ def get_commands_by_imei(imei: str) -> dict:
             "unlock_engine": "OUTPUT0 0",
             "requires_double_send": True  # Закрыть отправляется 2 раза
         },
-        "860803068133152": {  # Mercedes W222 - vehicle_id 800412252
-            "open": "OUTPUT1 1|OUTPUT3 0|OUTPUT3 0|OUTPUT3 0|OUTPUT2 1|OUTPUT3 0|OUTPUT3 0|OUTPUT3 0|OUTPUT2 0|OUTPUT1 0",
-            "close": "OUTPUT1 1|OUTPUT2 0|OUTPUT2 0|OUTPUT2 0|OUTPUT3 1|OUTPUT2 0|OUTPUT2 0|OUTPUT2 0|OUTPUT3 0|OUTPUT1 0",
-            "give_key": "OUTPUT1 1|OUTPUT3 0|OUTPUT3 0|OUTPUT3 0|OUTPUT2 1|OUTPUT3 0|OUTPUT3 0|OUTPUT3 0|OUTPUT2 0",
+        "860803068155965": {  # Lexus GX460 - vehicle_id 800413326
+            "open": "OUTPUT2 1|OUTPUT3 0|OUTPUT3 0|OUTPUT2 0",
+            "close": "OUTPUT3 1|OUTPUT2 0|OUTPUT2 0|OUTPUT3 0",
+            "give_key": "OUTPUT1 1",
             "take_key": "OUTPUT1 0",
             "lock_engine": "OUTPUT0 1",
             "unlock_engine": "OUTPUT0 0"
         },
-        "860803068155965": {  # Lexus GX460 - vehicle_id 800413326
-            "open": "OUTPUT2 1|OUTPUT3 0|OUTPUT3 0|OUTPUT2 0",
-            "close": "OUTPUT3 1|OUTPUT2 0|OUTPUT2 0|OUTPUT3 0",
+        "860803068133152": {  # BYD Han EV (323BME02) - vehicle_id 800412252
+            "open": "OUTPUT1 1|OUTPUT3 0|OUTPUT2 1|OUTPUT3 0|OUTPUT3 0|OUTPUT3 0|OUTPUT2 0|OUTPUT1 0",
+            "close": "OUTPUT1 1|OUTPUT2 0|OUTPUT3 1|OUTPUT2 0|OUTPUT2 0|OUTPUT2 0|OUTPUT3 0|OUTPUT1 0",
             "give_key": "OUTPUT1 1",
             "take_key": "OUTPUT1 0",
             "lock_engine": "OUTPUT0 1",
@@ -244,14 +244,6 @@ def get_commands_by_imei(imei: str) -> dict:
         "860803068156161": {  # 058BFF02 (AZV-MOTORS)
             "open": "OUTPUT3 1|OUTPUT2 0|OUTPUT3 0",
             "close": "OUTPUT2 1|OUTPUT3 0|OUTPUT2 0",
-            "give_key": "OUTPUT1 1",
-            "take_key": "OUTPUT1 0",
-            "lock_engine": "OUTPUT0 1",
-            "unlock_engine": "OUTPUT0 0"
-        },
-        "860803068133152": {  # 323BME02 (AZV-MOTORS)
-            "open": "OUTPUT1 1|OUTPUT3 0|OUTPUT2 1|OUTPUT3 0|OUTPUT3 0|OUTPUT3 0|OUTPUT2 0|OUTPUT1 0",
-            "close": "OUTPUT1 1|OUTPUT2 0|OUTPUT3 1|OUTPUT2 0|OUTPUT2 0|OUTPUT2 0|OUTPUT3 0|OUTPUT1 0",
             "give_key": "OUTPUT1 1",
             "take_key": "OUTPUT1 0",
             "lock_engine": "OUTPUT0 1",
