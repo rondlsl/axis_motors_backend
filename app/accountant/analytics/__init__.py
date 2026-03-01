@@ -1,2 +1,0 @@
-# Accountant analytics module
-
